@@ -1,5 +1,6 @@
 """Versioned, path-free job contract. The scoped Immich key is an ephemeral input."""
 
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -48,8 +49,6 @@ class Clip(Contract):
 
 class RenderPlan(Contract):
     clips: list[Clip] = Field(min_length=1, max_length=500)
-    title: str = Field(default="", max_length=300)
-    subtitle: str = Field(default="", max_length=300)
     transition: Literal["cut", "crossfade", "none"] = "crossfade"
     transition_duration: float = Field(default=0.5, ge=0, le=3)
 
@@ -63,6 +62,41 @@ class RenderPlan(Contract):
         return self
 
 
+class TitleSettings(Contract):
+    """The title inputs the app resolved, so the worker re-derives none of them."""
+
+    enabled: bool = False
+    title: str = Field(default="", max_length=300)
+    subtitle: str = Field(default="", max_length=300)
+    # Every bound below mirrors TitleScreenConfig, so an accepted envelope is
+    # always assignable onto the worker's own config.
+    locale: Literal["en", "fr", "auto"] = "auto"
+    style_mode: Literal["auto", "random"] = "auto"
+    title_duration: float = Field(default=3.5, ge=1.0, le=10.0)
+    ending_duration: float = Field(default=7.0, ge=2.0, le=15.0)
+    month_divider_duration: float = Field(default=2.0, ge=1.0, le=5.0)
+    month_divider_threshold: int = Field(default=2, ge=1, le=10)
+    show_month_dividers: bool = True
+
+
+class MemorySettings(Contract):
+    """What the film is, which is also half of the timing policy the binding froze."""
+
+    memory_type: str | None = Field(default=None, max_length=64)
+    target_duration_seconds: float = Field(gt=0, le=3600)
+    date_start: date | None = None
+    date_end: date | None = None
+
+
+class TimingBinding(Contract):
+    """`bind_editorial_timeline` output, verbatim. Its digest is the job's identity."""
+
+    policy: dict
+    timeline: dict
+    source_ids: list[str] = Field(min_length=1, max_length=500)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class OutputSettings(Contract):
     codec: Literal["h264", "h265"] = "h264"
     resolution: Literal["720p", "1080p", "4k"] = "1080p"
@@ -72,10 +106,15 @@ class OutputSettings(Contract):
 
 class RenderRequest(Contract):
     version: Literal[1] = 1
-    request_id: UUID
     memory_key: str = Field(min_length=1, max_length=256)
     immich: ImmichAccess
     plan: RenderPlan
+    memory: MemorySettings
+    titles: TitleSettings = Field(default_factory=TitleSettings)
+    timing: TimingBinding
+    # No default: an envelope that forgets the audience gate's trims is silently
+    # wrong, so its absence has to be a refusal rather than an empty map.
+    certified_content_intervals: dict[UUID, tuple[float, float]]
     output: OutputSettings = Field(default_factory=OutputSettings)
 
 
@@ -83,8 +122,21 @@ class JobStatus(Contract):
     model_config = ConfigDict(extra="forbid", frozen=True)
     job_id: UUID
     memory_key: str
-    state: Literal["queued", "running", "ready", "failed", "consumed"] = "queued"
+    plan_digest: str
+    worker_id: UUID
+    submitted_at: datetime
+    state: Literal["queued", "running", "ready", "failed", "consumed", "expired"] = "queued"
     phase: str = "queued"
     progress: float = 0
     message: str = ""
     error: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    # What the app needs to re-run publish_validated_output on the bytes it gets
+    # back, and to mix music against the sequence only the assembler ever saw.
+    encoder: str | None = None
+    encoding_plan: dict | None = None
+    probe: dict | None = None
+    render_metrics: dict | None = None
+    music_mute_windows: list[tuple[float, float]] | None = None
+    degradations: tuple[str, ...] = ()

@@ -8,12 +8,22 @@ profiles are later slices of #931.
 Use the same application revision on the worker and its submitting client.
 Install this package into the app environment with
 `uv pip install --no-deps -e services/render-worker`, then run
-`python -m immich_memories_render_worker`. FFmpeg must support NVENC and the
-host must expose NVIDIA CUDA to the title kernels.
+`python -m immich_memories_render_worker`.
+
+NVENC and the CUDA title kernels are preferred, not required. Measured on one
+cluster node, same cut, same reader, only the encoder differing: NVENC finished
+in 219 s against 258 s for libx264. The card is worth about 1.65x on the encode
+stage and about 15% of the whole render, because fetching the originals is
+roughly half of it. So a worker that cannot open NVENC renders the film anyway,
+about 15% slower, and reports the degradation on `/health` and in the job
+record. A dropped selected asset is still a failed job, never a different film.
 
 ## Settings
 
-Environment prefix: `IMMICH_MEMORIES_RENDER_`.
+Environment prefix: `IMMICH_MEMORIES_RENDER_WORKER_`. Not
+`IMMICH_MEMORIES_RENDER_`: the app's own `render` section produces
+`IMMICH_MEMORIES_RENDER__WORKER_TOKEN`, and on the shorter prefix the two
+variables differ by one underscore while meaning opposite things.
 
 | Suffix | Default | Meaning |
 | --- | --- | --- |
@@ -24,6 +34,7 @@ Environment prefix: `IMMICH_MEMORIES_RENDER_`.
 | `PORT` | `8093` | HTTP port |
 | `MAX_JOBS` | `4` | Queued, running and unretrieved jobs combined; maximum 32 |
 | `RETENTION_SECONDS` | `3600` | Terminal job lifetime; 60 to 86400 seconds |
+| `JOB_TIMEOUT_SECONDS` | `3600` | A render past this is abandoned and its scratch released |
 
 Use a trusted network or a TLS reverse proxy. Every operation below requires
 `Authorization: Bearer <worker token>`. The per-job Immich key belongs in the
@@ -31,16 +42,16 @@ request body, never a URL. Access logs are disabled by the entry point.
 
 ## Job API, version 1
 
-`GET /health` returns `ready`, `titles` and `encoders`. Readiness requires CUDA
-for titles and a working NVENC encoder. Each job checks its requested encoder
-again. A software fallback is a failed job, never a successful GPU render.
+`GET /health` returns `ready`, `accelerated`, `titles`, `encoders`, `worker_id`
+and `started_at`. `accelerated` is true only when the title kernels report CUDA
+and NVENC opened; a deployment that asked for a card and reads false has a
+misconfigured `NVIDIA_DRIVER_CAPABILITIES`.
 
 `POST /jobs` accepts this shape and returns HTTP 202 with a status record:
 
 ```json
 {
   "version": 1,
-  "request_id": "00000000-0000-4000-8000-000000000001",
   "memory_key": "example-cut",
   "immich": {"url": "https://photos.example.com", "api_key": "<scoped key>"},
   "plan": {
@@ -48,49 +59,81 @@ again. A software fallback is a failed job, never a successful GPU render.
       "asset_id": "00000000-0000-4000-8000-000000000002",
       "start": 0, "end": 3, "render_mode": "motion"
     }],
-    "title": "A day out",
-    "subtitle": "",
     "transition": "crossfade",
     "transition_duration": 0.5
   },
+  "memory": {"target_duration_seconds": 60, "memory_type": "monthly_highlights"},
+  "titles": {"enabled": true, "title": "A day out", "locale": "en"},
+  "timing": {"policy": {}, "timeline": {}, "source_ids": [], "sha256": ""},
+  "certified_content_intervals": {},
   "output": {"codec": "h264", "resolution": "1080p", "orientation": "landscape", "crf": 23}
 }
 ```
 
+`timing` is `bind_editorial_timeline`'s output verbatim: the timing policy, the
+frozen `TimelinePlan`, the ordered source ids and their digest. The worker
+re-checks the digest, the source ids and the policy it can rebuild from the
+envelope, and answers 409 when any of the three drifted, before it fetches a
+byte. The binding is also what carries the title, ending and divider durations,
+so the worker re-derives none of them.
+
+`certified_content_intervals` has no default. An envelope that omits the key is
+refused, because the audience gate's trims are the one field whose absence is
+silently wrong. This slice renders no merged Live carriers, so the only value it
+accepts is an empty map; a non-empty one is a loud 409, not a quiet mismatch.
+
 The cut is ordered, with at most 500 distinct assets and one hour of source
 intervals. `still` renders a photo, or a video's `render_frame_seconds`.
 Moving Live Photos use their selected video asset in S1; merged Live bursts
-need a later contract version. Titles are optional. Output is SDR MP4, H.264 or
-H.265, at 720p, 1080p or 4K, landscape or portrait. Source audio is preserved;
-adding a soundtrack belongs to the submitting app.
+need a later contract version. Output is SDR MP4, H.264 or H.265, at 720p,
+1080p or 4K, landscape or portrait. Source audio is preserved; adding a
+soundtrack belongs to the submitting app, which is why the result carries
+`music_mute_windows`.
 
-Retry the same `request_id` and identical body to get the existing job. Changed
-content, including a changed scoped key, returns 409. Full capacity returns
-429; unavailable GPU capability returns 503. A mismatched Immich URL returns
-422. The worker does not persist the body or scoped key.
+A job is named after its cut, `(memory_key, plan_digest)`, not after a
+caller-chosen id: two callers holding the same cut get the same job, and a
+retried submission never renders twice. Re-submitting a cut whose job failed
+starts a fresh render. Changed content, including a changed scoped key, while
+that job is live returns 409. Full capacity returns 429. A mismatched Immich URL
+returns 422.
 
-`GET /jobs/{job_id}` returns `job_id`, `memory_key`, `state`, `phase`, `progress`,
-`message` and `error`. States are `queued`, `running`, `ready`, `failed` and
-`consumed`. Messages and failures redact the scoped key.
+`GET /jobs/{job_id}` returns the job record: `job_id`, `memory_key`,
+`plan_digest`, `worker_id`, `state`, `phase`, `progress`, `message`, `error`,
+`submitted_at`, `started_at`, `finished_at`, and once a film exists `encoder`,
+`encoding_plan`, `probe`, `render_metrics`, `music_mute_windows` and
+`degradations`. States are `queued`, `running`, `ready`, `failed` and
+`consumed`. Messages and failures redact the scoped key. Feed `encoding_plan`
+back into `publish_validated_output` to re-run the same three gates on the bytes
+you received.
+
+A job id this worker never saw answers 404 with `reason: unknown`; one whose
+result expired answers 404 with `reason: expired`; one whose render died with a
+previous process answers `failed` and says so. Both 404 bodies carry
+`worker_started_at`.
 
 `GET /jobs/{job_id}/output` atomically claims a ready film and streams it once.
 A premature request returns 409; a second claim returns 410. A disconnected
-first download is still consumed. Submit a new request ID to render again.
-Before readiness, the central output contract decodes the full MP4 and checks
-codec, pixel format, container and colour metadata.
+first download is still consumed. Before readiness, the central output contract
+decodes the full MP4 and checks codec, pixel format, container and colour
+metadata.
 
 ## Storage and checks
 
-S1 has in-memory status. Restarting loses job IDs; the client must submit again.
-The store exposes atomic admission, update, claim and expiry operations so a
-PostgreSQL implementation can replace it without changing the wire contract.
-No database tables are introduced by this slice.
+Live job status is in memory; every transition is also written as one JSON
+record per job under the scratch root, shaped like the row a `render_jobs` table
+wants. That record is what lets a restarted worker answer "that render died with
+its process" instead of the bare 404 an expired job and a stranger's id also
+return. The store exposes atomic admission, update, claim, expiry and deadline
+operations so a PostgreSQL implementation can replace it without changing the
+wire contract. No database tables are introduced by this slice.
 
-Each process owns a private scratch session. Shutdown removes it. A ten-second
-sweep removes expired terminal jobs and their films. A hard kill can leave an
-old session directory behind; remove those only while the worker is stopped.
-The process retains at most 128 status records, including consumed and failed
-jobs, until their expiry.
+Each process owns a private scratch session, and every session a previous
+process could not clean up is swept at boot, because a hard kill never runs
+cleanup. A ten-second sweep removes expired terminal jobs, their films, and any
+render past `JOB_TIMEOUT_SECONDS`. A wedged FFmpeg still holds the single lane
+until the process restarts; the deadline frees admission and tells the caller,
+it does not kill the subprocess. The process retains at most 128 status records,
+including consumed and failed jobs, until their expiry.
 
 From the repository root:
 
@@ -101,6 +144,8 @@ make -C services/render-worker integration
 make -C services/render-worker ci
 ```
 
-The integration check uses a local HTTP source and real FFmpeg on a CPU host,
-then verifies that software fallback is withheld. Successful CUDA/NVENC output
-still requires validation on an NVIDIA host before deployment.
+The integration check uses a local HTTP source and real FFmpeg on a CPU host:
+one case renders a film end to end and asserts the software encoder is reported
+as a degradation, the other drops a selected asset and asserts the job fails
+naming it. A successful CUDA/NVENC render has never executed and still requires
+validation on an NVIDIA host before deployment.

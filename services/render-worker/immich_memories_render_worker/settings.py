@@ -7,7 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class WorkerSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="IMMICH_MEMORIES_RENDER_", extra="forbid")
+    # WHY: the app's own `render` section produces IMMICH_MEMORIES_RENDER__WORKER_TOKEN.
+    # On the shorter prefix the two differ by one underscore and neither errors.
+    model_config = SettingsConfigDict(env_prefix="IMMICH_MEMORIES_RENDER_WORKER_", extra="forbid")
     host: str = "127.0.0.1"
     port: int = Field(default=8093, ge=1, le=65535)
     token: SecretStr
@@ -15,6 +17,7 @@ class WorkerSettings(BaseSettings):
     directory: Path
     max_jobs: int = Field(default=4, ge=1, le=32)
     retention_seconds: int = Field(default=3600, ge=60, le=86400)
+    job_timeout_seconds: int = Field(default=3600, ge=30, le=86400)
 
     @field_validator("token")
     @classmethod

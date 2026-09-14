@@ -227,9 +227,18 @@ Every mode above renders title screens the same way: on the GPU kernels where th
 ## Render worker: service contract available
 
 The first slice of the render worker is an isolated job service under
-`services/render-worker/`. It accepts an already selected cut, downloads the
-sources directly from Immich, and uses the existing renderer. It requires CUDA
-title kernels and NVENC, validates the finished MP4, and serves it once.
+`services/render-worker/`. It accepts an already selected cut with the timing
+binding that certified it, downloads the sources directly from Immich, and uses
+the existing renderer. It validates the finished MP4, serves it once, and hands
+back the encoding plan, the ffprobe facts and the music mute windows so the
+submitting app can validate the bytes it received and mix its own soundtrack.
+
+NVENC is preferred, not required. On one cluster node, same cut and same reader,
+NVENC finished in 219 s against 258 s for libx264, so the card is worth about
+1.65x on the encode stage and about 15% of the whole render, because fetching
+the originals is roughly half of it. A worker that cannot open NVENC therefore
+renders about 15% slower and says so in `/health` and in the job record, instead
+of refusing the film.
 
 This slice does not change CLI or web rendering. App-side handoff, NAS setup and
 cluster deployment are still pending. The service README documents its

@@ -1,53 +1,39 @@
 """HTTP contracts for the render worker, with no external Immich or GPU required."""
 
 import json
-import subprocess
+import threading
 import time
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-WORKER_TOKEN = uuid4().hex
+from conftest import AUTH, WORKER_TOKEN, render_request_body, stub_artifact, worker_app
 
 
-def request_body():
-    return {
-        "request_id": str(uuid4()),
-        "memory_key": "a-memory",
-        "immich": {"url": "http://immich.invalid", "api_key": "private-immich-test-key"},
-        "plan": {
-            "clips": [{"asset_id": str(uuid4()), "start": 0, "end": 1, "render_mode": "motion"}]
-        },
-    }
+def _settle(client, job_id, *, until=frozenset({"ready", "failed"}), tries=400):
+    for _ in range(tries):
+        response = client.get(f"/jobs/{job_id}")
+        if response.status_code != 200 or response.json()["state"] in until:
+            return response
+        time.sleep(0.02)
+    return response
 
 
 def test_worker_health_requires_its_token_and_reports_renderer_capabilities(tmp_path):
-    from immich_memories_render_worker.app import create_app
-    from immich_memories_render_worker.settings import WorkerSettings
-
     class Renderer:
         def health(self):
-            return {"ready": True, "encoder": "h264_nvenc", "titles": "CUDA"}
+            return {"ready": True, "accelerated": True, "encoders": ["h264_nvenc"]}
 
-    app = create_app(
-        WorkerSettings(token=WORKER_TOKEN, immich_url="http://immich.invalid", directory=tmp_path),
-        renderer=Renderer(),
-    )
-    with TestClient(app) as client:
+    with TestClient(worker_app(tmp_path, Renderer())) as client:
         assert client.get("/health").status_code == 401
-        response = client.get("/health", headers={"Authorization": f"Bearer {WORKER_TOKEN}"})
+        response = client.get("/health", headers=AUTH)
     assert response.status_code == 200
-    assert response.json()["ready"] is True
-    assert response.json()["encoder"] == "h264_nvenc"
+    assert response.json()["accelerated"] is True
+    assert response.json()["worker_id"]
+    assert response.json()["started_at"]
 
 
 def test_job_is_idempotent_validated_and_downloaded_only_once(tmp_path):
-    from immich_memories_render_worker.app import create_app
-    from immich_memories_render_worker.renderer import RenderArtifact
-    from immich_memories_render_worker.settings import WorkerSettings
-
-    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-
     class Renderer:
         calls = 0
 
@@ -57,62 +43,20 @@ def test_job_is_idempotent_validated_and_downloaded_only_once(tmp_path):
         def render(self, request, directory, progress):
             self.calls += 1
             progress("assembly", 0.5, "Rendering")
-            path = directory / "source.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-y",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "color=blue:s=32x32:r=2:d=1",
-                    "-vf",
-                    "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-color_trc",
-                    "bt709",
-                    "-color_primaries",
-                    "bt709",
-                    str(path),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            return RenderArtifact(
-                path,
-                EncodingPlan(
-                    codec=OutputCodec.H264,
-                    encoder="libx264",
-                    encoder_args=("-c:v", "libx264"),
-                    target_transfer=HdrTransfer.NONE,
-                    tone_map_to_sdr=False,
-                    pixel_format="yuv420p",
-                    container="mp4",
-                ),
+            return stub_artifact(
+                directory,
+                music_mute_windows=[(0.0, 1.0)],
+                degradations=("h264_nvenc is not available on this host",),
             )
 
     renderer = Renderer()
-    app = create_app(
-        WorkerSettings(token=WORKER_TOKEN, immich_url="http://immich.invalid", directory=tmp_path),
-        renderer=renderer,
-    )
-    headers = {"Authorization": f"Bearer {WORKER_TOKEN}"}
-    body = request_body()
-    with TestClient(app, headers=headers) as client:
+    body = render_request_body()
+    with TestClient(worker_app(tmp_path, renderer), headers=AUTH) as client:
         submitted = client.post("/jobs", json=body)
         assert submitted.status_code == 202, submitted.text
         job_id = submitted.json()["job_id"]
         assert client.post("/jobs", json=body).json()["job_id"] == job_id
-        for _ in range(100):
-            status = client.get(f"/jobs/{job_id}")
-            if status.json()["state"] in {"ready", "failed"}:
-                break
-            time.sleep(0.05)
+        status = _settle(client, job_id)
         assert status.json()["state"] == "ready", status.text
         assert "private-immich-test-key" not in status.text
         assert "private-immich-test-key" not in json.dumps(submitted.json())
@@ -124,32 +68,71 @@ def test_job_is_idempotent_validated_and_downloaded_only_once(tmp_path):
         assert renderer.calls == 1
 
 
-def test_blank_scoped_key_is_rejected_without_echoing_request(tmp_path):
-    from immich_memories_render_worker.app import create_app
-    from immich_memories_render_worker.settings import WorkerSettings
+def test_the_result_carries_the_plan_the_probe_and_the_mute_windows(tmp_path):
+    """A caller cannot re-run publish_validated_output, or duck music, on bytes alone."""
 
     class Renderer:
         def health(self):
             return {"ready": True}
 
-    app = create_app(
-        WorkerSettings(token=WORKER_TOKEN, immich_url="http://immich.invalid", directory=tmp_path),
-        renderer=Renderer(),
-    )
-    body = request_body()
+        def render(self, request, directory, progress):
+            return stub_artifact(
+                directory,
+                music_mute_windows=[(0.0, 1.0)],
+                degradations=("h264_nvenc is not available on this host",),
+            )
+
+    with TestClient(worker_app(tmp_path, Renderer()), headers=AUTH) as client:
+        job_id = client.post("/jobs", json=render_request_body()).json()["job_id"]
+        record = _settle(client, job_id).json()
+    assert record["state"] == "ready"
+    assert record["encoder"] == "libx264"
+    assert record["encoding_plan"]["container"] == "mp4"
+    assert record["probe"]["size_bytes"] > 0
+    assert record["render_metrics"]["encoder"] == "libx264"
+    assert record["music_mute_windows"] == [[0.0, 1.0]]
+    assert record["degradations"] == ["h264_nvenc is not available on this host"]
+    assert record["plan_digest"] and record["submitted_at"] and record["finished_at"]
+
+
+def test_two_callers_holding_the_same_cut_name_the_same_job(tmp_path):
+    """Identity is a fact of the attempt, not a correlation id the caller picked."""
+
+    class Renderer:
+        calls = 0
+
+        def health(self):
+            return {"ready": True}
+
+        def render(self, request, directory, progress):
+            self.calls += 1
+            return stub_artifact(directory)
+
+    renderer = Renderer()
+    first = render_request_body()
+    second = dict(first)
+    with TestClient(worker_app(tmp_path, renderer), headers=AUTH) as client:
+        one = client.post("/jobs", json=first).json()["job_id"]
+        two = client.post("/jobs", json=second).json()["job_id"]
+        _settle(client, one)
+    assert one == two
+    assert renderer.calls == 1
+
+
+def test_blank_scoped_key_is_rejected_without_echoing_request(tmp_path):
+    class Renderer:
+        def health(self):
+            return {"ready": True}
+
+    body = render_request_body()
     body["immich"]["api_key"] = " "
-    with TestClient(app, headers={"Authorization": f"Bearer {WORKER_TOKEN}"}) as client:
+    with TestClient(worker_app(tmp_path, Renderer()), headers=AUTH) as client:
         response = client.post("/jobs", json=body)
     assert response.status_code == 422
     assert "input" not in response.json()["detail"][0]
 
 
 def test_bounded_admission_and_failed_job_redact_the_scoped_key(tmp_path):
-    import threading
-
-    from immich_memories_render_worker.app import create_app
-    from immich_memories_render_worker.settings import WorkerSettings
-
     release = threading.Event()
 
     class Renderer:
@@ -161,41 +144,34 @@ def test_bounded_admission_and_failed_job_redact_the_scoped_key(tmp_path):
             progress("render", 0.5, request.immich.api_key.get_secret_value())
             raise RuntimeError("upstream rejected " + request.immich.api_key.get_secret_value())
 
-    app = create_app(
-        WorkerSettings(
-            token=WORKER_TOKEN, immich_url="http://immich.invalid", directory=tmp_path, max_jobs=1
-        ),
-        renderer=Renderer(),
-    )
-    body = request_body()
-    with TestClient(app, headers={"Authorization": f"Bearer {WORKER_TOKEN}"}) as client:
+    app = worker_app(tmp_path, Renderer(), max_jobs=1)
+    body = render_request_body()
+    with TestClient(app, headers=AUTH) as client:
         try:
             first = client.post("/jobs", json=body)
             job_id = first.json()["job_id"]
             assert client.get(f"/jobs/{job_id}/output").status_code == 409
-            assert client.post("/jobs", json=body | {"memory_key": "different"}).status_code == 409
-            assert client.post("/jobs", json=request_body()).status_code == 429
+            other = body | {"immich": {"url": body["immich"]["url"], "api_key": "another-key"}}
+            assert client.post("/jobs", json=other).status_code == 409
+            assert client.post("/jobs", json=render_request_body(memory_key="x")).status_code == 429
             assert client.get(f"/jobs/{uuid4()}").status_code == 404
-            bad_server = body | {"immich": {"url": "http://elsewhere.invalid", "api_key": "test"}}
-            assert client.post("/jobs", json=bad_server).status_code == 422
+            elsewhere = body | {"immich": {"url": "http://elsewhere.invalid", "api_key": "test"}}
+            assert client.post("/jobs", json=elsewhere).status_code == 422
         finally:
             release.set()
-        for _ in range(100):
-            response = client.get(f"/jobs/{job_id}")
-            if response.json()["state"] == "failed":
-                break
-            time.sleep(0.01)
+        response = _settle(client, job_id)
         assert response.json()["state"] == "failed"
         assert "private-immich-test-key" not in response.text
         assert "[redacted]" in response.json()["error"]
         assert client.get(f"/jobs/{job_id}/output").status_code == 409
     assert not list(tmp_path.rglob("*.mp4"))
+    records = list(tmp_path.rglob("*.json"))
+    assert records
+    assert not any("private-immich-test-key" in row.read_text() for row in records)
 
 
 def test_non_video_artifact_never_becomes_downloadable(tmp_path):
-    from immich_memories_render_worker.app import create_app
     from immich_memories_render_worker.renderer import RenderArtifact
-    from immich_memories_render_worker.settings import WorkerSettings
 
     from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
@@ -219,17 +195,19 @@ def test_non_video_artifact_never_becomes_downloadable(tmp_path):
                 ),
             )
 
-    app = create_app(
-        WorkerSettings(token=WORKER_TOKEN, immich_url="http://immich.invalid", directory=tmp_path),
-        renderer=Renderer(),
-    )
-    with TestClient(app, headers={"Authorization": f"Bearer {WORKER_TOKEN}"}) as client:
-        job_id = client.post("/jobs", json=request_body()).json()["job_id"]
-        for _ in range(100):
-            response = client.get(f"/jobs/{job_id}")
-            if response.json()["state"] == "failed":
-                break
-            time.sleep(0.01)
+    with TestClient(worker_app(tmp_path, Renderer()), headers=AUTH) as client:
+        job_id = client.post("/jobs", json=render_request_body()).json()["job_id"]
+        response = _settle(client, job_id)
         assert response.json()["state"] == "failed"
         assert client.get(f"/jobs/{job_id}/output").status_code == 409
     assert not list(tmp_path.rglob("*.mp4"))
+
+
+def test_worker_settings_use_the_longer_prefix(monkeypatch, tmp_path):
+    """IMMICH_MEMORIES_RENDER_ collides with the app's own render section by one underscore."""
+    from immich_memories_render_worker.settings import WorkerSettings
+
+    monkeypatch.setenv("IMMICH_MEMORIES_RENDER_WORKER_TOKEN", WORKER_TOKEN)
+    monkeypatch.setenv("IMMICH_MEMORIES_RENDER_WORKER_IMMICH_URL", "http://immich.invalid")
+    monkeypatch.setenv("IMMICH_MEMORIES_RENDER_WORKER_DIRECTORY", str(tmp_path))
+    assert WorkerSettings().token.get_secret_value() == WORKER_TOKEN

@@ -7,22 +7,39 @@ from immich_memories.generate import GenerationParams
 from immich_memories.processing.encoding_plan import HdrMode
 
 
+def worker_config(request) -> Config:
+    """Rebuild the film-shaping half of the app's config from the envelope alone.
+
+    The timing policy the app froze into its binding is derived from these
+    fields, so anything omitted here turns every job into a spurious 409.
+    """
+    config = Config()
+    config.output.codec = request.output.codec
+    config.output.codec_policy = "strict"
+    config.output.hdr_mode = HdrMode.SDR
+    config.hardware.enabled = True
+    config.hardware.backend = "nvidia"
+    titles = request.titles
+    config.title_screens.enabled = titles.enabled
+    config.title_screens.locale = titles.locale
+    config.title_screens.style_mode = titles.style_mode
+    config.title_screens.title_duration = titles.title_duration
+    config.title_screens.ending_duration = titles.ending_duration
+    config.title_screens.month_divider_duration = titles.month_divider_duration
+    config.title_screens.month_divider_threshold = titles.month_divider_threshold
+    config.title_screens.show_month_dividers = titles.show_month_dividers
+    return config
+
+
 def generation_params(request, directory, client, progress) -> GenerationParams:
     """Preserve cut order and intervals; keep all generated state in the job workspace."""
-    config = Config()
+    config = worker_config(request)
     config.immich.url = str(request.immich.url)
     config.immich.api_key = request.immich.api_key.get_secret_value()
     config.cache.directory = str(directory / "cache")
     config.cache.database = str(directory / "run.sqlite")
     config.cache.video_cache_enabled = False
     config.output.directory = str(directory)
-    config.output.codec = request.output.codec
-    config.output.codec_policy = "strict"
-    config.output.hdr_mode = HdrMode.SDR
-    config.hardware.enabled = True
-    config.hardware.backend = "nvidia"
-    config.title_screens.enabled = bool(request.plan.title)
-    config.title_screens.show_month_dividers = False
     clips = []
     for chosen in request.plan.clips:
         asset = client.get_asset(str(chosen.asset_id))
@@ -49,8 +66,13 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
         output_format="mp4",
         no_music=True,
         upload_enabled=False,
-        title=request.plan.title or None,
-        subtitle=request.plan.subtitle or None,
+        title=request.titles.title or None,
+        subtitle=request.titles.subtitle or None,
+        memory_type=request.memory.memory_type,
+        date_start=request.memory.date_start,
+        date_end=request.memory.date_end,
+        target_duration_seconds=request.memory.target_duration_seconds,
+        editorial_render_timing=request.timing.model_dump(mode="json"),
         memory_key_override=request.memory_key,
         progress_callback=progress,
         clip_segments={str(c.asset_id): (c.start, c.end) for c in request.plan.clips},

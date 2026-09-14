@@ -10,12 +10,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
+from immich_memories_render_worker.admission import EnvelopeDrift, certify_envelope
 from immich_memories_render_worker.jobs import RenderJobs
 from immich_memories_render_worker.models import RenderRequest
 from immich_memories_render_worker.renderer import Renderer
 from immich_memories_render_worker.settings import WorkerSettings
 from immich_memories_render_worker.store import (
     JobConflict,
+    JobExpired,
     JobNotFound,
     JobRepository,
     OutputConsumed,
@@ -77,9 +79,31 @@ def create_app(
             },
         )
 
+    def _absent(reason: str, detail: str) -> JSONResponse:
+        # A restart, an expiry and an id nobody ever submitted all used to answer
+        # the same bare 404. The boot time is what lets a caller tell the first
+        # apart: a job submitted before it did not survive this process.
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": detail,
+                "reason": reason,
+                "worker_id": str(jobs.worker_id),
+                "worker_started_at": jobs.started_at.isoformat(),
+            },
+        )
+
     @app.exception_handler(JobNotFound)
     async def not_found(_request, _exc):
-        return JSONResponse(status_code=404, content={"detail": "Job not found"})
+        return _absent("unknown", "Job not found")
+
+    @app.exception_handler(JobExpired)
+    async def gone(_request, _exc):
+        return _absent("expired", "Job result expired and was removed")
+
+    @app.exception_handler(EnvelopeDrift)
+    async def drifted(_request, exc):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(JobConflict)
     async def conflict(_request, exc):
@@ -99,6 +123,7 @@ def create_app(
             raise HTTPException(503, "Renderer is not ready")
         if str(request.immich.url).rstrip("/") != str(settings.immich_url).rstrip("/"):
             raise HTTPException(422, "Immich URL does not match worker configuration")
+        certify_envelope(request)
         return jobs.submit(request)
 
     @app.get("/jobs/{job_id}")
