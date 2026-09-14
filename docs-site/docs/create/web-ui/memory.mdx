@@ -116,6 +116,20 @@ A cut that left no plan behind shows its counts instead. Below both tabs, four b
 - **Cut again**: the editor runs again over the same pool, with your ticks: unticked pictures stay out, pictures you ticked back in are kept.
 - **Change the brief**: back to an empty brief.
 
+### Each picture's outcome
+
+<ThemedScreenshot name="memory-pool-outcomes" alt="The pool shows the last cut’s outcome and reason below each picture" />
+
+After a cut, **Review the pool** shows a saved outcome below every photo and video,
+in both list and grid views: **In the cut** with its timecode and reason, or
+**Left out at** the named pass with the editor's reason. An unfinished decision
+says **Undecided**; missing evidence says **Outcome not recorded for this cut**.
+The label describes the last cut. Changing an **Include** checkbox changes the
+next cut's input, so the label stays put until you cut again.
+
+The terminal reads the same saved evidence with `immich-memories runs story`
+and `immich-memories runs why ASSET_ID --run RUN_ID`.
+
 ## Export
 
 <ThemedScreenshot name="memory-export" alt="Export: summary, output filename, upload switch" />

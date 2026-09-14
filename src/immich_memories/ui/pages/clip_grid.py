@@ -9,6 +9,7 @@ from typing import TypeVar
 from nicegui import ui
 
 from immich_memories.api.models import Asset, VideoClipInfo
+from immich_memories.operations.candidate_fates import CandidateFates
 from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.paging import DEFAULT_PAGE_SIZE, render_paged
 from immich_memories.ui.pages.step2_helpers import (
@@ -127,6 +128,7 @@ def _render_clip_card(
     state,
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
+    fates: CandidateFates,
 ) -> None:
     """Render a single themed clip card."""
     is_selected = clip.asset.id in state.selected_clip_ids
@@ -140,6 +142,7 @@ def _render_clip_card(
         _render_clip_badges(_get_clip_badges(clip))
         _render_audio_categories(clip)
         _render_clip_metadata(clip)
+        _render_outcome(fates.describe(clip.asset.id))
 
         # Selection checkbox
         def make_toggle_handler(asset_id: str):
@@ -162,6 +165,7 @@ def _render_photo_card(
     state,
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
+    fates: CandidateFates,
 ) -> None:
     """Render a single photo card in the list view."""
     is_selected = photo.id in state.selected_photo_ids
@@ -186,6 +190,8 @@ def _render_photo_card(
             filename = filename[:17] + "..."
         ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
 
+        _render_outcome(fates.describe(photo.id))
+
         def make_photo_toggle(photo_id: str):
             def toggle(e):
                 value = e.value if hasattr(e, "value") else e
@@ -199,6 +205,12 @@ def _render_photo_card(
 
         checkbox = ui.checkbox("Include", value=is_selected)
         checkbox.on_value_change(make_photo_toggle(photo.id))
+
+
+def _render_outcome(text: str) -> None:
+    ui.label(text).classes("pool-outcome text-xs leading-snug mt-1").style(
+        "color: var(--im-text-secondary)"
+    )
 
 
 def _render_selected_overlay() -> None:
@@ -216,6 +228,7 @@ def _render_compact_cell(
     summary_container: ui.element,
     *,
     is_photo: bool,
+    outcome: str,
 ) -> None:
     """One compact cell that toggles its own tick and redraws itself in place.
 
@@ -252,6 +265,8 @@ def _render_compact_cell(
                 ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
             if is_selected:
                 _render_selected_overlay()
+        with holder:
+            _render_outcome(outcome)
 
     draw()
 
@@ -261,11 +276,18 @@ def _render_compact_photo_thumbnail(
     state,
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
+    fates: CandidateFates,
 ) -> None:
     """Render a single compact photo thumbnail cell with selection overlay."""
     tooltip = f"Photo | {photo.file_created_at.strftime('%b %d, %Y %H:%M')}"
     _render_compact_cell(
-        photo.id, state.selected_photo_ids, tooltip, all_clips, summary_container, is_photo=True
+        photo.id,
+        state.selected_photo_ids,
+        tooltip,
+        all_clips,
+        summary_container,
+        is_photo=True,
+        outcome=fates.describe(photo.id),
     )
 
 
@@ -285,6 +307,7 @@ def _render_compact_thumbnail(
     state,
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
+    fates: CandidateFates,
 ) -> None:
     """Render a single compact thumbnail cell with selection overlay."""
     _render_compact_cell(
@@ -294,6 +317,7 @@ def _render_compact_thumbnail(
         all_clips,
         summary_container,
         is_photo=False,
+        outcome=fates.describe(clip.asset.id),
     )
 
 
@@ -304,6 +328,7 @@ def _render_compact_grid(
     """Render a responsive compact thumbnail grid."""
     state = get_app_state()
     all_clips = state.clips
+    fates = CandidateFates.read(state.editorial_attempt_dir)
 
     with (
         ui.element("div")
@@ -311,7 +336,7 @@ def _render_compact_grid(
         .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
     ):
         for clip in clips:
-            _render_compact_thumbnail(clip, state, all_clips, summary_container)
+            _render_compact_thumbnail(clip, state, all_clips, summary_container, fates)
 
 
 def _render_clip_grid(
@@ -321,6 +346,7 @@ def _render_clip_grid(
     """Render a responsive grid of clip cards."""
     state = get_app_state()
     all_clips = state.clips
+    fates = CandidateFates.read(state.editorial_attempt_dir)
 
     with (
         ui.element("div")
@@ -328,7 +354,7 @@ def _render_clip_grid(
         .style("grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))")
     ):
         for clip in clips:
-            _render_clip_card(clip, state, all_clips, summary_container)
+            _render_clip_card(clip, state, all_clips, summary_container, fates)
 
 
 def _render_mixed_grid(
@@ -338,15 +364,16 @@ def _render_mixed_grid(
     """Render a mixed grid of video clips and photos, sorted chronologically."""
     state = get_app_state()
     all_clips = state.clips
+    fates = CandidateFates.read(state.editorial_attempt_dir)
 
     with ui.element("div").classes(
         "media-pool-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
-                _render_clip_card(item, state, all_clips, summary_container)
+                _render_clip_card(item, state, all_clips, summary_container, fates)
             else:
-                _render_photo_card(item, state, all_clips, summary_container)
+                _render_photo_card(item, state, all_clips, summary_container, fates)
 
 
 def _render_compact_mixed_grid(
@@ -356,15 +383,16 @@ def _render_compact_mixed_grid(
     """Render a compact mixed grid of video clips and photos."""
     state = get_app_state()
     all_clips = state.clips
+    fates = CandidateFates.read(state.editorial_attempt_dir)
 
     with ui.element("div").classes(
         "media-pool-grid grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
-                _render_compact_thumbnail(item, state, all_clips, summary_container)
+                _render_compact_thumbnail(item, state, all_clips, summary_container, fates)
             else:
-                _render_compact_photo_thumbnail(item, state, all_clips, summary_container)
+                _render_compact_photo_thumbnail(item, state, all_clips, summary_container, fates)
 
 
 def _render_paginated(

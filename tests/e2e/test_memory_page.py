@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from collections import Counter
 from itertools import groupby
 from pathlib import Path
@@ -504,3 +505,85 @@ def test_the_picker_says_together_or_any_of_these_people_without_a_condition(
     requested = set(_request_of_the_cut_after(launch_workspace, before)["requested_assets"])
     assert requested == _EITHER_ASSETS
     assert requested > _CONDITION_ASSETS
+
+
+def test_pool_outcomes_match_saved_cut_and_survive_ticks(
+    page: Page, launch_app_url, launch_workspace
+):
+    from immich_memories.cli._runs_reading import why_text
+    from immich_memories.operations.candidate_fates import CandidateFates
+
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_role("tab", name="Story", exact=True)).to_be_visible(timeout=120_000)
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    fates = CandidateFates.read(_newest_attempt(launch_workspace))
+    labels = page.locator(".pool-outcome")
+    expect(labels).to_have_count(min(_PAGE, len(LIBRARY)))
+    assert labels.all_text_contents() == [fates.describe(p.asset_id) for p in LIBRARY[:_PAGE]]
+    before = labels.first.inner_text()
+    page.get_by_role("checkbox", name="Include").first.click()
+    expect(labels.first).to_have_text(before)
+    _evidence(page, "824-pool-outcomes-list")
+    page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
+    expect(labels).to_have_count(min(_PAGE, len(LIBRARY)))
+    page.locator(".media-pool-grid .cursor-pointer").first.click()
+    expect(labels.first).to_have_text(before)
+    _evidence(page, "824-pool-outcomes-grid")
+    assert fates.trace is not None
+    dropped = next(p for p in LIBRARY[:_PAGE] if not p.shipped)
+    assert dropped.drop_reason in why_text(
+        dropped.asset_id, fates.trace.story_of(dropped.asset_id), fates.board
+    )
+    assert dropped.drop_reason in fates.describe(dropped.asset_id)
+
+    # Run the same month through the real Click entry point with the fixture editor.
+    from tests.e2e.conftest import _build_launch_environment
+    from tests.e2e.test_demo_assets import _TRIP_CLI_BOOTSTRAP
+
+    root = Path(__file__).resolve().parents[2]
+    prefix = [
+        str(root / ".venv/bin/python"),
+        "-c",
+        _TRIP_CLI_BOOTSTRAP,
+        str(launch_workspace.config_path),
+        str(launch_workspace.root / "state"),
+    ]
+    transcript = []
+    commands = [
+        [
+            "generate",
+            "--memory-type",
+            "monthly_highlights",
+            "--year",
+            "2024",
+            "--month",
+            "6",
+            "--no-render",
+            "--no-music",
+            "--quiet",
+        ],
+        ["runs", "why", dropped.asset_id, "--run", str(_newest_attempt(launch_workspace))],
+    ]
+    for command in commands:
+        if command[0] == "runs":
+            command[-1] = str(_newest_attempt(launch_workspace))
+        result = subprocess.run(
+            prefix + command,
+            cwd=root,
+            env=_build_launch_environment(launch_workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        transcript.append(result.stdout + result.stderr)
+        assert result.returncode == 0, transcript[-1]
+    cli_fates = CandidateFates.read(_newest_attempt(launch_workspace))
+    assert cli_fates.board is not None and fates.board is not None
+    assert [s.asset_id for s in cli_fates.board.shots] == [s.asset_id for s in fates.board.shots]
+    assert dropped.drop_reason in " ".join(transcript[-1].split())
+    evidence = root / "test-results"
+    evidence.mkdir(exist_ok=True)
+    (evidence / "pool-outcomes-cli.txt").write_text(
+        "\n".join(transcript).replace(str(launch_workspace.root), "<fixture-workspace>")
+    )
