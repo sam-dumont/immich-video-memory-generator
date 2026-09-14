@@ -100,6 +100,26 @@ GENERATE_LOG = "generate.log"
 PEAK_RSS_FILE = "peak-rss-bytes.txt"
 CPU_FILE = "cpu.txt"
 
+# Where a memory's attempts live inside the editorial cache, and where a remote
+# cell copies its own so the capture can read them. The cache itself never comes
+# back (it is previews and thumbnails by the gigabyte), so without this copy the
+# cut, the trace and the projection stay on the volume and the row publishes an
+# empty `selected_asset_ids` beside a film that plainly has pictures in it.
+EDITORIAL_RUNS = "editorial-runs"
+REMOTE_ATTEMPTS = "attempts"
+
+# Whether this cell's cache already held a run. Its directory being there proves
+# nothing: the kubelet creates the subPath before the container starts and the
+# NAS lane's own `mkdir -p` creates it a moment before the run. A file the app
+# never writes does prove it, so the container leaves one on its way through.
+CACHE_MARKER = ".setup-matrix-cell"
+CACHE_PRIMED_FILE = "cache-primed.txt"
+PRIMED = "primed"
+COLD = "cold"
+# The NAS lane looks for itself, in the one step that runs before the directory
+# it would be looking for exists. Read back out of this step's stdout.
+MAKE_REMOTE_DIR = "make-remote-dir"
+
 
 class PlanError(RuntimeError):
     """The manifest or the request cannot produce a runnable plan."""
@@ -338,6 +358,30 @@ def _models_fetch_lines(root: str) -> list[str]:
     ]
 
 
+def _cache_marker_lines() -> list[str]:
+    """Record whether this cell's cache already held a run, then claim it for this one."""
+    primed = f"{REMOTE_OUT}/{CACHE_PRIMED_FILE}"
+    return [
+        f"[ -e {REMOTE_CACHE}/{CACHE_MARKER} ] && echo {PRIMED} > {primed} "
+        f"|| echo {COLD} > {primed}",
+        f"touch {REMOTE_CACHE}/{CACHE_MARKER}",
+    ]
+
+
+def _copy_attempt_lines(memory_key: str) -> list[str]:
+    """Bring this memory's attempts out of the cache and into what the copy-out pulls back.
+
+    Only this memory's directory. The bank beside it is what every producer ever
+    derived for the library, which is gigabytes and means nothing off the host,
+    and `editorial-runs/by-run` indexes every memory the cache has ever seen.
+    """
+    return [
+        f"mkdir -p {REMOTE_OUT}/{REMOTE_ATTEMPTS}",
+        f"cp -a {REMOTE_CACHE}/{EDITORIAL_RUNS}/{memory_key} "
+        f"{REMOTE_OUT}/{REMOTE_ATTEMPTS}/ 2>/dev/null || true",
+    ]
+
+
 def _container_script(cell: Cell, memory: dict, month: str) -> str:
     """What a remote container runs: fetch, prepare twice, cut, then report its own cost.
 
@@ -347,6 +391,10 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     generations are tried because DSM and the cluster do not agree on which one
     they are on; when neither answers, the capture records the field as unmeasured
     rather than guessing.
+
+    The attempt is copied after `rc` has been taken, not before: `$PIPESTATUS`
+    describes the last pipeline that ran, and anything between the cut and that
+    read would be reporting its own exit code as the run's.
     """
     scope = " ".join(_scope(month))
     root = f"immich-memories --config {REMOTE_CONFIG}"
@@ -358,11 +406,13 @@ def _container_script(cell: Cell, memory: dict, month: str) -> str:
     return "; ".join(
         [
             "set -u",
+            *_cache_marker_lines(),
             *(_models_fetch_lines(root) if fetches_models(cell) else []),
             f"{root} prepare {scope} 2>&1 | tee {REMOTE_OUT}/{PREPARE_COLD_LOG}",
             f"{root} prepare {scope} 2>&1 | tee {REMOTE_OUT}/{PREPARE_WARM_LOG}",
             f"{cut} 2>&1 | tee {REMOTE_OUT}/{GENERATE_LOG}",
             "rc=${PIPESTATUS[0]}",
+            *_copy_attempt_lines(cell.id),
             f"cat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory/memory.max_usage_in_bytes "
             f"2>/dev/null | head -1 > {REMOTE_OUT}/{PEAK_RSS_FILE}",
             f"cat /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuacct/cpuacct.usage "
@@ -477,9 +527,16 @@ def _nas_steps(
     # that is not there is "Bind mount failed: ... does not exist", and the whole
     # cell dies before the container starts.
     return (
+        # The look has to come before the `mkdir -p`, which is what would make the
+        # answer "yes" on every run after the first line of it.
         Step(
-            "make-remote-dir",
-            ("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} {remote}/{CELL_CACHE_DIR}"),
+            MAKE_REMOTE_DIR,
+            (
+                "ssh",
+                "$MATRIX_NAS_SSH",
+                f"test -d {remote}/{CELL_CACHE_DIR} && echo {PRIMED} || echo {COLD}; "
+                f"mkdir -p {remote} {remote}/{CELL_CACHE_DIR}",
+            ),
         ),
         Step(
             "push-config",

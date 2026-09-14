@@ -1,19 +1,39 @@
-2026-09-13 22:34:05,205 [INFO] immich_memories.progress [20260913_222823_d15d]: Delivery not requested
-2026-09-13 22:34:05,205 [INFO] immich_memories.generate [20260913_222823_d15d]: Pipeline timing (14 clips, 336.8s total): download=154.0s (46%), assembly=165.4s (49%), music=12.3s (4%)
-2026-09-13 22:34:05,205 [INFO] immich_memories.progress [20260913_222823_d15d]: Complete!
-2026-09-13 22:34:05,215 [INFO] immich_memories.progress [20260913_222823_d15d]: Complete
-2026-09-13 22:34:05,216 [INFO] immich_memories.progress [-]: Done: Complete
-2026-09-13 22:34:05,216 [INFO] immich_memories.cli._pipeline_runner [-]: Full pipeline timing (14 clips, 343.5s total): analysis=1.5s (0%), generation=342.0s (100%)
-Memory generated in 5m 44s
+2026-09-14 01:03:35,677 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+2026-09-14 01:03:35,694 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+ℹ Preparing 133 pictures over 1 window(s)
+producer        pending   s/picture   share    elapsed
+previews            133      0.0002  100.0%        0 s
+total               133      0.0002    100%        0 s
+
+At this rate 1,000 pictures would take 0 s.
+✓ 133 pictures prepared at 0.0002 s/picture.
+2026-09-14 01:03:36,684 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+2026-09-14 01:03:36,706 [INFO] httpx [-]: HTTP Request: POST http://10.2.254.76:8078/api/search/metadata "HTTP/1.1 200 OK"
+ℹ Preparing 133 pictures over 1 window(s)
+producer        pending   s/picture   share    elapsed
+previews            133      0.0000  100.0%        0 s
+total               133      0.0000    100%        0 s
+
+At this rate 1,000 pictures would take 0 s.
+✓ 133 pictures prepared at 0.0000 s/picture.
+2026-09-14 01:03:37,736 [INFO] immich_memories.progress [-]: Connecting to Immich...
+2026-09-14 01:03:37,736 [INFO] immich_memories.progress [-]: Done: Connecting to Immich...
+2026-09-14 01:08:51,220 [INFO] immich_memories.progress [20260914_010338_1500]: Delivery not requested
+2026-09-14 01:08:51,220 [INFO] immich_memories.generate [20260914_010338_1500]: Pipeline timing (14 clips, 307.9s total): download=134.9s (44%), assembly=155.5s (50%), music=12.4s (4%)
+2026-09-14 01:08:51,220 [INFO] immich_memories.progress [20260914_010338_1500]: Complete!
+2026-09-14 01:08:51,230 [INFO] immich_memories.progress [20260914_010338_1500]: Complete
+2026-09-14 01:08:51,234 [INFO] immich_memories.progress [-]: Done: Complete
+2026-09-14 01:08:51,234 [INFO] immich_memories.cli._pipeline_runner [-]: Full pipeline timing (14 clips, 313.4s total): analysis=0.3s (0%), generation=313.1s (100%)
+Memory generated in 5m 13s
 
   measured this run
-    selection                    1s   14 planned from 130 candidates
-    generation               5m 42s
+    selection                    0s   14 planned from 130 candidates
+    generation               5m 13s
 
   TIER  no_captions — every producer but the caption; reasons are facts, not sentences
 
   the cut, in order (14 pictures, 0:52 of pictures and video)
   June 2024
-  ... 6 more: immich-memories runs story 20260913_222823_d15d
-2026-09-13 22:34:05,218 [INFO] immich_memories.cli [-]: Video saved to:
-  /out/k8s-rules-service_93aa9ed7_20260913_222823_d15d/k8s-rules-service_93aa9ed7.mp4
+  ... 6 more: immich-memories runs story 20260914_010338_1500
+2026-09-14 01:08:51,236 [INFO] immich_memories.cli [-]: Video saved to:
+  /out/k8s-rules-service_93aa9ed7_20260914_010338_1500/k8s-rules-service_93aa9ed7.mp4

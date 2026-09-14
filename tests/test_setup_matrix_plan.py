@@ -687,6 +687,52 @@ def test_the_collector_copies_from_the_directory_the_job_wrote_to(
     assert f"tee {source}/generate.log" in container["command"][-1]
 
 
+def test_a_remote_cell_copies_its_own_attempt_out_of_a_cache_nothing_pulls_back(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The cut, the trace and the projection are inside the cache, and the cache stays put.
+
+    Both cluster cells that finished published `selected_asset_ids: []` and
+    `#kept 0` beside a film that plainly had pictures in it, because the attempt
+    was on the per-cell editorial cache and no copy step ever looked there.
+    """
+    script = _container_command(_k8s_cell(manifest, tmp_path))
+
+    assert "cp -a /cache/editorial-runs/k8s-rules-local /out/attempts/" in script
+    # After the exit code has been taken: $PIPESTATUS describes the last pipeline
+    # that ran, so a copy in between would be reporting its own status as the run's.
+    assert script.index("rc=${PIPESTATUS[0]}") < script.index("cp -a /cache/editorial-runs")
+
+
+def test_a_remote_cell_records_whether_its_cache_already_held_a_run(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The kubelet creates the cache subPath before the container starts, so it proves nothing."""
+    script = _container_command(_k8s_cell(manifest, tmp_path))
+
+    assert "[ -e /cache/.setup-matrix-cell ] && echo primed > /out/cache-primed.txt" in script
+    assert "touch /cache/.setup-matrix-cell" in script
+    assert script.index("cache-primed.txt") < script.index("prepare")
+
+
+def test_a_nas_cell_looks_at_its_cache_before_it_creates_it(manifest: dict, tmp_path: Path) -> None:
+    """`mkdir -p` runs one line later, and would make the answer yes on every run."""
+    item = next(
+        cell
+        for cell in _plan(manifest, tmp_path, FULL_ENV).cells
+        if cell.cell.id == "nas-rules-local"
+    )
+    command = str(next(step for step in item.steps if step.name == "make-remote-dir"))
+
+    assert "test -d $MATRIX_NAS_OUT/nas-rules-local/cache && echo primed || echo cold" in command
+    assert command.index("test -d") < command.index("mkdir -p")
+
+
+def _container_command(item) -> str:
+    job = yaml.safe_load(item.manifests["job.yaml"])
+    return job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+
+
 def _output_mount(container: dict) -> dict:
     return next(mount for mount in container["volumeMounts"] if mount["name"] == "output")
 

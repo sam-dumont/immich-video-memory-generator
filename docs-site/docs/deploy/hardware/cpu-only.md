@@ -71,13 +71,14 @@ GPU renderer but force it onto the processor (a broken driver, or comparing timi
 ### CPUs without AVX
 
 The CPU backend needs AVX. On a processor without it (Celeron J-series such as the J4125 in a
-Synology DS423+, and older Atom) the library imports and initialises fine, then dies with SIGILL on
-the first kernel it compiles. That used to kill the run at title generation, after the whole
-selection had been paid for.
+Synology DS423+, and older Atom) the kernel library dies with SIGILL, exit 132, and takes the
+interpreter with it. On the J4125 that happens as the library loads, before a single kernel is
+compiled, so `python -c "import quadrants"` is already the crash. It used to kill the run at title
+generation, after the whole selection had been paid for.
 
-The dispatch probe now runs a real kernel on the CPU backend too, in a child process, so the crash
-lands there instead. A machine that fails it renders static titles through PIL, and says so in
-`immich-memories preflight` before you start:
+A child process now does the loading and the first kernel dispatch, and the app never touches the
+library until that child has come back alive. A machine that fails renders static titles through
+PIL, and says so in `immich-memories preflight` before you start:
 
 ```
 Title rendering       WARNING   kernel backend crashed on this CPU: illegal

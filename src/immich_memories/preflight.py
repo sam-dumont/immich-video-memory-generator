@@ -375,7 +375,10 @@ def _kernel_library_check() -> CheckResult:
     second is the expensive one, and it is why an installed package is not the
     answer on its own: a CPU without AVX dies on the first kernel (#910).
     """
-    from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY
+    # WHY the probe module and not the seam behind it: importing the seam is
+    # importing the library, and on a processor without AVX that is the crash
+    # this check exists to report (#910).
+    from immich_memories.titles.kernel_backend_probe import KERNEL_LIBRARY
 
     if importlib.util.find_spec(KERNEL_LIBRARY) is None:
         return CheckResult(

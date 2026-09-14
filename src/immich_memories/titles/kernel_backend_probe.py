@@ -1,9 +1,14 @@
 """Kernel backend availability: which arch can actually dispatch a kernel here.
 
-The library itself is imported once, in gpu_kernel_backend.py; this module only
-asks which arch on this machine can actually run a kernel. Nothing here knows
-about title kernels: kernels.py drives the selection loop with
-`_candidate_backends` and `_backend_dispatches`.
+This module is the gate in front of the kernel library, so it is the one module
+about kernels that anything may import. It never loads the library at import
+time: loading it runs native code, and on a CPU without AVX that load is already
+enough to kill the interpreter with SIGILL (#910), before any code can choose
+the PIL renderer instead. Only the probe child pays that price; `ti` is filled
+in by `_kernel_library()` once something past the gate needs the real thing.
+
+Nothing here knows about title kernels: kernels.py drives the selection loop
+with `_candidate_backends` and `_backend_dispatches`.
 
 Note: This module does NOT use 'from __future__ import annotations'
 because kernel signatures need actual type objects, not string annotations.
@@ -11,6 +16,7 @@ because kernel signatures need actual type objects, not string annotations.
 
 import contextlib
 import functools
+import importlib.util
 import json
 import logging
 import os
@@ -21,13 +27,9 @@ import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-
-# WHY absolute, in a module that otherwise uses relative imports: the dispatch
-# probe runs this file as its own program in a child interpreter, where it is
-# `__main__` with no package and a relative import cannot resolve.
-from immich_memories.titles.gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,39 @@ _PROBE_TIMEOUT_SECONDS = 10.0
 
 CPU_PROBE_NAME = "cpu"
 
+KERNEL_LIBRARY = "quadrants"
+
+# The loaded library, or None until something past the gate asks for it.
+ti: Any = None
+
 _PIL_FALLBACK = "titles fall back to the PIL renderer"
+
+
+def kernel_library_installed() -> bool:
+    """Whether a kernel-library wheel exists here, asked without loading one.
+
+    `find_spec` finds the package without executing it, which is the whole
+    point: the execution is the part a processor without AVX cannot survive.
+    """
+    return importlib.util.find_spec(KERNEL_LIBRARY) is not None
+
+
+def _kernel_library():
+    """The kernel library itself, imported on first use rather than at import.
+
+    Only reached past the gate: inside a probe child, or once
+    `kernel_dispatch_failure()` has come back None.
+    """
+    global ti
+    if ti is None:
+        # WHY absolute, in a module that otherwise uses relative imports: the
+        # dispatch probe runs this file as its own program in a child
+        # interpreter, where it is `__main__` with no package and a relative
+        # import cannot resolve.
+        from immich_memories.titles.gpu_kernel_backend import ti as library
+
+        ti = library
+    return ti
 
 
 class KernelProbeOutcome(StrEnum):
@@ -87,18 +121,19 @@ def _silent_init(**kwargs) -> None:
     it is to redirect the raw OS file descriptors during the call.
     """
     with _silence_output_fds():
-        ti.init(**kwargs)
+        _kernel_library().init(**kwargs)
 
 
 def _probe_worker(backend_name: str) -> KernelProbeResult:
     """Initialize one backend and dispatch a real kernel inside a child process."""
     try:
         with _silence_output_fds():
-            backend = getattr(ti, backend_name)
-            ti.init(arch=backend, offline_cache=True)
+            library = _kernel_library()
+            backend = getattr(library, backend_name)
+            library.init(arch=backend, offline_cache=True)
 
-            @ti.kernel
-            def increment(values: ti.types.ndarray(dtype=ti.i32, ndim=1)):
+            @library.kernel
+            def increment(values: library.types.ndarray(dtype=library.i32, ndim=1)):
                 for index in values:
                     values[index] += 1
 
@@ -210,7 +245,7 @@ def kernel_dispatch_failure() -> str | None:
     library generates code for this processor whatever arch it targets, so a CPU
     that cannot execute a kernel has no working kernel renderer of any kind.
     """
-    if not KERNELS_AVAILABLE:
+    if not kernel_library_installed():
         return f"{KERNEL_LIBRARY} is not installed on this platform; {_PIL_FALLBACK}"
     result = probe_backend_dispatch(CPU_PROBE_NAME)
     if result.outcome is KernelProbeOutcome.SUCCESS:
@@ -238,14 +273,15 @@ def _signal_wording(detail: str | None) -> str:
 
 def _candidate_backends(*, force_cpu: bool, operating_system: str) -> list[tuple[object, str, str]]:
     """Return parent architecture objects and child-safe probe names in priority order."""
+    library = _kernel_library()
     if force_cpu:
-        return [(ti.cpu, "CPU", CPU_PROBE_NAME)]
+        return [(library.cpu, "CPU", CPU_PROBE_NAME)]
     if operating_system == "Darwin":
-        return [(ti.metal, "Metal", "metal"), (ti.cpu, "CPU", CPU_PROBE_NAME)]
+        return [(library.metal, "Metal", "metal"), (library.cpu, "CPU", CPU_PROBE_NAME)]
     return [
-        (ti.cuda, "CUDA", "cuda"),
-        (ti.vulkan, "Vulkan", "vulkan"),
-        (ti.cpu, "CPU", CPU_PROBE_NAME),
+        (library.cuda, "CUDA", "cuda"),
+        (library.vulkan, "Vulkan", "vulkan"),
+        (library.cpu, "CPU", CPU_PROBE_NAME),
     ]
 
 

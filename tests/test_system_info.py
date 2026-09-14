@@ -52,6 +52,29 @@ class TestCheckKernelLibrary:
 
         assert _check_kernel_library() is False
 
+    def test_a_cpu_that_cannot_dispatch_is_unavailable_without_loading_the_library(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A hardware report must not be the thing that kills the run (#910).
+
+        On a processor without AVX, reaching `kernels_available()` is already the
+        SIGILL, so the probe's answer has to settle it before the import.
+        """
+        from immich_memories.titles import kernel_backend_probe, kernels
+
+        def never(*_args, **_kwargs) -> bool:
+            raise AssertionError("the kernel library must not be imported after a failed probe")
+
+        # WHY: the probe is a child process; this is the answer a Celeron J4125 gives.
+        monkeypatch.setattr(
+            kernel_backend_probe,
+            "kernel_dispatch_failure",
+            lambda: "kernel backend crashed on this CPU: illegal instruction",
+        )
+        monkeypatch.setattr(kernels, "kernels_available", never)
+
+        assert _check_kernel_library() is False
+
     def test_a_broken_kernel_dependency_is_not_hidden(self, monkeypatch: pytest.MonkeyPatch):
         """A corrupt optional install remains actionable instead of becoming false."""
         from immich_memories.titles import kernels
