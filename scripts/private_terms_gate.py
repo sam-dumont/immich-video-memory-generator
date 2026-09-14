@@ -270,6 +270,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except subprocess.CalledProcessError:
         print("research-data: could not read the requested Git documents")
         return EXIT_MISCONFIGURED
+    except UnicodeDecodeError:
+        # A document git cannot decode as UTF-8 is not one of the reviewed
+        # aggregate formats, and its bytes could hide anything.
+        print("research-data: document is outside the public aggregate schema")
+        return EXIT_HITS_FOUND
     if args.research_data and not (
         args.staged or args.range or args.commit_msg or args.text_file or args.require_terms
     ):

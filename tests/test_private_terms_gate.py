@@ -83,6 +83,19 @@ def test_research_scene_is_rejected_even_without_private_terms(tmp_path, monkeyp
     assert "zorblax" not in output
 
 
+def test_research_rejects_a_document_that_is_not_valid_utf8(tmp_path, monkeypatch, capsys):
+    _init_repo(tmp_path)
+    research = tmp_path / "docs/research/costs.data.json"
+    research.parent.mkdir(parents=True)
+    research.write_bytes(b'{"scope": "\xff\xfe zorblax"}')
+    _run(["git", "add", "."], tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TEST_ABSENT_TERMS", raising=False)
+
+    assert main(["--staged", "--terms-env", "TEST_ABSENT_TERMS"]) == EXIT_HITS_FOUND
+    assert "outside the public aggregate schema" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("stem", ["capability-matrix", "phase5-readiness", "deployment-costs"])
 def test_reviewed_aggregate_documents_pass_without_private_terms(tmp_path, monkeypatch, stem):
     _init_repo(tmp_path)

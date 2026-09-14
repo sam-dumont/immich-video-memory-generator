@@ -172,11 +172,6 @@ jobs:
       - run: uv python install "3.13"
       - run: make dev-ci
 
-      - name: No private denylist configured (research schemas still checked)
-        if: env.PRIVATE_TERMS == ''
-        run: |
-          echo "private-terms: PRIVATE_TERMS secret not set, skipping"
-
       - name: Validate research data, then scan configured private terms
         env:
           PRIVATE_TERMS_RANGE: origin/${{ github.base_ref }}..HEAD
