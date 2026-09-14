@@ -120,6 +120,14 @@ COLD = "cold"
 # it would be looking for exists. Read back out of this step's stdout.
 MAKE_REMOTE_DIR = "make-remote-dir"
 
+# The env var `config_loader` maps to `immich.api_key`, which is how a cluster
+# cell is handed the operator's key without a ConfigMap ever holding one.
+IMMICH_KEY_ENV = "IMMICH_MEMORIES_IMMICH__API_KEY"
+# What a rendered plan prints where a value out of the operator's own config
+# goes. The runner puts the value there at the moment the command runs, so the
+# dry run, the manifests it writes and every log carry the words instead.
+FROM_OPERATOR_CONFIG = "<from operator config>"
+
 
 class PlanError(RuntimeError):
     """The manifest or the request cannot produce a runnable plan."""
@@ -183,6 +191,10 @@ class CellPlan:
     manifests: dict[str, str]
     app_credentials: tuple[str, ...]
     cache_dir: str
+    # Whether this cell's Immich comes out of the operator's own config rather
+    # than the manifest. Only a cluster cell ever needs it: the other two lanes
+    # are handed a copy of that config and read it there.
+    operator_immich: bool = False
     # Only a NAS cell has any: the other two lanes are not capped by a container.
     container_limits: str = ""
     skip_reason: str | None = None
@@ -199,6 +211,10 @@ class Plan:
     anonymize_required: bool
     cells: tuple[CellPlan, ...]
     environment: dict[str, str] = field(default_factory=dict)
+    # `url` and `api_key` as the operator's own config holds them, filled in by
+    # the runner the moment before it executes and never by `build_plan`: a
+    # printed plan has to be readable without a config on the machine reading it.
+    operator_credentials: dict[str, str] = field(default_factory=dict)
 
     @property
     def runnable(self) -> tuple[CellPlan, ...]:
@@ -268,6 +284,16 @@ def _variables(source: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]
         elif name := app_credential(value):
             credentials.append(name)
     return tuple(dict.fromkeys(references)), tuple(dict.fromkeys(credentials))
+
+
+def library_pins_immich(library: dict) -> bool:
+    """Whether the manifest gives this library an Immich of its own.
+
+    `demo` names the fixture server and a fake key. A real library names neither
+    and runs against the operator's, which every lane but the cluster gets in the
+    copied config: the Job reads a ConfigMap built from the pins alone.
+    """
+    return bool((library.get("config") or {}).keys() & {"immich.url", "immich.api_key"})
 
 
 def cache_pins(cache_dir: str) -> dict[str, str]:
@@ -566,25 +592,33 @@ def _nas_steps(
     )
 
 
-def _secret_steps(cell: Cell, context: tuple[str, ...]) -> tuple[Step, ...]:
+def _secret_steps(
+    cell: Cell, context: tuple[str, ...], *, operator_immich: bool
+) -> tuple[Step, ...]:
     """Put the cell's credentials in a Secret without ever writing one to a file.
 
     The value only exists in the argv of the create call, substituted the moment
     it runs. Delete-then-create rather than `apply` because `create secret` has no
     idempotent form that does not need a shell pipe.
+
+    The operator's Immich key joins the hosted ones here rather than in the
+    ConfigMap, which is a file on the cluster that anyone who can read the
+    namespace can read.
     """
     _, credentials = _variables(cell.config)
-    if not credentials:
+    literals = [f"--from-literal={variable}=${variable}" for variable in credentials]
+    if operator_immich:
+        literals.append(f"--from-literal={IMMICH_KEY_ENV}={FROM_OPERATOR_CONFIG}")
+    if not literals:
         return ()
     name = f"setup-matrix-{cell.id}-secrets"
-    literals = [f"--from-literal={variable}=${variable}" for variable in credentials]
     return (
         Step("drop-secret", (*context, "delete", "secret", name, "--ignore-not-found")),
         Step("make-secret", (*context, "create", "secret", "generic", name, *literals)),
     )
 
 
-def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
+def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Step, ...]:
     """Claims, apply, wait to be scheduled, wait to finish, copy out, tear down.
 
     WHY a collector: `kubectl cp` shells into the pod to run tar, and a finished
@@ -617,7 +651,7 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "drain-pods",
             (*context, "delete", "pod", "-l", MATRIX_POD_LABEL, *DELETE_FLAGS, DRAIN_TIMEOUT),
         ),
-        *_secret_steps(cell, context),
+        *_secret_steps(cell, context, operator_immich=operator_immich),
         Step("apply-claims", (*context, "apply", "-f", str(local / "claims.yaml"))),
         Step(
             "apply",
@@ -841,7 +875,7 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
 
 
 def _k8s_manifests(
-    cell: Cell, memory: dict, month: str, image: str, config_yaml: str
+    cell: Cell, memory: dict, month: str, image: str, config_yaml: str, *, operator_immich: bool
 ) -> dict[str, str]:
     """A ConfigMap with the pinned config, a Job that mounts it, and the collector.
 
@@ -857,7 +891,7 @@ def _k8s_manifests(
     _, credentials = _variables(cell.config)
     secret_block = (
         f"          envFrom:\n            - secretRef:\n                name: {name}-secrets\n"
-        if credentials
+        if credentials or operator_immich
         else ""
     )
     return {
@@ -1076,7 +1110,14 @@ def build_cell_plan(
 
     cache = str(out_dir / cell.id / CELL_CACHE_DIR) if cell.lane == "mac" else REMOTE_CACHE
     pins.update(cache_pins(cache))
-    config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
+    # The cluster's ConfigMap is built from the pins alone, on purpose: the
+    # operator's config never lands in one. For a library that pins no Immich of
+    # its own that left the Job with no server to read, and run 2's four k8s
+    # cells died together on "Immich not configured". The URL is carried here,
+    # because a server address is not a secret; the key is in the cell's Secret.
+    operator_immich = cell.lane == "k8s" and not library_pins_immich(library)
+    config_pins = {**pins, "immich.url": FROM_OPERATOR_CONFIG} if operator_immich else pins
+    config_yaml = yaml.safe_dump(nested(config_pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
     diagnostics: tuple[Step, ...] = ()
@@ -1088,8 +1129,10 @@ def build_cell_plan(
         steps = _nas_steps(cell, memory, month, out_dir, image, limits)
         container_limits = " ".join(limits)
     elif cell.lane == "k8s":
-        steps = _k8s_steps(cell, out_dir)
-        manifests = _k8s_manifests(cell, memory, month, image, config_yaml)
+        steps = _k8s_steps(cell, out_dir, operator_immich=operator_immich)
+        manifests = _k8s_manifests(
+            cell, memory, month, image, config_yaml, operator_immich=operator_immich
+        )
         diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
@@ -1102,6 +1145,7 @@ def build_cell_plan(
         manifests=manifests,
         app_credentials=credentials,
         cache_dir=cache,
+        operator_immich=operator_immich,
         container_limits=container_limits,
         skip_reason=skip,
         diagnostics=diagnostics,

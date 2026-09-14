@@ -36,7 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from matrix_pinned_config import pinned_config  # noqa: E402
+from matrix_pinned_config import pinned_config, read_operator_immich  # noqa: E402
 from setup_matrix_capture import (  # noqa: E402
     RunSummary,
     anonymize,
@@ -62,6 +62,7 @@ from setup_matrix_plan import (  # noqa: E402
     EDITORIAL_RUNS,
     FIXTURE_ENV,
     FIXTURE_PORT,
+    FROM_OPERATOR_CONFIG,
     INFERENCE_DEPLOYMENT,
     INFERENCE_ENV,
     INFERENCE_PORT,
@@ -200,6 +201,11 @@ def _run_step(
     step: Step, plan: Plan, item: CellPlan, *, measure: bool = False
 ) -> subprocess.CompletedProcess:
     resolved = [_substitute(part, plan.environment) for part in step.command]
+    if item.operator_immich:
+        # `make-secret` is the only step carrying the placeholder, and this is the
+        # last moment before the key is in an argv rather than in a plan.
+        key = plan.operator_credentials["api_key"]
+        resolved = [part.replace(FROM_OPERATOR_CONFIG, key) for part in resolved]
     passthrough = {
         name: plan.environment[name] for name in item.app_credentials if name in plan.environment
     }
@@ -717,6 +723,8 @@ def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path |
     pinned_config(config, out_dir / item.cell.id / "config.yaml", pins)
     for name, body in item.manifests.items():
         rendered = _substitute(body, plan.environment)
+        if item.operator_immich:
+            rendered = rendered.replace(FROM_OPERATOR_CONFIG, plan.operator_credentials["url"])
         (out_dir / item.cell.id / name).write_text(rendered)
 
 
@@ -892,6 +900,10 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     if any(item.cell.facts == "service" for item in plan.runnable):
         warmup = warm_inference(plan)
         print(f"inference answered a facts request after {warmup:.0f}s")
+
+    if any(item.operator_immich for item in plan.runnable):
+        url, api_key = read_operator_immich(opts.config)
+        plan.operator_credentials.update({"url": url, "api_key": api_key})
 
     for item in plan.runnable:
         _write_cell_config(item, plan, out_dir, opts.config)

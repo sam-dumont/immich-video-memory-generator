@@ -17,7 +17,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import pytest  # noqa: E402
 import setup_matrix  # noqa: E402
-from setup_matrix_plan import Cell, CellPlan, Plan, Step  # noqa: E402
+import yaml  # noqa: E402
+from setup_matrix_plan import (  # noqa: E402
+    FROM_OPERATOR_CONFIG,
+    IMMICH_KEY_ENV,
+    Cell,
+    CellPlan,
+    Plan,
+    Step,
+)
 
 # Excerpts of the first real Mac lane run, copied out of its own logs.
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "setup_matrix"
@@ -35,6 +43,8 @@ def _cell_plan(
     steps: tuple[Step, ...] = (),
     cache_dir: str = "",
     container_limits: str = "",
+    manifests: dict[str, str] | None = None,
+    operator_immich: bool = False,
 ) -> CellPlan:
     cell = Cell(
         id=cell_id,
@@ -52,9 +62,10 @@ def _cell_plan(
         pins={},
         config_yaml="",
         steps=steps,
-        manifests={},
+        manifests=manifests or {},
         app_credentials=(),
         cache_dir=cache_dir,
+        operator_immich=operator_immich,
         container_limits=container_limits,
     )
 
@@ -455,3 +466,40 @@ def test_the_summary_is_rebuilt_from_every_lane_that_has_run(monkeypatch, tmp_pa
     assert rows["nas-rules-local"]["overlap_vs_cell_1"] == 0.667
     assert rows["k8s-rules-local"]["overlap_vs_cell_1"] == 0.0
     assert "k8s-rules-local" in (out_dir / "summary.md").read_text()
+
+
+def test_a_cluster_cell_is_handed_the_operators_immich_at_the_last_moment(tmp_path) -> None:
+    """The plan says where the value comes from; the runner puts it in the argv.
+
+    Run 2's four k8s cells all died on "Immich not configured": the ConfigMap is
+    built from the pins alone and a real library pins no Immich. The key goes to
+    the Secret under the name the loader maps, the URL to the ConfigMap, and
+    neither is in the plan anyone prints.
+    """
+    item = _cell_plan(
+        "k8s-rules-local",
+        "k8s",
+        steps=(
+            Step(
+                "make-secret", ("echo", f"--from-literal={IMMICH_KEY_ENV}={FROM_OPERATOR_CONFIG}")
+            ),
+        ),
+        manifests={"configmap.yaml": f"data:\n  url: {FROM_OPERATOR_CONFIG}\n"},
+        operator_immich=True,
+    )
+    plan = _plan_of(item)
+    plan.operator_credentials.update(
+        {"url": "http://immich.invalid:2283", "api_key": "operator-key"}
+    )
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump({"immich": {"url": "http://immich.invalid:2283"}}))
+    out_dir = tmp_path / "out"
+
+    setup_matrix._write_cell_config(item, plan, out_dir, source)
+    setup_matrix.run_remote_cell(item, plan, out_dir)
+
+    written = (out_dir / "k8s-rules-local" / "configmap.yaml").read_text()
+    created = (out_dir / "k8s-rules-local" / "make-secret.stdout.log").read_text()
+    assert written == "data:\n  url: http://immich.invalid:2283\n"
+    assert "operator-key" not in written
+    assert f"--from-literal={IMMICH_KEY_ENV}=operator-key" in created

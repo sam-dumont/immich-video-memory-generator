@@ -166,3 +166,32 @@ def hosted_reader_pins() -> dict[str, Any]:
     `base_url`, because a coding plan is served by one of z.ai's two routes.
     """
     return {"llm.base_url": DROP, "llm.no_thinking_params": DROP}
+
+
+def read_operator_immich(source: Path | None) -> tuple[str, str]:
+    """The Immich server and key the operator's own config names.
+
+    A library the manifest gives no Immich of its own runs against the operator's
+    real one, and the cluster lane is the only one with no copy of that config:
+    its Job reads a ConfigMap built from the pins alone, deliberately, so the file
+    never lands in one. Run 2's four k8s cells all died at once on "Immich not
+    configured. Run 'immich-memories config' first." for exactly that.
+
+    The URL is a server address and travels in the ConfigMap. The key is returned
+    beside it for the cell's Secret, and belongs nowhere else.
+    """
+    source = source or Config.get_default_path()
+    if not source.exists():
+        raise SystemExit(
+            f"{source} does not exist, and the cluster cells of a library that pins no "
+            "Immich of its own have nowhere else to read one. Pass --config explicitly."
+        )
+    immich = (yaml.safe_load(source.read_text()) or {}).get("immich") or {}
+    url = str(immich.get("url") or "").strip()
+    api_key = str(immich.get("api_key") or "").strip()
+    if not url or not api_key:
+        raise SystemExit(
+            f"{source} names no immich.url and immich.api_key, so a cluster cell would "
+            "start and die on 'Immich not configured' the way run 2's four did."
+        )
+    return url, api_key
