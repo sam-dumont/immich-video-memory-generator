@@ -40,6 +40,24 @@ def get_active_display() -> LiveDisplay | None:
     return _active_display.get()
 
 
+def described_error(error: BaseException) -> str:
+    """What to print for an exception, including one carrying no message at all.
+
+    httpx raises a read error with an empty string when a provider closes a connection
+    mid-request, and an hour-long run then ended on "Error: " and nothing else. The
+    exception's type and the last stage the run announced are what make that line
+    diagnosable without reading file timestamps.
+    """
+    from immich_memories.operations.cut_progress import last_announced_stage
+
+    message = str(error).strip()
+    if message:
+        return message
+    named = f"{type(error).__module__}.{type(error).__name__}".removeprefix("builtins.")
+    stage = last_announced_stage()
+    return f"{named} with no message" + (f", during {stage.stage_label}" if stage else "")
+
+
 def print_error(message: str) -> None:
     """Print an error message."""
     display = _active_display.get()

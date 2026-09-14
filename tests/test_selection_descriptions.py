@@ -723,3 +723,36 @@ def test_a_filmstrip_setting_rides_beside_the_motion_verdict(tmp_path: Path) -> 
 
     assert result.descriptions[0].setting == "a snow-covered hillside"
     assert result.descriptions[0].motion_contribution == "meaningful"
+
+
+def test_a_rejected_credential_is_not_captioned_as_missing_evidence(tmp_path: Path) -> None:
+    """Every caption path drops a failed call quietly; a bad key must escape that anyway."""
+    import httpx
+    import pytest
+
+    from immich_memories.analysis.provider_failure import ProviderCredentialRejected
+    from immich_memories.analysis.selection_descriptions import describe_editorial_assets
+
+    prepared = _prepared(make_asset("object", file_created_at=datetime(2024, 2, 3, 12, tzinfo=UTC)))
+    request = httpx.Request("POST", "http://localhost:9999/v1/chat/completions")
+
+    async def _rejected(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "http_error", 401))
+        raise httpx.HTTPStatusError(
+            f"Client error '401' for url '{request.url}' - provider said "
+            "code invalid_api_key, message 'incorrect api key provided'",
+            request=request,
+            response=httpx.Response(401, request=request),
+        )
+
+    # WHY: query_llm is the sole external boundary.
+    with (
+        patch("immich_memories.analysis.editorial_gateway.query_llm", new=_rejected),
+        pytest.raises(ProviderCredentialRejected, match="incorrect api key"),
+    ):
+        describe_editorial_assets(
+            prepared,
+            requester=_gateway(tmp_path, prepared.trace),
+            output_dir=tmp_path / "descriptions",
+            frame_cache_dir=None,
+        )

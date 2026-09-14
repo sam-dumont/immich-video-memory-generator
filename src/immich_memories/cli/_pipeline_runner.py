@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
+from immich_memories.analysis.llm_usage_record import write_llm_usage
 from immich_memories.cli._editorial_context import (
     build_editorial_context,
     narrow_to_special_event,
@@ -276,6 +277,7 @@ class _SourceProgressReporter:
         )
 
 
+@llm_metrics.counted
 def run_pipeline_and_generate(
     *,
     assets: list,
@@ -618,6 +620,8 @@ def run_pipeline_and_generate(
     # the summary into fragments and repeats the last task line (#846).
     progress.stop()
     attempt_dir = _attempt_dir_of(pipeline_result)
+    if attempt_dir is not None:
+        write_llm_usage(attempt_dir, llm_metrics.active())
     console.print(
         render_run_summary(
             total_seconds=_total_time,

@@ -146,6 +146,8 @@ src/immich_memories/
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
+│   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
+│   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
@@ -169,6 +171,7 @@ src/immich_memories/
 │   ├── llm_wire.py             # The two request dialects, what a reply says, and the reasoning budget
 │   ├── llm_batch.py            # A stage's independent prompts as one provider batch (half price, async): the two wire dialects and their transports
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
+│   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │

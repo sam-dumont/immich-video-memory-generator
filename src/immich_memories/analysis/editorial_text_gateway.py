@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import Callable, Sequence
 from contextvars import copy_context
 from dataclasses import dataclass, replace
+
+import httpx
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_case import TextCall, TextRequest
@@ -24,10 +27,18 @@ from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
+from immich_memories.analysis.provider_failure import (
+    RETRY_ATTEMPTS,
+    announce_retry,
+    provider_failure,
+    retry_wait,
+)
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cache.judgment_cache import JudgmentCache
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cancellation import check_cancelled
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "QueryTextRequester",
@@ -167,19 +178,39 @@ class QueryTextRequester:
                     current = replace(request, prompt=json_format_repair_prompt(request.prompt))
         raise AssertionError("bounded completion must return or raise")
 
+    @staticmethod
+    async def _transported(request: TextRequest, *, max_tokens: int, billed: BilledReply) -> str:
+        """Ask the provider, waiting out one that is only shedding load.
+
+        A hosted reader throttled for a minute used to end the whole run on a 429
+        that a later attempt would have answered. The billed-reply observer stays on
+        every attempt, so the last completed POST is still the one on the record.
+        """
+        watch = billed.watching(watch_provider("reader", request.llm_config))
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                return await query_llm(
+                    request.prompt,
+                    request.llm_config,
+                    temperature=0.0,
+                    max_tokens=max_tokens,
+                    timeout_seconds=request.timeout_seconds,
+                    thinking=request.thinking,
+                    cache_path=None,  # The gateway banks the complete bounded-recovery request.
+                    transport_observer=watch,
+                    require_complete=not request.json_object,
+                )
+            except httpx.HTTPStatusError as exc:
+                refusal = provider_failure(exc, images_attached=False)
+                wait = retry_wait(refusal, attempt)
+                if wait is None or refusal is None:
+                    raise
+                announce_retry(logger, refusal, wait, attempt)
+                await asyncio.sleep(wait)
+        raise AssertionError("rate-limited text request must return or raise")
+
     async def _query(self, request: TextRequest, *, max_tokens: int, billed: BilledReply) -> str:
-        watch = watch_provider("reader", request.llm_config)
-        raw = await query_llm(
-            request.prompt,
-            request.llm_config,
-            temperature=0.0,
-            max_tokens=max_tokens,
-            timeout_seconds=request.timeout_seconds,
-            thinking=request.thinking,
-            cache_path=None,  # The gateway banks the complete bounded-recovery request.
-            transport_observer=billed.watching(watch),
-            require_complete=not request.json_object,
-        )
+        raw = await self._transported(request, max_tokens=max_tokens, billed=billed)
         if request.json_object:
             try:
                 decoded = complete_final_json(
