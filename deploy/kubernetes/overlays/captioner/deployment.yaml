@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories-captioner
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-captioner
+    app.kubernetes.io/component: captioner
+spec:
+  # One replica on one ReadWriteOnce claim. Captions are banked once per
+  # picture, so a second replica buys throughput for a job that runs once.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories-captioner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-memories-captioner
+        app.kubernetes.io/component: captioner
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Pinned to one revision of ggml-org/SmolVLM2-500M-Video-Instruct-GGUF
+      # and checked by digest, because llama-server serves whatever file is at
+      # the path. Re-running this is cheap: the digest check short-circuits.
+      initContainers:
+        - name: fetch-weights
+          image: ghcr.io/ggml-org/llama.cpp:server
+          command: ["/bin/sh", "-euc"]
+          args:
+            - |
+              cd /models
+              {
+                echo "6f67b8036b2469fcd71728702720c6b51aebd759b78137a8120733b4d66438bc  SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+                echo "921dc7e259f308e5b027111fa185efcbf33db13f6e35749ddf7f5cdb60ef520b  mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+              } > SHA256SUMS
+              if sha256sum -c SHA256SUMS >/dev/null 2>&1; then
+                echo "caption weights already present"
+                exit 0
+              fi
+              base=https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF/resolve/ccd7aae53bcb1997355c2f094959e72b3642ce17
+              curl -fL --retry 3 -o SmolVLM2-500M-Video-Instruct-Q8_0.gguf "$base/SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+              curl -fL --retry 3 -o mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf "$base/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+              sha256sum -c SHA256SUMS
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+
+      containers:
+        - name: captioner
+          image: ghcr.io/ggml-org/llama.cpp:server
+          args:
+            - "--model"
+            - "/models/SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+            # Without the projector the model loads and serves the alias,
+            # blind: the three synthetic control tiles fail and no picture is
+            # ever sent.
+            - "--mmproj"
+            - "/models/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+            # The alias is the contract. The app refuses an endpoint that
+            # advertises anything else at /models, whatever weights are behind
+            # it.
+            - "--alias"
+            - "smolvlm2-500m-base-public"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8092"
+            # Already the default on build b10920. Named anyway, so the
+            # manifest keeps working against a build where it is not.
+            - "--jinja"
+            - "--ctx-size"
+            - "8192"
+            - "--threads"
+            - "4"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            - name: http
+              containerPort: 8092
+              protocol: TCP
+
+          # Captions are CPU work here. For an NVIDIA node, change the image to
+          # ghcr.io/ggml-org/llama.cpp:server-cuda, add `--n-gpu-layers 99`,
+          # and put `nvidia.com/gpu: 1` in limits. The alias, the flags and the
+          # weights do not change; a GPU turns 1.9 s a picture into tenths.
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              # 1.4 GB resident with the weights mapped and an 8k context.
+              memory: "3Gi"
+              cpu: "4000m"
+
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+
+          # Weights load at boot, so the process answers /health only once it
+          # is genuinely able to caption.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: immich-memories-caption-models

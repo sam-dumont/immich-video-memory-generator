@@ -79,15 +79,25 @@ services:
       # Only on the full tier:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://model-box.lan:8092/v1"
     restart: unless-stopped
+    # cpuset, not cpus: see below. Drop the line to leave the cores uncapped.
+    cpuset: "0-3"
     deploy:
       resources:
         limits:
           memory: 4G
-          cpus: "4"
 
 volumes:
   immich-memories-config:
 ```
+
+### Do not cap the CPU with `cpus:` on a Synology
+
+Docker's `cpus:` (and `--cpus` on the command line) is a CFS quota, and DSM runs a cgroup v1
+kernel built without the CFS bandwidth controller. A DS423+ answered `docker compose up` with
+`NanoCPUs can not be set, as your kernel does not support CPU CFS scheduler or the cgroup is not
+mounted` and started nothing at all. `cpuset: "0-3"` pins the same four cores and works there;
+the shipped `docker-compose.yml` sets no CPU limit for that reason. Memory limits are fine on
+every NAS tested.
 
 `llm.model` must be the exact string the reader reports at `GET /v1/models`. On the `full` tier
 the caption endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`; the client
@@ -126,6 +136,31 @@ The run prints one line per cut with the per-producer cost
 (`preparation tier=no_captions: 1234 pictures requested; detectors 0.396s/pic ...`), so
 `docker compose logs immich-memories | grep "preparation tier"` tells you which producer a box
 cannot afford. Run the same month twice: the difference is the cold cost.
+
+### What the first run costs
+
+Plan an overnight for the first pass over a big month, and seconds for every pass after it.
+
+<!-- Fields in output/setup-matrix/demo/run1/summary.data.json, cell nas-rules-local:
+     1.4404 prepared.seconds_per_picture, 0.5963 and 0.6930 prepared.producers[].seconds_per_picture
+     for public_heads and detectors, 1,483 s timing.render_s, 54.0 s video.duration_s,
+     180 s and 120 s timing.prepare_cold_s for nas-rules-local and nas-rules-service,
+     0 s timing.prepare_warm_s, 5 s timing.selection_s. 13,552 is prepared.pictures in
+     output/setup-matrix/february/run2/summary.data.json. -->
+
+The setup matrix measured this box again in September 2026, on the 133-picture demo month at
+`no_captions`: 1.4404 s per picture cold, 0.5963 s of it the encoder and its six heads and 0.6930 s
+the two detectors, then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
+month is 19,520 s of preparation at that rate, so about 5 h 25 min before the render starts. The
+second run over the same month prepares in 0 s and selects in 5 s.
+
+The render is the part a warm cache does not help. Two ways out, neither required: move the picture
+facts to a GPU box with the [inference service](../installation/inference-service.md), which took
+this NAS from 180 s to 120 s of cold preparation on the demo month, and
+[#931](https://github.com/sam-dumont/immich-video-memory-generator/issues/931), a render worker
+beside that service so the NAS stops encoding on its own CPU. The render worker is not built yet.
+[Running modes](../running-modes.md#what-to-expect-on-a-first-run) has the same month on a Mac and
+on a Kubernetes cluster.
 
 ### Adding captions later
 

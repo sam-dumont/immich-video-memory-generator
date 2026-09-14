@@ -142,7 +142,7 @@ Default PVC sizes:
 |-----|------|---------|
 | Cache PVC | 20Gi | mounted at `/home/immich/.immich-memories`: `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
 | Output PVC | 50Gi | mounted at `/app/output`: generated videos |
-| Models PVC | 5Gi | mounted at `/models`: the pinned DINOv2 export and the detector Hugging Face cache, both written by `immich-memories models fetch`. Every pod binds it: skip it and nothing starts |
+| Models PVC | 5Gi | mounted at `/models` as `immich-memories-models`: the pinned DINOv2 export, the pinned sensitive-content export and the detector Hugging Face cache, all written by the `fetch-models` init container every pod runs. Every pod binds it: skip it and nothing starts |
 
 There is no ConfigMap: connection details come from the Secret, everything else from
 `IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).

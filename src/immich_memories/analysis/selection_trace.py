@@ -167,6 +167,7 @@ class Trace:
             ),
             None,
         )
+        named_by_a_pass = False
         for pass_trace in self.editorial_passes:
             rejected = next(
                 (decision for decision in pass_trace.rejected if decision.asset_id == asset_id),
@@ -176,14 +177,18 @@ class Trace:
                 dropped_at = pass_trace.name
                 reason = rejected.reason
                 survived = []
+                named_by_a_pass = True
             elif asset_id in pass_trace.kept_ids:
                 admitted_at = pass_trace.name
         for stage in self.stages:
             if asset_id in stage.gained_ids:
                 admitted_at = stage.name
             if asset_id in stage.lost_ids:
-                dropped_at = stage.name
-                reason = stage.notes.get(asset_id)
+                # The final-cut stage loses everything a pass already rejected.
+                # The pass said why; the stage only counts it again.
+                if not named_by_a_pass:
+                    dropped_at = stage.name
+                    reason = stage.notes.get(asset_id)
                 survived = []
             elif asset_id in stage.kept_ids:
                 survived.append(stage.name)
@@ -314,6 +319,7 @@ class Trace:
         trace = cls()
         trace.warnings = list(data.get("warnings") or [])
         trace.clips = dict(data.get("clips") or {})
+        trace.stages = [_stage_from(raw) for raw in data.get("stages") or ()]
         for raw in data.get("editorial_passes") or ():
             provenance = raw.get("provenance") or {}
             trace.editorial_passes.append(
@@ -369,6 +375,22 @@ class Trace:
             "requests": [_request_dict(request) for request in self.requests],
             "clips": self.clips,
         }
+
+
+def _stage_from(raw: Mapping[str, Any]) -> Stage:
+    """One stage read back from file, so a saved run accounts for its own final cut."""
+    return Stage(
+        name=str(raw.get("name", "")),
+        kept=int(raw.get("kept") or 0),
+        dropped=int(raw.get("dropped") or 0),
+        favorites_in=int(raw.get("favorites_in") or 0),
+        favorites_out=int(raw.get("favorites_out") or 0),
+        reasons=list(raw.get("reasons") or []),
+        kept_ids=tuple(raw.get("kept_ids") or ()),
+        lost_ids=tuple(raw.get("lost_ids") or ()),
+        gained_ids=tuple(raw.get("gained_ids") or ()),
+        notes=dict(raw.get("notes") or {}),
+    )
 
 
 def _check_conservation(pass_trace: PassTrace) -> ConservationCheck:

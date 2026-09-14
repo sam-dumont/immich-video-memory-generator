@@ -1,0 +1,32 @@
+# The caption server on its own:  kubectl apply -k overlays/captioner
+#
+# `tier: full` needs an endpoint advertising `smolvlm2-500m-base-public`, and
+# nothing else in this repo ships one. This overlay is llama.cpp serving the
+# pinned SmolVLM2-500M GGUF under that alias, on CPU. Point the app at it:
+#
+#   editorial:
+#     preparation:
+#       tier: full
+#       caption_base_url: http://captioner:8092/v1
+#
+# Deliberately not `resources: [../../base]`, for the reason the inference
+# overlay gives: the base refuses to build without a hand-made secret, and this
+# service holds no credential and never talks to Immich.
+#
+# The namespace object comes from the base. Running this alone on a fresh
+# cluster needs it first:
+#   kubectl create namespace immich-memories
+#
+# The image tag floats on purpose. llama.cpp publishes no long-lived versioned
+# server tag, and what the app depends on is the weights, which are pinned by
+# revision and digest in the init container.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: immich-memories
+
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml

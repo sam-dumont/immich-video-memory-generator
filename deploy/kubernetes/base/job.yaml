@@ -1,7 +1,7 @@
 # CLI batch jobs. Optional: uncomment `- job.yaml` in kustomization.yaml or
 # `kubectl apply -f job.yaml`.
 #
-# The jobs share the two PVCs with the Deployment. With ReadWriteOnce storage a
+# The jobs share the three PVCs with the Deployment. With ReadWriteOnce storage a
 # job pod can only start on the node that already has the volumes mounted, so
 # either use ReadWriteMany storage or scale the Deployment to 0 first. If you
 # only want scheduled memories, prefer the in-process daily timer instead
@@ -36,6 +36,53 @@ spec:
         seccompProfile:
           type: RuntimeDefault
 
+      # A fresh models claim is empty, and prepare is where that shows up: the
+      # first cut stopped naming three files nobody had been told to fetch. This
+      # is the same image running the same `models fetch` a Docker user runs after
+      # `up`, writing the pinned encoder, the pinned sensitive-content export and
+      # the detector snapshot onto the claim. The guard is what makes a restart
+      # free: a claim that already carries all three never goes back out.
+      initContainers:
+        - name: fetch-models
+          image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /bin/sh
+            - -c
+            - >
+              test -s /models/triage/dinov2-small.onnx
+              && test -s /models/detectors/nsfw-marqo-384.onnx
+              && test -d /models/huggingface
+              || immich-memories models fetch
+          env:
+            - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+              value: /models/triage/dinov2-small.onnx
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+              value: /models/detectors/nsfw-marqo-384.onnx
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+              value: /models/huggingface
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          volumeMounts:
+            # `models fetch` loads the config before it downloads anything, and that
+            # wants HOME writable; the root filesystem here is not.
+            - name: data
+              mountPath: /home/immich/.immich-memories
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: generate
           image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -69,6 +116,8 @@ spec:
               value: /app/output
             - name: IMMICH_MEMORIES_TRIAGE__ENCODER
               value: /models/triage/dinov2-small.onnx
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+              value: /models/detectors/nsfw-marqo-384.onnx
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
               value: /models/huggingface
 
@@ -137,6 +186,53 @@ spec:
             seccompProfile:
               type: RuntimeDefault
 
+          # A fresh models claim is empty, and prepare is where that shows up: the
+          # first cut stopped naming three files nobody had been told to fetch. This
+          # is the same image running the same `models fetch` a Docker user runs after
+          # `up`, writing the pinned encoder, the pinned sensitive-content export and
+          # the detector snapshot onto the claim. The guard is what makes a restart
+          # free: a claim that already carries all three never goes back out.
+          initContainers:
+            - name: fetch-models
+              image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - -c
+                - >
+                  test -s /models/triage/dinov2-small.onnx
+                  && test -s /models/detectors/nsfw-marqo-384.onnx
+                  && test -d /models/huggingface
+                  || immich-memories models fetch
+              env:
+                - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+                  value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+                  value: /models/huggingface
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "2000m"
+              volumeMounts:
+                # `models fetch` loads the config before it downloads anything, and that
+                # wants HOME writable; the root filesystem here is not.
+                - name: data
+                  mountPath: /home/immich/.immich-memories
+                - name: models
+                  mountPath: /models
+                - name: tmp
+                  mountPath: /tmp
           containers:
             - name: generate
               image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -168,6 +264,8 @@ spec:
                   value: /app/output
                 - name: IMMICH_MEMORIES_TRIAGE__ENCODER
                   value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
                   value: /models/huggingface
 
@@ -237,6 +335,53 @@ spec:
             seccompProfile:
               type: RuntimeDefault
 
+          # A fresh models claim is empty, and prepare is where that shows up: the
+          # first cut stopped naming three files nobody had been told to fetch. This
+          # is the same image running the same `models fetch` a Docker user runs after
+          # `up`, writing the pinned encoder, the pinned sensitive-content export and
+          # the detector snapshot onto the claim. The guard is what makes a restart
+          # free: a claim that already carries all three never goes back out.
+          initContainers:
+            - name: fetch-models
+              image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - -c
+                - >
+                  test -s /models/triage/dinov2-small.onnx
+                  && test -s /models/detectors/nsfw-marqo-384.onnx
+                  && test -d /models/huggingface
+                  || immich-memories models fetch
+              env:
+                - name: IMMICH_MEMORIES_TRIAGE__ENCODER
+                  value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
+                  value: /models/huggingface
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "2000m"
+              volumeMounts:
+                # `models fetch` loads the config before it downloads anything, and that
+                # wants HOME writable; the root filesystem here is not.
+                - name: data
+                  mountPath: /home/immich/.immich-memories
+                - name: models
+                  mountPath: /models
+                - name: tmp
+                  mountPath: /tmp
           containers:
             - name: auto-run
               image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -264,6 +409,8 @@ spec:
                   value: /app/output
                 - name: IMMICH_MEMORIES_TRIAGE__ENCODER
                   value: /models/triage/dinov2-small.onnx
+                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
+                  value: /models/detectors/nsfw-marqo-384.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR
                   value: /models/huggingface
 

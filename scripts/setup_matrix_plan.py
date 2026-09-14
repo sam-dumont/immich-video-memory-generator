@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ import yaml
 from matrix_pinned_config import DROP, hosted_reader_pins, remote_path_pins
 
 MANIFEST = Path(__file__).resolve().parent / "setup_matrix.yaml"
+REPO_ROOT = MANIFEST.parent.parent
 SCHEMA = "setup-matrix-v1"
 
 # `$env:NAME` is resolved by the runner. `${NAME}` is left for the app to expand.
@@ -94,6 +95,24 @@ OUTPUT_SUBPATH = "setup-matrix"
 DATA_CLAIM = "setup-matrix-data"
 OUTPUT_CLAIM = "setup-matrix-output"
 
+# What the GPU operator labels a node with, and what a render cell selects on. A
+# hostname would name the same machine today and the wrong card the day a GPU
+# moves, and it would put somebody's host into a published transcript.
+GPU_PRODUCT_LABEL = "nvidia.com/gpu.product"
+# The RuntimeClass and the taint the app's own GPU overlay uses, so a matrix Job
+# reaches a GPU node exactly the way the Deployment does.
+GPU_RUNTIME_CLASS = "nvidia"
+GPU_RESOURCE = "nvidia.com/gpu"
+# NVENC sits behind the `video` driver capability. Without these two the pod gets
+# a CUDA device and no encoder, and the render would go to software while the row
+# still said GPU.
+GPU_ENV = (
+    ("NVIDIA_VISIBLE_DEVICES", "all"),
+    ("NVIDIA_DRIVER_CAPABILITIES", "compute,video,utility"),
+)
+# Dots are path separators in a jsonpath, so a label name has to escape its own.
+NODE_PRODUCT_PATH = "{.metadata.labels.nvidia\\.com/gpu\\.product}"
+
 PREPARE_COLD_LOG = "prepare-cold.log"
 PREPARE_WARM_LOG = "prepare-warm.log"
 GENERATE_LOG = "generate.log"
@@ -136,6 +155,14 @@ FRESH_CACHE = "fresh-cache"
 # The step the runner retries and then judges on the film being here.
 COPY_OUT = "copy-out"
 
+# The env var `config_loader` maps to `immich.api_key`, which is how a cluster
+# cell is handed the operator's key without a ConfigMap ever holding one.
+IMMICH_KEY_ENV = "IMMICH_MEMORIES_IMMICH__API_KEY"
+# What a rendered plan prints where a value out of the operator's own config
+# goes. The runner puts the value there at the moment the command runs, so the
+# dry run, the manifests it writes and every log carry the words instead.
+FROM_OPERATOR_CONFIG = "<from operator config>"
+
 
 class PlanError(RuntimeError):
     """The manifest or the request cannot produce a runnable plan."""
@@ -154,6 +181,31 @@ class Cell:
     requires_env: tuple[str, ...]
     config: dict[str, Any]
     inference_overlay: bool
+    # The card this cell renders on, as the GPU operator's node label spells it.
+    # Blank means the render goes wherever the scheduler puts it, on a CPU.
+    gpu_product: str = ""
+    # A directory in this repo the cell cannot run without. Absent, the cell is
+    # skipped with a reason rather than dropped from the table.
+    requires_overlay: str = ""
+    # What the Job asks the scheduler for. Blank takes the default, which is the
+    # NAS cell's cap so the two rows read against each other. A cell that offloads
+    # the work it is measuring can ask for less and actually get scheduled.
+    cpu_request: str = ""
+    memory_request: str = ""
+    # Whether the Job asks the device plugin for a card as a countable resource.
+    # False still lands the pod on the named node with the nvidia runtime and the
+    # video capability, which is all a render needs: the plugin advertises one
+    # allocatable GPU per node whatever the label says about time-slicing, and the
+    # inference Deployment is already holding it.
+    gpu_resource: bool = True
+    # The cell whose bank this one starts from, minus every model answer in it.
+    # Preparation is a fact about the host, the tier and where the facts come
+    # from, so cells that vary only the reader measure it once and copy.
+    seed_cache_from: str = ""
+    # A template: one cell per comma-separated model id in the variable this
+    # names. The ids are whatever the operator's own server has resident, so they
+    # belong in their environment and not in this repo.
+    for_each_env: str = ""
 
     @property
     def hosted(self) -> bool:
@@ -199,6 +251,10 @@ class CellPlan:
     manifests: dict[str, str]
     app_credentials: tuple[str, ...]
     cache_dir: str
+    # Whether this cell's Immich comes out of the operator's own config rather
+    # than the manifest. Only a cluster cell ever needs it: the other two lanes
+    # are handed a copy of that config and read it there.
+    operator_immich: bool = False
     # Whether this cell empties its own bank before it prepares.
     fresh_cache: bool = False
     # Only a NAS cell has any: the other two lanes are not capped by a container.
@@ -217,6 +273,10 @@ class Plan:
     anonymize_required: bool
     cells: tuple[CellPlan, ...]
     environment: dict[str, str] = field(default_factory=dict)
+    # `url` and `api_key` as the operator's own config holds them, filled in by
+    # the runner the moment before it executes and never by `build_plan`: a
+    # printed plan has to be readable without a config on the machine reading it.
+    operator_credentials: dict[str, str] = field(default_factory=dict)
 
     @property
     def runnable(self) -> tuple[CellPlan, ...]:
@@ -246,9 +306,55 @@ def read_cells(manifest: dict) -> tuple[Cell, ...]:
             requires_env=tuple(row.get("requires_env") or ()),
             config=dict(row.get("config") or {}),
             inference_overlay=bool(row.get("inference_overlay", False)),
+            gpu_product=str((row.get("k8s") or {}).get("gpu_product", "")),
+            gpu_resource=bool((row.get("k8s") or {}).get("gpu_resource", True)),
+            cpu_request=str((row.get("k8s") or {}).get("cpu_request", "")),
+            memory_request=str((row.get("k8s") or {}).get("memory_request", "")),
+            requires_overlay=str(row.get("requires_overlay") or ""),
+            seed_cache_from=str(row.get("seed_cache_from") or ""),
+            for_each_env=str(row.get("for_each_env") or ""),
         )
         for row in manifest["cells"]
     )
+
+
+# The config key a reader's model id is pinned under.
+MODEL_PIN = "llm.model"
+_SLUG_LIMIT = 40
+
+
+def cell_slug(model: str) -> str:
+    """A model id as a piece of a cell id: lowercase, nothing but letters, digits and dashes."""
+    return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")[:_SLUG_LIMIT].strip("-")
+
+
+def expand_cells(cells: tuple[Cell, ...], environment: dict[str, str]) -> tuple[Cell, ...]:
+    """One cell per model id a template's variable names, or the template when it is unset.
+
+    An unset variable leaves the template in place rather than dropping it: it
+    then skips for the variable it requires, and a lane nobody could run is a
+    result the table has to carry.
+    """
+    expanded: list[Cell] = []
+    for cell in cells:
+        models = _named_models(cell, environment)
+        if models is None:
+            expanded.append(cell)
+            continue
+        expanded.extend(
+            replace(
+                cell, id=f"{cell.id}-{cell_slug(model)}", config={**cell.config, MODEL_PIN: model}
+            )
+            for model in models
+        )
+    return tuple(expanded)
+
+
+def _named_models(cell: Cell, environment: dict[str, str]) -> list[str] | None:
+    if not cell.for_each_env:
+        return None
+    named = [one.strip() for one in (environment.get(cell.for_each_env) or "").split(",")]
+    return [one for one in named if one] or None
 
 
 def env_reference(value: Any) -> str | None:
@@ -286,6 +392,16 @@ def _variables(source: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]
         elif name := app_credential(value):
             credentials.append(name)
     return tuple(dict.fromkeys(references)), tuple(dict.fromkeys(credentials))
+
+
+def library_pins_immich(library: dict) -> bool:
+    """Whether the manifest gives this library an Immich of its own.
+
+    `demo` names the fixture server and a fake key. A real library names neither
+    and runs against the operator's, which every lane but the cluster gets in the
+    copied config: the Job reads a ConfigMap built from the pins alone.
+    """
+    return bool((library.get("config") or {}).keys() & {"immich.url", "immich.api_key"})
 
 
 def cache_pins(cache_dir: str) -> dict[str, str]:
@@ -335,9 +451,14 @@ def _scope(month: str) -> list[str]:
 
 
 def _mac_steps(
-    cell: Cell, memory: dict, month: str, out_dir: Path, *, fresh: bool
+    cell: Cell, memory: dict, month: str, out_dir: Path, *, fresh: bool, seed: Path | None = None
 ) -> tuple[Step, ...]:
-    """Three local invocations. Cold, warm, then the cut, each timed by the runner."""
+    """Three local invocations. Cold, warm, then the cut, each timed by the runner.
+
+    A seeded cell runs two: preparation is a fact about the host, the tier and
+    where the picture facts come from, so a cell that varies only the reader takes
+    the reference cell's bank instead of paying for the same captions again.
+    """
     cell_dir = out_dir / cell.id
     root = ["uv", "run", "immich-memories", "--config", str(cell_dir / "config.yaml")]
     generate = [
@@ -360,11 +481,47 @@ def _mac_steps(
     # The whole directory, because the Mac's cache is the runner's own to make:
     # nothing is mounted on it and `prepare` creates it again on its way past.
     wipe = (Step(FRESH_CACHE, ("rm", "-rf", str(cell_dir / CELL_CACHE_DIR))),) if fresh else ()
+    if cell.seed_cache_from:
+        source = seed or seed_source(cell, out_dir, prepared_here=False)
+        return (*wipe, _seed_step(cell, out_dir, source), Step("generate", tuple(generate)))
     return (
         *wipe,
         Step("prepare-cold", tuple(prepare)),
         Step("prepare-warm", tuple(prepare)),
         Step("generate", tuple(generate)),
+    )
+
+
+SEED_CACHE = "seed-cache"
+SEED_SCRIPT = "scripts/setup_matrix_seed.py"
+
+
+def seed_source(cell: Cell, out_dir: Path, *, prepared_here: bool) -> Path:
+    """Where the bank this cell copies actually is, for the library this run is over.
+
+    `out_dir` is one run of one library, so its parent holds that library's other
+    runs and nothing else: a February cell seeds from a February bank by
+    construction, and no variable has to name a path per library. A run that
+    prepares the source cell itself takes this run's copy; one that does not takes
+    the newest run that has it, which is how the reader cells go against thirteen
+    thousand pictures somebody already captioned.
+    """
+    own = out_dir / cell.seed_cache_from / CELL_CACHE_DIR
+    if prepared_here:
+        return own
+    banked = sorted(
+        path
+        for path in out_dir.parent.glob(f"*/{cell.seed_cache_from}/{CELL_CACHE_DIR}")
+        if path.is_dir()
+    )
+    return banked[-1] if banked else own
+
+
+def _seed_step(cell: Cell, out_dir: Path, source: Path) -> Step:
+    """Copy the named cell's bank in, and take every model answer back out of it."""
+    return Step(
+        SEED_CACHE,
+        ("uv", "run", "python", SEED_SCRIPT, str(source), str(out_dir / cell.id / CELL_CACHE_DIR)),
     )
 
 
@@ -505,7 +662,7 @@ def _credential_flags(remote: str, credentials: tuple[str, ...]) -> list[str]:
     hosted cells reached their provider with an empty key: Melious answered 401
     while the same key worked from the cluster, where the runner makes a Secret
     out of its own environment. `push-env` writes the file 0600, `pull-results`
-    leaves it behind and `drop-env` removes it.
+    leaves it behind and `drop-credentials` removes it.
     """
     return ["--env-file", f"{remote}/env"] if credentials else []
 
@@ -635,7 +792,16 @@ def _nas_steps(
         Step(
             "push-config",
             ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
-            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
+            # WHY the umask: the file is a copy of the operator's config, key
+            # included, and it is landing on a NAS whose shares other people
+            # mount. It leaves this machine 0600 and tar carries the mode, but
+            # only where the far side restores permissions from the archive --
+            # this is the half that does not depend on which tar the NAS has.
+            pipe_to=(
+                "ssh",
+                "$MATRIX_NAS_SSH",
+                f"umask 077 && mkdir -p {remote} && tar -C {remote} -xf -",
+            ),
         ),
         *_push_env_steps(remote, credentials),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
@@ -647,38 +813,50 @@ def _nas_steps(
             (
                 "ssh",
                 "$MATRIX_NAS_SSH",
-                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env -cf - .",
+                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env "
+                f"--exclude=./config.yaml -cf - .",
             ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
         ),
-        # The credentials leave the NAS with the cell, whether or not it worked.
-        *(
-            (Step("drop-env", ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env")),)
-            if credentials
-            else ()
+        # The credentials leave the NAS with the cell, whether or not it worked,
+        # and the pinned config is one of them: it is the operator's own file
+        # with the pins over the top. Not pulled back either -- this machine
+        # wrote it, and a local tar would extract it under the operator's umask
+        # rather than the 0600 it was written at.
+        Step(
+            "drop-credentials",
+            ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env {remote}/config.yaml"),
         ),
     )
 
 
-def _secret_steps(cell: Cell, context: tuple[str, ...]) -> tuple[Step, ...]:
+def _secret_steps(
+    cell: Cell, context: tuple[str, ...], *, operator_immich: bool
+) -> tuple[Step, ...]:
     """Put the cell's credentials in a Secret without ever writing one to a file.
 
     The value only exists in the argv of the create call, substituted the moment
     it runs. Delete-then-create rather than `apply` because `create secret` has no
     idempotent form that does not need a shell pipe.
+
+    The operator's Immich key joins the hosted ones here rather than in the
+    ConfigMap, which is a file on the cluster that anyone who can read the
+    namespace can read.
     """
     _, credentials = _variables(cell.config)
-    if not credentials:
+    literals = [f"--from-literal={variable}=${variable}" for variable in credentials]
+    if operator_immich:
+        literals.append(f"--from-literal={IMMICH_KEY_ENV}={FROM_OPERATOR_CONFIG}")
+    if not literals:
         return ()
     name = f"setup-matrix-{cell.id}-secrets"
-    literals = [f"--from-literal={variable}=${variable}" for variable in credentials]
     return (
         Step("drop-secret", (*context, "delete", "secret", name, "--ignore-not-found")),
         Step("make-secret", (*context, "create", "secret", "generic", name, *literals)),
     )
 
 
-def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
+def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Step, ...]:
     """Claims, apply, wait to be scheduled, wait to finish, copy out, tear down.
 
     WHY a collector: `kubectl cp` shells into the pod to run tar, and a finished
@@ -711,7 +889,7 @@ def _k8s_steps(cell: Cell, out_dir: Path) -> tuple[Step, ...]:
             "drain-pods",
             (*context, "delete", "pod", "-l", MATRIX_POD_LABEL, *DELETE_FLAGS, DRAIN_TIMEOUT),
         ),
-        *_secret_steps(cell, context),
+        *_secret_steps(cell, context, operator_immich=operator_immich),
         Step("apply-claims", (*context, "apply", "-f", str(local / "claims.yaml"))),
         Step(
             "apply",
@@ -837,6 +1015,10 @@ DRAIN_TIMEOUT = "--timeout=3m"
 LB_ADDRESS_PATH = "{.status.loadBalancer.ingress[0].ip}"
 
 INFERENCE_DEPLOYMENT = "deployment/immich-memories-inference"
+# The service's own pods, which is what a node label is read off. The Deployment
+# says where the pod was asked to go; the pod says where it went.
+INFERENCE_POD_LABEL = "app.kubernetes.io/name=immich-memories-inference"
+INFERENCE_NODE_PATH = "jsonpath={.items[0].spec.nodeName}"
 # An image pull, which is the slow part of a re-applied tag. The warm-up's own
 # budget is for models being loaded, not for the layers arriving.
 INFERENCE_ROLLOUT_TIMEOUT = "10m"
@@ -848,6 +1030,31 @@ INFERENCE_ROLLOUT = (
     "status",
     INFERENCE_DEPLOYMENT,
     f"--timeout={INFERENCE_ROLLOUT_TIMEOUT}",
+)
+
+CAPTIONER_OVERLAY = "deploy/kubernetes/overlays/captioner"
+CAPTIONER_DEPLOYMENT = "deployment/immich-memories-captioner"
+CAPTIONER_SERVICE = "captioner"
+CAPTIONER_PORT = 8092
+# Longer than the inference rollout, which waits out an image pull and nothing
+# else. This one waits out an init container fetching 546 MB of GGUF onto a claim
+# that is empty the first time a cluster ever runs the full tier.
+CAPTIONER_ROLLOUT_TIMEOUT = "15m"
+CAPTIONER_ROLLOUT = (
+    *KUBECTL,
+    "rollout",
+    "status",
+    CAPTIONER_DEPLOYMENT,
+    f"--timeout={CAPTIONER_ROLLOUT_TIMEOUT}",
+)
+# What the readiness probe goes through. The local port is picked at run time and
+# the forward is thrown away after, so the transcript names the shape rather than
+# a port nothing will listen on twice.
+CAPTIONER_FORWARD = (
+    *KUBECTL,
+    "port-forward",
+    f"svc/{CAPTIONER_SERVICE}",
+    f"<a free local port>:{CAPTIONER_PORT}",
 )
 
 
@@ -875,6 +1082,80 @@ def retag_inference(rendered: str, image: str) -> str:
     return _INFERENCE_IMAGE_LINE.sub(lambda match: match.group(1) + image, rendered)
 
 
+def overlay_skip_reason(cell: Cell, root: Path = REPO_ROOT) -> str | None:
+    """Why a cell that names an overlay this tree does not carry cannot run.
+
+    The full-tier cluster cells were declared before the captioner overlay they
+    need existed, because a setup nobody can run yet is still a setup the table
+    should name. The row stays, with the reason where its numbers will go.
+    """
+    if not cell.requires_overlay or (root / cell.requires_overlay).is_dir():
+        return None
+    return f"{Path(cell.requires_overlay).name} overlay not in this tree yet"
+
+
+def required_overlays(cells: tuple[Cell, ...], root: Path = REPO_ROOT) -> tuple[str, ...]:
+    """The overlay directories this run has to apply, for the cells that can run."""
+    return tuple(
+        dict.fromkeys(
+            cell.requires_overlay
+            for cell in cells
+            if cell.requires_overlay and (root / cell.requires_overlay).is_dir()
+        )
+    )
+
+
+def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
+    """Bring one declared overlay up before its cells, and take it down after.
+
+    Torn down the way the inference overlay is, `--keep-service` included: a run
+    that kept one service running meant to keep the other.
+
+    The captioner also gets the two steps the inference service gets, because
+    `apply` returning says nothing about a server that has half a gigabyte of
+    weights to fetch and map first.
+    """
+    name = Path(path).name
+    steps = [Step(f"apply-{name}", (*KUBECTL, "apply", "-k", path))]
+    if path == CAPTIONER_OVERLAY:
+        steps += [
+            Step(f"wait-{name}", CAPTIONER_ROLLOUT),
+            Step(f"warm-{name}", CAPTIONER_FORWARD),
+        ]
+    if not keep:
+        steps.append(Step(f"delete-{name}", (*KUBECTL, "delete", "-k", path, "--ignore-not-found")))
+    return tuple(steps)
+
+
+def pin_inference_node(rendered: str, product: str) -> str:
+    """Put the rendered inference Deployment on one named card.
+
+    Rendered rather than committed, the way the image reference is: which card
+    holds the service is a property of one run, and the overlay in the repo stays
+    what a reader applies by hand. Nothing is removed, so a Deployment that
+    already selects on something keeps it.
+    """
+    if not product:
+        return rendered
+    documents = [document for document in yaml.safe_load_all(rendered) if document]
+    for document in documents:
+        if document.get("kind") != "Deployment":
+            continue
+        spec = document["spec"]["template"]["spec"]
+        spec["nodeSelector"] = {**(spec.get("nodeSelector") or {}), GPU_PRODUCT_LABEL: product}
+    return yaml.safe_dump_all(documents, sort_keys=False)
+
+
+def inference_node_command() -> tuple[str, ...]:
+    """Which node the inference pod ended up on, asked of the pod rather than the Deployment."""
+    return (*KUBECTL, "get", "pod", "-l", INFERENCE_POD_LABEL, "-o", INFERENCE_NODE_PATH)
+
+
+def node_product_command(node: str) -> tuple[str, ...]:
+    """The card a node carries, as the GPU operator labelled it."""
+    return (*KUBECTL, "get", "node", node, "-o", f"jsonpath={NODE_PRODUCT_PATH}")
+
+
 def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     """Whether anything off the cluster has to call the inference service.
 
@@ -884,7 +1165,9 @@ def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     return any(cell.lane == "nas" and cell.facts == "service" for cell in cells)
 
 
-def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> tuple[Step, ...]:
+def inference_overlay_steps(
+    *, device: str, keep: bool, lan: bool, tag: str, node_product: str = ""
+) -> tuple[Step, ...]:
     """Bring the inference service up before the service cells, and take it down after.
 
     `auto` is resolved at run time by asking the cluster whether any node carries
@@ -913,6 +1196,11 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
     steps = [
         probe if auto else Step("device", ("echo", f"inference device pinned: {device}")),
         Step("inference-image", ("echo", image)),
+        *(
+            (Step("inference-node", ("echo", f"{GPU_PRODUCT_LABEL}={node_product}")),)
+            if node_product
+            else ()
+        ),
         Step(
             "apply-inference",
             ("kubectl", "kustomize", overlay),
@@ -943,8 +1231,81 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
     return tuple(steps)
 
 
+def gpu_pod_block(product: str) -> str:
+    """Where a render cell's pod may land, and what hands it the card once it does.
+
+    Same three fields as `deploy/kubernetes/overlays/gpu/deployment-gpu.yaml`, on
+    a Job rather than a Deployment, with the node selector narrowed from "any GPU
+    node" to one product label so the row can name the card it measured.
+    """
+    if not product:
+        return ""
+    return (
+        f"      runtimeClassName: {GPU_RUNTIME_CLASS}\n"
+        "      nodeSelector:\n"
+        f"        {GPU_PRODUCT_LABEL}: {product}\n"
+        "      tolerations:\n"
+        f"        - key: {GPU_RESOURCE}\n"
+        "          operator: Exists\n"
+        "          effect: NoSchedule\n"
+    )
+
+
+# What a cell asks for when it says nothing: the NAS cell's docker cap, so the two
+# rows in the table are comparable.
+DEFAULT_CPU_REQUEST = "2000m"
+DEFAULT_MEMORY_REQUEST = "4Gi"
+
+
+def job_requests(cell: Cell) -> tuple[str, str]:
+    """CPU and memory this cell's Job asks the scheduler for.
+
+    `k8s-gpu-1070` sat in FailedScheduling for `1 Insufficient cpu`: the node
+    holding that card also runs the live web Deployment, and there was no spare
+    2 CPU on it. The encode is on the card and the pod only feeds it, so asking
+    for what it needs is the fix. The limit is unchanged, so a cell that turns out
+    to want more still gets it.
+    """
+    return (cell.cpu_request or DEFAULT_CPU_REQUEST, cell.memory_request or DEFAULT_MEMORY_REQUEST)
+
+
+def _gpu_limit_block(cell: Cell) -> str:
+    """The device request. A GPU is only ever a limit: the plugin has no fractions to give.
+
+    Asking for one is not free and is not always needed. `k8s-gpu-t1000` sat in
+    FailedScheduling for `Insufficient nvidia.com/gpu` because the inference
+    Deployment already held that node's single allocatable card, while the plain
+    demo Jobs on the same node drew their titles on CUDA having asked for nothing:
+    the node's default runtime exposes the card to every pod on it. So a render
+    cell can take the node and the runtime and leave the countable resource alone.
+    """
+    return f'              {GPU_RESOURCE}: "1"\n' if cell.gpu_product and cell.gpu_resource else ""
+
+
+def _job_env(cell: Cell, *, fresh: bool) -> tuple[tuple[str, str], ...]:
+    """Every variable the Job carries, in one block: two `env:` keys is not a manifest."""
+    fresh_switch = ((FRESH_CACHE_ENV, "1"),) if fresh else ()
+    return (*fresh_switch, *(GPU_ENV if cell.gpu_product else ()))
+
+
+def _env_block(pairs: tuple[tuple[str, str], ...]) -> str:
+    if not pairs:
+        return ""
+    entries = "".join(
+        f'            - name: {name}\n              value: "{value}"\n' for name, value in pairs
+    )
+    return f"          env:\n{entries}"
+
+
 def _k8s_manifests(
-    cell: Cell, memory: dict, month: str, image: str, config_yaml: str, *, fresh: bool
+    cell: Cell,
+    memory: dict,
+    month: str,
+    image: str,
+    config_yaml: str,
+    *,
+    operator_immich: bool,
+    fresh: bool,
 ) -> dict[str, str]:
     """A ConfigMap with the pinned config, a Job that mounts it, and the collector.
 
@@ -953,6 +1314,7 @@ def _k8s_manifests(
     cluster cell reports peak memory the way a NAS cell does.
     """
     name = f"setup-matrix-{cell.id}"
+    cpu_request, memory_request = job_requests(cell)
     config_block = "\n".join(f"    {line}" for line in config_yaml.splitlines())
     script = "\n".join(
         f"                {part}"
@@ -961,14 +1323,7 @@ def _k8s_manifests(
     _, credentials = _variables(cell.config)
     secret_block = (
         f"          envFrom:\n            - secretRef:\n                name: {name}-secrets\n"
-        if credentials
-        else ""
-    )
-    # The switch the container script reads. Absent unless the run asked for it,
-    # so the Job manifest says on its face whether this cell started from nothing.
-    fresh_block = (
-        f'          env:\n            - name: {FRESH_CACHE_ENV}\n              value: "1"\n'
-        if fresh
+        if credentials or operator_immich
         else ""
     )
     return {
@@ -981,7 +1336,11 @@ def _k8s_manifests(
             config=REMOTE_CONFIG,
             out=REMOTE_OUT,
             cache=REMOTE_CACHE,
-            fresh=fresh_block,
+            env=_env_block(_job_env(cell, fresh=fresh)),
+            gpu_pod=gpu_pod_block(cell.gpu_product),
+            gpu_limit=_gpu_limit_block(cell),
+            cpu_request=cpu_request,
+            memory_request=memory_request,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
             models_subpath=MODELS_SUBPATH,
@@ -1062,7 +1421,7 @@ spec:
         app.kubernetes.io/component: setup-matrix
     spec:
       restartPolicy: Never
-      securityContext:
+{gpu_pod}      securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
@@ -1082,7 +1441,7 @@ spec:
             - -lc
             - |
 {script}
-{fresh}{secrets}          volumeMounts:
+{env}{secrets}          volumeMounts:
             - name: config
               mountPath: {config}
               subPath: config.yaml
@@ -1097,18 +1456,19 @@ spec:
             - name: data
               mountPath: {cache}
               subPath: {cache_subpath}
-          # The request is what the scheduler has to find: a 1-CPU app pod was
-          # already answered with Insufficient cpu here, and a cell that runs on
-          # scraps is not a measurement. The limit is the NAS cell's docker cap,
-          # 4 CPU and 4 GB, so the two rows in the table are comparable.
+          # The request is what the scheduler has to find, and finding it is not
+          # free: a cell that runs on scraps is not a measurement, and a cell that
+          # asks for a whole node it does not use never runs at all. The limit is
+          # the NAS cell's docker cap, 4 CPU and 4 GB, so the two rows in the table
+          # are comparable however little the pod asked for.
           resources:
             requests:
-              memory: "4Gi"
-              cpu: "2000m"
+              memory: "{memory_request}"
+              cpu: "{cpu_request}"
             limits:
               memory: "4Gi"
               cpu: "4000m"
-      volumes:
+{gpu_limit}      volumes:
         - name: config
           configMap:
             name: {name}-config
@@ -1178,6 +1538,7 @@ def build_cell_plan(
     image: str,
     environment: dict[str, str],
     fresh_cache: bool = False,
+    seed_source: Path | None = None,
 ) -> CellPlan:
     """One cell's commands, manifests and pins, with no value from `environment` inside."""
     pins = _pins_for(cell, manifest, library)
@@ -1185,24 +1546,41 @@ def build_cell_plan(
     references, credentials = _variables(source)
     required = tuple(dict.fromkeys((*cell.requires_env, *references, *credentials)))
     missing = [name for name in required if not (environment.get(name) or "").strip()]
-    skip = f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
+    skip = overlay_skip_reason(cell) or (
+        f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
+    )
 
     cache = str(out_dir / cell.id / CELL_CACHE_DIR) if cell.lane == "mac" else REMOTE_CACHE
     pins.update(cache_pins(cache))
-    config_yaml = yaml.safe_dump(nested(pins), sort_keys=False)
+    # The cluster's ConfigMap is built from the pins alone, on purpose: the
+    # operator's config never lands in one. For a library that pins no Immich of
+    # its own that left the Job with no server to read, and run 2's four k8s
+    # cells died together on "Immich not configured". The URL is carried here,
+    # because a server address is not a secret; the key is in the cell's Secret.
+    operator_immich = cell.lane == "k8s" and not library_pins_immich(library)
+    config_pins = {**pins, "immich.url": FROM_OPERATOR_CONFIG} if operator_immich else pins
+    config_yaml = yaml.safe_dump(nested(config_pins), sort_keys=False)
     memory = manifest.get("memory") or {}
     manifests: dict[str, str] = {}
     diagnostics: tuple[Step, ...] = ()
     container_limits = ""
     if cell.lane == "mac":
-        steps = _mac_steps(cell, memory, month, out_dir, fresh=fresh_cache)
+        steps = _mac_steps(cell, memory, month, out_dir, fresh=fresh_cache, seed=seed_source)
     elif cell.lane == "nas":
         limits = nas_docker_limits(environment)
         steps = _nas_steps(cell, memory, month, out_dir, image, limits, fresh=fresh_cache)
         container_limits = " ".join(limits)
     elif cell.lane == "k8s":
-        steps = _k8s_steps(cell, out_dir)
-        manifests = _k8s_manifests(cell, memory, month, image, config_yaml, fresh=fresh_cache)
+        steps = _k8s_steps(cell, out_dir, operator_immich=operator_immich)
+        manifests = _k8s_manifests(
+            cell,
+            memory,
+            month,
+            image,
+            config_yaml,
+            operator_immich=operator_immich,
+            fresh=fresh_cache,
+        )
         diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
@@ -1215,6 +1593,7 @@ def build_cell_plan(
         manifests=manifests,
         app_credentials=credentials,
         cache_dir=cache,
+        operator_immich=operator_immich,
         fresh_cache=fresh_cache,
         container_limits=container_limits,
         skip_reason=skip,
@@ -1258,6 +1637,30 @@ def _check_ssh_destination(environment: dict[str, str]) -> None:
         )
 
 
+def _check_seed_sources(cells: tuple[Cell, ...]) -> None:
+    """A seeded cell has to name a cell in front of it, on its own lane and its own tier.
+
+    All three or the bank it copies is not the bank it needed: a later source has
+    not run yet, another lane's cache is inside a container, and another tier's
+    holds a different set of annotations.
+    """
+    seen: dict[str, Cell] = {}
+    for cell in cells:
+        source = seen.get(cell.seed_cache_from)
+        if cell.seed_cache_from and source is None:
+            raise PlanError(f"{cell.id}: seed_cache_from names no cell running before it")
+        if source and (source.lane, source.tier, source.facts) != (
+            cell.lane,
+            cell.tier,
+            cell.facts,
+        ):
+            raise PlanError(
+                f"{cell.id}: seeds from {source.id}, which prepares on another lane, tier or"
+                " facts source, so its bank is not the one this cell would have derived"
+            )
+        seen[cell.id] = cell
+
+
 def build_plan(
     *,
     manifest: dict,
@@ -1281,10 +1684,11 @@ def build_plan(
         raise PlanError(f"--month is required for library {library!r}")
     month_parts(resolved)
 
-    known = read_cells(manifest)
+    known = expand_cells(read_cells(manifest), environment)
     unknown = set(cell_ids) - {cell.id for cell in known}
     if unknown:
         raise PlanError(f"unknown cell(s): {', '.join(sorted(unknown))}")
+    _check_seed_sources(known)
     chosen = [
         cell
         for cell in known
@@ -1308,6 +1712,15 @@ def build_plan(
                 image=image,
                 environment=environment,
                 fresh_cache=fresh_cache,
+                seed_source=(
+                    seed_source(
+                        cell,
+                        out_dir,
+                        prepared_here=cell.seed_cache_from in {one.id for one in chosen},
+                    )
+                    if cell.seed_cache_from
+                    else None
+                ),
             )
             for cell in chosen
         ),

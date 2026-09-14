@@ -704,8 +704,9 @@ docker-shell:
 # The guard tests `docker compose version`, not `command -v docker`: on macOS the
 # compose plugin lives under $HOME/.docker, so a gate run with a throwaway HOME
 # has the docker binary and no compose subcommand.
-# Both profiles, because `config` drops a profiled service from its output: the
-# default run is the one users take, the second one reads the inference body.
+# Every profile, because `config` drops a profiled service from its output: the
+# default run is the one users take, the other two read the inference and
+# captioner bodies.
 compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it alone does not bring
 	@if ! docker compose version >/dev/null 2>&1; then \
 		echo "compose-check SKIPPED: no 'docker compose' here (a skip is not a pass)"; \
@@ -723,7 +724,11 @@ compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it a
 			echo "docker-compose.yml stands alone until the inference profile is asked for"; \
 			exit 1; \
 		}; \
-		echo "docker-compose.yml stands alone, both profiles"; \
+		docker compose --profile captioner config >/dev/null || { \
+			echo "docker-compose.yml stands alone until the captioner profile is asked for"; \
+			exit 1; \
+		}; \
+		echo "docker-compose.yml stands alone, all three profiles"; \
 	fi
 
 # =============================================================================
