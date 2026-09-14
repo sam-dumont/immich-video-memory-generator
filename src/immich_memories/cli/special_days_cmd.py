@@ -171,8 +171,10 @@ def _scan_library(
     Carries the existing catalogue forward so an interrupted scan resumes
     where it stopped rather than starting the twenty years again.
     """
+    from immich_memories.analysis.prepared_captions import prepared_captions
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.automation.special_day_scan import scan_year
+    from immich_memories.cache.judgment_cache import verdicts_beside
     from immich_memories.config import get_config
 
     config = get_config()
@@ -199,6 +201,8 @@ def _scan_library(
                 extra_holidays=also_skip,
                 analysis_config=config.analysis,
                 trips_config=config.trips,
+                captions=prepared_captions(config, tuple(asset.id for asset in assets)),
+                judgment_cache_path=verdicts_beside(config.cache.cache_path),
             ):
                 found.append(
                     {

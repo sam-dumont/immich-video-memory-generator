@@ -38,8 +38,7 @@ def _build_timeline(state, config):
     for clip in selected_clips:
         segment = state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))
         duration = segment[1] - segment[0]
-        # WHY: per-clip moods came from the legacy analysis cache; the mood analyzer
-        # reads the keyframes itself, so the timeline only needs a placeholder here.
+        # The text answer is applied after the timeline is built, before generation.
         mood = "calm"
         clip_data.append((duration, mood, _get_clip_month(clip)))
 
@@ -69,8 +68,16 @@ async def _generate_music(
     try:
         from immich_memories.audio.music_generator import generate_music_for_video
         from immich_memories.audio.music_generator_client import MusicGenClientConfig
+        from immich_memories.audio.text_mood import mood_for_cut
 
         timeline = _build_timeline(state, config)
+        choice = await mood_for_cut(
+            config,
+            state.editorial_attempt_dir,
+            tuple(clip.asset.id for clip in state.get_selected_clips()),
+        )
+        for clip in timeline.clips:
+            clip.mood = choice.mood.primary_mood
 
         musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
         musicgen_config.num_versions = 1

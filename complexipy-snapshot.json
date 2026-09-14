@@ -1006,7 +1006,7 @@
         "name": "register_music_commands",
         "complexity": 24,
         "line_start": 13,
-        "line_end": 232,
+        "line_end": 240,
         "line_complexities": [
           {
             "line": 45,
@@ -1105,39 +1105,39 @@
             "complexity": 2
           },
           {
-            "line": 189,
+            "line": 195,
             "complexity": 0
           },
           {
-            "line": 193,
+            "line": 199,
             "complexity": 0
           },
           {
-            "line": 194,
+            "line": 200,
             "complexity": 0
-          },
-          {
-            "line": 210,
-            "complexity": 2
-          },
-          {
-            "line": 212,
-            "complexity": 1
           },
           {
             "line": 218,
-            "complexity": 0
+            "complexity": 2
           },
           {
-            "line": 223,
-            "complexity": 0
+            "line": 220,
+            "complexity": 1
           },
           {
             "line": 226,
             "complexity": 0
           },
           {
-            "line": 228,
+            "line": 231,
+            "complexity": 0
+          },
+          {
+            "line": 234,
+            "complexity": 0
+          },
+          {
+            "line": 236,
             "complexity": 1
           }
         ]

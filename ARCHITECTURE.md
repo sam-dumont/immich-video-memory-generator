@@ -154,6 +154,7 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
 │   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
 │   ├── source_filter.py        # Drop doorbell / dashcam / screen-recorder uploads by filename
@@ -218,6 +219,7 @@ src/immich_memories/
 │   ├── music_generator_client.py # Music generation client
 │   ├── music_generator_models.py # Music generation data models
 │   ├── music_sources.py        # Music source providers (local library)
+│   ├── text_mood.py            # Banked music judgment from saved cut text; private answering-route record
 │   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step -> MusicGen fallback)
 │   ├── bundled_music.py        # The 28 bundled royalty-free tracks (`music` extra), used with no backend
 │   ├── track_tempo.py          # Measure a bundled track's tempo (numpy onset autocorrelation, no librosa)
