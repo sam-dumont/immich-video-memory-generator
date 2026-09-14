@@ -346,6 +346,13 @@ that refuses `disabled` the same way is retried once at `low`, with a warning
 naming the code and what changed. A server that rejects the field outright is
 detected from its 400 and asked without it from then on.
 
+Those refusals are the OpenAI-compatible endpoint's. z.ai's `/api/anthropic`
+route takes every level without complaint and reasons when it wants to, so
+there the level is a request rather than a setting: a non-thinking call gets
+1024 tokens on top of `max_tokens` for the reasoning that may arrive anyway,
+the first `text` block is the answer, and a reply that is all reasoning is
+reported with its `stop_reason` instead of read as an empty answer.
+
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas
 accept only `image_url.url` and reject requests carrying anything more. Set it

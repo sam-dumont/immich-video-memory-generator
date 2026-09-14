@@ -47,6 +47,7 @@ FULL_ENV = {
     "MELIOUS_AI_BASE_URL": "https://hosted.invalid/v1",
     "MELIOUS_AI_KEY": "secret-melious-key",
     "ZAI_API_KEY": "secret-zai-key",
+    "ZAI_BASE_URL": "https://api.z.ai.invalid/api/anthropic",
     "MATRIX_FIXTURE_BASE_URL": "http://a-fixture.invalid:8078",
     # Supplied by the runner, never by the operator: it is read off the
     # LoadBalancer. Present here because build_plan is given what the runner
@@ -648,7 +649,9 @@ def test_a_hosted_cell_does_not_inherit_the_operators_llm_dialect(
     zai = rendered("k8s-hosted-zai")
     assert zai["llm"]["provider"] == "zai"
     assert "no_thinking_params" not in zai["llm"]
-    assert "base_url" not in zai["llm"], "the preset's own URL is the one serving completions"
+    # The drop is a default, and this cell names its own endpoint: the coding
+    # plan is served by the Anthropic-compatible route and nothing else.
+    assert zai["llm"]["base_url"] == "$ZAI_BASE_URL"
 
     # A hosted cell that names its own endpoint still gets the one it named.
     melious = rendered("nas-hosted-melious")

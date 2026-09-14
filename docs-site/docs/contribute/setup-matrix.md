@@ -114,15 +114,17 @@ Two files outside the repo, neither of them tracked:
 
 | File | Holds |
 |---|---|
-| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY` |
+| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
-There is no `ZAI_BASE_URL`: the `zai` provider preset carries the URL that serves
-`/chat/completions`, and the owner's own variable named z.ai's Anthropic-compatible endpoint, which
-answers 200 with a 404 body and `KeyError: 'choices'`. The runner drops `llm.base_url` out of a
-hosted cell's copied config so the preset can apply at all, along with `llm.no_thinking_params`,
-which is oMLX's chat-template switch and means nothing to a provider.
+`ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
+behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the preset's own
+`/api/paas/v4` answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever the
+request says. `provider: zai` picks its adapter from the base URL's path, so a `/api/anthropic` base
+gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
+cell's copied config, because the operator's own values would otherwise outrank the provider preset,
+and a cell that names either field gets the one it named.
 
 Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
 shell, which is the alias the config loader maps to `llm.api_key`.
