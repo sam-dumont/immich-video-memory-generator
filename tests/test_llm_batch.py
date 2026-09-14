@@ -11,6 +11,7 @@ import json
 import httpx
 import pytest
 
+from immich_memories.analysis import editorial_text_gateway as gateway
 from immich_memories.analysis import llm_batch, llm_metrics, llm_wire
 from immich_memories.analysis.editorial_text_gateway import SyncTextPromptRequester
 from immich_memories.analysis.llm_batch import (
@@ -79,8 +80,18 @@ async def _no_wait(_seconds: float) -> None:
     return None
 
 
-def _openai_wire(*, statuses: list[str], answers: dict[str, str]):
-    """A host that answers OpenAI's Batch API, walking the statuses given."""
+def _openai_wire(
+    *,
+    statuses: list[str],
+    answers: dict[str, str],
+    finish_reasons: dict[str, str] | None = None,
+    usage: dict[str, dict] | None = None,
+):
+    """A host that answers OpenAI's Batch API, walking the statuses given.
+
+    `finish_reasons` and `usage` are per answered line, so a test can stand a
+    host up as one that finished writing or one that ran out of room.
+    """
     remaining = list(statuses)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -93,8 +104,15 @@ def _openai_wire(*, statuses: list[str], answers: dict[str, str]):
                         "response": {
                             "status_code": 200,
                             "body": {
-                                "choices": [{"message": {"content": text}}],
-                                "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+                                "choices": [
+                                    {
+                                        "message": {"content": text},
+                                        "finish_reason": (finish_reasons or {}).get(key, "stop"),
+                                    }
+                                ],
+                                "usage": (usage or {}).get(
+                                    key, {"prompt_tokens": 10, "completion_tokens": 4}
+                                ),
                             },
                         },
                     }
@@ -311,35 +329,36 @@ def test_queued_reasoning_requests_keep_room_for_the_answer(provider, declared):
 
 
 @pytest.mark.parametrize("nested_usage", [False, True])
-def test_batch_reply_billing_reaches_each_private_call_record(tmp_path, nested_usage):
+def test_batch_reply_billing_reaches_each_private_call_record(tmp_path, nested_usage, monkeypatch):
+    """What a queued line billed, in either shape the hosts report reasoning in."""
     from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
 
-    config = _config(provider="openai-compatible", base_url="https://billing-batch.example.test/v1")
+    def _usage(completion: int, reasoning: int) -> dict:
+        billed = {"prompt_tokens": 10, "completion_tokens": completion}
+        detail = {"reasoning_tokens": reasoning}
+        if nested_usage:
+            billed["completion_tokens_details"] = detail
+        else:
+            billed.update(detail)
+        return billed
+
+    config = _config(base_url="https://billing-batch.example.test/v1")
     prompts = _prompts(config, 2)
-    wire = _openai_wire(
-        statuses=["completed"], answers={prompts[0].key: "", prompts[1].key: "answer"}
+    coordinator, _ = _coordinator(
+        config,
+        _openai_wire(
+            statuses=["completed"],
+            answers={prompts[0].key: "", prompts[1].key: "answer"},
+            finish_reasons={prompts[0].key: "length"},
+            usage={prompts[0].key: _usage(100, 100), prompts[1].key: _usage(50, 30)},
+        ),
     )
 
-    def handler(request):
-        response = wire(request)
-        if request.url.path.endswith("/files/out/content"):
-            rows = [json.loads(line) for line in response.text.splitlines()]
-            for index, row in enumerate(rows):
-                body = row["response"]["body"]
-                body["choices"][0]["finish_reason"] = "length" if index == 0 else "stop"
-                body["usage"] = {
-                    "prompt_tokens": 10,
-                    "completion_tokens": 100 if index == 0 else 50,
-                }
-                reasoning = {"reasoning_tokens": 100 if index == 0 else 30}
-                if nested_usage:
-                    body["usage"]["completion_tokens_details"] = reasoning
-                else:
-                    body["usage"].update(reasoning)
-            return httpx.Response(200, text="\n".join(json.dumps(row) for row in rows))
-        return response
+    async def fake_query(prompt, llm_config, **kwargs):
+        # WHY: replaces the realtime provider endpoint, the one external boundary.
+        return "live answer"
 
-    coordinator, calls = _coordinator(config, handler)
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
     requester = SyncTextPromptRequester(
         config,
         max_tokens=100,
@@ -350,23 +369,153 @@ def test_batch_reply_billing_reaches_each_private_call_record(tmp_path, nested_u
     with llm_metrics.collecting() as counters:
         before = counters.snapshot()
         requester.prefetch([("ask 0", 100), ("ask 1", 100)])
-        assert requester.request_with_budget("ask 0", max_tokens=100) == ""
+        assert requester.request_with_budget("ask 0", max_tokens=100) == "live answer"
         assert requester.request_with_budget("ask 1", max_tokens=100) == "answer"
-    records = [
-        json.loads(p.read_text()) for p in tmp_path.glob("pre-planner-calls/*.outcome.private.json")
+    queued = [
+        json.loads(p.read_text())
+        for p in tmp_path.glob("pre-planner-calls/*.outcome.private.json")
+        if json.loads(p.read_text())["request"]["transport"] == "batch"
     ]
-    assert sorted(r["reply"]["reasoning_tokens"] for r in records) == [30, 100]
-    assert {r["reply"]["finish_reason"] for r in records} == {"length", "stop"}
-    assert counters.since(before).as_metrics()["llm_batch_reasoning_tokens"] == 130
-    assert counters.snapshot().completion_tokens == 150
+    assert sorted(r["reply"]["reasoning_tokens"] for r in queued) == [30, 100]
+    assert {r["reply"]["finish_reason"] for r in queued} == {"length", "stop"}
+    spent = counters.since(before).as_metrics()
+    # Reasoning is billed inside completion_tokens, so it is reported and never re-added.
+    assert spent["llm_batch_reasoning_tokens"] == 130
+    assert spent["llm_reasoning_tokens"] == 130
+    assert spent["llm_completion_tokens"] == spent["llm_batch_completion_tokens"] == 150
 
-    assert counters.snapshot().since(before).batch_reasoning_tokens == 130
 
-    # The first result taught this undeclared host to reserve room on its next batch.
+def test_a_host_that_billed_for_thinking_gets_room_on_its_next_batch():
+    """An undeclared host teaches itself, the same memo the live path writes."""
+    config = _config(base_url="https://learns-batch.example.test/v1")
+    prompts = _prompts(config, 2)
+    coordinator, calls = _coordinator(
+        config,
+        _openai_wire(
+            statuses=["completed", "completed"],
+            answers={prompt.key: "answer" for prompt in prompts},
+            usage={
+                prompt.key: {"prompt_tokens": 10, "completion_tokens": 50, "reasoning_tokens": 30}
+                for prompt in prompts
+            },
+        ),
+    )
+
     coordinator.prefill(prompts)
+    for prompt in prompts:
+        coordinator.answer_for(prompt.key)
+    coordinator.prefill(prompts)
+
     uploads = [c for c in calls if c.url.path.endswith("/files")]
     first = json.loads(_multipart_file(uploads[0]).splitlines()[0])
     learned = json.loads(_multipart_file(uploads[1]).splitlines()[0])
     assert first["body"]["max_tokens"] == 100
-    assert learned["body"]["max_tokens"] == 100 + 16384
+    assert learned["body"]["max_tokens"] == 100 + llm_wire.REASONING_HEADROOM_TOKENS
     assert first["custom_id"] == learned["custom_id"]
+
+
+def test_a_queued_line_the_provider_cut_short_is_asked_live_instead(monkeypatch):
+    """A batched reply that ran out of room is not an answer, and is asked again live.
+
+    The key a batch line carries is the realtime path's own, which claims
+    `require_complete`: live, `finish_reason: length` raises and the caller
+    re-asks. A queued line handed back as though it had finished spends one of
+    the reader's unread-retry rounds and reports the model as unreadable
+    instead of the ceiling as too low.
+    """
+    config = _config(base_url="https://cut-short.example.test/v1")
+    keys = [batch_prompt_key(config, f"ask {n}", max_tokens=100) for n in range(2)]
+    coordinator, _ = _coordinator(
+        config,
+        _openai_wire(
+            statuses=["completed"],
+            answers={keys[0]: "", keys[1]: "whole answer"},
+            finish_reasons={keys[0]: "length"},
+        ),
+    )
+    asked_live: list[str] = []
+
+    async def fake_query(prompt, llm_config, **kwargs):
+        # WHY: replaces the realtime provider endpoint, the one external boundary.
+        asked_live.append(prompt)
+        return "live answer"
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    requester = SyncTextPromptRequester(
+        config, max_tokens=100, timeout_seconds=30, batch=coordinator
+    )
+    requester.prefetch([("ask 0", 100), ("ask 1", 100)])
+
+    assert requester.request_with_budget("ask 0", max_tokens=100) == "live answer"
+    assert requester.request_with_budget("ask 1", max_tokens=100) == "whole answer"
+    assert asked_live == ["ask 0"]
+
+
+def test_a_queued_line_that_stopped_with_nothing_written_is_asked_live_instead(monkeypatch):
+    """An empty answer channel is refused live after three tries; queued is no different."""
+    config = _config(base_url="https://empty-line.example.test/v1")
+    keys = [batch_prompt_key(config, f"ask {n}", max_tokens=100) for n in range(2)]
+    coordinator, _ = _coordinator(
+        config,
+        _openai_wire(statuses=["completed"], answers={keys[0]: "   ", keys[1]: "whole answer"}),
+    )
+
+    async def fake_query(prompt, llm_config, **kwargs):
+        # WHY: replaces the realtime provider endpoint, the one external boundary.
+        return "live answer"
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    requester = SyncTextPromptRequester(
+        config, max_tokens=100, timeout_seconds=30, batch=coordinator
+    )
+    requester.prefetch([("ask 0", 100), ("ask 1", 100)])
+
+    assert requester.request_with_budget("ask 0", max_tokens=100) == "live answer"
+
+
+def test_an_abandoned_queued_line_and_its_live_re_ask_are_both_on_the_record(tmp_path, monkeypatch):
+    """Cost and cause: what the queued line billed, and that the question was asked again."""
+    from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
+
+    config = _config(base_url="https://recorded-batch.example.test/v1")
+    key = batch_prompt_key(config, "ask 0", max_tokens=100)
+    coordinator, _ = _coordinator(
+        config,
+        _openai_wire(
+            statuses=["completed"],
+            answers={key: "", batch_prompt_key(config, "ask 1", max_tokens=100): "kept"},
+            finish_reasons={key: "length"},
+            usage={key: {"prompt_tokens": 10, "completion_tokens": 100, "reasoning_tokens": 100}},
+        ),
+    )
+
+    async def fake_query(prompt, llm_config, **kwargs):
+        # WHY: replaces the realtime provider endpoint, the one external boundary.
+        return "live answer"
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    requester = SyncTextPromptRequester(
+        config,
+        max_tokens=100,
+        timeout_seconds=30,
+        batch=coordinator,
+        artifacts=TextPromptArtifacts(lambda: tmp_path, "episodes"),
+    )
+    requester.prefetch([("ask 0", 100), ("ask 1", 100)])
+
+    with llm_metrics.collecting() as counters:
+        assert requester.request_with_budget("ask 0", max_tokens=100) == "live answer"
+
+    asked = [
+        json.loads(p.read_text()) for p in tmp_path.glob("pre-planner-calls/*.outcome.private.json")
+    ]
+    queued = next(r for r in asked if r["request"]["transport"] == "batch")
+    live = next(r for r in asked if r["request"]["transport"] == "realtime")
+    assert queued["reply"] == {
+        "finish_reason": "length",
+        "completion_tokens": 100,
+        "reasoning_tokens": 100,
+    }
+    assert queued["response_chars"] == 0
+    assert live["prompt_sha256"] == queued["prompt_sha256"]
+    assert counters.truncated == 1

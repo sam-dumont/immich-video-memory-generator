@@ -408,6 +408,8 @@ def _read_results(
     position: a stage can read them back in any order it likes.
     """
     answers: dict[str, LLMReply] = {}
+    resolved = resolved_llm_config(config)
+    endpoint = (resolved.base_url.rstrip("/"), resolved.model)
     for line in jsonl.splitlines():
         if not line.strip():
             continue
@@ -426,9 +428,8 @@ def _read_results(
             completion_tokens=reply.completion_tokens,
             reasoning_tokens=reply.reasoning_tokens,
         )
-        resolved = resolved_llm_config(config)
         if resolved.provider == "openai-compatible":
-            learn_reasoning((resolved.base_url.rstrip("/"), resolved.model), reply)
+            learn_reasoning(endpoint, reply)
     return answers
 
 

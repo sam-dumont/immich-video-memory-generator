@@ -411,10 +411,14 @@ reason, or its larger learned allowance. This is room to finish, not a fixed
 charge. Non-reasoning hosts keep the answer budget alone.
 
 Batch result records retain each reply's finish reason, completion tokens and
-reasoning tokens, including empty replies. Run metrics expose
-`llm_batch_reasoning_tokens` as a subset of completion tokens; it is not added
-to the total a second time. Reasoning reported by a batch also teaches the live
-caller that this server and model need reasoning headroom.
+reasoning tokens, including empty replies. A queued line the provider cut short,
+or one that stopped with nothing in the answer channel, is not handed back as an
+answer: it is recorded as it arrived, counted under `llm_truncated`, and asked
+again in real time, where the ceiling can still grow. Run metrics count a
+batch's reasoning inside `llm_reasoning_tokens`, and `llm_batch_reasoning_tokens`
+names the batched share of it; both are subsets of `llm_completion_tokens` and
+neither is added to it a second time. Reasoning reported by a batch also teaches
+the live caller that this server and model need reasoning headroom.
 
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and

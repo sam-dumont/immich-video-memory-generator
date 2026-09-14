@@ -467,13 +467,32 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
     return payload
 
 
-def read_batch_answer(config: LLMConfig, body: dict) -> str:
-    """The final answer out of one completed reply, in whichever dialect it arrived.
+# What each dialect says when the ceiling arrived before the answer ended:
+# OpenAI writes `finish_reason: "length"`, Anthropic `stop_reason: "max_tokens"`.
+TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens"})
 
-    Truncation is not distinguished here the way the live path distinguishes it:
-    a batched answer that hit its ceiling comes back as the partial text, and the
-    stage's own parser refuses it, which sends that one prompt back to the live
-    path with the doubled budget it would have got anyway.
+
+def batch_answer(reply: LLMReply) -> str | None:
+    """One queued line's answer, or None where the provider never finished writing it.
+
+    The live path refuses these two shapes under `require_complete`: a reply the
+    ceiling cut off, and a reply that stopped on its own with an empty answer
+    channel. A queued line is handed out under the realtime path's own judgment
+    key, which claims that contract, so it is held to the same rule -- otherwise
+    a starved line reaches the stage as a real answer and is reported as an
+    unreadable model rather than a ceiling too low.
+    """
+    if not (reply.content or "").strip():
+        return None
+    return None if reply.finish_reason in TRUNCATED_FINISH_REASONS else reply.content
+
+
+def read_batch_answer(config: LLMConfig, body: dict) -> str:
+    """The final answer channel out of one completed reply, in whichever dialect it arrived.
+
+    Whatever was written, including the partial text of a reply the ceiling cut
+    off: this reads the channel and `batch_answer` decides whether what is in it
+    counts as an answer.
     """
     if resolved_llm_config(config).provider == "anthropic":
         content = body.get("content")
