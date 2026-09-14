@@ -99,7 +99,7 @@ The spectrogram (Short-Time Fourier Transform) creates a unique frequency finger
 
 1. Extract 48kHz mono audio from each clip
 2. Compute STFT spectrogram (1024-sample window, 256 hop)
-3. For each consecutive pair: correlate first 100ms of clip B against clip A to find where B's audio starts in A's timeline
+3. For each consecutive pair: correlate the first 20 spectrogram frames of clip B, about 107 ms, against clip A to find where B's audio starts in A's timeline
 4. Compute shutter-centered handoff points (midpoint between consecutive shutters)
 5. Gap-aware: if a handoff falls before the next clip starts, extend the current clip to cover the hole
 6. Build FFmpeg filter: trim each clip at its handoff points, normalize exposure, 30ms audio fade at boundaries, concatenate
@@ -120,25 +120,15 @@ Non-overlapping clips (gap > clip duration) are NOT merged: they stay as separat
 
 The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
 
-For devices without audio (like Google Pixel Motion Photos), spectrogram alignment is automatically skipped and clips are kept individual. See the [Device support](#device-support) section for details.
+Alignment is skipped when there is no audio to correlate, and also when the material is strict, when shutter timestamps are missing, or when there is only one clip. Nothing here keys on the device: a Pixel Motion Photo skips alignment because it carries no audio track, not because it is a Pixel. See [Device support](#device-support).
 
 ## Configuration
 
-```yaml
-analysis:
-  include_live_photos: true                # ON by default
-  live_photo_merge_window_seconds: 10.0    # Max gap between photos to form a burst
-  live_photo_min_clip_seconds: 3.5         # Shorter than this, it ships as a photograph
-```
-
-Two Live Photos inside that window are already a burst: pairs are common for quick
-reactions, and there is no minimum-count key to raise.
-
-In the web UI it is the **Include Live Photos** switch under Advanced on the Memory page. Via CLI:
-
-```bash
-immich-memories generate --include-live-photos --year 2024
-```
+The `analysis.*` Live Photo keys and their defaults are in the
+[config reference](../../reference/config-reference.md#video-analysis). The two that decide
+anything: `live_photo_min_clip_seconds` (3.5) is the gate a Live Photo's motion has to clear before
+its video is used at all, and `include_live_photos` (true) is the master switch. The CLI's
+`--include-live-photos` cannot turn the feature back on when the config says false; both are ANDed.
 
 ## Device support
 
@@ -158,11 +148,13 @@ Samsung Motion Photos take the Apple path and appear to work; nobody here owns o
 
 Google Pixel Motion Photos are fundamentally different: very short clips (0.7-1.3 seconds), no audio track, and no temporal overlap between consecutive shots. immich-memories detects Pixel clips via EXIF and:
 
-1. **Uses a shorter clip duration** (1.5s instead of 3.0s) for overlap detection
-2. **Skips spectrogram alignment**: no audio means no spectral fingerprint to correlate
-3. **Doesn't force-merge rapid bursts**: Pixel clips taken 2+ seconds apart are treated as individual clips, not concatenated into a single burst
+1. **Uses a shorter assumed clip duration** (1.5s instead of 3.0s) for overlap detection. This is
+   the only branch in the code that reads the device.
+2. **Skips spectrogram alignment**: no audio means no spectral fingerprint to correlate, and the
+   no-audio case is what the skip actually tests.
 
-This means 4 rapid-fire Pixel photos become 4 individual clips in your memory video, not one merged blob with jarring cuts between unrelated 0.7-second segments.
+There is no force-merge path anywhere, for any device, so nothing is being switched off for Pixel:
+4 rapid-fire Pixel photos become 4 individual clips because no rule was ever going to join them.
 
 ## When to enable
 

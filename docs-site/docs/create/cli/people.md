@@ -138,7 +138,7 @@ same schema, through the same writer.
 
 ## The editor
 
-The same file is a page in the web UI, **Settings → People**: one card per person with their
+The same file is a page in the web UI, **People** in the sidebar: one card per person with their
 face crop, tier and evidence, a role select, notes, and the links the scan found with a ✓ / ✗ on
 each. Everything the page writes lands in `people.yaml`; everything you edit by hand shows up
 there. See [Settings](../web-ui/settings.mdx#people-confirming-whos-who).

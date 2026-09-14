@@ -39,8 +39,9 @@ Descriptions do the discriminating work that scores can't:
 - **Duplicates are judged on content.** Two clips of the same cake, a couple of
   minutes apart, are one moment: keep the better one. Two toasts at the same
   party are two moments. Perceptual hashing can't tell these apart; a sentence
-  about each can. (Five minutes is the hard edge: beyond that, things are
-  separate moments whatever they show.)
+  about each can. Time on its own settles nothing here: the five-minute
+  `photos.burst_window_seconds` groups a burst, it does not say two things an
+  hour apart are separate moments.
 - **Picture choices follow moments.** The planner chooses a representation
   of each selected moment. Extra variants do not count as extra events.
 - **Missing evidence is reported.** Required source and annotation coverage

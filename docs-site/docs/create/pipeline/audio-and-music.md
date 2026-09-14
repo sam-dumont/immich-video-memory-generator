@@ -54,6 +54,9 @@ Two modes:
 | `api` (default) | HTTP to an ACE-Step server, polled every 3 s. The server owns the loaded models; `model_variant` and `lm_model_size` here do not switch them |
 | `lib` | The model in this process: MLX on Apple Silicon, CUDA on NVIDIA, PyTorch CPU otherwise. Python 3.12 or earlier. Falls back to `api` when the package is missing |
 
+A worked example, not the defaults. Shipped, `enabled` is `false`, `mode` is `api`,
+`model_variant` is `turbo` (the 2B family) and `lm_model_size` is `1.7B`:
+
 ```yaml
 ace_step:
   enabled: true
