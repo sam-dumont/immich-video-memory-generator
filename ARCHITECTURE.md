@@ -148,6 +148,7 @@ src/immich_memories/
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
+│   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
 │   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
@@ -461,6 +462,14 @@ and audit directory; completed call records are merged in source order.
 `editorial_story_planner.py` overlaps event inventories, retaining sequential
 pages within each event. Prompts and judgment identities do not include the
 concurrency setting.
+
+How many jobs overlap comes from `llm_providers.reader_concurrency`, which reads
+the endpoint when `llm.reader_concurrency` is unset: one job for a model on this
+machine or this private network, four for a hosted one. `llm_single_flight.py`
+keeps the bank's deduplication under concurrency, so two jobs carrying the same
+judgment key cannot both pay for it. `provider_failure.THROTTLE` is the shared
+pause a 429 puts on every reader at once, and `retry_wait` spreads each caller's
+own wait so they do not retry in lockstep.
 
 ### Pipeline Flow (story-first)
 

@@ -311,6 +311,21 @@ def _forget_learned_endpoints():
 
 
 @pytest.fixture(autouse=True)
+def _open_the_throttle_gate():
+    """Clear the shared provider pause one test shut, before the next one runs.
+
+    A rate limit holds every caller in the process until the window the provider
+    named has passed, which is right in a run. Tests fake the clock by replacing
+    sleep, so the window never passes on its own and the next test inherits it.
+    """
+    from immich_memories.analysis import provider_failure
+
+    provider_failure.THROTTLE._until = 0.0
+    yield
+    provider_failure.THROTTLE._until = 0.0
+
+
+@pytest.fixture(autouse=True)
 def _no_leaked_drain_threads():
     """Fail any test that leaves a stderr drain thread spinning.
 

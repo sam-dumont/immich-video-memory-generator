@@ -174,8 +174,20 @@ upload:
 
 ## Reader concurrency
 
-`advanced.llm.reader_concurrency` defaults to 4. The reader overlaps independent
-event inventories and worthiness/standing blocks, while keeping each chain of
-pages sequential. Lower it to 1 for a server that works best on one request at
-a time; values up to 16 are accepted. Changing it keeps existing judgment banks
-usable. The rules reader makes no model calls and is unaffected.
+The reader overlaps independent event inventories and worthiness/standing
+blocks, while keeping each chain of pages sequential.
+
+`advanced.llm.reader_concurrency` is unset by default, and the number is then
+read from `llm.base_url`:
+
+| endpoint | jobs in flight |
+| --- | --- |
+| `localhost`, a loopback or private address, a bare service name | 1 |
+| a public host such as `https://api.openai.com/v1` | 4 |
+
+A model on your own machine or your own network is one process in front of one
+accelerator, so four requests there queue instead of overlapping. A hosted
+endpoint is a fleet and answers four as easily as one. Set the key yourself to
+override the rule: any value from 1 to 16, with 1 keeping the reader
+sequential. Changing it keeps existing judgment banks usable. The rules reader
+makes no model calls and is unaffected.

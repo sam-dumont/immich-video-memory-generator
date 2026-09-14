@@ -409,7 +409,9 @@ def test_a_throttled_text_reader_waits_instead_of_ending_the_run(tmp_path, monke
 
     assert judge.ask("story-episodes-1", "Read this page.", max_tokens=300)
 
-    assert waits == [11.0]  # the provider's own Retry-After
+    # The provider's own Retry-After, spread by the jitter that keeps overlapping
+    # readers from retrying in lockstep, and never shorter than it asked for.
+    assert len(waits) == 1 and 11.0 <= waits[0] <= 16.5
     assert not list((out / "calls").glob("*failure*"))
 
 
@@ -460,7 +462,7 @@ def test_one_503_does_not_end_a_run_that_has_answered_187_calls(tmp_path, monkey
 
     assert judge.ask("story-episodes-1", "Read this page.", max_tokens=300)
 
-    assert waits == [2.0]
+    assert len(waits) == 1 and 2.0 <= waits[0] <= 3.0
     assert not list((out / "calls").glob("*failure*"))
 
 

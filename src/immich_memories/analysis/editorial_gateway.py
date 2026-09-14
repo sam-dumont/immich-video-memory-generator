@@ -26,8 +26,10 @@ from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.provider_failure import (
     RETRY_ATTEMPTS,
+    THROTTLE,
     ProviderCredentialRejected,
     announce_retry,
+    group_wait,
     provider_failure,
     retry_wait,
 )
@@ -240,6 +242,11 @@ class VisualEditorialGateway:
         rate limit: a reader throttled for a minute would otherwise come out of the
         comparison with fewer facts than its neighbours and read as a worse model.
         """
+        held = THROTTLE.pause()
+        if held:
+            # Another call is already waiting out a rate limit on this key. Joining it
+            # beats spending an attempt discovering the same throttle.
+            time.sleep(held)
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
                 return _run_sync(
@@ -269,7 +276,7 @@ class VisualEditorialGateway:
                 if wait is None:
                     raise
                 announce_retry(logger, refusal, wait, attempt)
-                time.sleep(wait)
+                time.sleep(group_wait(refusal, wait))
         raise AssertionError("rate-limited visual request must return or raise")
 
     def _record(

@@ -23,6 +23,10 @@ The four meanings must not be collapsed, because they want opposite handling:
 from __future__ import annotations
 
 import logging
+import random
+import threading
+import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +48,9 @@ _UNAVAILABLE_STATUS = frozenset({502, 503, 504})
 
 # A provider can name a wait far beyond any sensible run; honour it, but bounded.
 MAX_RETRY_AFTER_SECONDS = 120.0
+# How much of the wait is spread, as a fraction added on top of it. A bounded
+# wait stays bounded: at most 1.5 x MAX_RETRY_AFTER_SECONDS.
+RETRY_JITTER = 0.5
 # A throttled or downed provider is asked again rather than costing a stage its answer.
 RETRY_ATTEMPTS = 4
 # A bare 500 does not say whose fault it was. One more try, then it is the answer.
@@ -112,15 +119,62 @@ class ProviderCredentialRejected(RuntimeError):
         self.failure = failure
 
 
+class ThrottleGate:
+    """One provider pause shared by every call in flight.
+
+    Overlapping readers turn one 429 into N. Each used to sleep its own span and
+    they all came back at once, at N times the request rate the provider had just
+    refused, which is the shape that keeps a throttle closed. A throttle answered
+    anywhere holds the whole group until the window the provider named has passed.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._until = 0.0
+
+    def hold(self, seconds: float) -> None:
+        """Shut the gate for at least this long, never shortening a longer hold."""
+        with self._lock:
+            self._until = max(self._until, self._clock() + seconds)
+
+    def pause(self) -> float:
+        """Seconds this caller owes the throttle before it may ask."""
+        with self._lock:
+            return max(0.0, self._until - self._clock())
+
+
+# Process-wide, because a rate limit belongs to the API key and every reader here
+# is spending the same one.
+THROTTLE = ThrottleGate()
+
+
 def retry_wait(failure: ProviderFailure | None, attempt: int) -> float | None:
     """Seconds to wait before asking again, or None when asking again cannot help.
 
     The provider's own Retry-After wins over our backoff: it knows when its window
-    reopens and we are only guessing.
+    reopens and we are only guessing. The jitter is added above that wait and never
+    below it, so honouring the header stays honouring it; what it buys is that four
+    throttled calls do not come back in the same millisecond.
     """
     if failure is None or attempt >= failure.attempts:
         return None
-    return failure.retry_after if failure.retry_after is not None else 2.0 * attempt
+    base = failure.retry_after if failure.retry_after is not None else 2.0 * attempt
+    return base + random.uniform(0.0, base * RETRY_JITTER)  # noqa: S311 - spread, not a secret
+
+
+def group_wait(failure: ProviderFailure, wait: float) -> float:
+    """This caller's wait, made the group's and widened to any longer hold already on it.
+
+    A rate limit belongs to the key, not to the call that happened to hit it, so the
+    calls that have not been refused yet wait it out too -- see `THROTTLE.pause()`,
+    which they consult before their first attempt. Anything else is this call's own
+    weather and nobody else needs to sit it out.
+    """
+    if failure.kind != RATE_LIMITED:
+        return wait
+    THROTTLE.hold(wait)
+    return THROTTLE.pause()
 
 
 def announce_retry(

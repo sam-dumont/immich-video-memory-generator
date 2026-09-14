@@ -425,7 +425,7 @@ def test_a_downed_provider_is_waited_out_before_it_costs_a_picture(tmp_path, mon
         assert reader.metrics()["provider_unavailable"] == 0
     finally:
         reader.close()
-    assert waits == [2.0]
+    assert len(waits) == 1 and 2.0 <= waits[0] <= 3.0
 
 
 def test_a_provider_that_stays_down_is_recorded_apart_from_a_refusal(tmp_path, monkeypatch):
@@ -456,7 +456,7 @@ def test_a_bare_500_is_asked_once_more_and_no_further(tmp_path, monkeypatch):
         assert reader.observe("a")["reason"] == "provider_unavailable"
     finally:
         reader.close()
-    assert len(calls) == 2 and waits == [2.0]
+    assert len(calls) == 2 and len(waits) == 1 and 2.0 <= waits[0] <= 3.0
 
 
 RATE_LIMIT = "code rate_limit, message 'slow down'"
@@ -483,7 +483,9 @@ def test_a_rate_limit_is_waited_out_before_it_can_cost_a_picture(tmp_path, monke
         assert reader.metrics()["rate_limited"] == 0
     finally:
         reader.close()
-    assert waits == [7.0]  # the provider's own Retry-After, not our backoff
+    # The provider's own Retry-After rather than our backoff, spread by the jitter
+    # that keeps overlapping callers from retrying in lockstep, never shorter.
+    assert len(waits) == 1 and 7.0 <= waits[0] <= 10.5
 
 
 def test_an_unending_rate_limit_is_recorded_apart_from_a_refusal(tmp_path, monkeypatch):

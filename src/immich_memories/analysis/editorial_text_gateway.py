@@ -25,11 +25,14 @@ from immich_memories.analysis.editorial_text_failures import TextCompletionFailu
 from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPrompt, batch_prompt_key
 from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_query import query_llm
+from immich_memories.analysis.llm_single_flight import TEXT_JUDGMENTS
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
 from immich_memories.analysis.provider_failure import (
     RETRY_ATTEMPTS,
+    THROTTLE,
     announce_retry,
+    group_wait,
     provider_failure,
     retry_wait,
 )
@@ -105,27 +108,41 @@ class QueryTextRequester:
         started = self._monotonic()
         cache = JudgmentCache(request.cache_path)
         try:
-            raw = self._usable_banked_answer(cache, request, accepts)
-            cache_hit = raw is not None
-            if raw is None:
-                failure = TextCompletionFailure.from_record(
-                    cache.completion_failure_for(request.judgment_key)
-                )
-                if failure is not None:
-                    llm_metrics.record_cache_hit()
-                    raise failure
-                raw = await self._bounded_query(request, cache)
-                if accepts is None or accepts(raw):
-                    cache.remember(request.judgment_key, raw)
+            banked = self._usable_banked_answer(cache, request, accepts)
+            if banked is None:
+                # Overlapping readers can carry the same question. Only one of them
+                # pays for it; the rest wait here and read what it banked.
+                with TEXT_JUDGMENTS.key(request.judgment_key):
+                    banked = self._usable_banked_answer(cache, request, accepts)
+                    raw = (
+                        banked if banked is not None else await self._paid(cache, request, accepts)
+                    )
+            else:
+                raw = banked
         finally:
             cache.close()
         return TextCall(
             prompt=request.prompt,
             raw=raw,
             wall_seconds=self._monotonic() - started,
-            cache_hit=cache_hit,
+            cache_hit=banked is not None,
             thinking=request.thinking,
         )
+
+    async def _paid(
+        self, cache: JudgmentCache, request: TextRequest, accepts: Callable[[str], bool] | None
+    ) -> str:
+        """Ask the provider once, unless this exact question is already banked as failed."""
+        failure = TextCompletionFailure.from_record(
+            cache.completion_failure_for(request.judgment_key)
+        )
+        if failure is not None:
+            llm_metrics.record_cache_hit()
+            raise failure
+        raw = await self._bounded_query(request, cache)
+        if accepts is None or accepts(raw):
+            cache.remember(request.judgment_key, raw)
+        return raw
 
     @staticmethod
     def _usable_banked_answer(
@@ -187,6 +204,11 @@ class QueryTextRequester:
         every attempt, so the last completed POST is still the one on the record.
         """
         watch = billed.watching(watch_provider("reader", request.llm_config))
+        held = THROTTLE.pause()
+        if held:
+            # Another reader is already waiting out a rate limit on this key. Joining
+            # it beats spending an attempt discovering the same throttle.
+            await asyncio.sleep(held)
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
                 return await query_llm(
@@ -206,7 +228,7 @@ class QueryTextRequester:
                 if wait is None or refusal is None:
                     raise
                 announce_retry(logger, refusal, wait, attempt)
-                await asyncio.sleep(wait)
+                await asyncio.sleep(group_wait(refusal, wait))
         raise AssertionError("rate-limited text request must return or raise")
 
     async def _query(self, request: TextRequest, *, max_tokens: int, billed: BilledReply) -> str:
