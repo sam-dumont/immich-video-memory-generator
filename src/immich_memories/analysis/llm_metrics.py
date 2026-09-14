@@ -58,6 +58,7 @@ class LLMCounters:
     batch_calls: int = 0
     batch_prompt_tokens: int = 0
     batch_completion_tokens: int = 0
+    batch_reasoning_tokens: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False, compare=False)
 
     def as_metrics(self) -> dict[str, float | int]:
@@ -82,6 +83,7 @@ class LLMCounters:
                 "llm_batch_calls": self.batch_calls,
                 "llm_batch_prompt_tokens": self.batch_prompt_tokens,
                 "llm_batch_completion_tokens": self.batch_completion_tokens,
+                "llm_batch_reasoning_tokens": self.batch_reasoning_tokens,
             }
         return {name: value for name, value in candidates.items() if value}
 
@@ -101,6 +103,7 @@ class LLMCounters:
                 batch_completion_tokens=(
                     self.batch_completion_tokens - mark.batch_completion_tokens
                 ),
+                batch_reasoning_tokens=self.batch_reasoning_tokens - mark.batch_reasoning_tokens,
             )
 
     def snapshot(self) -> LLMCounters:
@@ -117,6 +120,7 @@ class LLMCounters:
                 batch_calls=self.batch_calls,
                 batch_prompt_tokens=self.batch_prompt_tokens,
                 batch_completion_tokens=self.batch_completion_tokens,
+                batch_reasoning_tokens=self.batch_reasoning_tokens,
             )
 
 
@@ -137,7 +141,9 @@ def record_reply(
         counters.completion_tokens += completion_tokens
 
 
-def record_batch_reply(*, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
+def record_batch_reply(
+    *, prompt_tokens: int = 0, completion_tokens: int = 0, reasoning_tokens: int = 0
+) -> None:
     """One reply arrived from a provider batch rather than a live call."""
     counters = _active.get()
     if counters is None:
@@ -149,6 +155,7 @@ def record_batch_reply(*, prompt_tokens: int = 0, completion_tokens: int = 0) ->
         counters.batch_prompt_tokens += prompt_tokens
         counters.completion_tokens += completion_tokens
         counters.batch_completion_tokens += completion_tokens
+        counters.batch_reasoning_tokens += reasoning_tokens
 
 
 def record_truncation() -> None:

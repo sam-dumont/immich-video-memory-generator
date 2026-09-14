@@ -11,7 +11,7 @@ import json
 import httpx
 import pytest
 
-from immich_memories.analysis import llm_batch, llm_metrics
+from immich_memories.analysis import llm_batch, llm_metrics, llm_wire
 from immich_memories.analysis.editorial_text_gateway import SyncTextPromptRequester
 from immich_memories.analysis.llm_batch import (
     BatchCoordinator,
@@ -28,14 +28,16 @@ from immich_memories.operations.cancellation import PipelineCancelled, cancellat
 def _forget_probed_routes():
     """The served-route memo is process-wide by design, like the dialect memo."""
     llm_batch._SERVED_ROUTES.clear()
+    llm_wire._REASONING_HEADROOM.clear()
     yield
     llm_batch._SERVED_ROUTES.clear()
+    llm_wire._REASONING_HEADROOM.clear()
 
 
 def _config(**overrides) -> LLMConfig:
     return LLMConfig(
         **{
-            "provider": "openai",
+            "provider": "openai-compatible",  # Generic non-reasoning host speaking the OpenAI protocol.
             "base_url": "https://api.example.test/v1",
             "model": "a-model",
             "api_key": "k",
@@ -146,7 +148,7 @@ def test_an_openai_batch_answers_every_prompt_it_was_given():
 
     coordinator.prefill(prompts)
 
-    assert [coordinator.answer_for(p.key) for p in prompts] == list(answers.values())
+    assert [coordinator.answer_for(p.key).content for p in prompts] == list(answers.values())
     submitted = next(c for c in calls if c.url.path.endswith("/files"))
     lines = [json.loads(line) for line in _multipart_file(submitted).splitlines()]
     assert [line["custom_id"] for line in lines] == [p.key for p in prompts]
@@ -164,7 +166,7 @@ def test_an_answer_is_handed_out_once_and_then_asked_for_real():
 
     coordinator.prefill(prompts)
 
-    assert coordinator.answer_for(prompts[0].key) == "only this one"
+    assert coordinator.answer_for(prompts[0].key).content == "only this one"
     assert coordinator.answer_for(prompts[0].key) is None
     assert coordinator.answer_for(prompts[1].key) is None
 
@@ -228,8 +230,8 @@ def test_message_batch_results_are_read_by_custom_id_not_by_position():
     coordinator, _ = _coordinator(config, handler)
     coordinator.prefill(prompts)
 
-    assert coordinator.answer_for(prompts[0].key) == "ASK 0"
-    assert coordinator.answer_for(prompts[1].key) == "ASK 1"
+    assert coordinator.answer_for(prompts[0].key).content == "ASK 0"
+    assert coordinator.answer_for(prompts[1].key).content == "ASK 1"
 
 
 def test_a_batched_reply_is_counted_apart_from_a_live_one():
@@ -289,3 +291,82 @@ def test_a_stop_during_the_wait_is_not_read_as_a_provider_failure():
 
     with cancellation_scope(stop), pytest.raises(PipelineCancelled):
         coordinator.prefill(_prompts(config, 4))
+
+
+@pytest.mark.parametrize("provider,declared", [("openai", False), ("openai-compatible", True)])
+def test_queued_reasoning_requests_keep_room_for_the_answer(provider, declared):
+    config = _config(
+        provider=provider,
+        always_reasons=declared,
+        base_url="https://reasoning-batch.example.test/v1",
+        max_tokens_param="max_completion_tokens",
+    )
+    prompts = _prompts(config, 2)
+    coordinator, calls = _coordinator(config, _openai_wire(statuses=["completed"], answers={}))
+    coordinator.prefill(prompts)
+    submitted = next(c for c in calls if c.url.path.endswith("/files"))
+    lines = [json.loads(line) for line in _multipart_file(submitted).splitlines()]
+    assert all(line["body"]["max_completion_tokens"] == 100 + 16384 for line in lines)
+    assert all("max_tokens" not in line["body"] for line in lines)
+
+
+@pytest.mark.parametrize("nested_usage", [False, True])
+def test_batch_reply_billing_reaches_each_private_call_record(tmp_path, nested_usage):
+    from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
+
+    config = _config(provider="openai-compatible", base_url="https://billing-batch.example.test/v1")
+    prompts = _prompts(config, 2)
+    wire = _openai_wire(
+        statuses=["completed"], answers={prompts[0].key: "", prompts[1].key: "answer"}
+    )
+
+    def handler(request):
+        response = wire(request)
+        if request.url.path.endswith("/files/out/content"):
+            rows = [json.loads(line) for line in response.text.splitlines()]
+            for index, row in enumerate(rows):
+                body = row["response"]["body"]
+                body["choices"][0]["finish_reason"] = "length" if index == 0 else "stop"
+                body["usage"] = {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 100 if index == 0 else 50,
+                }
+                reasoning = {"reasoning_tokens": 100 if index == 0 else 30}
+                if nested_usage:
+                    body["usage"]["completion_tokens_details"] = reasoning
+                else:
+                    body["usage"].update(reasoning)
+            return httpx.Response(200, text="\n".join(json.dumps(row) for row in rows))
+        return response
+
+    coordinator, calls = _coordinator(config, handler)
+    requester = SyncTextPromptRequester(
+        config,
+        max_tokens=100,
+        timeout_seconds=30,
+        batch=coordinator,
+        artifacts=TextPromptArtifacts(lambda: tmp_path, "episodes"),
+    )
+    with llm_metrics.collecting() as counters:
+        before = counters.snapshot()
+        requester.prefetch([("ask 0", 100), ("ask 1", 100)])
+        assert requester.request_with_budget("ask 0", max_tokens=100) == ""
+        assert requester.request_with_budget("ask 1", max_tokens=100) == "answer"
+    records = [
+        json.loads(p.read_text()) for p in tmp_path.glob("pre-planner-calls/*.outcome.private.json")
+    ]
+    assert sorted(r["reply"]["reasoning_tokens"] for r in records) == [30, 100]
+    assert {r["reply"]["finish_reason"] for r in records} == {"length", "stop"}
+    assert counters.since(before).as_metrics()["llm_batch_reasoning_tokens"] == 130
+    assert counters.snapshot().completion_tokens == 150
+
+    assert counters.snapshot().since(before).batch_reasoning_tokens == 130
+
+    # The first result taught this undeclared host to reserve room on its next batch.
+    coordinator.prefill(prompts)
+    uploads = [c for c in calls if c.url.path.endswith("/files")]
+    first = json.loads(_multipart_file(uploads[0]).splitlines()[0])
+    learned = json.loads(_multipart_file(uploads[1]).splitlines()[0])
+    assert first["body"]["max_tokens"] == 100
+    assert learned["body"]["max_tokens"] == 100 + 16384
+    assert first["custom_id"] == learned["custom_id"]

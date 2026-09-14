@@ -23,7 +23,7 @@ from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPrompt, ba
 from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_text_identity import text_model_identity
-from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMReply, LLMTransportAttempt
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cache.judgment_cache import JudgmentCache
 from immich_memories.config_models_llm import LLMConfig
@@ -268,7 +268,7 @@ class SyncTextPromptRequester:
             ]
         )
 
-    def _batched(self, prompt: str, max_tokens: int) -> str | None:
+    def _batched(self, prompt: str, max_tokens: int) -> LLMReply | None:
         if self.batch is None:
             return None
         key = batch_prompt_key(self.llm_config, prompt, max_tokens=max_tokens)
@@ -301,8 +301,16 @@ class SyncTextPromptRequester:
         )
         if batched is not None:
             if self.artifacts:
-                self.artifacts.finish(call, raw=batched)
-            return batched
+                self.artifacts.finish(
+                    call,
+                    raw=batched.content or "",
+                    billed={
+                        "finish_reason": batched.finish_reason,
+                        "completion_tokens": batched.completion_tokens,
+                        "reasoning_tokens": batched.reasoning_tokens,
+                    },
+                )
+            return batched.content or ""
         billed = BilledReply()
         try:
             raw = await query_llm(

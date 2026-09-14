@@ -428,11 +428,10 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
 
     Built from the dialect helpers the live path uses rather than beside them,
     so a banked batch answer is the answer asking in real time would have given.
-    Reasoning is never requested here: the batched stages are the bulk reads,
-    and a queued reasoning call is the one shape whose price is not halved. Nor
-    is the live path's reasoning headroom granted — a queued line that spends
-    the answer's budget thinking comes back empty and is re-asked live, which is
-    what this route already does with every answer its stage refuses.
+    Bulk reads ask for reasoning to be disabled where the host allows it.
+    Hosts known to reason still receive the live path's reasoning headroom,
+    before provider shaping renames the token field. The caller's answer
+    budget and judgment key stay unchanged.
     """
     resolved = resolved_llm_config(config)
     if resolved.provider == "anthropic":
@@ -443,6 +442,10 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
     payload = openai_payload(prompt, resolved, DEFAULT_TEMPERATURE, max_tokens, (), "low")
     if resolved.no_thinking_params:
         payload.update(resolved.no_thinking_params)
+    endpoint = (resolved.base_url.rstrip("/"), resolved.model)
+    headroom = reasoning_headroom(endpoint, declared=resolved.always_reasons)
+    if headroom:
+        apply_reasoning_headroom(payload, max_tokens, headroom)
     shape_for_provider(payload, resolved)
     apply_adaptations(
         payload,
