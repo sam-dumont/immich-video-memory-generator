@@ -260,10 +260,11 @@ Two files outside the repo, neither of them tracked:
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
 `ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
-behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the preset's own
-`/api/paas/v4` answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever the
-request says. `provider: zai` picks its adapter from the base URL's path, so a `/api/anthropic` base
-gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
+behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the other route,
+`/api/paas/v4`, answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever
+the request says. The `zai` preset defaults to the Anthropic route as well, so a cell that names no
+base URL lands on the right one. `provider: zai` picks its adapter from the base URL's path, so a
+`/api/anthropic` base gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
 cell's copied config, because the operator's own values would otherwise outrank the provider preset,
 and a cell that names either field gets the one it named.
 

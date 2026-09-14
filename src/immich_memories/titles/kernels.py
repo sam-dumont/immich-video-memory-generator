@@ -95,6 +95,11 @@ def init_kernels() -> str | None:
     return None
 
 
+def initialized_kernel_backend() -> str | None:
+    """The backend title kernels landed on, or None while they have not initialized."""
+    return _kernel_arch
+
+
 def _kernel_library_version() -> str:
     """The loaded library's version, however it chooses to expose it."""
     version = getattr(ti, "__version__", None)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -124,17 +125,15 @@ def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) 
     success, output = _run_ffmpeg_check(args)
     if not success:
         logger.info("Hardware encoder probe failed for %s: %s", encoder_args, output.strip()[-200:])
-        advice = _probe_failure_advice(output)
-        if advice:
-            logger.warning("Hardware encoding is unavailable: %s", advice)
+        warning = _probe_failure_advice(output, encoder_args)
+        if warning:
+            logger.warning("%s", warning)
     return success
 
 
-# Probe failures that have a known cause and a known fix. Everything else is
-# reported verbatim; these three otherwise read as "could not open encoder",
-# which tells a user nothing about what to change. All three were hit for real
-# on the owner's hardware.
-_PROBE_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
+# NVENC failures that name their own cause in the ffmpeg output. Both were hit
+# for real on the owner's hardware; everything else NVENC prints is a bare errno.
+_NVENC_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
     (
         "minimum required nvidia driver",
         "this FFmpeg was built against a newer NVENC SDK than your driver provides. "
@@ -146,6 +145,10 @@ _PROBE_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
         "grants compute and utility only, so add the `video` driver capability "
         "(NVIDIA_DRIVER_CAPABILITIES=compute,video,utility)",
     ),
+)
+
+# VAAPI and QSV both go through libva, and both fail this way with no render node.
+_LIBVA_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
     (
         "device creation failed",
         "libva could not open a device. Check that /dev/dri is passed into the "
@@ -153,12 +156,86 @@ _PROBE_FAILURE_ADVICE: tuple[tuple[str, str], ...] = (
     ),
 )
 
+# What a container that got the GPU for compute and not for video prints: the
+# probe dies with `Terminating thread with return code -22 (Invalid argument)`,
+# which reads like a bad ffmpeg flag and names nothing a user can change (#936).
+_NVENC_CAPABILITY_HINT = (
+    "NVENC is unavailable: the container sees the GPU for compute but not for video; "
+    "set NVIDIA_DRIVER_CAPABILITIES=compute,video,utility "
+    "(Docker: hwaccel.transcoding nvidia; Kubernetes: overlays/gpu) "
+    "and the runtime class nvidia"
+)
 
-def _probe_failure_advice(output: str) -> str | None:
+
+def _probe_failure_advice(output: str, encoder_args: list[str]) -> str | None:
+    """The line a user can act on, chosen by which encoder failed and not by the message.
+
+    `Device creation failed: -22` comes out of a failed NVENC probe as readily as a
+    failed VAAPI one, so matching on the output alone sent NVENC users to /dev/dri
+    and the render group, which is somebody else's problem (#936).
+    """
     lowered = output.lower()
-    return next(
-        (advice for signature, advice in _PROBE_FAILURE_ADVICE if signature in lowered), None
-    )
+    if any(arg.endswith("_nvenc") for arg in encoder_args):
+        named = _first_signature_match(lowered, _NVENC_FAILURE_ADVICE)
+        if named:
+            return f"Hardware encoding is unavailable: {named}"
+        return nvenc_capability_hint()
+    named = _first_signature_match(lowered, _LIBVA_FAILURE_ADVICE)
+    return f"Hardware encoding is unavailable: {named}" if named else None
+
+
+def _first_signature_match(lowered: str, table: tuple[tuple[str, str], ...]) -> str | None:
+    return next((advice for signature, advice in table if signature in lowered), None)
+
+
+def nvenc_capability_hint() -> str | None:
+    """The driver-capability line when this machine has an NVIDIA GPU, else None.
+
+    Only worth saying when a card is actually present: on a GPU-less host NVENC
+    failing is the expected answer, not a misconfiguration.
+    """
+    return _NVENC_CAPABILITY_HINT if _nvidia_gpu_is_visible() else None
+
+
+def _nvidia_gpu_is_visible() -> bool:
+    """Whether a GPU was handed to this process at all.
+
+    Three independent witnesses because the interesting case is precisely the one
+    where the encode path cannot see the card: the runtime's own env marker, a
+    working `nvidia-smi`, and title kernels that already landed on CUDA. `void`
+    and `none` are what the container runtime writes for "no GPU here".
+    """
+    devices = os.environ.get("NVIDIA_VISIBLE_DEVICES", "").strip().lower()
+    if devices not in {"", "void", "none"}:
+        return True
+    return _title_kernels_on_cuda() or _nvidia_smi_lists_a_gpu()
+
+
+def _title_kernels_on_cuda() -> bool:
+    """Did the title kernels already initialize on CUDA in this process?
+
+    Read out of `sys.modules` rather than imported: importing that module loads the
+    kernel library's C++ runtime, which a hardware probe has no business paying for
+    (or crashing on, on a CPU without AVX — #910).
+    """
+    kernels = sys.modules.get("immich_memories.titles.kernels")
+    if kernels is None:
+        return False
+    backend = kernels.initialized_kernel_backend()
+    return isinstance(backend, str) and backend.lower() == "cuda"
+
+
+def _nvidia_smi_lists_a_gpu() -> bool:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def _check_ffmpeg_decoder(decoder: str) -> bool:
@@ -488,5 +565,6 @@ __all__ = [
     "get_ffmpeg_hwaccel_args",
     "get_ffmpeg_scale_filter",
     "get_opencv_backend",
+    "nvenc_capability_hint",
     "print_hardware_info",
 ]
