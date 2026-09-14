@@ -1,6 +1,6 @@
 ---
 date: 2026-09-01
-status: design — not implemented, no code on any branch
+status: planned — after stabilization, required before beta and announcement
 builds-on: docs/designs/2026-08-31-the-per-asset-index.md (the five queries, ownership classes)
            docs/designs/2026-08-27-the-annotation-layer.md (layers, units, lifetimes)
            docs/research/2026-08-31-triage-heads-architecture.md (EmbeddingStore protocol)
@@ -11,9 +11,124 @@ supersedes: "Knowledge store migration (design-later)" — next-steps item 14
 
 > Postgres holds the facts. The dump holds the decisions. Your backup is 16 MB.
 >
-> Reassessed on 2026-09-13 against the shipped stores: see the first section. The rest is the 2026-09-01 design and is kept as the record.
+> The 2026-09-14 decision below is the implementation contract. Earlier sections are
+> retained as research and inventory; conflicting backend, schema and sequencing choices
+> in those sections are superseded.
 
-## Reassessed 2026-09-13, against the stores that ship
+## Decision 2026-09-14: stabilize first, PostgreSQL before beta
+
+Implementation is deferred until Claude's 2026-09-14 finishing work has produced a stable
+system with verified timings. Complete this migration before beta and the announcement.
+Updating this plan does not start a database rollout or move the current library.
+The owner keeps control of merge and release order; each merge currently cuts a release.
+
+Sequence:
+
+1. Finish the current stability fixes, timing instrumentation and measurements. Preserve
+   the accepted editorial replay results and timings as the pre-migration baseline.
+2. Implement and verify PostgreSQL in small PRs from the resulting stable main. Prepare
+   import, deployment, backup/restore and replay before switching production persistence.
+3. Validate the migrated system, including timing comparison, then proceed to beta and
+   announcement. Do not treat a schema-only PR as completion of this prerequisite.
+
+### One backend, standard models and migrations
+
+Use **PostgreSQL only, SQLAlchemy 2 and Alembic**, with psycopg as the driver. The repository
+owns connections, bounded pooling and transactions. ORM models describe persistent entities;
+SQLAlchemy Core handles bulk fact operations where appropriate. Callers receive the existing
+application values rather than depending on ORM sessions or lazy relationships.
+
+There is no intermediate project to consolidate files into SQLite, no supported SQLite
+runtime option, and no second backend test matrix. SQLite remains a read-only import source
+after cutover. Existing files and stores continue serving the current release until that
+cutover is ready; this is sequencing, not a runtime fallback or dual-write scheme.
+
+Alembic owns ordered schema revisions and its version ledger. Replace the older proposal
+for a custom `schema_migrations` runner and one hand-written `0001_initial.sql` containing
+every table. Apply migrations at startup under a database lock so simultaneous starts do
+not race. Check server and required extension compatibility before migrating. Failed
+migrations roll back and refuse generation with a redacted, actionable error.
+
+Derive models from the shipped stores and their consumers. The old schema sketch below
+is not executable migration input: for example, existing manual people have `manual:...`
+IDs, merged people have several aliases, and neither can be forced into one UUID column.
+Preserve canonical references, confirmed facts, relationship links and content keys.
+Reserve the embedding storage needed by later duplicate and place-matching work in a
+versioned domain migration. Keep encoder identity and dimensions explicit; creating that
+storage does not add vector consumers or an index before a measured need exists.
+
+### Three deployment choices, the same application
+
+| Deployment | Database location | Our objects |
+| --- | --- | --- |
+| Default separate PostgreSQL service | Our database in our service | Dedicated `immich_memories` schema |
+| Reuse the existing Immich PostgreSQL instance | Our separate database in that instance | Dedicated `immich_memories` schema |
+| Opt into the actual existing Immich database | The same database Immich uses | Dedicated `immich_memories` schema |
+
+The third option is required support, not shorthand for another database in the same
+container. The connection URL and schema are bootstrap settings, supplied before settings
+can be read from the store. The default schema is `immich_memories`; its configuration
+must be validated and identifiers quoted through SQLAlchemy rather than interpolated.
+
+For a shared database:
+
+- An administrator provisions our schema and a dedicated role. The application role has
+  access to its own objects and required extension objects, with no grants to modify
+  Immich's tables. Do not use Immich's superuser credential as our normal connection.
+- Qualify our table names. Put the Alembic ledger in our schema and restrict migration
+  reflection/autogeneration to our objects. Do not alter database-wide defaults or Immich's
+  search path. No foreign keys or direct application queries into Immich's private schema;
+  photo and people access continues through its API.
+- Extensions are shared at database scope. Discover and validate existing vector types
+  and their schema. Do not install, upgrade, relocate or drop Immich's extensions during
+  our startup. Missing or incompatible requirements produce an explicit setup error.
+  Provision required extensions separately for a fresh dedicated database too.
+- Own-schema backup/restore must account for extension dependencies and roles. Test it in
+  a database containing another application's schema and verify that schema remains intact.
+  Do not assume Immich's backup includes us or that our schema is isolated from a restore
+  of the whole shared database. Document both recovery paths for operators choosing it.
+
+These requirements follow PostgreSQL's distinction between
+[schemas and privileges](https://www.postgresql.org/docs/current/ddl-schemas.html) and
+[database-level extensions](https://www.postgresql.org/docs/current/sql-createextension.html).
+Shared-database support needs migration and restore tests alongside Immich before release.
+It must work with the supported installed Immich version, without requiring 3.2 clustering,
+an Immich upgrade, re-ingestion, retagging or a face-recognition reset.
+
+The default service follows the existing decision to use Immich's PostgreSQL image.
+Recheck and pin a compatible digest during implementation; the older issue text naming
+`pgvector/pgvector:pg17` is not the production-image decision. Keep tests on real PostgreSQL
+with required extensions. Do not silently change an operator's existing database image.
+
+### Deliverable order and acceptance
+
+Keep the P identifiers used by #871 and dependent plans. Split oversized slices into small
+PRs; each domain's schema, importer and tests should be designed together.
+
+| Order | Existing slice | Deliverable |
+| --- | --- | --- |
+| 1 | P1a | SQLAlchemy connection/transaction boundary, URL redaction, schema configuration, isolated real-PostgreSQL tests behind `make test-store`. |
+| 2 | P1b | Alembic revisions and scoped ledger, startup locking, compatibility checks, rollback and shared-schema isolation tests. Domain tables arrive with their consumers. |
+| 3 | P6 | Existing people model and editor through the repository, preserving aliases and manual IDs; verified YAML import/export and confirmations. No second identity registry. |
+| 4 | P4/P5 | Settings repository and UI, env > config file > database > default, source labels/locks, encrypted stored secrets. |
+| 5 | P2/P3/P7 | Annotation facts and banks, operational history and phase timings, automation, notifications, special days and remaining small caches. Preserve exact content keys. |
+| 6 | P8 | Finish the resumable, idempotent import command across all domains; teach the replay harness to read PostgreSQL and verify imported facts as well as plans. |
+| 7 | P10 | Prepare deployment and backup/restore for all three modes, including scoped shared-database recovery, Docker/Kubernetes and measured resource costs. |
+| 8 | P9 / cutover | Activate mandatory PostgreSQL only after import, replay, deployment and recovery pass together. UI stays available to explain a missing store; generation refuses. |
+
+The people slice can follow the foundation without waiting for annotation storage, but
+must not activate a partially migrated production state. Household groups (#717/#718/#720)
+remain later work on those same people records. This migration does not add their features.
+
+Before cutover, test repeat imports, interrupted imports, concurrent startup, rollback,
+people round trips, and equivalent editorial results on the accepted routes. Compare stage
+durations and total runtime with the stabilization baseline; report measured differences.
+Prove schema isolation with unrelated tables present and complete a backup/restore drill.
+After cutover, SQLite imports are confined to the legacy importer, with no fallback writes.
+This work touches Claude's deployment and preflight files only after the current finishing
+work is complete and ownership has been coordinated.
+
+## Historical baseline: reassessed 2026-09-13
 
 The design below was written on 2026-09-01 against the probe-era tree: six JSONL
 write-ahead logs, a triage-heads `embeddings.db`, a `judgments.db` fed by the retired
