@@ -114,6 +114,7 @@ class _PipelineProgress:
     def __init__(self, params: GenerationParams, clip_count: int) -> None:
         self._params = params
         has_music = not params.no_music
+        self._last = 0.0
 
         # WHY: Estimated relative durations for each phase.
         # These determine how much of the progress bar each phase occupies.
@@ -124,6 +125,7 @@ class _PipelineProgress:
             "download": clip_count * 3.0 + 20.0,
             "assembly": 180.0 + clip_count * 8.0,  # titles + encoding
             "music": 120.0 if has_music else 0.0,
+            "upload": 30.0 if params.upload_enabled else 0.0,
         }
         total = sum(weights.values())
 
@@ -134,14 +136,16 @@ class _PipelineProgress:
             span = w / total if total > 0 else 0
             self._ranges[phase] = (cursor, cursor + span)
             cursor += span
+        self._ranges["extract"] = self._ranges["download"]
 
     def report(self, phase: str, pct: float, msg: str) -> None:
         """Report progress within a phase. pct is 0.0-1.0 within that phase."""
         if not self._params.progress_callback:
             return
-        start, end = self._ranges.get(phase, (0.0, 1.0))
-        scaled = start + pct * (end - start)
-        self._params.progress_callback(phase, scaled, msg)
+        start, end = self._ranges.get(phase, (self._last, self._last))
+        scaled = start + min(1.0, max(0.0, pct)) * (end - start)
+        self._last = 1.0 if phase == "done" else max(self._last, min(0.99, scaled))
+        self._params.progress_callback(phase, self._last, msg)
 
     def assembly_callback(self) -> Callable[[float, str], None] | None:
         """Create a 2-arg callback for assemble_with_titles."""

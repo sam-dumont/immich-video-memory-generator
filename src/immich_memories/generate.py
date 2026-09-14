@@ -610,6 +610,7 @@ def _generate_memory_inner(
         _phase_times: dict[str, float] = {}
         _phase_start = _time.monotonic()
         pp = _PipelineProgress(params, len(params.clips))
+        params = replace(params, progress_callback=pp.report)
 
         # Phase 1: Download and extract clips
         pp.report("download", 0.0, "Downloading clips...")
