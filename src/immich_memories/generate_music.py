@@ -12,7 +12,7 @@ import logging
 import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -99,6 +99,7 @@ def resolve_music(
     *,
     transition_overlap: float,
     source: MusicSource = MusicSource.AUTO,
+    editorial_attempt_dir: Path | None = None,
 ) -> MusicSelection:
     """Determine the music to use: provided path, generated, bundled, or none.
 
@@ -109,11 +110,14 @@ def resolve_music(
     """
     if no_music:
         return MusicSelection(None)
-    if music_path and music_path.exists():
-        return MusicSelection(music_path)
+    if music_path is not None:
+        # Missing explicit tracks are never silently replaced with bundled music.
+        return MusicSelection(music_path if music_path.exists() else None)
+
+    assembly_clips, music_mood = _music_evidence(config, assembly_clips, editorial_attempt_dir)
 
     warning: str | None = None
-    if not music_path and source is MusicSource.AUTO and music_config_available(config):
+    if source is MusicSource.AUTO and music_config_available(config):
         if report_fn:
             report_fn("music", 0.85, "Generating AI music...")
         try:
@@ -138,11 +142,6 @@ def resolve_music(
         if generated:
             return MusicSelection(_master(generated, run_output_dir))
 
-    if music_path is not None:
-        # An explicit track that is missing is a user error; substituting bundled
-        # music would hide the typo.
-        return MusicSelection(None)
-
     # WHY: with no generator configured this used to return silence, which is what
     # the Docker/NAS path gets by default.
     from immich_memories.audio.bundled_music import bundled_track_for_mood
@@ -152,7 +151,7 @@ def resolve_music(
     # purpose. What the clips actually carry is llm_emotion, which the title
     # stack already aggregates into mood families.
     bundled = bundled_track_for_mood(
-        aggregate_mood_from_clips(assembly_clips),
+        music_mood,
         library=bundled_library,
         cadence_seconds=photo_cadence_seconds(
             assembly_clips, transition_overlap=transition_overlap
@@ -161,6 +160,27 @@ def resolve_music(
     if not bundled:
         return MusicSelection(None, warning)
     return MusicSelection(_master(bundled, run_output_dir), warning)
+
+
+def _music_evidence(
+    config: Config, clips: list[AssemblyClip], attempt: Path | None
+) -> tuple[list[AssemblyClip], str | None]:
+    """Apply the text answer to music copies; preserve facts used by titles and replay."""
+    from immich_memories.audio.text_mood import mood_for_cut
+
+    fallback = aggregate_mood_from_clips(clips)
+    choice = asyncio.run(
+        mood_for_cut(
+            config,
+            attempt,
+            tuple(clip.asset_id for clip in clips),
+            fallback_mood=fallback or "calm",
+        )
+    )
+    if choice.source != "cut_text":
+        return clips, fallback
+    mood = choice.mood.primary_mood
+    return [replace(clip, llm_emotion=mood) for clip in clips], mood
 
 
 def _master(track: Path, run_output_dir: Path) -> Path:

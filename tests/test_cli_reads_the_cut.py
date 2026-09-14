@@ -190,6 +190,20 @@ class TestRunsStory:
 
 
 class TestRunsWhy:
+    def test_the_music_answer_names_its_text_source(self, cut):
+        config, attempt = cut
+        (attempt / "music-mood.private.json").write_text(
+            json.dumps(
+                {
+                    "source": "cut_text",
+                    "mood": {"primary_mood": "playful"},
+                }
+            )
+        )
+        result = _invoke(config, ["runs", "why", "garden-2"])
+        assert result.exit_code == 0, result.output
+        assert "Music mood: playful (saved cut text; no pictures sent)" in result.output
+
     def test_a_dropped_picture_names_the_pass_and_the_reason(self, cut):
         config, _ = cut
         result = _invoke(config, ["runs", "why", "woods-9", "--run", RUN_ID])

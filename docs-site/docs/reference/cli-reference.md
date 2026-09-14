@@ -364,6 +364,7 @@ immich-memories music add [OPTIONS]
 | `--volume`, `-v` | float | -6.0 | Music volume in dB |
 | `--fade-in` | float | 2.0 | Fade in duration in seconds |
 | `--fade-out` | float | 3.0 | Fade out duration in seconds |
+| `--analyze-frames` | boolean | false | Send video frames to the configured LLM for mood when --mood is absent |
 
 **Arguments:**
 - `video_path` (path)
