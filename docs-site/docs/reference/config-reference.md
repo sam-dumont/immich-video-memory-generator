@@ -401,6 +401,17 @@ is retried once with more room, and the error then names the split:
 second try is usually also worth a longer `timeout_seconds`: the retry spends
 what is left of the first call's read budget, not a fresh one.
 
+On Ollama the same ledger applies, through Ollama's own switch rather than a
+chat dialect. `thinking` at any level other than `disabled` puts a top-level
+`think: true` on a load-bearing call; a bulk call is sent no switch at all,
+because a model with no thinking mode answers `think` with a 400. An Ollama
+server that reasons anyway is learned from the first reply that carries a
+thinking block, and every later call gets the same 16,384 tokens of room, added
+to `num_predict` instead of `max_tokens`. An explicit
+`extra_params.options.num_predict` now wins over that computed budget rather
+than being silently overwritten, so a ceiling you set yourself is the one that
+is sent.
+
 `reader_concurrency` limits independent story-reader jobs in flight (range 1 to
 16). Different event inventories and worthiness/standing blocks can overlap.
 Pages within an event, story-episode pages and later dependent picks remain

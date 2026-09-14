@@ -58,12 +58,13 @@ range. Say what the WHOLE period was: its arc, what recurs across parts, what ch
 the tensions that hold across it. Do not concatenate the part theses. Cite only aliases inside a
 part's range. State what the period was, not whether it was good.
 
-Return JSON only, at most 20 evidence rows, 12 tensions, 12 recurring threads, aliases between 1 and {episode_count}:
+Return JSON only, at most 20 evidence rows, 12 tensions, 12 recurring threads:
 {{"schema_version":"period-insight-text-v1","thesis":"at most 80 words",
 "evidence":[{{"observation":"what this shows about the period","episodes":[1,2]}}],
 "tensions":["at most 12 words"],"recurring_threads":["at most 8 words"]}}
 
 parts={part_count} episodes={episode_count}
+Cite only aliases between 1 and {episode_count}.
 {parts}"""
 
 

@@ -37,7 +37,9 @@ TEXT_PERIOD_PROMPT_VERSION = "period-text-v2-compact-facts"
 TEXT_PERIOD_MAX_OUTPUT_TOKENS = 3_000  # a ten-year, 38-range custom scope truncated at 1_500 (2026-09-05); the parser caps every field after parse
 _DEFAULT_MAX_PROMPT_CHARS = 96_000
 _LEAF_PROMPT_SUFFIX = "+leaf-v1"
-_MERGE_PROMPT_SUFFIX = "+merge-v1"
+# v2: the synthesis prompt moved its parts below the response shape so the preamble is one
+# byte-identical prefix (#981). Only merged insights are re-asked; leaf reads keep their bank.
+_MERGE_PROMPT_SUFFIX = "+merge-v2"
 
 
 @dataclass(frozen=True)

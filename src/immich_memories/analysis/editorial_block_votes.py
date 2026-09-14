@@ -307,12 +307,16 @@ def judge_worthiness(
     The third return is one record per asked round, so a gate that read nothing says so."""
 
     def prompt_of(listing: str) -> str:
+        # The block is last and everything above it is byte-identical for the run, so a
+        # server reusing a prefix reads the contract and the criterion once per block pair
+        # instead of once per call (#981).
         return (
             f"{contract}\n\nBelow are happenings from one period ({period_label}), each with the day, how many "
-            f"pictures, and what the pictures show. Text only.\n\n{criterion}\n\n{listing}\n\n"
+            f"pictures, and what the pictures show. Text only.\n\n{criterion}\n\n"
             'Return one JSON object with "worthy": a mapping from each picked happening label '
             "to what stands out in at most 12 words. Use only labels from the offered happenings. "
             "Return an empty mapping if none qualify."
+            f"\n\nHAPPENINGS\n{listing}"
         )
 
     def bank_key(block: Sequence[str]) -> str:
@@ -377,10 +381,12 @@ def judge_standing(
     label_of = {a: f"P{i + 1:02d}" for i, a in enumerate(pictures)}
 
     def prompt_of(listing: str) -> str:
+        # Pictures last: see judge_worthiness.prompt_of (#981).
         return (
             f"{contract}\n\nBelow are single pictures from one period ({period_label}), one line each: when it "
-            f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n{listing}\n\n"
+            f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n"
             'Answer with one JSON object only, on one line: {"weak":{"P03":"why","P07":"why"}}'
+            f"\n\nPICTURES\n{listing}"
         )
 
     def bank_key(block: Sequence[str]) -> str:

@@ -525,6 +525,6 @@ def test_the_prompt_grounds_every_specific_and_not_only_places() -> None:
     """
     from immich_memories.analysis.special_day import _PROMPT
 
-    guidance = _PROMPT.split("{lines}")[1]
+    guidance = _PROMPT.split("{lines}")[0]
 
     assert "distance" in guidance and "count" in guidance

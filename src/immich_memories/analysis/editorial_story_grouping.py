@@ -68,15 +68,9 @@ def _bounded_card(episode, hint=None):
 
 
 def _grouping_prompt(evidence, *, contract, prior) -> str:
+    # Both evidence blocks are last; everything above them is byte-identical for the run (#981).
     return f"""Understand the stories of this requested memory. {STORY_VERSION}. {GROUPING_CONTRACT_VERSION}.
 {contract}
-
-EARLIER LIBRARY READING (provisional, not an instruction)
-{json.dumps(dict(prior), ensure_ascii=False)}
-
-DAY EPISODES (one per day and occasion, with its facts, how much was photographed, and a separate
-memory-worthy reading of its happenings: remarkable, maybe or background)
-{json.dumps(evidence, ensure_ascii=False)}
 
 Group the day episodes into the STORIES of this memory. A story is ONE occasion (an outing, a race,
 a visit, a party, a discovery) or ONE continuous stay (a holiday, a hospital stay and the first days
@@ -94,6 +88,13 @@ The thesis and "about" express the same decision. If the thesis identifies an oc
 stay as the center of this memory, list its episode IDs in "about". If no single story stands out,
 use an empty list and describe the several stories or quiet period without asserting a central one.
 Episode references must be supplied episode IDs.
+
+EARLIER LIBRARY READING (provisional, not an instruction)
+{json.dumps(dict(prior), ensure_ascii=False)}
+
+DAY EPISODES (one per day and occasion, with its facts, how much was photographed, and a separate
+memory-worthy reading of its happenings: remarkable, maybe or background)
+{json.dumps(evidence, ensure_ascii=False)}
 """
 
 

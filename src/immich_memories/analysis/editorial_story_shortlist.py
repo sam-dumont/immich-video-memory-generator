@@ -317,30 +317,20 @@ def _pick_prompt(
     # A hosted 30B answered with a whole row instead of its label (#908), so the
     # vocabulary is named where the rows are, not only in the format rule.
     shape = 'each row starts with its label (e.g. "M01")'
-    introduction = (
-        f"This story gets {count} picture(s) at most in the memory, one per contribution. Its candidate moments, {shape}:\n\n{listing}\n\n"
-        if allow_fewer
-        else f"This story gets {count} picture(s) in the memory, one per moment. Its distinct moments, {shape}:\n\n{listing}\n\n"
-    )
-    task = "Keep only the moments" if allow_fewer else f"Keep the {count} moments"
+    # The story, its size and its rows are last. Everything above them depends only on the
+    # contract and the two branch flags, so every story asked the same way shares that whole
+    # preamble byte for byte (#981).
+    task = "Keep only the moments" if allow_fewer else "Keep the moments"
     prompt = (
-        f"{contract}\n\nSTORY: {story['title']}. {story.get('purpose') or ''}\n"
-        f"{introduction}{task} that tell this story: its stages across its whole span rather than one day, "
+        f"{contract}\n\n"
+        f"{task} that tell the story below: its stages across its whole span rather than one day, "
         "its favourites, what happened and who shared it; a second moment adds people or a place the "
         "first did not show. "
         "Judge the proposed picture, not just the importance of the event it describes. "
         "Clear personal participation and shared company can carry an outing, including a selfie in its activity and place. "
         "Recording length is available material, not importance. Dense overlays or distant subjects can weaken a picture. "
-    )
-    prompt += (
         "A different pose, framing, take, or date does not by itself make the same activity another contribution. "
         "Leave slots unused when further views repeat what is already told or add only weak filler. "
-        f'Return JSON only, with a "keep" array of at most {count} distinct labels from the rows above. '
-        f'"unused_slots" is {count} minus the number kept, not the number of rejected '
-        f'candidates; use 0 when keeping {count}. If fewer, explain "why_fewer" in one sentence. '
-        "A complete explained shortfall is valid; an incomplete answer is not."
-        if allow_fewer
-        else f'Return JSON only, with a "keep" array of exactly {count} distinct labels from the rows above.'
     )
     if sampled_motion:
         prompt += (
@@ -348,6 +338,20 @@ def _pick_prompt(
             "A cover's pose or inventory label cannot establish a separate activity "
             "when the sequence shows the same contribution."
         )
+    introduction = (
+        f"This story gets {count} picture(s) at most in the memory, one per contribution. Its candidate moments, {shape}:\n\n{listing}\n\n"
+        if allow_fewer
+        else f"This story gets {count} picture(s) in the memory, one per moment. Its distinct moments, {shape}:\n\n{listing}\n\n"
+    )
+    prompt += f"\n\nSTORY: {story['title']}. {story.get('purpose') or ''}\n{introduction}"
+    prompt += (
+        f'Return JSON only, with a "keep" array of at most {count} distinct labels from the rows above. '
+        f'"unused_slots" is {count} minus the number kept, not the number of rejected '
+        f'candidates; use 0 when keeping {count}. If fewer, explain "why_fewer" in one sentence. '
+        "A complete explained shortfall is valid; an incomplete answer is not."
+        if allow_fewer
+        else f'Return JSON only, with a "keep" array of exactly {count} distinct labels from the rows above.'
+    )
     return prompt
 
 

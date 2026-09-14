@@ -29,6 +29,7 @@ from immich_memories.analysis.llm_text_identity import text_judgment_key
 from immich_memories.analysis.llm_wire import (
     DEFAULT_TEMPERATURE,
     PARAM_ADAPTATIONS,
+    THINKING_MIN_MAX_TOKENS,
     THINKING_MIN_TIMEOUT_SECONDS,
     TRANSPORT_RETRIES,
     LLMIncompleteResponse,
@@ -159,10 +160,10 @@ async def query_llm(
     cannot see.
 
     thinking=True asks a reasoning model to reason before answering — only
-    honored when the config says the server supports it (llm.thinking), never
-    on the Ollama path, and never alongside images: multi-image reasoning is a
-    measured runaway, and bulk vision is the fast tier by design. Reserve it
-    for judgement calls: measured cost is 5-10x latency and 10-20x tokens.
+    honored when the config says the server supports it (llm.thinking), and
+    never alongside images: multi-image reasoning is a measured runaway, and
+    bulk vision is the fast tier by design. Reserve it for judgement calls:
+    measured cost is 5-10x latency and 10-20x tokens.
     """
     check_cancelled()
     llm_config = resolved_llm_config(llm_config)
@@ -263,6 +264,7 @@ async def _dispatch(
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
     require_complete: bool = False,
 ) -> str:
+    think = thinking and llm_config.reasons and not images
     if llm_config.provider == "ollama":
         return await _query_ollama(
             prompt,
@@ -270,11 +272,11 @@ async def _dispatch(
             temperature,
             max_tokens,
             timeout_seconds,
+            think,
             images,
             transport_observer,
             require_complete,
         )
-    think = thinking and llm_config.reasons and not images
     if llm_config.provider == "anthropic":
         return await _query_anthropic(
             prompt,
@@ -301,17 +303,35 @@ async def _dispatch(
     )
 
 
-async def _query_ollama(
-    prompt: str,
+def _apply_ollama_reasoning(
+    payload: dict,
     config: LLMConfig,
-    temperature: float,
+    thinking: bool,
     max_tokens: int,
     timeout: int,
-    images: Sequence[bytes] = (),
-    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
-    require_complete: bool = False,
-) -> str:
-    base_url = config.base_url.rstrip("/")
+    endpoint: tuple[str, str],
+) -> int:
+    """Put the reasoning switch and the room it costs on one /api/generate body.
+
+    Ollama's switch is a bare top-level `think`, neither chat dialect, and it
+    bills the thinking inside `num_predict` the way the OpenAI dialects bill it
+    inside `max_tokens` — so the same learned-per-endpoint ledger funds it. A
+    bulk call is sent no switch at all: a model with no thinking mode answers
+    `think` with a 400, and an unasked server that reasons anyway is learned
+    from its reply instead.
+    """
+    if thinking:
+        payload["think"] = True
+        payload["options"]["num_predict"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
+        return max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    headroom = reasoning_headroom(endpoint, declared=config.always_reasons)
+    payload["options"]["num_predict"] = max_tokens + headroom
+    return timeout
+
+
+def _ollama_body(
+    config: LLMConfig, prompt: str, temperature: float, images: Sequence[bytes]
+) -> dict:
     payload: dict = {
         "model": config.model,
         "prompt": prompt,
@@ -321,14 +341,71 @@ async def _query_ollama(
     # Ollama takes bare base64 in its own field, not a data: URI in a message.
     if images:
         payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
-    # Ollama keeps its per-request knobs (num_ctx, num_predict) under `options`,
-    # so extras aimed at that key merge into it instead of replacing temperature.
+    return payload
+
+
+def _ollama_extras(payload: dict, config: LLMConfig) -> None:
+    """Merge the user's own fields last, so their `num_predict` beats the computed one.
+
+    Overwriting it afterwards discarded the only budget lever this path has. Ollama keeps
+    its per-request knobs (num_ctx, num_predict) under `options`, so extras aimed at that
+    key merge into it instead of replacing temperature.
+    """
     for name, value in config.extra_params.items():
         if name == "options":
             payload["options"].update(value)
         else:
             payload[name] = value
-    payload["options"]["num_predict"] = max_tokens
+
+
+def _ollama_answer(
+    body: dict,
+    resp: httpx.Response,
+    endpoint: tuple[str, str],
+    transport_observer: Callable[[LLMTransportAttempt], None] | None,
+    require_complete: bool,
+) -> str:
+    llm_metrics.record_reply(
+        prompt_tokens=body.get("prompt_eval_count", 0) or 0,
+        completion_tokens=body.get("eval_count", 0) or 0,
+        model=served_model(body),
+    )
+    # Ollama reports no reasoning token count, only the thinking text, so the presence of a
+    # block is the whole signal that this endpoint thinks on the caller's budget. Same
+    # ledger the OpenAI dialects learn into.
+    if body.get("thinking"):
+        remember_reasoning(endpoint)
+    if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
+        observe(transport_observer, 1, "incomplete", resp.status_code)
+        llm_metrics.record_truncation()
+        raise LLMIncompleteResponse(body.get("response"))
+    try:
+        raw_text = body["response"]
+        if not isinstance(raw_text, str):
+            raise TypeError("Ollama response content is not text")
+    except (KeyError, TypeError):
+        record_invalid_response(transport_observer, resp.status_code)
+        raise
+    observe(transport_observer, 1, "response", resp.status_code)
+    return raw_text
+
+
+async def _query_ollama(
+    prompt: str,
+    config: LLMConfig,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+    thinking: bool = False,
+    images: Sequence[bytes] = (),
+    transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
+    require_complete: bool = False,
+) -> str:
+    base_url = config.base_url.rstrip("/")
+    endpoint = (base_url, config.model)
+    payload = _ollama_body(config, prompt, temperature, images)
+    timeout = _apply_ollama_reasoning(payload, config, thinking, max_tokens, timeout, endpoint)
+    _ollama_extras(payload, config)
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
         try:
             resp = await client.post(f"{base_url}/api/generate", json=payload)
@@ -341,24 +418,7 @@ async def _query_ollama(
         except (TypeError, ValueError):
             record_invalid_response(transport_observer, resp.status_code)
             raise
-        llm_metrics.record_reply(
-            prompt_tokens=body.get("prompt_eval_count", 0) or 0,
-            completion_tokens=body.get("eval_count", 0) or 0,
-            model=served_model(body),
-        )
-        if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
-            observe(transport_observer, 1, "incomplete", resp.status_code)
-            llm_metrics.record_truncation()
-            raise LLMIncompleteResponse(body.get("response"))
-        try:
-            raw_text = body["response"]
-            if not isinstance(raw_text, str):
-                raise TypeError("Ollama response content is not text")
-        except (KeyError, TypeError):
-            record_invalid_response(transport_observer, resp.status_code)
-            raise
-        observe(transport_observer, 1, "response", resp.status_code)
-        return raw_text
+        return _ollama_answer(body, resp, endpoint, transport_observer, require_complete)
 
 
 def _grow_anthropic_for_reasoning(
