@@ -108,7 +108,7 @@ Highlights from a specific season (spring, summer, fall, winter).
 immich-memories generate --memory-type season --season summer --year 2025
 ```
 
-Default duration: the range curve again, so about 3 minutes 15 seconds for a three-month season. (The web UI says 2 minutes 15; see [the note below](#one-ui-and-cli-default-still-disagrees).) The hemisphere flag controls which calendar months map to which season:
+Default duration: 2 minutes 15 seconds, which is the preset's own `default_duration_seconds`, about 45 seconds a month. The hemisphere flag controls which calendar months map to which season:
 
 ```bash
 # Southern hemisphere: summer = December-February
@@ -149,14 +149,5 @@ it fires.
 
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
 
-## One UI and CLI default still disagrees
-
-Person Spotlight and Multi-Person now use the same full-year 10-minute default
-on both surfaces. Season retains an older fixed web UI value while the CLI
-uses its date-range curve:
-
-| type | web UI | CLI |
-|---|---|---|
-| Season | 2 min 15 | ~3 min 15 for a three-month season |
-
-Every duration is an editable default, not a cap.
+Every duration on this page is an editable default, not a cap, and the web UI and the CLI read the
+same preset for it.
