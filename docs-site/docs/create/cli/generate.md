@@ -20,6 +20,15 @@ is generated from the same source and wins on any disagreement.
 
 ## Flags
 
+Opening titles name the people or occasion, rather than printing a Boolean query or the
+span between recurring dates. A holiday opens with its name and "Through the Years";
+On This Day shows the month and day. Wordy titles from a new special-day scan are asked
+for again instead of cut off mid-sentence. Existing catalogue entries keep their saved titles.
+
+Trip templates follow `title_screens.locale` and count both the first and last day.
+`--title` and `--subtitle` still override the templates. Date and place captions stay
+clear of dissolves, so the outgoing and incoming labels cannot overlap.
+
 ### Time period
 
 | Flag | Short | Type | Default | Description |

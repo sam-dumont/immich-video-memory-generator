@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from datetime import date
 
+from immich_memories.i18n import get_month_name
+from immich_memories.processing.clip_caption import resolve_caption_locale
+
 # Duration thresholds for human-readable text
 _DURATION_LABELS = [
     (2, 3, "A WEEKEND"),
@@ -33,9 +36,21 @@ def _get_season(d: date) -> str:
     return "WINTER"
 
 
-def _get_duration_label(days: int) -> str:
+def _get_duration_label(days: int, locale: str = "en") -> str:
     """Convert trip duration to human-readable label."""
-    if days <= 2:
+    if locale == "fr":
+        return {
+            1: "UNE JOURNÉE",
+            2: "UN WEEK-END",
+            3: "UN WEEK-END",
+            7: "UNE SEMAINE",
+            14: "DEUX SEMAINES",
+            15: "DEUX SEMAINES",
+            21: "TROIS SEMAINES",
+        }.get(days, "UN MOIS" if days >= 28 else f"{days} JOURS")
+    if days == 1:
+        return "A DAY"
+    if days <= 3:
         return "A WEEKEND"
     if days == 7:
         return "A WEEK"
@@ -48,25 +63,33 @@ def _get_duration_label(days: int) -> str:
     return f"{days} DAYS"
 
 
-def _get_time_label(start_date: date, end_date: date) -> str:
+def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str:
     """Get the time period label (season or month name + year).
 
     Single month → month name ("DECEMBER 2024").
     Cross-month → season name ("SUMMER 2025").
     """
     if start_date.month == end_date.month and start_date.year == end_date.year:
-        import calendar
-
-        month_name = calendar.month_name[start_date.month].upper()
+        month_name = get_month_name(start_date.month, locale).upper()
         return f"{month_name} {start_date.year}"
     season = _get_season(start_date)
-    return f"{season} {start_date.year}"
+    if locale == "fr":
+        season = {"SPRING": "PRINTEMPS", "SUMMER": "ÉTÉ", "AUTUMN": "AUTOMNE", "WINTER": "HIVER"}[
+            season
+        ]
+    years = (
+        str(start_date.year)
+        if start_date.year == end_date.year
+        else f"{start_date.year}–{end_date.year}"
+    )
+    return f"{season} {years}"
 
 
 def generate_trip_title(
     location_name: str,
     start_date: date,
     end_date: date,
+    locale: str = "en",
 ) -> str:
     """Generate a trip title string for a map overview frame.
 
@@ -75,8 +98,10 @@ def generate_trip_title(
         "A WEEKEND IN BARCELONA, SPAIN, SPRING 2025"
         "10 DAYS IN LANZAROTE, SPAIN, DECEMBER 2024"
     """
-    days = (end_date - start_date).days
-    duration = _get_duration_label(days)
-    time_label = _get_time_label(start_date, end_date)
+    locale = resolve_caption_locale(locale)
+    days = (end_date - start_date).days + 1
+    duration = _get_duration_label(days, locale)
+    time_label = _get_time_label(start_date, end_date, locale)
     location_upper = location_name.upper()
-    return f"{duration} IN {location_upper}, {time_label}"
+    preposition = "À" if locale == "fr" else "IN"
+    return f"{duration} {preposition} {location_upper}, {time_label}"

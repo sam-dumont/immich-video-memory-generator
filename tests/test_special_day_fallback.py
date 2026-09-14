@@ -54,6 +54,17 @@ def test_a_dropped_title_is_asked_for_once_more() -> None:
     assert verdict.title == "A long afternoon out"
 
 
+def test_a_wordy_festival_intro_is_rewritten_instead_of_truncated() -> None:
+    with _answers(
+        '{"special": true, "title": "An evening of music and dancing by the lake with friends", '
+        '"what": "Music by the lake"}',
+        '{"title": "Music by the lake"}',
+    ):
+        verdict = ask_if_special(_day(), llm_config=SimpleNamespace())
+
+    assert verdict.title == "Music by the lake"
+
+
 def test_the_day_is_asked_again_once_and_only_when_its_title_was_taken() -> None:
     """A scan makes a handful of live calls a year; a retry is a real cost.
 

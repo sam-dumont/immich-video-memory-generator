@@ -153,6 +153,7 @@ def caption_filters(
     *,
     is_hdr: bool = False,
     font_path: str | None = None,
+    frame_window: tuple[int, int] | None = None,
 ) -> list[str]:
     """FFmpeg drawtext filters: the place top-left, the date bottom-right.
 
@@ -173,6 +174,9 @@ def caption_filters(
     )
     if font_path:
         common = f":fontfile='{font_path}'" + common
+    if frame_window is not None:
+        start, end = frame_window
+        common += f":enable='gte(n,{start})*lt(n,{end})'"
     filters = []
     if caption.place:
         filters.append(
@@ -197,6 +201,21 @@ def caption_font_path() -> str | None:
 
     path = get_font_path("Outfit", "SemiBold")
     return str(path) if path else None
+
+
+def caption_frame_windows(
+    clips: list, transitions: list[str], fps: int, fade_frames: int
+) -> list[tuple[int, int]]:
+    """Keep burnt-in captions out of both sides of each dissolve."""
+    return [
+        (
+            fade_frames if incoming == "fade" else 0,
+            int(clip.duration * fps) - (fade_frames if outgoing == "fade" else 0),
+        )
+        for clip, incoming, outgoing in zip(
+            clips, ["cut", *transitions], [*transitions, "cut"], strict=True
+        )
+    ]
 
 
 def timeline_captions(

@@ -462,7 +462,7 @@ def _asked_again(
     answer = _json_in(raw)
     if answer is None:
         return ""
-    return title_the_day_can_keep(str(answer.get("title", ""))[:60].strip(), assets, evidence=lines)
+    return title_the_day_can_keep(str(answer.get("title", "")).strip(), assets, evidence=lines)
 
 
 def _json_in(raw: str) -> dict | None:
@@ -541,7 +541,7 @@ def ask_if_special(
     if answer is None:
         return SpecialDay(special=False)
     special = bool(answer.get("special"))
-    written = str(answer.get("title", ""))[:60].strip()
+    written = str(answer.get("title", "")).strip()
     what = str(answer.get("what", ""))[:80].strip()
     title = title_the_day_can_keep(written, assets, evidence=lines)
     # Only for a day that is going to be kept. An ordinary day is discarded
