@@ -51,6 +51,23 @@ _PREPARE_PICTURES = re.compile(r"([\d,]+) pictures prepared at ([\d.]+) s/pictur
 # The same line, as the end of one `prepare` invocation rather than as numbers.
 _PREPARE_END = re.compile(r"[\d,]+ pictures prepared at [\d.]+ s/picture\.")
 
+# What drew the title screens. `titles/kernels.init_kernels` prints one of these
+# two lines once per process, and the titles are the phase a GPU helps most.
+_TITLE_BACKEND = re.compile(r"Title kernels: \S+ \S+ on the (\S+) backend")
+_PIL_TITLES = "title screens use the PIL renderer"
+PIL_RENDERER = "PIL"
+# What encoded the film. `assembly_engine` names the encoder on its way in, and
+# it is the only line that says what actually ran: the first cluster Jobs picked
+# the CUDA title backend and still encoded in software, because the NVIDIA
+# runtime exposed `compute,utility` and every NVENC probe died on
+# "Terminating thread with return code -22 (Invalid argument)".
+_ASSEMBLY_ENCODER = re.compile(r"Streaming (?:\S+ )?(?:SDR|HDR) assembly with (\S+)")
+# The detection line, which is all a run that never reached the assembly leaves.
+# It names a backend and not an encoder, and is recorded as the backend word.
+_HWACCEL = re.compile(r"Detected \S+ hardware acceleration: (\w+):")
+_NO_HWACCEL = "No hardware acceleration detected, using software encoding"
+SOFTWARE_ENCODE = "software"
+
 
 @dataclass
 class HostedUsage:
@@ -90,6 +107,35 @@ class RunSummary:
     tier: str | None = None
     usage: HostedUsage = field(default_factory=HostedUsage)
     video_path: str | None = None
+
+
+def parse_title_backend(text: str) -> str | None:
+    """Which backend drew the title screens, or None when the run never said.
+
+    The cluster Jobs render titles on CUDA today with no GPU request at all,
+    because the device plugin hands out a shared card and the kernel library
+    takes what it finds. That is half the render, and the table had no column
+    for it.
+    """
+    if match := _TITLE_BACKEND.search(text):
+        return match.group(1)
+    return PIL_RENDERER if _PIL_TITLES in text else None
+
+
+def parse_encoder(text: str) -> str | None:
+    """Which encoder the film was written with, or None when the run never said.
+
+    The assembly names it, and that is the answer. Failing that, the detection
+    line names a backend rather than an encoder, so the backend word is what gets
+    recorded: turning `nvidia` into `h264_nvenc` here would be this file guessing,
+    and the whole point of it is that it does not.
+    """
+    if match := _ASSEMBLY_ENCODER.search(text):
+        return match.group(1)
+    if _NO_HWACCEL in text:
+        return SOFTWARE_ENCODE
+    match = _HWACCEL.search(text)
+    return match.group(1) if match else None
 
 
 def clock_seconds(text: str) -> float | None:

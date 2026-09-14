@@ -22,6 +22,7 @@ import yaml
 from matrix_pinned_config import DROP, hosted_reader_pins, remote_path_pins
 
 MANIFEST = Path(__file__).resolve().parent / "setup_matrix.yaml"
+REPO_ROOT = MANIFEST.parent.parent
 SCHEMA = "setup-matrix-v1"
 
 # `$env:NAME` is resolved by the runner. `${NAME}` is left for the app to expand.
@@ -94,6 +95,24 @@ OUTPUT_SUBPATH = "setup-matrix"
 DATA_CLAIM = "setup-matrix-data"
 OUTPUT_CLAIM = "setup-matrix-output"
 
+# What the GPU operator labels a node with, and what a render cell selects on. A
+# hostname would name the same machine today and the wrong card the day a GPU
+# moves, and it would put somebody's host into a published transcript.
+GPU_PRODUCT_LABEL = "nvidia.com/gpu.product"
+# The RuntimeClass and the taint the app's own GPU overlay uses, so a matrix Job
+# reaches a GPU node exactly the way the Deployment does.
+GPU_RUNTIME_CLASS = "nvidia"
+GPU_RESOURCE = "nvidia.com/gpu"
+# NVENC sits behind the `video` driver capability. Without these two the pod gets
+# a CUDA device and no encoder, and the render would go to software while the row
+# still said GPU.
+GPU_ENV = (
+    ("NVIDIA_VISIBLE_DEVICES", "all"),
+    ("NVIDIA_DRIVER_CAPABILITIES", "compute,video,utility"),
+)
+# Dots are path separators in a jsonpath, so a label name has to escape its own.
+NODE_PRODUCT_PATH = "{.metadata.labels.nvidia\\.com/gpu\\.product}"
+
 PREPARE_COLD_LOG = "prepare-cold.log"
 PREPARE_WARM_LOG = "prepare-warm.log"
 GENERATE_LOG = "generate.log"
@@ -162,6 +181,12 @@ class Cell:
     requires_env: tuple[str, ...]
     config: dict[str, Any]
     inference_overlay: bool
+    # The card this cell renders on, as the GPU operator's node label spells it.
+    # Blank means the render goes wherever the scheduler puts it, on a CPU.
+    gpu_product: str = ""
+    # A directory in this repo the cell cannot run without. Absent, the cell is
+    # skipped with a reason rather than dropped from the table.
+    requires_overlay: str = ""
 
     @property
     def hosted(self) -> bool:
@@ -262,6 +287,8 @@ def read_cells(manifest: dict) -> tuple[Cell, ...]:
             requires_env=tuple(row.get("requires_env") or ()),
             config=dict(row.get("config") or {}),
             inference_overlay=bool(row.get("inference_overlay", False)),
+            gpu_product=str((row.get("k8s") or {}).get("gpu_product", "")),
+            requires_overlay=str(row.get("requires_overlay") or ""),
         )
         for row in manifest["cells"]
     )
@@ -884,6 +911,10 @@ DRAIN_TIMEOUT = "--timeout=3m"
 LB_ADDRESS_PATH = "{.status.loadBalancer.ingress[0].ip}"
 
 INFERENCE_DEPLOYMENT = "deployment/immich-memories-inference"
+# The service's own pods, which is what a node label is read off. The Deployment
+# says where the pod was asked to go; the pod says where it went.
+INFERENCE_POD_LABEL = "app.kubernetes.io/name=immich-memories-inference"
+INFERENCE_NODE_PATH = "jsonpath={.items[0].spec.nodeName}"
 # An image pull, which is the slow part of a re-applied tag. The warm-up's own
 # budget is for models being loaded, not for the layers arriving.
 INFERENCE_ROLLOUT_TIMEOUT = "10m"
@@ -922,6 +953,71 @@ def retag_inference(rendered: str, image: str) -> str:
     return _INFERENCE_IMAGE_LINE.sub(lambda match: match.group(1) + image, rendered)
 
 
+def overlay_skip_reason(cell: Cell, root: Path = REPO_ROOT) -> str | None:
+    """Why a cell that names an overlay this tree does not carry cannot run.
+
+    The full-tier cluster cells were declared before the captioner overlay they
+    need existed, because a setup nobody can run yet is still a setup the table
+    should name. The row stays, with the reason where its numbers will go.
+    """
+    if not cell.requires_overlay or (root / cell.requires_overlay).is_dir():
+        return None
+    return f"{Path(cell.requires_overlay).name} overlay not in this tree yet"
+
+
+def required_overlays(cells: tuple[Cell, ...], root: Path = REPO_ROOT) -> tuple[str, ...]:
+    """The overlay directories this run has to apply, for the cells that can run."""
+    return tuple(
+        dict.fromkeys(
+            cell.requires_overlay
+            for cell in cells
+            if cell.requires_overlay and (root / cell.requires_overlay).is_dir()
+        )
+    )
+
+
+def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
+    """Bring one declared overlay up before its cells, and take it down after.
+
+    Torn down the way the inference overlay is, `--keep-service` included: a run
+    that kept one service running meant to keep the other.
+    """
+    name = Path(path).name
+    steps = [Step(f"apply-{name}", (*KUBECTL, "apply", "-k", path))]
+    if not keep:
+        steps.append(Step(f"delete-{name}", (*KUBECTL, "delete", "-k", path, "--ignore-not-found")))
+    return tuple(steps)
+
+
+def pin_inference_node(rendered: str, product: str) -> str:
+    """Put the rendered inference Deployment on one named card.
+
+    Rendered rather than committed, the way the image reference is: which card
+    holds the service is a property of one run, and the overlay in the repo stays
+    what a reader applies by hand. Nothing is removed, so a Deployment that
+    already selects on something keeps it.
+    """
+    if not product:
+        return rendered
+    documents = [document for document in yaml.safe_load_all(rendered) if document]
+    for document in documents:
+        if document.get("kind") != "Deployment":
+            continue
+        spec = document["spec"]["template"]["spec"]
+        spec["nodeSelector"] = {**(spec.get("nodeSelector") or {}), GPU_PRODUCT_LABEL: product}
+    return yaml.safe_dump_all(documents, sort_keys=False)
+
+
+def inference_node_command() -> tuple[str, ...]:
+    """Which node the inference pod ended up on, asked of the pod rather than the Deployment."""
+    return (*KUBECTL, "get", "pod", "-l", INFERENCE_POD_LABEL, "-o", INFERENCE_NODE_PATH)
+
+
+def node_product_command(node: str) -> tuple[str, ...]:
+    """The card a node carries, as the GPU operator labelled it."""
+    return (*KUBECTL, "get", "node", node, "-o", f"jsonpath={NODE_PRODUCT_PATH}")
+
+
 def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     """Whether anything off the cluster has to call the inference service.
 
@@ -931,7 +1027,9 @@ def needs_lan_address(cells: tuple[Cell, ...]) -> bool:
     return any(cell.lane == "nas" and cell.facts == "service" for cell in cells)
 
 
-def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> tuple[Step, ...]:
+def inference_overlay_steps(
+    *, device: str, keep: bool, lan: bool, tag: str, node_product: str = ""
+) -> tuple[Step, ...]:
     """Bring the inference service up before the service cells, and take it down after.
 
     `auto` is resolved at run time by asking the cluster whether any node carries
@@ -960,6 +1058,11 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
     steps = [
         probe if auto else Step("device", ("echo", f"inference device pinned: {device}")),
         Step("inference-image", ("echo", image)),
+        *(
+            (Step("inference-node", ("echo", f"{GPU_PRODUCT_LABEL}={node_product}")),)
+            if node_product
+            else ()
+        ),
         Step(
             "apply-inference",
             ("kubectl", "kustomize", overlay),
@@ -990,6 +1093,46 @@ def inference_overlay_steps(*, device: str, keep: bool, lan: bool, tag: str) -> 
     return tuple(steps)
 
 
+def gpu_pod_block(product: str) -> str:
+    """Where a render cell's pod may land, and what hands it the card once it does.
+
+    Same three fields as `deploy/kubernetes/overlays/gpu/deployment-gpu.yaml`, on
+    a Job rather than a Deployment, with the node selector narrowed from "any GPU
+    node" to one product label so the row can name the card it measured.
+    """
+    if not product:
+        return ""
+    return (
+        f"      runtimeClassName: {GPU_RUNTIME_CLASS}\n"
+        "      nodeSelector:\n"
+        f"        {GPU_PRODUCT_LABEL}: {product}\n"
+        "      tolerations:\n"
+        f"        - key: {GPU_RESOURCE}\n"
+        "          operator: Exists\n"
+        "          effect: NoSchedule\n"
+    )
+
+
+def _gpu_limit_block(product: str) -> str:
+    """The device request. A GPU is only ever a limit: the plugin has no fractions to give."""
+    return f'              {GPU_RESOURCE}: "1"\n' if product else ""
+
+
+def _job_env(cell: Cell, *, fresh: bool) -> tuple[tuple[str, str], ...]:
+    """Every variable the Job carries, in one block: two `env:` keys is not a manifest."""
+    fresh_switch = ((FRESH_CACHE_ENV, "1"),) if fresh else ()
+    return (*fresh_switch, *(GPU_ENV if cell.gpu_product else ()))
+
+
+def _env_block(pairs: tuple[tuple[str, str], ...]) -> str:
+    if not pairs:
+        return ""
+    entries = "".join(
+        f'            - name: {name}\n              value: "{value}"\n' for name, value in pairs
+    )
+    return f"          env:\n{entries}"
+
+
 def _k8s_manifests(
     cell: Cell,
     memory: dict,
@@ -1018,13 +1161,6 @@ def _k8s_manifests(
         if credentials or operator_immich
         else ""
     )
-    # The switch the container script reads. Absent unless the run asked for it,
-    # so the Job manifest says on its face whether this cell started from nothing.
-    fresh_block = (
-        f'          env:\n            - name: {FRESH_CACHE_ENV}\n              value: "1"\n'
-        if fresh
-        else ""
-    )
     return {
         "claims.yaml": _CLAIMS.format(data=DATA_CLAIM, output=OUTPUT_CLAIM),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
@@ -1035,7 +1171,9 @@ def _k8s_manifests(
             config=REMOTE_CONFIG,
             out=REMOTE_OUT,
             cache=REMOTE_CACHE,
-            fresh=fresh_block,
+            env=_env_block(_job_env(cell, fresh=fresh)),
+            gpu_pod=gpu_pod_block(cell.gpu_product),
+            gpu_limit=_gpu_limit_block(cell.gpu_product),
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
             models_subpath=MODELS_SUBPATH,
@@ -1116,7 +1254,7 @@ spec:
         app.kubernetes.io/component: setup-matrix
     spec:
       restartPolicy: Never
-      securityContext:
+{gpu_pod}      securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
@@ -1136,7 +1274,7 @@ spec:
             - -lc
             - |
 {script}
-{fresh}{secrets}          volumeMounts:
+{env}{secrets}          volumeMounts:
             - name: config
               mountPath: {config}
               subPath: config.yaml
@@ -1162,7 +1300,7 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "4000m"
-      volumes:
+{gpu_limit}      volumes:
         - name: config
           configMap:
             name: {name}-config
@@ -1239,7 +1377,9 @@ def build_cell_plan(
     references, credentials = _variables(source)
     required = tuple(dict.fromkeys((*cell.requires_env, *references, *credentials)))
     missing = [name for name in required if not (environment.get(name) or "").strip()]
-    skip = f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
+    skip = overlay_skip_reason(cell) or (
+        f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
+    )
 
     cache = str(out_dir / cell.id / CELL_CACHE_DIR) if cell.lane == "mac" else REMOTE_CACHE
     pins.update(cache_pins(cache))

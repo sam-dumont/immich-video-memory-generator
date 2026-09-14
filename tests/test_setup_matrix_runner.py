@@ -9,6 +9,7 @@ rather than one argv, and that has to survive a binary payload.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -489,6 +490,100 @@ def test_the_summary_is_rebuilt_from_every_lane_that_has_run(monkeypatch, tmp_pa
     assert rows["nas-rules-local"]["overlap_vs_cell_1"] == 0.667
     assert rows["k8s-rules-local"]["overlap_vs_cell_1"] == 0.0
     assert "k8s-rules-local" in (out_dir / "summary.md").read_text()
+
+
+# The cluster has two GPU nodes and they are not the same card. Which one a run
+# used is not something the run may assume: the Job pins its own by node label,
+# and the inference service takes whatever the scheduler gives it unless the run
+# says otherwise.
+
+_INFERENCE_NODE = "a-gpu-node"
+_CARD = "NVIDIA-GeForce-GTX-1070-SHARED"
+
+
+def _fake_kubectl(answers: dict[str, str]):
+    # WHY: the cluster. Both calls are reads of the API server, and the whole
+    # point of the function is that it asks the pod first and the node second.
+    def run(command, **_kwargs):
+        key = "node" if "node" in command else "pod"
+        return subprocess.CompletedProcess(command, 0, answers.get(key, ""), "")
+
+    return run
+
+
+def test_the_run_records_which_card_answered_the_facts_requests(monkeypatch) -> None:
+    monkeypatch.setattr(subprocess, "run", _fake_kubectl({"pod": _INFERENCE_NODE, "node": _CARD}))
+    assert setup_matrix.read_inference_gpu_product(_plan_of()) == _CARD
+
+
+def test_a_cluster_with_no_card_records_nothing_rather_than_guessing(monkeypatch) -> None:
+    monkeypatch.setattr(subprocess, "run", _fake_kubectl({"pod": _INFERENCE_NODE, "node": ""}))
+    assert setup_matrix.read_inference_gpu_product(_plan_of()) == ""
+
+
+def test_the_dry_run_shows_the_card_the_service_was_pinned_to(tmp_path, capsys) -> None:
+    """A CLI flag, so printing it leaks nothing: it is not a value out of the environment."""
+    env_file = tmp_path / "matrix.env"
+    env_file.write_text(
+        "MATRIX_K8S_CONTEXT=a-context\n"
+        "MATRIX_K8S_NAMESPACE=a-namespace\n"
+        "MATRIX_FIXTURE_BASE_URL=http://a-fixture.invalid:8078\n"
+    )
+    arguments = [
+        "--dry-run",
+        "--cell",
+        "k8s-rules-service",
+        "--env-file",
+        str(env_file),
+        "--out",
+        str(tmp_path / "out"),
+    ]
+
+    assert setup_matrix.main([*arguments, "--inference-node-product", _CARD]) == 0
+    pinned = capsys.readouterr().out
+    assert setup_matrix.main(arguments) == 0
+    unpinned = capsys.readouterr().out
+
+    assert f"nvidia.com/gpu.product={_CARD}" in pinned
+    assert "inference-node" not in unpinned
+
+
+def test_a_cell_records_what_drew_its_titles_and_what_encoded_its_film(tmp_path) -> None:
+    """Read off the run's own log on every lane, never inferred from the lane.
+
+    The first cluster Jobs drew titles on CUDA and encoded in software in the
+    same run, so one answer for both would have been the wrong answer for one.
+    """
+    log = tmp_path / "generate.txt"
+    log.write_text(
+        "Title kernels: quadrants 1.3.0 on the CUDA backend\n"
+        "No hardware acceleration detected, using software encoding\n"
+    )
+    item = _cell_plan(
+        "k8s-gpu-t1000",
+        "mac",
+        cache_dir=str(tmp_path / "cache"),
+        steps=(Step("generate", ("cat", str(log))),),
+    )
+
+    record = setup_matrix.run_local_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["title_backend"] == "CUDA"
+    assert record["encoder"] == "software"
+
+
+def test_a_cell_that_printed_neither_keeps_both_empty(tmp_path) -> None:
+    item = _cell_plan(
+        "mac-rules",
+        "mac",
+        cache_dir=str(tmp_path / "cache"),
+        steps=(Step("generate", ("echo", "nothing about titles or encoders here")),),
+    )
+
+    record = setup_matrix.run_local_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["title_backend"] is None
+    assert record["encoder"] is None
 
 
 def test_a_cluster_cell_is_handed_the_operators_immich_at_the_last_moment(tmp_path) -> None:
