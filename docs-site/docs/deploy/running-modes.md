@@ -35,7 +35,7 @@ would have cost 2.6 hours of facts before anything was selected. Match it to the
 | `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader, 16 min on the fastest local alternative |
 | `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
 
-Which models finish the job, which do not, and what each one cost:
+What each model did on one real month, and what stopped three of them:
 [Readers](./readers.md). Rules and the local model reader cost nothing in API fees. Electricity and
 hardware were not metered.
 
@@ -63,9 +63,9 @@ Cold, one cell each, February 2024, 13,552 pictures:
 | NAS, facts in process | `no_captions` | 1.4404 s | 5 h 25 min, multiplied out from the fixture month |
 | NAS, facts on a cluster service | `no_captions` | 1.0865 s | 4 h 5 min, multiplied out from the fixture month |
 
-None of those rows is `full` on a slow box, and there is a reason. A caption on four Celeron cores
-is 30.9 s, so ten thousand pictures is about four days. That is the whole argument for
-`no_captions` on a NAS: [NAS + a model box](./common-setups/nas-only.md).
+None of those rows is `full` on a slow box. A caption on four Celeron cores measured 30.9 s, so ten
+thousand pictures is about four days, and no NAS cell in the matrix was set to `full`:
+[NAS + a model box](./common-setups/nas-only.md).
 
 **What degrading the Mac would save has not been measured, and the measurement is owed.** No Mac
 cell ran `no_captions` or `metadata_only`, and no cell anywhere ran `metadata_only`. The mechanism
@@ -73,7 +73,6 @@ is not in doubt: a tier drops whole producers and changes nothing else, so the 5
 splits into captions 1,940 s, the two detectors 540 s, the encoder and its six heads 300 s,
 previews 240 s and pixels 120 s. Drop the captions and the arithmetic says about 21 min; drop the
 classifiers as well and it says about 6 min. Those two figures are subtraction, not a stopwatch.
-Treat them as the shape of the saving and not as its size.
 
 What the degradation costs the cut is a different question again, and it has an answer:
 [what the rules cut keeps, per memory type](#what-the-rules-cut-keeps-per-memory-type) below.
@@ -119,15 +118,15 @@ local-model cut of the same month. The hosts:
 
 The hosted rows on the NAS and the cluster read with Melious `gemma-4-31b`, which turned out to
 refuse every picture it was sent, so those cuts were made without the picture pass. Their timings
-stand; the reader is not the one to copy. The six readers that were compared head to head, and the
-four that were rejected, are on [Readers](./readers.md).
+stand as measurements of that run. What each model did, and what stopped three of them, is on
+[Readers](./readers.md).
 
 ### The fixture month: 133 pictures, 130 eligible, June 2024
 
 This month exists to show that a setup works and how fast. It is 133 CC0 files, 130 of them
 eligible, with no history behind them, so it says nothing about whether a cut is any good. Its
 reader prompts are about half the size of a real month's: 1,258 prompt tokens a call against 2,378
-on February, same model over both. Do not size a box on it and do not choose a reader on it.
+on February, same model over both. Two of the three cells that stopped on February finished it.
 
 <!-- Fields in output/setup-matrix/demo/run1/summary.data.json, per cells[] entry:
      setup id, tier tier, prepare cold timing.prepare_cold_s, prepare warm timing.prepare_warm_s,
@@ -197,7 +196,7 @@ one 400 px tile per picture to the caption server. The two detectors took 540 s 
 encoder and its six heads 300 s, previews 240 s, pixels 120 s. Every second of that preparation is
 a one-off: the second memory over the same month prepares in 1 s, so a repeat run is **21 min**,
 almost all of it the reader. The rules cell paid 4,860 s for the same preparation in its own cache,
-so 53 min is the good day and 81 min is the other one. Plan on the slower.
+so the same work on the same host measured 53 min once and 81 min the other time.
 
 **Cluster, rules reader, facts on the inference service, `no_captions`.** 64 min of preparation,
 17 s of selection, 6 min of render: **1 h 10 min** cold, **6 min** warm. Preparation is 87 % facts
@@ -302,25 +301,25 @@ consent step; nothing asks twice. The complete list, with the switch for each de
 The rules reader is a degraded mode, not an equal-quality alternative. Review the cut before you
 share it.
 
-## Pick one
+## The configurations that ran a real month end to end
 
-The three setups below are the ones the matrix ran end to end on a real month. Everything else
-works and is documented; these are the ones with numbers behind them.
+Three of them. Other layouts work and are documented; these are the ones with a measurement behind
+every column.
 
-| Setup | Hardware | First run over a 13,552-picture month | Every run after | What the cut loses | Cost |
+| Configuration | Hardware | First run over a 13,552-picture month | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|
-| **Mac, everything local** | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 1 h 14 min | 21 min | nothing: the only configuration that has been graded | none |
-| **Cluster, rules** | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 10 min | 6 min | the story thesis, the reason under each picture, and custom subjects. 25 % overlap with the graded cut | none |
-| **Cluster, hosted reader** | the same, with a provider URL and key | 1 h 43 min | 37 min | no description under a picture, and the gate can refuse but never clear | EUR 0.143 a cut at list |
+| Mac, everything local | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 1 h 14 min | 21 min | a story thesis and a written reason under each picture. The reference cut | nothing |
+| Cluster, rules reader | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 10 min | 6 min | dates, places, favourites, known people and classifier facts. No thesis, no reason, no custom subjects. 25 % overlap with the reference cut | nothing |
+| Cluster, hosted reader | the same, with a provider URL and key | 1 h 43 min | 37 min | a thesis and reasons, no description under a picture, and a gate that can refuse but never clear | EUR 0.143 |
 
-One warning on the hosted row: the model those cluster cells ran answers HTTP 400 for every picture
-it is sent, so that cut was made with no picture observations in it. The timing and the bill are
-real, the reader choice is not a recommendation. Pick one that takes images from
-[Readers](./readers.md).
+One fact about the hosted row rather than a judgement of it: the model those cluster cells ran
+answers HTTP 400 for every picture it is sent, so that cut was made with no picture observations in
+it. The timings and the token count are of that run as it happened.
+[Readers](./readers.md) has what each model did.
 
-The fourth layout, a NAS with the app and a model on another box, is documented and its render is
-measured, but no real month has run on it: [NAS + a model box](./common-setups/nas-only.md). If the
-NAS is the plan, read the 5 h 25 min above as the thing to budget for.
+A fourth layout, a NAS with the app and a model on another box, is documented and its render is
+measured, but no real month has run on it: [NAS + a model box](./common-setups/nas-only.md). The
+5 h 25 min above is what its measured per-picture rate multiplies out to.
 
 The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 

@@ -200,8 +200,8 @@ The only configuration whose output has been graded is
 ungraded: nobody has judged a second model's titles, and inventing a quality ranking would be worse
 than saying so.
 
-Speed and cost are a different question, and six readers were measured on one real month:
-[Readers: what works](../../deploy/readers.md). That table is the editor's period reads, not title
+Speed and cost are a different question, and ten cells were measured on one real month:
+[Readers](../../deploy/readers.md). Those numbers are the editor's period reads, not title
 generation, but it is the same `llm` model and the same endpoint.
 
 ## Mood Detection for Music

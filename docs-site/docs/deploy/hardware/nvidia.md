@@ -148,7 +148,7 @@ The encode itself went from 95.1 s to 53.8 s, which is 1.77x, but downloading th
 Immich was 48 to 59 % of both runs and the card does nothing for it. Net effect on the render:
 about 15 %. The full table is on [the overview](./overview.md#what-the-card-is-actually-worth).
 
-Where the card earns more is preparation. Put the ONNX encoder, the six heads and both detectors
+Preparation moved further than the render did. Put the ONNX encoder, the six heads and both detectors
 behind the [inference service](../installation/inference-service.md) on CUDA and the same cluster
 pod went from 0.6083 s a picture to 0.1957 s on the fixture month. On a real month the GPU-backed
 service ran at 0.2445 s a picture, which was 87 % of the preparation.

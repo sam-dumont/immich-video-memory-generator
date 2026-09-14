@@ -92,9 +92,8 @@ omlx start        # serves on port 8000
 ```
 
 Pull the model from the dashboard at `http://localhost:8000/admin/chat`. Anything else is expected
-to work and ungraded (see [what has been tested](#what-has-been-tested)). Five other readers, local
-and hosted, were timed and priced on one real month, and four candidates were rejected with a
-measured reason: [Readers](./readers.md).
+to work and ungraded (see [what has been tested](#what-has-been-tested)). Ten cells were timed and
+priced on one real month, three of which stopped before producing a cut: [Readers](./readers.md).
 
 ## 4. Serve the captions
 
@@ -181,8 +180,8 @@ scale and encode; none of them runs inference.
 | Seat | Configuration | Status |
 |---|---|---|
 | Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, Apple Silicon | **Graded**: the matrix ran on this |
-| Reader | Five others, local and hosted | **Measured** for time and money on one real month, not for quality: [Readers](./readers.md) |
-| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown. Four candidates failed a real month; the [rejections](./readers.md#not-supported-and-why) say how |
+| Reader | Six others, local and hosted | **Measured** for time, tokens and list price on one real month, not for quality: [Readers](./readers.md) |
+| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown. Three cells stopped on that month; [Readers](./readers.md#the-three-that-stopped) says what stopped them |
 | Reader | Text-only models | **Unsupported.** The picture pass posts images |
 | Captions | `SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
 | Captions | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` Q8_0 under llama.cpp | **Accepted**: passes the alias and all three schema controls, wording differs |

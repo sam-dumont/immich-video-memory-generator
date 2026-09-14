@@ -287,7 +287,8 @@ At the default of 8, that month was measured: **0.2445 s a picture, 87 % of a 64
 preparation**, with the classifiers on a T1000 behind the service. The card is most of that
 difference. On the fixture month the same pod paid 0.6083 s a picture to a CPU-backed service and
 0.1957 s to a GPU-backed one, while a pod computing its own facts in process managed 0.2555 s. The
-service is worth standing up for a slow host or for a card, not for a fast pod.
+gap between a CPU-backed service and a fast pod's own facts is about 2.4x in the pod's favour; the
+gap between a CPU-backed and a GPU-backed service is about 3.1x the other way.
 
 Raising it re-derives nothing and moves no row: the answers are banked in the order the pictures
 were asked for, whatever order they come back in, and a fact's identity is still the artifact that

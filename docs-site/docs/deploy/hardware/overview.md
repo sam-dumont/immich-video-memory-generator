@@ -29,9 +29,8 @@ kernels on both sides, and only the video encoder changed.
 | of the assembly: the encode alone | 53.8 s | 95.1 s |
 | of the assembly: title and ending screens | 10.4 s | 17.4 s |
 
-So the card is worth **1.77x on the encode**, **1.65x on the whole assembly**, and **15 % of the
-render**. It buys nothing on the download, which is half the wall clock. A cheap card and a fast
-link to Immich beat an expensive card and a slow one.
+So the card moved the encode by **1.77x**, the whole assembly by **1.65x**, and the render by
+**15 %**. It moved the download by nothing, and the download was half the wall clock.
 
 One caveat on that pair: the two cells ran a patch release apart (0.96.0 and 0.97.0) because the
 first CPU-encode attempt failed and was retried. Same node, same requests, same cache state, and
@@ -51,8 +50,8 @@ they open on whatever provider ONNX Runtime has. Put them on a card behind the
 fixture month the same cluster pod paid **0.6083 s a picture** to a CPU-backed service and
 **0.1957 s** to a GPU-backed one. On a real 13,552-picture month the GPU-backed service ran at
 0.2445 s a picture, 87 % of a 64-minute preparation. A pod fast enough to compute its own facts in
-process managed 0.2555 s, so the service earns its keep on slow hosts and on cards, not on quick
-ones.
+process managed 0.2555 s, which is quicker than the CPU-backed service and slower than the
+GPU-backed one.
 
 **The title kernels.** They need a CPU with AVX when there is no card. The Celeron J-series in a
 typical Synology has none, the kernel library dies with SIGILL as it loads, and every title falls

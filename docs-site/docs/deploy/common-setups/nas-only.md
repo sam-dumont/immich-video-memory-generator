@@ -190,10 +190,10 @@ Leave `llm.base_url` unset and the provider name fills in its own URL: `openai` 
 takes `openai-compatible` (or `anthropic`) plus a `base_url` of your own, which is how a Melious
 endpoint is configured. The model has to take images and hold a 32k context either way.
 
-On a real month, six readers were timed head to head: 8 s for no model at all, 14 to 25 minutes for
-the hosted ones, 19 minutes for the local 30B. One cut's tokens were priced at EUR 0.143 at list.
-Four other candidates failed that month outright. Which ones and why:
-[Readers](../readers.md). Only monthly memories were priced; years and trips were not.
+On a real month, ten cells were timed: 8 s for no model at all, 13 min 45 s to 1 h 53 min for the
+hosted ones, 19 min for the local 30B. Costs ran from EUR 0.054 to EUR 0.585 of tokens at list
+price, and three cells stopped before producing a cut. What each one did:
+[Readers](../readers.md). Only monthly memories were measured; years and trips were not.
 
 ### Adding captions later
 
