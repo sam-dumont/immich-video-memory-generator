@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from matrix_pinned_config import DROP, pinned_config, read_operator_immich  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
+    CAPTIONER_CUDA_OVERLAY,
     CAPTIONER_OVERLAY,
     CAPTIONER_PORT,
     CAPTIONER_ROLLOUT,
@@ -35,6 +36,8 @@ from setup_matrix_plan import (  # noqa: E402
     REPO_ROOT,
     PlanError,
     build_plan,
+    captioner_overlay_path,
+    declared_for_device,
     dry_run_text,
     inference_image,
     inference_node_command,
@@ -1528,6 +1531,33 @@ def _cell(manifest: dict, tmp_path: Path, cell_id: str):
     return next(
         item for item in _plan(manifest, tmp_path, FULL_ENV).cells if item.cell.id == cell_id
     )
+
+
+def test_the_captioner_follows_the_card_the_inference_service_found() -> None:
+    """A cell declares a caption server, never a device. One probe decides both.
+
+    Measured on the cluster: 3.5 s a picture on the CPU image against tenths of a
+    second on a card, so a run that found a GPU for the facts and left the
+    captions on two cores spends its afternoon in preparation.
+    """
+    declared = (CAPTIONER_OVERLAY, "deploy/kubernetes/overlays/inference-lan")
+
+    assert declared_for_device(declared, "cpu") == declared
+    assert declared_for_device(declared, "cuda") == (CAPTIONER_CUDA_OVERLAY, declared[1])
+    with pytest.raises(PlanError):
+        captioner_overlay_path("auto")
+
+
+def test_the_cuda_captioner_waits_the_same_two_waits_the_cpu_one_does() -> None:
+    """Weights onto a cold claim take as long whichever device maps them after."""
+    on_gpu = [step.name for step in required_overlay_steps(CAPTIONER_CUDA_OVERLAY, keep=False)]
+
+    assert on_gpu == [
+        "apply-captioner-cuda",
+        "wait-captioner-cuda",
+        "warm-captioner-cuda",
+        "delete-captioner-cuda",
+    ]
 
 
 # The reader bake-off, and the model id each cell pins. These ids are what the

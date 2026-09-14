@@ -19,6 +19,7 @@ overlays/inference/    the inference service alone: Deployment, Service on 8092,
 overlays/inference-cuda/ the same service on an NVIDIA card (patch + `-cuda` image tag)
 overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
 overlays/captioner/    llama.cpp serving the pinned SmolVLM2-500M under the alias `tier: full` wants
+overlays/captioner-cuda/ the same server with its layers on an NVIDIA card
 ```
 
 ## Prerequisites
@@ -165,12 +166,18 @@ starts.
 ```bash
 kubectl create namespace immich-memories   # if you have not already
 kubectl apply -k overlays/captioner
+kubectl apply -k overlays/captioner-cuda   # NVIDIA nodes
 ```
 
+`overlays/captioner-cuda` is the same overlay with `--n-gpu-layers 99` appended and the
+`server-cuda` image, which is worth 3.5 s a picture against tenths of a second. It asks for no
+`nvidia.com/gpu` resource on purpose: a time-sliced card has one allocatable slot and the inference
+Deployment holds it. The caption server page says when to put the request back.
+
 Like the inference overlay it does not list `../../base`: it holds no credential and never talks
-to Immich. Point the app at `http://captioner:8092/v1` in the same namespace, and set
-`caption_concurrency: 1` for a CPU captioner. The recipe, the flags that carry the contract and
-the measured per-picture cost are on the
+to Immich. Point the app at `http://captioner:8092/v1` in the same namespace.
+`caption_concurrency` defaults to 1, which is what a CPU captioner wants; raise it to 4 on a card.
+The recipe, the flags that carry the contract and the measured per-picture cost are on the
 [caption server page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server).
 
 ## Ingress

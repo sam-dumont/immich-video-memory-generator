@@ -205,6 +205,24 @@ def test_the_record_says_which_card_answered_the_facts_requests() -> None:
     assert _summary([_row(REFERENCE_CELL)])["inference_gpu_product"] is None
 
 
+def test_the_record_says_which_device_wrote_the_captions() -> None:
+    """A full-tier row is mostly preparation, and preparation is mostly captions.
+
+    Measured on the cluster: 3.5 s a picture on the CPU image against 0.08 to
+    0.23 s on a GPU, so `prep cold` on a full-tier row means nothing at all until
+    the record says which of the two answered.
+    """
+    summary = build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.84.1",
+        rows=[_row(REFERENCE_CELL)],
+        captioner_device="cuda",
+    )
+    assert summary["captioner_device"] == "cuda"
+    assert _summary([_row(REFERENCE_CELL)])["captioner_device"] is None
+
+
 PRICES = {
     "hosted_melious": {
         "currency": "EUR",

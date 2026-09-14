@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from rich.table import Table
 
-from immich_memories.analysis.trip_detection import DetectedTrip, detect_trips
+from immich_memories.analysis.trip_detection import DetectedTrip
+from immich_memories.analysis.trip_discovery import discover_year_trips
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -102,63 +103,11 @@ def run_trip_detection(
     progress: ProgressDisplay,
     person_names: list[str] | None = None,
 ) -> list[DetectedTrip]:
-    """Run trip detection for a year: fetch videos, validate homebase, detect trips."""
+    """Discover the same photo and video trips offered by the Memory page."""
     from immich_memories.cli._helpers import print_success
-    from immich_memories.timeperiod import DateRange
 
-    trips_config = config.trips
-    trips_config.validate_homebase()
-
-    # Build date range with 1-month buffer on each side to catch
-    # trips that span year boundaries (e.g., Dec 25 → Jan 5).
-    from datetime import date as date_cls
-    from datetime import datetime
-
-    date_range = DateRange(
-        start=datetime(year - 1, 12, 1, 0, 0, 0),
-        end=datetime(year + 1, 1, 31, 23, 59, 59),
-    )
-
-    # Fetch ALL assets (photos + videos + live photos) for trip detection.
-    # Trip detection uses GPS data from any asset type — critical for pre-2018
-    # trips where users may only have photos, not videos.
-    task = progress.add_task(f"Fetching assets for {year}...", total=None)
-
-    if person_names:
-        person_ids: list[str] = []
-        for pname in person_names:
-            found = client.get_person_by_name(pname)
-            if found:
-                person_ids.append(found.id)
-        if len(person_ids) > 1:
-            assets = client.get_assets_for_any_person(person_ids, date_range)
-        elif len(person_ids) == 1:
-            assets = client.get_assets_for_person_and_date_range(person_ids[0], date_range)
-        else:
-            assets = client.get_assets_for_date_range(date_range)
-    else:
-        assets = client.get_assets_for_date_range(date_range)
-
+    task = progress.add_task(f"Finding trips from photos and videos for {year}...", total=None)
+    trips = discover_year_trips(client, config.trips, year, person_names=person_names)
     progress.update(task, completed=True)
-    print_success(f"Found {len(assets)} assets for {year}")
-
-    # Run trip detection on the extended date range
-    task = progress.add_task("Detecting trips from GPS data...", total=None)
-    trips = detect_trips(
-        assets,
-        trips_config.homebase_latitude,
-        trips_config.homebase_longitude,
-        min_distance_km=trips_config.min_distance_km,
-        min_duration_days=trips_config.min_duration_days,
-        max_gap_days=trips_config.max_gap_days,
-    )
-    progress.update(task, completed=True)
-
-    # Filter to trips that overlap the requested year.
-    # A trip overlaps the year if it ends on/after Jan 1 AND starts on/before Dec 31.
-    year_start = date_cls(year, 1, 1)
-    year_end = date_cls(year, 12, 31)
-    trips = [t for t in trips if t.end_date >= year_start and t.start_date <= year_end]
-
     print_success(f"Detected {len(trips)} trip(s)")
     return trips

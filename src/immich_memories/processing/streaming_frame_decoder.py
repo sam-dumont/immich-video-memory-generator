@@ -50,6 +50,7 @@ class FrameDecoder:
         audio_output: Path | None = None,
         caption: ClipCaption | None = None,
         caption_font: str | None = None,
+        caption_window: tuple[int, int] | None = None,
     ) -> None:
         self._clip_path = clip_path
         self._input_seek = input_seek
@@ -71,6 +72,7 @@ class FrameDecoder:
         self._sdr_to_hdr_filter = sdr_to_hdr_filter
         self._caption = caption
         self._caption_font = caption_font
+        self._caption_window = caption_window
 
     def _build_vf(self) -> str:
         """Build the -vf filter chain applied to every decoded clip."""
@@ -152,6 +154,7 @@ class FrameDecoder:
                     self._height,
                     is_hdr=self._pix_fmt != "rgb24",
                     font_path=self._caption_font,
+                    frame_window=self._caption_window,
                 )
             )
 
@@ -247,6 +250,7 @@ def make_decoder(
     scale_mode: str = "black",
     hdr_type: str | None = None,
     audio_work_dir: Path | None = None,
+    caption_window: tuple[int, int] | None = None,
 ) -> FrameDecoder:
     """Create a FrameDecoder with per-clip normalization filters."""
     rotation = 0
@@ -302,4 +306,5 @@ def make_decoder(
         audio_output=audio_output,
         caption=caption if not is_title else None,
         caption_font=caption_font,
+        caption_window=caption_window,
     )

@@ -481,7 +481,7 @@ editorial:
     caption_base_url: http://localhost:8092/v1
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
-    caption_concurrency: 4
+    caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
     head_bundle: ""              # packaged public six-head bundle
     detector_python: ""          # current Python interpreter

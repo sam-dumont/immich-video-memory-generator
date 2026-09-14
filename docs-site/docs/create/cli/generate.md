@@ -24,6 +24,16 @@ same thing in your terminal. This page is what the flags do not tell you.
 the command uses `output.resolution`, which is 1080p by default. `--quality` changes the effective
 CRF, mapped onto each hardware encoder's own scale.
 
+Opening titles name the people or occasion, rather than printing a Boolean query or the
+span between recurring dates. A holiday opens with its name and "Through the Years";
+On This Day shows the month and day. Wordy titles from a new special-day scan are asked
+for again instead of cut off mid-sentence. Existing catalogue entries keep their saved titles.
+
+Trip templates follow `title_screens.locale` and count both the first and last day.
+`--title` and `--subtitle` still override the templates. Date and place captions stay
+clear of dissolves, so the outgoing and incoming labels cannot overlap. A clip too short
+to hold a window keeps its caption for its whole length instead of losing it.
+
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile (1080p, H.264, medium quality, static title backgrounds)
 on every knob you did not set. See [Health, logs and cache](../../deploy/maintenance/health-logs-cache.md).

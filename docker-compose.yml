@@ -199,8 +199,14 @@ services:
   # Running both means changing one of the two left-hand sides; inside the
   # compose network they are different service names on the same port, so only
   # a curl from the host cares.
+  #
+  # On an NVIDIA host, run CAPTIONER_TAG=server-cuda and uncomment the two blocks
+  # at the end of the serving service below. Measured: 3.5 s a picture on the CPU
+  # image in a 2-CPU container, 0.08 to 0.23 s on a GPU. Both halves or neither,
+  # as with the inference service: the cpu image has no CUDA in it. The two
+  # services share the tag so the host pulls one llama.cpp image, not two.
   immich-memories-caption-models:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:${CAPTIONER_TAG:-server}
     container_name: immich-memories-caption-models
     profiles:
       - captioner
@@ -239,7 +245,7 @@ services:
           memory: 512M
 
   immich-memories-captioner:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:${CAPTIONER_TAG:-server}
     container_name: immich-memories-captioner
     profiles:
       - captioner
@@ -287,8 +293,26 @@ services:
     deploy:
       resources:
         limits:
-          # 1.4 GB resident with the weights mapped and an 8k context.
+          # 1.4 GB resident with the weights mapped and an 8k context. It stays
+          # on a card too: the weights are mapped in host memory before they are
+          # copied to the device, and no kernel grew a CFS controller because a
+          # GPU was attached, so there is still no `cpus:` here.
           memory: 3G
+        # ── For a GPU: uncomment both blocks, and set CAPTIONER_TAG=server-cuda ──
+        # A checkout can use docker/hwaccel.captioner.yml instead of copying them.
+        # The layer count is an environment variable rather than a `--n-gpu-layers`
+        # flag on the command above, because that list is also the alias, the
+        # projector and the context size, and it should exist once. llama-server
+        # reads LLAMA_ARG_N_GPU_LAYERS for the same setting; 99 is all of them.
+        #
+        # reservations:
+        #   devices:
+        #     - driver: nvidia
+        #       count: 1
+        #       capabilities:
+        #         - gpu
+    # environment:
+    #   LLAMA_ARG_N_GPU_LAYERS: "99"
 
 volumes:
   immich-memories-config:

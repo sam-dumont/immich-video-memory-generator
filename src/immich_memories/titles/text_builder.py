@@ -393,6 +393,9 @@ def infer_selection_type(
     if birthday_age is not None:
         return SelectionType.BIRTHDAY_YEAR
 
+    if memory_type == "on_this_day":
+        return SelectionType.ON_THIS_DAY
+
     if start_date is not None and end_date is not None:
         return SelectionType.DATE_RANGE
 

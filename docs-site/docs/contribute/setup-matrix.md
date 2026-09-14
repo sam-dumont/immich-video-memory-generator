@@ -288,6 +288,14 @@ it serves, it is blind, and the cell would find that out one picture in. The wai
 the setup rather than of whichever cell happened to go first. `--dry-run` prints both steps,
 `wait-captioner` and `warm-captioner`, under the overlay block.
 
+The cell names an overlay, never a device. Which of the two it gets is the answer `probe-gpu`
+already gave the inference service: `captioner-cuda` on a cluster with a card, `captioner` without
+one, and `--inference-device` pins both together. It matters more than it sounds: on the CPU image
+in a 2-CPU pod a picture costs 3.5 s, so one month of the fixture library is 8 minutes of the row
+before anything is cut. The run publishes which one answered as `captioner_device` in
+`summary.data.json`, and a dry run prints the overlay it would apply, or the rule when the device is
+still `auto`.
+
 Both cells were declared before that overlay existed, and stood in the table as skipped rows reading
 `captioner overlay not in this tree yet`, because a setup nobody can run yet is still a setup the
 table should name. The gate stays now that they run: a checkout can carry less than the manifest

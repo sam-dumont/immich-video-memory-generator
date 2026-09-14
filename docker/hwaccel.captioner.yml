@@ -1,0 +1,44 @@
+# Attaching a card to the caption server, the way docker/hwaccel.inference.yml
+# does for the inference service.
+#
+# An overlay for people who have a checkout. docker-compose.yml names no
+# `extends:` at all, because it is downloaded on its own far more often than it
+# is cloned and compose resolves an `extends:` when the file loads, whatever
+# profiles are on: naming this file from there made a lone docker-compose.yml
+# fail to parse (#882). It carries the cuda reservation commented out instead.
+# From a checkout, add the block to the immich-memories-captioner service:
+#
+#   extends:
+#     file: docker/hwaccel.captioner.yml
+#     service: cuda          # or cpu, which reserves nothing
+#
+# `cuda` also needs the `-cuda` image: set CAPTIONER_TAG=server-cuda. The cpu
+# image has no CUDA in it and will not grow any because a device was reserved.
+# ggml-org publishes the two as a pair per build, so pinning means
+# CAPTIONER_TAG=server-cuda-bNNNNN against server-bNNNNN: both or neither.
+#
+# Why the layer count is an environment variable and not `--n-gpu-layers 99`:
+# the flag would have to go in the service's `command:`, and `extends` replaces
+# a list rather than appending to it, so a cuda variant naming the command would
+# carry a second copy of the alias, the projector path and the context size.
+# llama-server reads the same setting from LLAMA_ARG_N_GPU_LAYERS, which is a
+# mapping and merges. 99 is "all of them"; a 500M model has 32.
+#
+# Measured: 3.5 s a picture on the CPU image in a 2-CPU container, against 0.08
+# to 0.23 s for the same request on a Mac's GPU. Worth the pull.
+#
+# Not shipped: rocm and vulkan. There is no AMD card here to test either on.
+services:
+  cpu: {}
+
+  cuda:
+    environment:
+      LLAMA_ARG_N_GPU_LAYERS: "99"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
