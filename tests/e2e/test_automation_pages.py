@@ -37,10 +37,33 @@ def test_runs_page_reads_the_existing_database(page, launch_app_url, launch_work
     expect(page.get_by_text("Fixture provider stopped answering", exact=True)).to_be_visible()
 
 
+def test_a_failed_generation_still_offers_the_run_it_started(
+    page, launch_app_url, launch_workspace
+):
+    """A failure is exactly when the run record and its transcript are worth reaching."""
+    from tests.e2e.fake_automation import FAIL_MARKER
+
+    marker = launch_workspace.root / "state" / FAIL_MARKER
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("")
+    page.goto(f"{launch_app_url}/suggestions")
+    card = page.locator(".suggestion-card").filter(has_text="monthly review")
+    expect(card).to_be_visible(timeout=60_000)
+    card.get_by_role("button", name="Run this suggestion").click()
+    expect(page.get_by_text("Failed:", exact=False)).to_be_visible(timeout=120_000)
+    expect(page.get_by_role("link", name="Open run", exact=True)).to_be_visible()
+    expect(page.get_by_text("the fixture provider refused", exact=False)).to_be_visible()
+    page.get_by_role("link", name="Open run", exact=True).click()
+    expect(page.get_by_text("The fixture provider refused the render", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Download child output")).to_be_visible()
+
+
 def test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace):
     from pathlib import Path
 
+    from immich_memories.automation.state_store import AutomationStateStore
     from immich_memories.tracking import RunDatabase
+    from immich_memories.ui.pages.suggestions import SUGGESTION_REASON
     from tests.e2e.conftest import set_theme
     from tests.e2e.fake_library import CARRIERS, THESIS
     from tests.e2e.test_screenshots import _save
@@ -64,6 +87,11 @@ def test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, l
     set_theme(page, "light")
     expect(card).to_be_visible(timeout=60_000)
     card.get_by_role("button", name="Run this suggestion").click()
+    expect(page.get_by_text("Running on the server", exact=False)).to_be_visible(timeout=60_000)
+    # A run somebody clicked for is not a nightly wake, and only the live attempt
+    # carries that: finishing overwrites the reason with the outcome.
+    live = AutomationStateStore(launch_workspace.database_path).get_last_attempt()
+    assert live.reason == SUGGESTION_REASON
     expect(page.get_by_role("link", name="Open run", exact=True)).to_be_visible(timeout=240_000)
     page.get_by_role("link", name="Open run", exact=True).click()
     disclosure = page.get_by_text("Read the cut", exact=True)
