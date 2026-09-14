@@ -30,7 +30,15 @@ class EditorialPreparationConfig(BaseModel):
         description="Bearer token for a caption server that wants one; never taken from llm",
     )
     caption_timeout_seconds: float = Field(default=90, gt=0)
-    caption_concurrency: int = Field(default=4, ge=1, le=16)
+    caption_concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=16,
+        description=(
+            "Caption requests in flight. One is right for any CPU captioner; raise it "
+            "for a server on a GPU"
+        ),
+    )
     batch_size: int = Field(default=32, ge=1, le=256)
     head_bundle: str = Field(
         default="", description="Blank uses the packaged public six-head bundle"

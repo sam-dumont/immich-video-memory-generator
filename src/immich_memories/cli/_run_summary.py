@@ -32,6 +32,14 @@ def _thousands(count: int) -> str:
     return f"{count / 1000:.1f}k" if count >= 1000 else str(count)
 
 
+def _calls_part(counters: LLMCounters) -> str:
+    """Say how the calls were carried only when more than one wire carried them."""
+    if not counters.batch_calls:
+        return f"{counters.calls} calls"
+    realtime = counters.calls - counters.batch_calls
+    return f"{counters.calls} calls ({realtime} realtime, {counters.batch_calls} batch)"
+
+
 def _llm_lines(counters: LLMCounters) -> list[str]:
     """What the model cost, or nothing at all when it was never asked.
 
@@ -41,7 +49,7 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
     if not counters.calls and not counters.cache_hits:
         return []
 
-    parts = [f"{counters.calls} calls"]
+    parts = [_calls_part(counters)]
     if counters.cache_hits:
         parts.append(f"{counters.cache_hits} answered from the judgment cache")
     if counters.prompt_tokens or counters.completion_tokens:
@@ -53,6 +61,12 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
         parts.append(_clock(counters.wall_seconds))
 
     lines = ["", "  LLM   " + " · ".join(parts)]
+    if counters.batch_calls:
+        lines.append(
+            f"        {_thousands(counters.batch_prompt_tokens)} prompt / "
+            f"{_thousands(counters.batch_completion_tokens)} completion of that came "
+            "back from the provider's batch route"
+        )
     if counters.truncated:
         # The sentence #600 needed on the night it started, instead of two
         # months later in a server log nobody was reading.

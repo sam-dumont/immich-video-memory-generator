@@ -288,6 +288,9 @@ llm:
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   thinking: "disabled"             # disabled | low | high | max | auto
+  batch: "off"                     # off | auto: queue a stage's independent prompts, half price
+  batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
+  batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
@@ -478,7 +481,7 @@ editorial:
     caption_base_url: http://localhost:8092/v1
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
-    caption_concurrency: 4
+    caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
     head_bundle: ""              # packaged public six-head bundle
     detector_python: ""          # current Python interpreter

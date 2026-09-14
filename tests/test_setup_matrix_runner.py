@@ -621,3 +621,37 @@ def test_a_cluster_cell_is_handed_the_operators_immich_at_the_last_moment(tmp_pa
     assert written == "data:\n  url: http://immich.invalid:2283\n"
     assert "operator-key" not in written
     assert f"--from-literal={IMMICH_KEY_ENV}=operator-key" in created
+
+
+def test_the_dry_run_says_which_captioner_the_full_tier_cells_will_get(tmp_path, capsys) -> None:
+    """The device is half of what a full-tier row costs, so the plan has to name it.
+
+    Pinned, the transcript applies that overlay by name. On `auto` it prints the
+    rule instead of an answer, because resolving it means asking a cluster and a
+    dry run asks nothing.
+    """
+    env_file = tmp_path / "matrix.env"
+    env_file.write_text(
+        "MATRIX_K8S_CONTEXT=a-context\n"
+        "MATRIX_K8S_NAMESPACE=a-namespace\n"
+        "MATRIX_FIXTURE_BASE_URL=http://a-fixture.invalid:8078\n"
+    )
+    arguments = [
+        "--dry-run",
+        "--cell",
+        "k8s-full-rules",
+        "--env-file",
+        str(env_file),
+        "--out",
+        str(tmp_path / "out"),
+    ]
+
+    assert setup_matrix.main([*arguments, "--inference-device", "cuda"]) == 0
+    pinned = capsys.readouterr().out
+    assert setup_matrix.main(arguments) == 0
+    undecided = capsys.readouterr().out
+
+    assert "apply-captioner-cuda" in pinned
+    assert "overlays/captioner-cuda" in pinned
+    assert "captioner-device" in undecided, "an auto run has to say what decides it"
+    assert "probe-gpu" in undecided

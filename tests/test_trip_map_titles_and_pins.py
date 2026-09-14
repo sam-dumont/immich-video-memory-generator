@@ -57,6 +57,15 @@ def test_without_a_curated_title_the_template_still_wins() -> None:
     assert "SPAIN" in settings.trip_title_text.upper()
 
 
+def test_trip_template_uses_the_caption_language_and_inclusive_days() -> None:
+    config = Config()
+    config.title_screens.locale = "fr"
+    settings = _build_title_settings(_trip_params(config=config), config, [])
+
+    assert settings is not None
+    assert settings.trip_title_text == "DEUX SEMAINES À SPAIN, JUILLET 2025"
+
+
 def _gps_clip(lat: float, lon: float, name: str | None) -> AssemblyClip:
     return AssemblyClip(
         path=Path("/fake/clip.mp4"), duration=3.0, latitude=lat, longitude=lon, location_name=name

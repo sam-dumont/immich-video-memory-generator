@@ -201,11 +201,12 @@ docker compose --profile captioner up -d
 curl -s localhost:8092/v1/models
 ```
 
-Set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "1"` with it. On four Celeron
-cores a caption is 30.9 s at 1, and the default of 4 is slower, not faster: four image encodes
-share the threads of one. At that rate captioning a 13,552-picture month is four days, which is
-the whole reason this page recommends `no_captions`. [Caption server](../installation/caption-server.md)
-has the flags and what each one costs when it is missing.
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY` already defaults to 1, which is what
+this box wants. On four Celeron cores a caption is 30.9 s at 1, and four at once is slower, not
+faster: four image encodes share the threads of one. At that rate captioning a 13,552-picture month
+is four days, which is the whole reason this page recommends `no_captions`.
+[Caption server](../installation/caption-server.md) has the flags and what each one costs when it is
+missing.
 
 Or point the container at a caption endpoint on another box and run the same scope again on the
 `full` tier:

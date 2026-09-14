@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from immich_memories.analysis.llm_query import THINKING_MIN_MAX_TOKENS
+from immich_memories.analysis.llm_wire import THINKING_MIN_MAX_TOKENS
 from immich_memories.config_models_llm import LLMConfig
 
 
@@ -350,9 +350,9 @@ class TestServerParameterDialects:
     name the offending parameter, so the call adapts and remembers."""
 
     def setup_method(self):
-        from immich_memories.analysis import llm_query
+        from immich_memories.analysis import llm_wire
 
-        llm_query._PARAM_ADAPTATIONS.clear()
+        llm_wire.PARAM_ADAPTATIONS.clear()
 
     @pytest.mark.asyncio
     async def test_max_tokens_rejection_adapts_and_retries(self):
@@ -772,7 +772,7 @@ async def test_transport_observer_records_openai_adaptation_and_success() -> Non
     # WHY: the compatibility retry posts twice, once rejected and once accepted.
     with (
         patch("httpx.AsyncClient.post", side_effect=[rejected, _openai_response()]),
-        patch("immich_memories.analysis.llm_query._PARAM_ADAPTATIONS", {}),
+        patch("immich_memories.analysis.llm_wire.PARAM_ADAPTATIONS", {}),
     ):
         await query_llm("look", _thinking_config(), transport_observer=attempts.append)
 

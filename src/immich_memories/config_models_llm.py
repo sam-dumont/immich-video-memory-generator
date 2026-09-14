@@ -13,6 +13,11 @@ from immich_memories.config_models import expand_env_vars
 # host takes: an effort on Claude, a level of its own on z.ai.
 ThinkingLevel = Literal["disabled", "low", "high", "max", "auto"]
 
+# Whether a fan-out stage may be queued instead of asked. Off is the default
+# because a batch trades minutes of latency for half the price, and only a run
+# nobody is waiting on can spend that.
+BatchMode = Literal["off", "auto"]
+
 _SWITCH_LEVELS = {"true": "high", "false": "disabled", "1": "high", "0": "disabled"}
 
 
@@ -108,6 +113,37 @@ class LLMConfig(BaseModel):
         description=(
             "Include OpenAI's optional image_url.detail field. Disable for compatible APIs "
             "whose strict vision schema accepts only image_url.url."
+        ),
+    )
+    batch: BatchMode = Field(
+        default="off",
+        description=(
+            "Whether a reading stage may hand its independent prompts to the "
+            "provider's batch route instead of asking them one at a time. "
+            "'auto' does so when the provider declares such a route and the "
+            "stage has at least 'batch_min_requests' prompts that do not read "
+            "each other's answers. OpenAI and Anthropic both charge half for "
+            "it and answer within the day rather than within seconds, so it "
+            "suits an unattended run and not a run someone is watching."
+        ),
+    )
+    batch_min_requests: int = Field(
+        default=8,
+        ge=2,
+        le=10_000,
+        description=(
+            "Fewest independent prompts in one stage worth a batch. Below this "
+            "the asking is quicker than the queueing and the stage stays realtime."
+        ),
+    )
+    batch_max_wait_minutes: int = Field(
+        default=60,
+        ge=1,
+        le=1440,
+        description=(
+            "How long a stage waits for a batch before giving up on it. "
+            "Whatever the provider has not answered by then is asked again in "
+            "real time, so a slow queue costs a run its discount and not its run."
         ),
     )
 

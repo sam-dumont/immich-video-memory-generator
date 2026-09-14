@@ -20,7 +20,8 @@ deploy/kubernetes/
 ├── overlays/inference/      the inference service alone: Deployment, Service on 8092, cache PVC
 ├── overlays/inference-cuda/ the same service on an NVIDIA card
 ├── overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
-└── overlays/captioner/      llama.cpp under the alias `tier: full` wants, on its own PVC
+├── overlays/captioner/      llama.cpp under the alias `tier: full` wants, on its own PVC
+└── overlays/captioner-cuda/ the same caption server on an NVIDIA card
 ```
 
 ## Prerequisites
@@ -133,8 +134,10 @@ Pick one before you apply, on the Deployment (and on the Job and CronJobs if you
             # On full, with overlays/captioner applied:
             # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
             #   value: "http://captioner:8092/v1"
+            # Concurrency defaults to 1, which is what a CPU captioner wants.
+            # On overlays/captioner-cuda, raise it:
             # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY
-            #   value: "1"
+            #   value: "4"
 ```
 
 What each tier runs and gives up is on [Running modes](../running-modes.md).
@@ -193,12 +196,19 @@ NetworkPolicy and a 2Gi PVC that an init container fills and digest-checks befor
 starts.
 
 ```bash
-kubectl apply -k deploy/kubernetes/overlays/captioner
+kubectl apply -k deploy/kubernetes/overlays/captioner        # CPU
+kubectl apply -k deploy/kubernetes/overlays/captioner-cuda   # NVIDIA nodes
 ```
 
+`captioner-cuda` is the same Deployment with the `server-cuda` image and `--n-gpu-layers 99`
+appended, plus the `nvidia` RuntimeClass, the node selector and the toleration. It requests no
+`nvidia.com/gpu` on purpose: a time-sliced card has one allocatable slot and the inference
+Deployment holds it, and the 546 MB of weights share happily. A CPU pod with two cores costs 3.5 s
+a picture, so one month of the fixture library is 8 minutes before anything is cut.
+
 It does not include `base/` either, so it applies with no Immich secret. Point the app at
-`http://captioner:8092/v1` and set `caption_concurrency: 1`, because on a CPU captioner the
-default of 4 is twelve times slower. The whole recipe is on
+`http://captioner:8092/v1`. `caption_concurrency` defaults to 1, which is what a CPU captioner
+wants; raise it to 4 on a card. The whole recipe is on
 [Caption server](./caption-server.md).
 
 ## Batch jobs
