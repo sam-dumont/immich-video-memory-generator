@@ -45,6 +45,13 @@ Nothing to select: NVIDIA is probed first, so if NVENC works it is used. On a mu
 the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`: there is no `device_index` in
 the config.
 
+`hardware.backend: nvidia` probes NVENC and nothing else. Leave it on `auto` for normal use. It is
+there for a benchmark: detection treats software as no backend at all, so a box missing the `video`
+driver capability would encode on the CPU and still look like a GPU run. Named, the miss is a
+warning in the log and the timing can be thrown out rather than believed. The
+[setup matrix](../../contribute/setup-matrix.md) pins it in the two cluster cells that render on a
+named card.
+
 ## In Docker
 
 The image does not bundle drivers; the NVIDIA Container Toolkit injects them. NVENC needs the
@@ -86,6 +93,28 @@ spec:
 
 Without `video` the encode library is absent and nothing on the pod explains why: the encoders
 still list, detection still looks plausible, and the render falls back to the CPU.
+
+## When the probe fails with -22
+
+This one reads like a bad FFmpeg flag and is not one:
+
+```
+Hardware encoder probe failed for ['-c:v', 'h264_nvenc']: Terminating thread with return code -22 (Invalid argument)
+No hardware acceleration detected, using software encoding
+```
+
+`-22` here means the container got the GPU for compute and not for video. Everything that is not
+encoding keeps working, which is what makes it confusing: `nvidia-smi` lists the card, the title
+kernels log `on the CUDA backend`, and only NVENC is missing.
+
+Set `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` on the container, plus the `nvidia` runtime
+class. In Docker that is the block under [In Docker](#in-docker); in Kubernetes,
+`kubectl apply -k overlays/gpu`, which sets both. The usual way to hit this is a pod that never got
+the overlay: a hand-written Job dropped onto a shared GPU node inherits the node's default
+`compute,utility` and nothing else.
+
+`immich-memories preflight` says the same thing on its Hardware row, before you spend a render
+finding out.
 
 ## When the image is newer than the driver
 

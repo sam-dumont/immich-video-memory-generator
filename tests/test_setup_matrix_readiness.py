@@ -31,6 +31,8 @@ import setup_matrix  # noqa: E402
 import setup_matrix_readiness  # noqa: E402
 from setup_matrix_plan import INFERENCE_ENV, Cell, CellPlan, Plan, Step  # noqa: E402
 
+from immich_memories.analysis.editorial_description_contract import API_MODEL  # noqa: E402
+
 
 def _plan(item: CellPlan) -> Plan:
     return Plan(
@@ -375,3 +377,119 @@ def test_an_address_the_nas_cells_can_reach_is_warmed_without_a_forward(
 
     assert len(asked) == 1
     assert not (tmp_path / "forwards").exists(), "it port-forwarded to an address it already had"
+
+
+# --- the caption server ---------------------------------------------------------
+
+_CAPTIONER_SCRIPT = """\
+import http.server
+import json
+import os
+import sys
+
+here = os.path.dirname(os.path.abspath(__file__))
+open(os.path.join(here, "ran"), "a").write(" ".join(sys.argv[1:]) + "\\n")
+if "rollout" in sys.argv:
+    raise SystemExit({rollout_code})
+
+open(os.path.join(here, "forwards"), "a").write("1\\n")
+local = int(sys.argv[-1].split(":")[0])
+
+
+class _Captioner(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self._wrote("GET " + self.path)
+        self._say({{"object": "list", "data": [{{"id": "{model}"}}]}})
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
+        self._wrote("POST " + self.path + " " + body)
+        envelope = json.dumps({{"description": "a flat grey square", "setting": "plain"}})
+        self._say({{"choices": [{{"finish_reason": "stop", "message": {{"content": envelope}}}}]}})
+
+    def _wrote(self, line):
+        open(os.path.join(here, "asked"), "a").write(line + "\\n")
+
+    def _say(self, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        return
+
+
+http.server.HTTPServer(("127.0.0.1", local), _Captioner).serve_forever()
+"""
+
+
+def _fake_captioner_kubectl(
+    tmp_path: Path, *, model: str = API_MODEL, rollout_code: int = 0
+) -> None:
+    """A kubectl that answers `rollout status` and then port-forwards to a caption server.
+
+    One fake for both halves, because the runner takes both in one go. Every call
+    writes its own argv down; a `rollout` one exits with `rollout_code`, and the
+    rest bind the local port they were handed and serve llama.cpp's two endpoints.
+    A forward that never comes up is the facts tests' ground: the caption probe
+    goes through the same disposable forward and the same budget.
+    """
+    script = tmp_path / "kubectl"
+    body = _CAPTIONER_SCRIPT.format(rollout_code=rollout_code, model=model)
+    script.write_text(f"#!{sys.executable}\n" + body)
+    script.chmod(0o755)
+
+
+def test_the_caption_server_is_made_to_caption_before_any_cell_asks_it_to(
+    monkeypatch, tmp_path
+) -> None:
+    """Rolled out is not ready: llama.cpp maps 546 MB of weights on its way to the first answer."""
+    _fake_captioner_kubectl(tmp_path)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+
+    seconds = setup_matrix.bring_up_captioner(_cluster_plan())
+
+    ran = (tmp_path / "ran").read_text().splitlines()
+    assert "rollout status deployment/immich-memories-captioner --timeout=15m" in ran[0]
+    assert "port-forward svc/captioner" in ran[1], "it asked for a caption before the rollout"
+    asked = (tmp_path / "asked").read_text().splitlines()
+    assert asked[0] == "GET /v1/models"
+    assert asked[1].startswith("POST /v1/chat/completions")
+    assert API_MODEL in asked[1], "the control went out under some other model name"
+    assert "data:image/jpeg;base64," in asked[1], "it asked for a caption of nothing"
+    assert seconds >= 0.0
+
+
+def test_a_captioner_that_never_rolls_out_stops_the_run(monkeypatch, tmp_path) -> None:
+    """Fifteen minutes of caption requests cannot report a claim that never filled."""
+    _fake_captioner_kubectl(tmp_path, rollout_code=1)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    with pytest.raises(SystemExit) as failure:
+        setup_matrix.bring_up_captioner(_cluster_plan())
+
+    assert "immich-memories-captioner" in str(failure.value)
+    assert "15m" in str(failure.value)
+    assert not (tmp_path / "forwards").exists(), "it forwarded to a Deployment that was not up"
+
+
+def test_a_server_advertising_another_model_spends_the_budget_and_names_the_alias(
+    monkeypatch, tmp_path
+) -> None:
+    """An endpoint that serves and is wrong is what this probe exists to catch."""
+    _fake_captioner_kubectl(tmp_path, model="llava-1.5-7b")
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_TIMEOUT_S", 0.5)
+
+    with pytest.raises(SystemExit) as failure:
+        setup_matrix.bring_up_captioner(_cluster_plan())
+
+    assert API_MODEL in str(failure.value)
+    assert "svc/captioner" in str(failure.value)
+    assert "a caption request" in str(failure.value)
+    assert "POST" not in (tmp_path / "asked").read_text(), "it sent a tile to the wrong model"

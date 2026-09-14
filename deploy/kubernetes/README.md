@@ -93,6 +93,12 @@ nvidia`, one `nvidia.com/gpu`, `NVIDIA_*` env, `nodeSelector` on `nvidia.com/gpu
 and a toleration for the `nvidia.com/gpu` taint. Edit the label or GPU count there. The app
 auto-detects the GPU (NVENC encoding, CUDA analysis, GPU title rendering).
 
+`NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` in that patch is required, not decoration.
+Asking for `nvidia.com/gpu` gets you `compute,utility`, which is enough for CUDA and not for the
+encode chip: without `video` the NVENC probe dies with `-22 (Invalid argument)` and the render
+falls back to the CPU. Pods that skip the overlay hit this, so copy the `runtimeClassName` and the
+two `NVIDIA_*` env vars into any `base/job.yaml` pod you schedule on a GPU node.
+
 ## Inference service
 
 `overlays/inference` is the encoder, the six heads and the two detectors behind one HTTP port, as

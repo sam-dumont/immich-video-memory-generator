@@ -625,7 +625,12 @@ class TestQueryLlmWithImages:
         """Z.AI rejects OpenAI's optional detail property instead of ignoring it."""
         from immich_memories.analysis.llm_query import query_llm
 
-        config = LLMConfig(provider="zai", model="glm-4.6v", api_key="test-key")
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            model="glm-4.6v",
+            api_key="test-key",
+        )
 
         # WHY: httpx post is the transport boundary to the provider; response parsing stays real.
         with patch("httpx.AsyncClient.post", return_value=_openai_response()) as mock_post:
@@ -864,7 +869,8 @@ async def test_each_provider_payload_carries_the_exact_jpeg_bytes(provider: str)
     if provider == "ollama":
         encoded = payload["images"][0]
     elif provider == "anthropic":
-        encoded = payload["messages"][0]["content"][0]["source"]["data"]
+        # Same slot as the OpenAI dialect: the prompt, then the tiles in order.
+        encoded = payload["messages"][0]["content"][1]["source"]["data"]
     else:
         encoded = payload["messages"][0]["content"][1]["image_url"]["url"].split(",", 1)[1]
     assert base64.b64decode(encoded) == image

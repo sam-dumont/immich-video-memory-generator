@@ -7,6 +7,7 @@ here instead of quietly producing a plausible wrong number in a published table.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from setup_matrix_capture import (  # noqa: E402
     parse_cache_primed,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
+    parse_encoder,
     parse_models_fetch_seconds,
     parse_prepare_seconds,
     parse_prepared_pictures,
@@ -25,7 +27,10 @@ from setup_matrix_capture import (  # noqa: E402
     parse_run_summary,
     parse_saved_path,
     parse_time_peak_rss_mb,
+    parse_title_backend,
     prepare_phases,
+    read_contract_health,
+    read_images_sent,
 )
 
 from immich_memories.analysis.llm_metrics import LLMCounters  # noqa: E402
@@ -89,9 +94,9 @@ def test_a_hosted_run_reports_its_tokens_and_says_how_exact_they_are() -> None:
     assert usage.tokens_out == 8_300
     assert usage.counted_exactly is False
     assert usage.wall_seconds == 310
-    # No provider in the matrix returns a price, so this must stay empty rather
-    # than be filled from a price list.
-    assert usage.est_cost_eur is None
+    # The capture never prices anything: the list price lives in the manifest and
+    # the summary is what multiplies it by these counts.
+    assert usage.est_cost is None
 
 
 def test_small_token_counts_are_reported_exactly() -> None:
@@ -281,3 +286,141 @@ def test_a_fetch_that_died_before_the_echo_stays_unmeasured() -> None:
     assert parse_models_fetch_seconds("") is None
     assert parse_models_fetch_seconds("bash: SECONDS: unbound variable") is None
     assert parse_models_fetch_seconds("-12") is None
+
+
+# What drew the titles and what encoded the film. Both come out of a logger
+# rather than a renderer, and the lines below are copied from the first real
+# cluster run: its Jobs asked for no GPU at all, drew their titles on CUDA off
+# the shared card anyway, and encoded in software because the NVIDIA runtime
+# exposed `compute,utility` and every NVENC probe died on -22.
+
+_SRC = Path(__file__).resolve().parent.parent / "src" / "immich_memories"
+_CUDA_TITLES = "Title kernels: quadrants 1.3.0 on the CUDA backend"
+_NO_HWACCEL = "No hardware acceleration detected, using software encoding"
+
+
+def test_the_title_backend_is_read_off_the_line_that_names_it() -> None:
+    assert parse_title_backend(f"before\n{_CUDA_TITLES}\nafter") == "CUDA"
+    assert (
+        parse_title_backend(
+            "No GPU kernel library on this platform; title screens use the PIL renderer"
+        )
+        == "PIL"
+    )
+    assert parse_title_backend("a run that never mentioned titles") is None
+
+
+def test_the_encoder_is_what_the_assembly_said_it_used() -> None:
+    """The assembly names the encoder, and it is the only line that says what ran."""
+    assert parse_encoder("Streaming SDR assembly with h264_nvenc") == "h264_nvenc"
+    assert parse_encoder("Streaming HLG HDR assembly with hevc_videotoolbox") == "hevc_videotoolbox"
+
+
+def test_a_run_that_named_no_encoder_reports_the_backend_it_found() -> None:
+    """`nvidia` is not `h264_nvenc`, and turning one into the other here would be a guess."""
+    assert parse_encoder(_NO_HWACCEL) == "software"
+    assert parse_encoder("Detected NVIDIA hardware acceleration: nvidia: T1000 (H.264 encode)") == (
+        "nvidia"
+    )
+    assert parse_encoder("a run that never mentioned an encoder") is None
+
+
+def test_the_lines_these_two_parsers_read_are_still_the_lines_the_app_prints() -> None:
+    """Both come from a logger, so there is no renderer to call and compare against.
+
+    The anchor is the source itself: reword either line and this fails here,
+    instead of every row in a published table quietly showing a dash.
+    """
+    assert (
+        '"Title kernels: %s %s on the %s backend"' in (_SRC / "titles" / "kernels.py").read_text()
+    )
+    hardware = (_SRC / "processing" / "hardware_detection.py").read_text()
+    assert _NO_HWACCEL in hardware
+    assembly = (_SRC / "processing" / "assembly_engine.py").read_text()
+    assert '"Streaming SDR assembly with %s"' in assembly
+    assert '"Streaming %s HDR assembly with %s"' in assembly
+
+
+def _episode_warning(exc_type: str, detail: str) -> str:
+    """The line the episode reader warns with, through the formatter the CLI installs."""
+    return f"2026-09-14 02:24:51 WARNING text episode provider failed ({exc_type}): {detail}"
+
+
+def _calls(attempt: Path, names: list[str]) -> Path:
+    directory = attempt / "calls"
+    directory.mkdir(parents=True)
+    for name in names:
+        (directory / name).write_text("{}")
+    return attempt
+
+
+def test_a_reader_the_contracts_never_refused_reports_a_zero(tmp_path: Path) -> None:
+    attempt = _calls(
+        tmp_path, ["01-structure.request.private.txt", "02-story-pick-K01.request.private.txt"]
+    )
+    assert read_contract_health(attempt, "") == {"rejections": 0, "repairs": 0}
+
+
+def test_every_repair_is_a_rejection_the_run_recovered_from(tmp_path: Path) -> None:
+    attempt = _calls(
+        tmp_path,
+        [
+            "02-story-pick-K01-source.request.private.txt",
+            "03-story-pick-K01-source-repair.request.private.txt",
+            "04-story-weights-repair-2.request.private.txt",
+        ],
+    )
+    assert read_contract_health(attempt, "") == {"rejections": 2, "repairs": 2}
+
+
+def test_an_answer_nothing_recovered_is_a_rejection_and_not_a_repair(tmp_path: Path) -> None:
+    attempt = _calls(
+        tmp_path,
+        [
+            "05-story-pick-K02-source.failure.private.json",
+            "06-json-failure-4000.private.json",
+            # A reply that was normalised, not one that was refused.
+            "07-json-decoding-4000.private.json",
+        ],
+    )
+    assert read_contract_health(attempt, "") == {"rejections": 2, "repairs": 0}
+
+
+def test_the_episode_readers_warnings_count_once_per_reason(tmp_path: Path) -> None:
+    """It warns once per distinct reason (#913), and a lane carries its stdout twice."""
+    log = "\n".join(
+        [
+            _episode_warning("TextCompletionFailure", "incomplete after 2 attempts"),
+            _episode_warning("TextCompletionFailure", "incomplete after 2 attempts"),
+            _episode_warning("TimeoutError", "read timed out"),
+        ]
+    )
+    attempt = _calls(tmp_path, ["01-episodes.request.private.txt"])
+    assert read_contract_health(attempt, log) == {"rejections": 2, "repairs": 0}
+
+
+def test_a_cell_that_asked_no_model_reports_nothing_rather_than_zero(tmp_path: Path) -> None:
+    """A zero for a rules cell would read as a model that behaved perfectly."""
+    assert read_contract_health(tmp_path, "") == {"rejections": None, "repairs": None}
+    assert read_contract_health(None, "") == {"rejections": None, "repairs": None}
+
+
+def test_the_tiles_the_reader_was_sent_come_off_the_plan(tmp_path: Path) -> None:
+    """The reader is mostly text, and mostly is not never: those tiles are billed."""
+    (tmp_path / "plan.private.json").write_text(
+        json.dumps(
+            {
+                "picture_facts_metrics": {"images_sent": 36, "inference_calls": 12},
+                "sampled_pair_metrics": {"images_sent": 4},
+                "story_motion_facts": {"wall_seconds": 1.0},
+                "tiers": {"a-story": "full"},
+            }
+        )
+    )
+    assert read_images_sent(tmp_path) == 40
+
+
+def test_a_plan_that_counted_no_tiles_reports_nothing(tmp_path: Path) -> None:
+    (tmp_path / "plan.private.json").write_text(json.dumps({"tiers": {}}))
+    assert read_images_sent(tmp_path) is None
+    assert read_images_sent(tmp_path / "no-attempt-here") is None

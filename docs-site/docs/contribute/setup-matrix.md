@@ -6,30 +6,290 @@ title: Setup matrix
 # Running the setup matrix
 
 The capability matrix varies what the product is asked for. The setup matrix varies the machine it
-runs on: ten setups, one memory each, the same month of the same library. It answers one question,
-"how do the same pictures come out under each mode, and what does each mode tax", and the answer is
-a table of preparation, selection and render seconds, peak memory, the pictures each setup chose,
-the overlap against the reference cut, and the film.
+runs on: twenty-one setups, one memory each, the same month of the same library. It answers one
+question, "how do the same pictures come out under each mode, and what does each mode tax", and the
+answer is a table of preparation, selection and render seconds, peak memory, the pictures each setup
+chose, the overlap against the reference cut, and the film.
 
-`scripts/setup_matrix.yaml` holds the ten cells. `scripts/setup_matrix.py` runs them.
+`scripts/setup_matrix.yaml` holds the cells. `scripts/setup_matrix.py` runs them.
 
-| Cell | Lane | Reader | Picture facts | Tier |
-|---|---|---|---|---|
-| `mac-local` | Mac | local model | in process | full |
-| `mac-rules` | Mac | rules | in process | full |
-| `nas-rules-local` | NAS | rules | in process | no_captions |
-| `nas-rules-service` | NAS | rules | inference service | no_captions |
-| `nas-hosted-melious` | NAS | hosted | inference service | no_captions |
-| `nas-hosted-zai` | NAS | hosted | inference service | no_captions |
-| `k8s-rules-service` | Kubernetes | rules | inference service | no_captions |
-| `k8s-hosted-melious` | Kubernetes | hosted | inference service | no_captions |
-| `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions |
-| `k8s-rules-local` | Kubernetes | rules | in process | no_captions |
+| Cell | Lane | Reader | Picture facts | Tier | What it answers |
+|---|---|---|---|---|---|
+| `mac-local` | Mac | local model | in process | full | The reference cut. |
+| `mac-rules` | Mac | rules | in process | full | What the editorial model is worth. |
+| `mac-hosted-melious-deepseek-v4.1-flash` | Mac | hosted | in process | full | A very large model at the cheap end. |
+| `mac-hosted-melious-gemma-4-31b` | Mac | hosted | in process | full | Weights a workstation can hold. |
+| `mac-hosted-melious-muse-glimmer-30b` | Mac | hosted | in process | full | The other self-hostable candidate. |
+| `mac-hosted-melious-glm-5.3-flash` | Mac | hosted | in process | full | The zai model from the other shop. |
+| `mac-hosted-openai-luna` | Mac | hosted | in process | full | The same price at a name everybody knows. |
+| `mac-hosted-openai-terra` | Mac | hosted | in process | full | What paying ten times more buys. |
+| `mac-local-alt-<model>` | Mac | local model | in process | full | One per id in `MATRIX_MAC_ALT_MODELS`. |
+| `nas-rules-local` | NAS | rules | in process | no_captions | The shipped NAS default. |
+| `nas-rules-service` | NAS | rules | inference service | no_captions | What the classifiers cost a NAS. |
+| `nas-hosted-melious` | NAS | hosted | inference service | no_captions | A NAS that buys judgement. |
+| `nas-hosted-zai` | NAS | hosted | inference service | no_captions | Provider result or hosted result. |
+| `k8s-rules-service` | Kubernetes | rules | inference service | no_captions | The cluster with no model bill. |
+| `k8s-hosted-melious` | Kubernetes | hosted | inference service | no_captions | The same job, hosted reader. |
+| `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions | The cheapest published setup. |
+| `k8s-rules-local` | Kubernetes | rules | in process | no_captions | The inference service against itself. |
+| `k8s-gpu-t1000` | Kubernetes | rules | inference service | no_captions | When do you need a GPU. |
+| `k8s-gpu-1070` | Kubernetes | rules | inference service | no_captions | T1000 or GTX 1070. |
+| `k8s-full-rules` | Kubernetes | rules | inference service | full | What captioning a whole month costs a cluster. |
+| `k8s-full-melious` | Kubernetes | hosted | inference service | full | `mac-local` without the Mac. |
 
 "Picture facts" is where the detectors and the encoder run, in process or in the inference service.
 Captions are a third endpoint again, set per cell by `editorial.preparation.caption_base_url`, and
 only tier `full` asks for any: a cell can read its facts in process and still send its captions out.
-Only the two Mac cells caption at all.
+Only the Mac cells and the two full-tier cluster cells caption at all.
+
+## The reader bake-off
+
+These Mac cells answer a question the rest of the matrix cannot: does a cheaper reader cut a worse
+memory. Each one is `mac-local` with a single line moved. Same lane, same tier `full`, the same
+caption endpoint, the same picture facts derived in process, so the reader is the only variable and
+the overlap column is a straight comparison against the reference cut.
+
+| Cell | Reader | API model id | Vision | Context | Per 1M in | Per 1M out | Weights |
+|---|---|---|---|---|---|---|---|
+| `mac-local` | oMLX, resident | what the operator's config names | | | | | on the desk |
+| `mac-local-alt-<model>` | oMLX, resident | each id in `MATRIX_MAC_ALT_MODELS` | | | | | on the desk |
+| `mac-hosted-melious-gemma-4-31b` | Melious | `gemma-4-31b` | yes | 256K | EUR 0.10 | EUR 0.30 | Apache 2.0 |
+| `mac-hosted-melious-glm-5.3-flash` | Melious | `glm-5.3-flash` | yes | 1M | EUR 0.10 | EUR 0.40 | MIT |
+| `mac-hosted-melious-deepseek-v4.1-flash` | Melious | `deepseek-v4.1-flash` | yes | 1M | EUR 0.20 | EUR 1.00 | MIT |
+| `mac-hosted-melious-muse-glimmer-30b` | Melious | `muse-glimmer` | yes | 128K | EUR 0.20 | EUR 1.00 | Apache 2.0 |
+| `mac-hosted-openai-luna` | OpenAI | `gpt-5.6-luna` | yes | 1.05M | USD 0.20 | USD 1.20 | closed |
+| `mac-hosted-openai-terra` | OpenAI | `gpt-5.6-terra` | yes | 1.05M | USD 2.00 | USD 12.00 | closed |
+
+Prices and licences are what the model pages carried on 2026-09-14, and the same figures sit in
+`pricing:` in the manifest with the page each one came from. Nothing converts between the two
+currencies: a rate is a number nobody measured.
+
+The question behind the whole table is what somebody who self-hosts gets out of a cheap model, so
+the cheap ones are the ones in it. `qwen3-30b-a3b-instruct` was in an earlier draft and is retired
+everywhere, hosted cells on the other lanes included, because Melious lists it as text only and this
+reader looks at pictures. The hosted cells on the NAS and the cluster read with `gemma-4-31b` now.
+
+The OpenAI pair is the ballpark check. `gpt-5.6-luna` at USD 0.20 / 1.20 is the Melious picks' price
+with a dollar sign on it, which is the row worth having. `gpt-5.6-terra` at USD 2.00 / 12.00 is ten
+times Luna and it is in the table to answer "what does paying more buy" rather than as a cheap
+option. `gpt-5.6-sol` (USD 4.00 / 20.00) and `gpt-6-astra` (USD 10.00 / 50.00) are not in the
+comparison at all. Both cells need `OPENAI_KEY`, the real platform key in the matrix env file,
+which is not the `OPENAI_API_KEY` the other Mac cells use: that one is the bearer token the
+operator's own oMLX wants, and it still pays for the captions in these cells too. That account holds
+single-digit dollars, so run Luna first and read `est_cost` off its row before pointing Terra at a
+real month. The flagship pricing table says the `gpt-5.6` family takes no
+image input and the model pages say it takes text and image; the model pages are what the manifest
+was written from.
+
+The reader needs a vision-capable model with a 32k context. Most of what it is handed is annotation
+lines, and then the structure pass demands 800 px tiles for the few dozen pictures a month it cannot
+settle on paper: 36 tiles on the demo month, 40 on a month holding 13,552 pictures, recorded as
+`images_sent` in the attempt's `plan.private.json` and carried into the record as
+`hosted_usage.images_sent`. The pair confirmer and the story-motion check ask for more. So the
+context window is what decides whether a model can do this job at all, and the vision head is used,
+sparingly. Every picture has already been described once by the caption model `smolvlm2-500m`, at the
+same endpoint in all of these cells.
+
+`MATRIX_MAC_ALT_MODELS` is a list because a build that is strong on text may well beat a
+vision-language one at a job that is mostly reading. Set it to comma-separated model ids the local
+server has resident and the runner makes one cell per id, named
+`mac-local-alt-<the id, lowercased, non-alphanumerics turned into dashes>`. No id is in this repo:
+unset, the template stays in the table as a single skipped row. A dry run does print the ids, because
+a cell named after a model carries that model's name in its own id.
+
+`muse-glimmer` is the API id. Its model page is served at `/hub/models/muse-glimmer-30b`, which is a
+different string, so every id in the manifest was confirmed against
+`GET $MELIOUS_AI_BASE_URL/models` before it was written down.
+
+Two of the six hosted models ship weights anybody can download and serve: `gemma-4-31b` (Apache
+2.0, 31B dense) and `muse-glimmer` (Apache 2.0, 29.6B dense with a 1.8B perception encoder). Put
+either of those on the local server and name it in `MATRIX_MAC_ALT_MODELS`, and the pair of rows
+prices the hosted convenience against the electricity.
+
+These cells are worth running over `--library february` as well as the demo month. The reader calls
+are text, so a real month of a real library is cheap to read and is the only thing that says what a
+model costs in practice. February is private: `--anonymize` is mandatory, and the record then carries
+aggregates and positional handles only, as it does for every other February cell.
+
+## A seeded cell prepares nothing
+
+Preparation depends on the host, the preparation tier and where the picture facts come from. It does
+not depend on who reads afterwards. Mac cells that vary only the reader would each caption the same
+pictures again and publish one measurement under every one of their names, so they carry
+`seed_cache_from: mac-local` and copy that cell's bank instead.
+
+What crosses is preparation: the captions, the head facts, the pixel facts, the motion. What does not
+is anything a reader decided. The copy is followed by a delete over every table in the annotation
+store that holds a model's answer (`judgments`, the two completion-failure tables, the visual
+judgments, the banked episode readings, the period insights, the cull verdicts) and the separate
+`judgments.db` beside it is removed outright. The per-cell cache rule that produced this matrix is
+intact: it exists because the first real Mac run shared one cache and `mac-rules` published
+`mac-local`'s verdicts as its own losses, and seeding a reader's answers into cells that exist to
+compare readers would be that failure with extra steps.
+
+The seed is resolved per library, and nothing has to name a path. `--out` is one run of one library,
+so its parent directory holds that library's other runs and nothing else: a run that prepares
+`mac-local` itself seeds from its own copy, and one that does not takes the newest run under that
+library that has it. February's thirteen thousand captioned pictures are already banked under
+`output/setup-matrix/february/`, which is what makes running the reader cells over a real month a
+matter of minutes rather than an afternoon. A cell whose seed is not there stops with a message
+naming the directory it looked in rather than silently preparing from scratch.
+
+A seeded cell's `prep cold` and `prep warm` columns hold `= mac-local` rather than a number, its
+`prepare_cache_primed` says `seeded from mac-local`, and `unmeasured` names the cell that measured
+the preparation for this host, tier and facts source.
+
+## Cost is the price list times the tokens
+
+`hosted_usage.tokens_in` and `tokens_out` are read off the end-of-run block the CLI prints, which
+rounds anything at or above 1000. `pricing:` in the manifest holds a list price per reader and model
+id, with the page it came from and the date it was read. Where a row has both halves, the summary
+publishes `est_cost_eur` and a `## Cost` section under the table shows the arithmetic: the euro
+figure, the model, `hosted_usage.calls`, the tokens in and out, the tiles the reader was sent, and
+the page the price came from.
+Where either half is missing the column stays empty and the cell earns a line under `unmeasured`,
+because a price with no token count is a price list and a token count with no price is not money.
+
+The table is keyed by reader as well as by model id, because `glm-5.3-flash` is sold by two shops at
+two prices. Only the Melious one has a page in the manifest, so the two zai cells stay unpriced and
+say so. Each shop names its own currency beside its models and no figure is ever converted, so a
+euro row and a dollar row stay two numbers.
+
+The estimate carries the run summary's rounding with it. A run that reported 125.4k prompt tokens is
+125,400 in the arithmetic and somewhere between 125,350 and 125,449 in fact, so read the euro figure
+at two digits rather than four.
+
+## The contract column
+
+Overlap says which pictures a reader chose. It says nothing about how hard the run had to work to get
+an answer out of it in the shape the contract asked for, and that is the other half of whether a
+model is any good. Each cell counts two things, and the table carries them as `rejections/repairs`:
+
+- **repairs**: how many times a reading contract refused an answer and asked the same question again
+  with the rejection spelled out. Every one of these is a call the row paid for twice.
+- **rejections**: every answer a contract refused. The repairs, plus the ones nothing recovered (the
+  bounded-failure and unreadable-JSON transcripts the judge writes beside the attempt), plus the
+  episode reader's own warnings in the run log, counted once per distinct reason the way the reader
+  itself reports them.
+
+Both are read off what the run left behind: the private call transcripts under the attempt's
+`calls/` directory, and the `text episode provider failed (...)` warnings. A cell with no `calls/`
+directory reports null rather than a zero it never measured, and a `rules` cell reports nothing at
+all, never having asked a model anything.
+
+The column exists because a hosted `qwen3-30b` answered `story-pick-K02` with the whole offered row
+instead of the label it named, produced the same shape again under repair, and killed a run four
+minutes in with nothing rendered. Nothing in the published table said so.
+
+## The two GPU cells
+
+Every one of the ten cells above encodes on a CPU, so after the first run the table had no answer to
+either question the owner asked next: when do you need a GPU, and did you try the GTX 1070 against
+the T1000. `k8s-gpu-t1000` and `k8s-gpu-1070` are `k8s-rules-service` with the render moved onto a
+named card. Same reader, same picture facts, same tier, same 2 CPU request and 4 GB limit, so the
+only thing that differs between those three rows is what encoded the film.
+
+The Job gets `runtimeClassName: nvidia`, `resources.limits.nvidia.com/gpu: 1`, the
+`nvidia.com/gpu` toleration and a `nodeSelector` on `nvidia.com/gpu.product`. That last one is the
+whole trick, and it comes out of the cell:
+
+```yaml
+  - id: k8s-gpu-t1000
+    k8s:
+      gpu_product: NVIDIA-T1000-8GB-SHARED
+```
+
+A node label and never a hostname. A hostname names the same machine today and the wrong card the
+day a GPU moves between boxes, and it would put somebody's host into a transcript meant for a pull
+request. The label is written by the GPU operator, `kubectl get nodes -L nvidia.com/gpu.product`
+lists what a cluster has, and a cell naming a label no node carries sits Pending until its schedule
+wait gives up, which is a clearer failure than a render that silently went somewhere else.
+
+The container also gets `NVIDIA_VISIBLE_DEVICES=all` and
+`NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`, the same pair the app's GPU overlay sets. The
+second one is what puts the encoder in the pod: without `video` there is a CUDA device and no NVENC,
+which is exactly what the first cluster run hit.
+
+And the cell pins `hardware.backend: nvidia` in its config. Detection takes the first backend that
+can encode and treats software as none, so a pod that came up short on driver capabilities would
+have encoded on the CPU and published it as a GPU row. Named, the miss is a warning in the log and
+the row can be thrown out instead of believed.
+
+Each of those cells records its card in its own `timing.json` as `gpu_product`, and `summary.md`
+grows a `## Render device` section naming it. The value is the label the Job selected on, which is
+also the label the node carries: a node without it does not match the selector, so the pod could not
+have run anywhere else.
+
+## The render device column
+
+The first cluster run is why that column exists. Those Jobs are plain `base/job.yaml` with no GPU
+request at all, and all three of them logged
+`Title kernels: quadrants 1.3.0 on the CUDA backend`: the device plugin hands out a shared card and
+the kernel library takes what it finds, so the title screens, which are the phase a GPU helps most,
+were already accelerated. The encode was not. Every NVENC probe in those same logs died on
+`Terminating thread with return code -22 (Invalid argument)`, because the NVIDIA runtime exposed
+`compute,utility` to the pod and the encoder was never there to find. Reading those rows as CPU rows
+or as GPU rows would both have been wrong.
+
+So every cell on every lane now records two things off its own log, and the table shows them as one
+column:
+
+| Column value | What it means |
+|---|---|
+| `PIL titles / software` | No GPU anywhere. The title screens went through the Pillow renderer. |
+| `CUDA titles / software` | A shared card drew the titles and nothing encoded on it. |
+| `CUDA titles / h264_nvenc` | The whole render is on the card. |
+| `Metal titles / h264_videotoolbox` | The Mac lane. |
+
+`title_backend` comes from the one line `titles/kernels.py` prints per process, and `encoder` from
+the line the assembly prints on its way in. Neither is inferred from the lane: a cell that printed
+neither shows a dash, because "it is a NAS, so it must have been software" is a guess and this table
+does not publish those.
+
+## The service gets a card too
+
+Pinning the render says nothing about the classifiers. The inference service has its own Deployment
+and lands on whichever GPU node the scheduler picks, so two service cells can be answered by two
+different cards with nothing in the table saying so.
+`--inference-node-product NVIDIA-T1000-8GB-SHARED` pins it for a run. The selector is written into
+the rendered overlay at apply time, the way the image tag already is, so nothing in `deploy/`
+changes and no card is committed. Pinned or not, the run reads the label off the node the service
+pod actually landed on and publishes it as `inference_gpu_product` in `summary.data.json`.
+
+## The full tier in the cluster
+
+`k8s-full-rules` and `k8s-full-melious` ask for tier `full`, which wants a caption per picture. What
+serves them in-cluster is the [captioner overlay](../deploy/installation/caption-server.md):
+llama.cpp behind a `captioner` Service on 8092, which is where their endpoint comes from.
+
+```yaml
+    requires_overlay: deploy/kubernetes/overlays/captioner
+    config:
+      editorial.preparation.caption_base_url: http://captioner:8092/v1
+```
+
+Cluster DNS, so no address is derived and none is written down. The runner applies that overlay
+before the cells that named it and deletes it afterwards, along with the inference overlay and under
+the same `--keep-service`.
+
+Applying it is not the same as having it, and the gap is big enough to lose a run in. The init
+container fetches 546 MB of GGUF onto a claim that is empty the first time a cluster runs the full
+tier, and llama.cpp maps the weights before it answers anything, so `--cell k8s-full-rules` on its
+own would have asked for a caption before the server existed and died on its first picture. The
+runner waits the way it waits for the inference service: `kubectl rollout status` on the captioner
+Deployment with a fifteen minute budget, then one real request through a port-forward it throws away
+after, on the warm-up's own fifteen minutes. Both halves of what a `tier: full` cell checks have to
+pass. `/v1/models` has to advertise `smolvlm2-500m-base-public`, and one 400 px control tile has to
+come back a compact-v3 envelope, which is the failure a server started without its projector gives:
+it serves, it is blind, and the cell would find that out one picture in. The wait is published as
+`captioner_warmup_s` in `summary.data.json`, beside `inference_warmup_s`, because it is a cost of
+the setup rather than of whichever cell happened to go first. `--dry-run` prints both steps,
+`wait-captioner` and `warm-captioner`, under the overlay block.
+
+Both cells were declared before that overlay existed, and stood in the table as skipped rows reading
+`captioner overlay not in this tree yet`, because a setup nobody can run yet is still a setup the
+table should name. The gate stays now that they run: a checkout can carry less than the manifest
+names, and the row with a reason in it beats a row quietly missing.
 
 ## One cache per cell
 
@@ -98,6 +358,33 @@ default: `output.directory`, `audio.local_music_dir`, `triage.encoder`, `triage.
 cache trio every lane already gets. `~` counts as a local path here too: HOME is `/models` on the
 NAS and `/home/immich` in the Job, a directory that goes away with the pod.
 
+## A cluster cell's config is the pins and nothing else
+
+The NAS gets the whole file. The cluster does not: a Job's ConfigMap is built from `baseline_config`
+and the cell's own pins alone, because the operator's config never leaves the laptop. So every key
+the manifest does not name is the operator's value on two lanes and the schema's default on the
+third, and the three lanes stop being comparable with nothing in the table saying so.
+
+`title_screens.ending_duration` is how that surfaced. The operator's config carried 4.0 s and the
+schema's own default is 7.0 s, so the cluster planned three more seconds of ending screen than
+anything else did, and every cluster cell came out at 14 shots against 15 everywhere else. The row
+was not measuring the cluster. It was measuring an unpinned key.
+
+`baseline_config` therefore pins every field the timeline plan reads: the whole `title_screens`
+block, `defaults.transition` and `defaults.transition_duration`, `photos.enabled` and
+`photos.duration`, and `analysis.optimal_clip_duration`. There is no `defaults.transition_buffer` on
+the schema: the overlap the plan takes back off the content budget is worked out from the transition
+mode and its duration. A test holds the line by loading the cluster ConfigMap and the Mac cell's
+pinned config out of the same plan and asserting those blocks are identical. Anything new that
+changes a timeline belongs in that list on the day it lands.
+
+The values are run 1's, read off `mac-local`'s own written config, and not the schema's defaults.
+`mac-local` is the reference cut every other row's overlap is measured against, and it ran at
+`locale: fr` with a 4.0 s ending screen, so pinning the schema's 7.0 s would have put every future
+cell at 14 shots against the reference's 15 and broken the reader comparison the table exists for.
+The baseline is the timeline the matrix was first measured with: changing any value in it invalidates
+every comparison against a cell measured before the change, and the older rows have to be re-run.
+
 ## Start with the dry run
 
 ```bash
@@ -114,15 +401,16 @@ Two files outside the repo, neither of them tracked:
 
 | File | Holds |
 |---|---|
-| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL` |
-| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
+| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY` |
+| `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL`, `MATRIX_MAC_ALT_MODELS` |
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
 `ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
-behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the preset's own
-`/api/paas/v4` answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever the
-request says. `provider: zai` picks its adapter from the base URL's path, so a `/api/anthropic` base
-gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
+behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the other route,
+`/api/paas/v4`, answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever
+the request says. The `zai` preset defaults to the Anthropic route as well, so a cell that names no
+base URL lands on the right one. `provider: zai` picks its adapter from the base URL's path, so a
+`/api/anthropic` base gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
 cell's copied config, because the operator's own values would otherwise outrank the provider preset,
 and a cell that names either field gets the one it named.
 
@@ -214,6 +502,10 @@ The cells that use the inference service bring
 [the inference overlay](../deploy/installation/inference-service.md) up first and take it down at
 the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
+
+`--inference-node-product` pins the service to one card by node label, for a run that wants to know
+what the classifiers cost on each. It is rendered into the overlay at apply time and never
+committed, and whether it is set or not the run records the card the service pod landed on.
 
 `--inference-tag` is what the service runs, and it defaults to `--image-tag` so the service under
 test is the release the cells are. The committed overlays pin a release of their own, and a pin
@@ -325,21 +617,40 @@ The Job requests 2 CPU and 4 GB, because this cluster already answered a 1-CPU p
 which is exactly the NAS cell's default docker cap, so the two rows in the table can be read
 against each other.
 
+A cell can ask for less with `k8s.cpu_request` and `k8s.memory_request`, and the two GPU render
+cells do: one CPU each. `k8s-gpu-1070` sat in FailedScheduling for `1 Insufficient cpu`, because the
+node holding that card also runs the live web Deployment and had no spare two CPU to give. The
+encode is on the card and the pod only feeds it. The limit is untouched either way, so a cell that
+turns out to want more still gets it and the rows stay comparable. What each Job actually asked for
+is written into its record as `job_requests`.
+
+Neither render cell asks for a card, and `k8s.gpu_resource: false` is how they say so.
+`k8s-gpu-t1000` was Pending on `Insufficient nvidia.com/gpu`: the inference Deployment already holds
+that node's one allocatable card, and the device plugin advertises exactly one however the `SHARED`
+label reads about time-slicing. The plain demo Jobs drew their titles on CUDA on that same node
+having asked for nothing at all, because the node's default runtime exposes the card to every pod
+on it. So the mechanism that puts a render on a card here is `runtimeClassName: nvidia`, the
+`NVIDIA_DRIVER_CAPABILITIES` that includes `video`, and the product nodeSelector, none of which the
+countable resource is part of. The record carries `gpu_resource_requested` so a row can say which
+it did.
+
 ## What lands in the output
 
 Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a
 real run carries real footage. Per cell: the pinned config, every command's stdout and stderr, the
-video and its `ffprobe` read, and `timing.json`, which is that cell's own record. A cell dir
+video and its `ffprobe` read, and `timing.json`, which is that cell's own record. That record also
+carries `title_backend`, `encoder` and, for the two cells that pinned one, `gpu_product`. A cell dir
 holding a `timing.json` is a cell that ran, which is what lets separate lane invocations add up.
 
 Two files at the top: `summary.data.json` (schema `setup-matrix-v1`, shaped like the research data
 files under `docs/research/`) and `summary.md`, the one table a person reads.
 
-Nothing in either is estimated. A number the run did not report stays null and earns a line under
-`unmeasured`. Three of those are there by construction: no provider in the matrix returns a price
-with a completion, so the cost column is empty; token counts at or above 1000 are rounded to the
-nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
-rather than a first derivation, which the record says out loud.
+Nothing in either is measured that the run did not report. A number it did not stays null and earns
+a line under `unmeasured`. The cost column is the one figure computed here rather than observed, and
+it says so: see [Cost is the price list times the tokens](#cost-is-the-price-list-times-the-tokens).
+Two more gaps are there by construction: token counts at or above 1000 are rounded by the end-of-run
+summary, and a cell re-run over its own cache reports a re-read rather than a first derivation,
+which the record says out loud.
 
 The cut itself comes back the same way on every lane. The editorial cache holds the attempt (the
 plan, the projection, the selection trace) and that cache is never pulled off a NAS or a cluster,
@@ -374,7 +685,7 @@ make test-one T=tests/test_setup_matrix_summary.py
 make test-one T=tests/test_setup_matrix_readiness.py
 ```
 
-The plan tests are the real gate: the ten cells never run in CI, so what is asserted is that the
+The plan tests are the real gate: the cells never run in CI, so what is asserted is that the
 plan they would run is the right one, that it is identical between calls, and that no value from
 the environment reaches the rendered text. The readiness tests stand in for the two things that
 cannot be reproduced without a cluster: a fake `kubectl` for a Job that fails, and a fake service
