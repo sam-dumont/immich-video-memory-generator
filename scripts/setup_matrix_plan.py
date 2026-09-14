@@ -456,7 +456,7 @@ def _credential_flags(remote: str, credentials: tuple[str, ...]) -> list[str]:
     hosted cells reached their provider with an empty key: Melious answered 401
     while the same key worked from the cluster, where the runner makes a Secret
     out of its own environment. `push-env` writes the file 0600, `pull-results`
-    leaves it behind and `drop-env` removes it.
+    leaves it behind and `drop-credentials` removes it.
     """
     return ["--env-file", f"{remote}/env"] if credentials else []
 
@@ -567,7 +567,16 @@ def _nas_steps(
         Step(
             "push-config",
             ("tar", "-C", str(local), "-cf", "-", "config.yaml"),
-            pipe_to=("ssh", "$MATRIX_NAS_SSH", f"mkdir -p {remote} && tar -C {remote} -xf -"),
+            # WHY the umask: the file is a copy of the operator's config, key
+            # included, and it is landing on a NAS whose shares other people
+            # mount. It leaves this machine 0600 and tar carries the mode, but
+            # only where the far side restores permissions from the archive --
+            # this is the half that does not depend on which tar the NAS has.
+            pipe_to=(
+                "ssh",
+                "$MATRIX_NAS_SSH",
+                f"umask 077 && mkdir -p {remote} && tar -C {remote} -xf -",
+            ),
         ),
         *_push_env_steps(remote, credentials),
         Step("run", ("ssh", "$MATRIX_NAS_SSH", " ".join(docker))),
@@ -579,15 +588,19 @@ def _nas_steps(
             (
                 "ssh",
                 "$MATRIX_NAS_SSH",
-                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env -cf - .",
+                f"tar -C {remote} --exclude=./{CELL_CACHE_DIR} --exclude=./env "
+                f"--exclude=./config.yaml -cf - .",
             ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
         ),
-        # The credentials leave the NAS with the cell, whether or not it worked.
-        *(
-            (Step("drop-env", ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env")),)
-            if credentials
-            else ()
+        # The credentials leave the NAS with the cell, whether or not it worked,
+        # and the pinned config is one of them: it is the operator's own file
+        # with the pins over the top. Not pulled back either -- this machine
+        # wrote it, and a local tar would extract it under the operator's umask
+        # rather than the 0600 it was written at.
+        Step(
+            "drop-credentials",
+            ("ssh", "$MATRIX_NAS_SSH", f"rm -f {remote}/env {remote}/config.yaml"),
         ),
     )
 

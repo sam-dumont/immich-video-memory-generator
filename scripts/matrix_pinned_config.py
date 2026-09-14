@@ -118,6 +118,12 @@ def pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
         _write_pin(data, dotted, value)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # A copy of the operator's config is a copy of the operator's credentials:
+    # the Immich key is always in it, and so is every other one the pins do not
+    # write over. The NAS lane tars this file to a shared NAS as it stands, so
+    # the mode is set before there is anything in it to read.
+    dest.touch(exist_ok=True)
+    dest.chmod(0o600)
     dest.write_text(yaml.safe_dump(data, sort_keys=False))
     return dest
 

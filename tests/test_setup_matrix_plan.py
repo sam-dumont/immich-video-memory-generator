@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import stat
 import sys
 from pathlib import Path
 
@@ -297,13 +298,38 @@ def test_a_nas_cell_hands_its_key_over_in_a_file_not_an_empty_flag(
     assert "--env-file $MATRIX_NAS_OUT/nas-hosted-zai/env" in steps["run"]
     assert "ZAI_API_KEY=$ZAI_API_KEY" in steps["push-env"]
     assert "umask 077" in steps["push-env"], "the file holds a key and nothing else may read it"
-    assert order.index("push-env") < order.index("run") < order.index("drop-env")
+    assert order.index("push-env") < order.index("run") < order.index("drop-credentials")
     assert "--exclude=./env" in steps["pull-results"], "a key never comes back with the results"
-    # A cell with no credential has no file to write, to name or to remove.
-    assert [name for name in order if name in {"push-env", "drop-env"}] == ["push-env", "drop-env"]
+    # A cell with no credential has no env file to write or to name.
     rules_steps = {step.name: str(step) for step in rules.steps}
     assert "push-env" not in rules_steps
     assert "--env-file" not in rules_steps["run"]
+
+
+def test_the_config_pushed_to_the_nas_is_readable_by_nobody_else(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """It is the operator's own config with the pins over the top, key included.
+
+    The NAS mounts its shares for the household, so the file is 0600 before it is
+    tarred and the far side extracts under a umask that says the same thing. It
+    is never pulled back, and it leaves with the env file whether or not the cell
+    worked.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    plan = _plan(manifest, tmp_path, FULL_ENV, library="february")
+    item = next(one for one in plan.cells if one.cell.id == "nas-rules-local")
+    steps = {step.name: str(step) for step in item.steps}
+    remote = "$MATRIX_NAS_OUT/nas-rules-local"
+
+    written = pinned_config(source, tmp_path / "cell.yaml", item.pins)
+
+    assert yaml.safe_load(written.read_text())["immich"]["api_key"] == "operator-key"
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert "umask 077" in steps["push-config"]
+    assert "--exclude=./config.yaml" in steps["pull-results"]
+    assert f"rm -f {remote}/env {remote}/config.yaml" in steps["drop-credentials"]
 
 
 def test_the_dry_run_prints_the_env_file_by_reference(manifest: dict, tmp_path: Path) -> None:
