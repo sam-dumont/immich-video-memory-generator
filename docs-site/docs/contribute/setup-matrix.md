@@ -251,17 +251,24 @@ the app's own 0700 across onto the copied attempt directory, `pull-results` exit
 `tar: ./attempts/nas-rules-local: Cannot open: Permission denied`, and the cell published an empty
 `selected_asset_ids` beside a film that had come back intact. So the container's last act is
 `chmod -R a+rX` over what the pull reads: the attempts, the logs, the counter files and the film
-directory. The credentials file and the cell's own cache sit in that same directory on the NAS and
-are named nowhere in it.
+directory. The two credential files and the cell's own cache sit in that same directory on the NAS
+and are named nowhere in it.
 
 A NAS cell's credentials go over in a file. `docker run -e NAME` takes the value from the
 environment of the shell running docker, and a non-interactive ssh session carries none of the
 runner's variables: both NAS hosted cells reached their provider with an empty key, and Melious
 answered 401 while the same key worked from the cluster, where the runner makes a Secret out of its
 own environment. `push-env` pipes `NAME=value` into `<remote>/env` under `umask 077`, the run uses
-`--env-file`, `pull-results` excludes it and `drop-env` removes it whether or not the cell worked.
-Nothing is written on this machine, the values never reach the NAS's command line, and the dry run
-prints `NAME=$NAME`.
+`--env-file`, `pull-results` excludes it and `drop-credentials` removes it whether or not the cell
+worked. Nothing is written on this machine, the values never reach the NAS's command line, and the
+dry run prints `NAME=$NAME`.
+
+The config that goes with it is a credential too: it is a copy of the operator's own file, Immich
+key included, and it lands on a NAS whose shares other people mount. It is written 0600 here,
+`push-config` extracts it under `umask 077` on the far side rather than trusting whichever tar the
+NAS has to restore modes, `pull-results` excludes it, and `drop-credentials` takes it away with the
+env file. It is not pulled back either: this machine wrote it, and a local tar would extract it
+under the operator's umask rather than the 0600 it was written at.
 
 ## The cluster lane
 
@@ -301,6 +308,17 @@ so the runner used to sit on a dead cell for the whole three hours. It now asks 
 `failed` every 15 s and stops on either, under the same ceiling. When a step gives up, the runner
 runs `kubectl describe pod` for that Job and puts the tail of its events in the cell's record and on
 the terminal, then removes what the cell created so the next one is not blocked behind its claim.
+
+The cluster is the one lane that gets no copy of the operator's config: its Job reads a ConfigMap
+built from the pins alone, so the file never lands in one. A real library pins no Immich of its own.
+Only `demo` does, naming the fixture server and a fake key. That left the Job with nothing to
+connect to, and run 2's four k8s cells died together on `Immich not configured. Run 'immich-memories
+config' first.` The URL is now written into the ConfigMap, because a server address is not a secret,
+and the key goes into the cell's Secret under `IMMICH_MEMORIES_IMMICH__API_KEY`, because a ConfigMap
+is readable by anything that can read the namespace. Neither value is in the plan: the dry run, the
+manifests it writes and every log carry `<from operator config>` and the runner substitutes the real
+one in the argv of the `create secret` call. A `--config` that names no `immich.url` and
+`immich.api_key` stops the run before the cluster does.
 
 The Job requests 2 CPU and 4 GB, because this cluster already answered a 1-CPU pod with
 `Insufficient cpu` and a cell running on scraps is not a measurement. Its limit is 4 CPU and 4 GB,
