@@ -134,6 +134,16 @@ def _announce_adaptation(adaptation: str, before: object, after: object) -> None
 # below max_tokens, which thinking floors to THINKING_MIN_MAX_TOKENS.
 ANTHROPIC_THINKING_BUDGET_TOKENS = 2048
 
+# Measured 2026-09-14 against z.ai's /api/anthropic route with glm-5.3-flash.
+# Where /api/paas/v4 refuses `{"type": "disabled"}` outright with code 1210,
+# this route accepts every level, answers HTTP 200, and then reasons anyway
+# when it wants to: a caption-shaped ask at the 140-token cap the callers use
+# spent all 140 tokens inside the thinking block and returned no text block at
+# all. The reasoning those small asks produced ran 300 to 930 characters, so a
+# thousand tokens of headroom carries it and the caller's cap keeps meaning
+# what it says about the answer.
+ANTHROPIC_REASONING_HEADROOM_TOKENS = 1024
+
 # Named providers = the generic adapter plus the provider's URL and reasoning
 # dialect, applied only where the user left the field at its default.
 _PROVIDER_PRESETS: dict[str, dict] = {
@@ -532,6 +542,27 @@ def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]
     ]
 
 
+def _apply_anthropic_reasoning(
+    payload: dict, config: LLMConfig, thinking: bool, max_tokens: int, timeout: int
+) -> int:
+    """Put the reasoning switch and the tokens it will cost on one payload."""
+    if thinking:
+        # The dialect wants an explicit budget, and the default temperature.
+        payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
+        payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
+        payload.pop("temperature")
+        return max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
+    if "thinking" not in config.no_thinking_params:
+        return timeout
+    # Only the native field: LLMConfig's generic default carries Qwen's
+    # chat_template_kwargs, which no /v1/messages server understands.
+    payload["thinking"] = config.no_thinking_params["thinking"]
+    # On this route the switch is a request, not a guarantee, so the answer
+    # gets the cap the caller asked for and the reasoning gets its own room.
+    payload["max_tokens"] = max_tokens + ANTHROPIC_REASONING_HEADROOM_TOKENS
+    return timeout
+
+
 async def _query_anthropic(
     prompt: str,
     config: LLMConfig,
@@ -554,17 +585,7 @@ async def _query_anthropic(
         "messages": [{"role": "user", "content": _anthropic_content(prompt, images)}],
         "temperature": temperature,
     }
-    if thinking:
-        # The dialect wants an explicit budget, and the default temperature.
-        payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
-        payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
-        payload.pop("temperature")
-        timeout = max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
-    elif "thinking" in config.no_thinking_params:
-        # Some Anthropic-compatible gateways reason by default. Only copy the
-        # native field: LLMConfig's generic default contains Qwen's
-        # chat_template_kwargs, which Anthropic itself does not understand.
-        payload["thinking"] = config.no_thinking_params["thinking"]
+    timeout = _apply_anthropic_reasoning(payload, config, thinking, max_tokens, timeout)
     async with httpx.AsyncClient(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
@@ -587,11 +608,12 @@ async def _query_anthropic(
             completion_tokens=usage.get("output_tokens", 0) or 0,
         )
         raw_text = _anthropic_answer(body, resp, transport_observer)
-        if body.get("stop_reason") == "max_tokens" and require_complete:
+        truncated = body.get("stop_reason") == "max_tokens"
+        if truncated and require_complete:
             _observe(transport_observer, 1, "incomplete", resp.status_code)
             llm_metrics.record_truncation()
-            raise LLMIncompleteResponse(raw_text)
-        if thinking and body.get("stop_reason") == "max_tokens":
+            raise LLMIncompleteResponse(raw_text or "")
+        if thinking and truncated:
             _observe(transport_observer, 1, "thinking_fallback", resp.status_code)
             llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
@@ -606,6 +628,9 @@ async def _query_anthropic(
                 transport_observer=transport_observer,
                 require_complete=require_complete,
             )
+        if raw_text is None:
+            _record_invalid_response(transport_observer, resp.status_code)
+            raise ValueError(_reasoning_only(body))
         _observe(transport_observer, 1, "response", resp.status_code)
         return raw_text
 
@@ -789,16 +814,35 @@ def _anthropic_usage(
 
 def _anthropic_answer(
     body: dict, response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> str:
-    """Validate the Anthropic content after its parseable usage was counted."""
+) -> str | None:
+    """The first text block, or None when the reply carried reasoning only.
+
+    A reasoning model puts one or more `thinking` blocks in front of its
+    answer, and on z.ai's route it does so whether or not it was asked to, so
+    a reply with no text block at all is a normal shape here rather than a
+    malformed body.
+    """
     try:
         content = body["content"]
         if not isinstance(content, list):
             raise TypeError("Anthropic response content is not a list")
-        return "".join(block.get("text", "") for block in content if block.get("type") == "text")
+        texts = [block["text"] for block in content if block.get("type") == "text"]
     except (KeyError, TypeError, AttributeError):
         _record_invalid_response(observer, response.status_code)
         raise
+    return texts[0] if texts else None
+
+
+def _reasoning_only(body: dict) -> str:
+    """Name what came back instead of an answer, and where it stopped."""
+    content = body.get("content")
+    kinds = (
+        sorted({str(block.get("type")) for block in content}) if isinstance(content, list) else []
+    )
+    return (
+        "LLM provider returned no text block: "
+        f"stop_reason {str(body.get('stop_reason'))!r}, blocks {kinds}"
+    )
 
 
 def _no_choices(body: dict) -> str:

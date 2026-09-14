@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,19 +11,18 @@ import pytest
 from immich_memories.config_models_llm import LLMConfig
 
 
-def _anthropic_response(text='{"ok": true}', stop_reason="end_turn"):
+def _anthropic_blocks(blocks, stop_reason="end_turn"):
     # WHY: the LLM server is the external boundary; these tests assert what
     # reaches it and how its answers are handled, through query_llm only.
     response = AsyncMock()
     response.status_code = 200
-    response.json = MagicMock(
-        return_value={
-            "content": [{"type": "text", "text": text}],
-            "stop_reason": stop_reason,
-        }
-    )
+    response.json = MagicMock(return_value={"content": blocks, "stop_reason": stop_reason})
     response.raise_for_status = lambda: None
     return response
+
+
+def _anthropic_response(text='{"ok": true}', stop_reason="end_turn"):
+    return _anthropic_blocks([{"type": "text", "text": text}], stop_reason)
 
 
 class TestAnthropicProvider:
@@ -417,3 +417,167 @@ class TestProviderErrorsAreLegible:
             await query_llm("Describe this wall", config)
 
         assert "try pulling it first" in str(caught.value)
+
+
+class TestAnthropicReasoningBlocks:
+    """z.ai's /api/anthropic route reasons in front of the answer, on its own terms."""
+
+    @pytest.mark.asyncio
+    async def test_a_reply_that_is_all_reasoning_names_the_stop_reason(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+
+        # WHY: the LLM server is the external boundary. This is the body z.ai
+        # returned to a caption-shaped ask at a 140-token cap on 2026-09-14:
+        # the whole budget went into the reasoning and no answer ever began.
+        with (
+            patch(
+                "httpx.AsyncClient.post",
+                return_value=_anthropic_blocks(
+                    [{"type": "thinking", "thinking": "The user wants", "signature": "s"}],
+                    stop_reason="max_tokens",
+                ),
+            ),
+            pytest.raises(ValueError, match="max_tokens"),
+        ):
+            await query_llm("Caption this picture", config, max_tokens=140)
+
+    @pytest.mark.asyncio
+    async def test_the_callers_cap_buys_the_answer_and_not_the_reasoning(self):
+        from immich_memories.analysis.llm_query import (
+            ANTHROPIC_REASONING_HEADROOM_TOKENS,
+            query_llm,
+        )
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Caption this picture", config, max_tokens=140)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["max_tokens"] == 140 + ANTHROPIC_REASONING_HEADROOM_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_the_reasoning_in_front_of_the_answer_is_skipped(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+        reasoned = _anthropic_blocks(
+            [
+                {"type": "thinking", "thinking": "The user wants JSON", "signature": "s"},
+                {"type": "text", "text": '{"ok": true}'},
+            ]
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=reasoned):
+            assert await query_llm("Caption this picture", config, max_tokens=140) == '{"ok": true}'
+
+    @pytest.mark.asyncio
+    async def test_a_server_that_reasons_only_when_asked_keeps_the_callers_cap(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(provider="anthropic", model="claude", api_key="k")
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Caption this picture", config, max_tokens=140)
+
+        assert mock_post.call_args.kwargs["json"]["max_tokens"] == 140
+
+    @pytest.mark.asyncio
+    async def test_the_models_level_reaches_the_route_without_the_generic_keys(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+            no_thinking_params={
+                "chat_template_kwargs": {"enable_thinking": False},
+                "repetition_penalty": 1.05,
+            },
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=_anthropic_response()) as mock_post:
+            await query_llm("Caption this picture", config, max_tokens=140)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["thinking"] == {"type": "low"}
+        assert "chat_template_kwargs" not in payload
+        assert "repetition_penalty" not in payload
+
+    @pytest.mark.asyncio
+    async def test_reasoning_that_truncates_still_falls_back_to_a_fast_answer(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+            thinking=True,
+        )
+        all_reasoning = _anthropic_blocks(
+            [{"type": "thinking", "thinking": "still weighing", "signature": "s"}],
+            stop_reason="max_tokens",
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch(
+            "httpx.AsyncClient.post", side_effect=[all_reasoning, _anthropic_response()]
+        ) as mock_post:
+            assert await query_llm("Judge this cut", config, thinking=True) == '{"ok": true}'
+
+        assert mock_post.call_args_list[1].kwargs["json"]["thinking"] == {"type": "low"}
+
+
+class TestLiveZaiAnthropicRoute:
+    """One real call, so a change of shape at z.ai's end fails here and not in a run."""
+
+    @pytest.mark.skipif(
+        not (os.environ.get("ZAI_API_KEY") and os.environ.get("ZAI_BASE_URL")),
+        reason="needs a z.ai coding-plan key and its Anthropic base; absent in CI",
+    )
+    @pytest.mark.asyncio
+    async def test_a_small_json_ask_comes_back_as_a_text_block(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        config = LLMConfig(
+            provider="zai",
+            base_url=os.environ["ZAI_BASE_URL"],
+            model="glm-5.3-flash",
+            api_key="${ZAI_API_KEY}",
+            timeout_seconds=120,
+        )
+
+        answer = await query_llm(
+            'Reply with only this JSON object and nothing else: {"ok": true}',
+            config,
+            max_tokens=140,
+            timeout_seconds=120,
+        )
+
+        # The failure this guards is an empty answer: every token spent on
+        # reasoning and no text block behind it.
+        assert answer.strip()
+        assert "ok" in answer
