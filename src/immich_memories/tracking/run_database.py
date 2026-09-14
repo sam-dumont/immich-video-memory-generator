@@ -85,13 +85,13 @@ class RunDatabase:
                     run_id, created_at, completed_at, status,
                     memory_type, memory_key, memory_category, memory_people_json, source,
                     automation_attempt_id,
-                    last_phase,
+                    last_phase, phase_events,
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_seconds, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info, delivery_status, delivery_attempts,
                     delivery_error, immich_asset_id, delivery_album, warnings_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO NOTHING
                 """,
                 (
@@ -106,6 +106,7 @@ class RunDatabase:
                     run.source,
                     run.automation_attempt_id,
                     run.last_phase.value if run.last_phase else None,
+                    json.dumps(run.phase_events),
                     run.person_name,
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
@@ -143,8 +144,9 @@ class RunDatabase:
             if previous is not None and event.phase.order < previous.order:
                 return False
             conn.execute(
-                "UPDATE pipeline_runs SET last_phase = ? WHERE run_id = ?",
-                (event.phase.value, run_id),
+                """UPDATE pipeline_runs SET last_phase = ?,
+                   phase_events = json_insert(phase_events, '$[#]', json(?)) WHERE run_id = ?""",
+                (event.phase.value, json.dumps(event.to_dict()), run_id),
             )
             attempt_id = row["automation_attempt_id"]
             if attempt_id:
@@ -159,8 +161,10 @@ class RunDatabase:
                     )
                     if attempt_phase is None or event.phase.order >= attempt_phase.order:
                         conn.execute(
-                            "UPDATE automation_attempts SET last_phase = ? WHERE id = ?",
-                            (event.phase.value, attempt_id),
+                            """UPDATE automation_attempts SET last_phase = ?,
+                               phase_events = json_insert(phase_events, '$[#]', json(?))
+                               WHERE id = ?""",
+                            (event.phase.value, json.dumps(event.to_dict()), attempt_id),
                         )
             conn.commit()
         return True
