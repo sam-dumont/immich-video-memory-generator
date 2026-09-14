@@ -79,6 +79,11 @@ immich-memories runs why 3f1c9a2e-... --run 20260913_08   # --run defaults to th
 
 Every run since 0.78 writes its decision log (`selection-trace.private.json`) beside its plan, so this works without `--trace-selection`. Runs made before that answer "left no decision log".
 
+The local database also keeps the run's operational events in `phase_events`, including each
+`elapsed_seconds` sample. The sample measures time since the previous event; repeated events
+within one phase stay separate. A linked automation attempt keeps those events too, alongside
+its earlier discovery events. Older runs have an empty list because their timings were not saved.
+
 Both commands find the run through the run id, which the CLI and the web UI share: a memory cut on the page can be read from the terminal and the other way round.
 
 ## runs stats

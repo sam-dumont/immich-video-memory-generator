@@ -15,6 +15,13 @@ def test_inference_defaults_to_the_existing_local_path() -> None:
     assert inference.enabled is False
     assert inference.producers == ["heads", "nsfw_marqo", "doc_docling"]
     assert inference.fallback_to_local is True
+    assert inference.facts_concurrency == 8
+
+
+@pytest.mark.parametrize("value", [0, -1, 33])
+def test_inference_refuses_a_concurrency_outside_one_request_to_thirty_two(value: int) -> None:
+    with pytest.raises(ValidationError):
+        Config(inference={"facts_concurrency": value})
 
 
 def test_inference_endpoint_survives_tiered_yaml_and_environment(

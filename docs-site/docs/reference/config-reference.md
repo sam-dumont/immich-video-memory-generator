@@ -559,6 +559,7 @@ advanced:
   inference:
     facts_base_url: ""          # blank: the heads and detectors run in the app process
     timeout_seconds: 60         # one picture, one request; the service answers all producers at once
+    facts_concurrency: 8        # how many of those requests are in flight at once (1-32)
     producers: [heads, nsfw_marqo, doc_docling]   # what the service answers for; the rest stay local
     fallback_to_local: true     # when the service cannot be reached, run the in-process producers
 ```
@@ -572,6 +573,14 @@ provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
 to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+
+`facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
+cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of
+it is the round trip rather than the classifiers: 3,709 pictures took 42.7 minutes, and a
+13,552-picture month would have taken 2.6 hours. The answers are banked in the order the pictures
+were asked for whatever order they come back in, so raising this re-derives nothing and changes no
+row. Raise it until the service is the slow half, then stop: the ceiling is 32, and the service's
+own `REQUEST_THREADS` is what decides how many it can actually decide at once.
 
 When the service does not answer, the run does not stop and does not pretend: the failure is
 recorded against the endpoint in the preparation report, which the CLI prints and the cut's
