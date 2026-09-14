@@ -15,6 +15,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from setup_matrix_plan import COLD, PRIMED
+
 # "Memory generated in 3m 07s" / "... in 42s" -- `_run_summary._clock`.
 _TOTAL = re.compile(r"^Memory generated in (.+?)\s*$", re.MULTILINE)
 _SELECTION = re.compile(
@@ -46,6 +48,8 @@ _PREPARE_ROW = re.compile(
 # Not anchored: `print_success` prints a tick in front of this line, and under
 # --quiet a log timestamp instead.
 _PREPARE_PICTURES = re.compile(r"([\d,]+) pictures prepared at ([\d.]+) s/picture\.")
+# The same line, as the end of one `prepare` invocation rather than as numbers.
+_PREPARE_END = re.compile(r"[\d,]+ pictures prepared at [\d.]+ s/picture\.")
 
 
 @dataclass
@@ -223,6 +227,36 @@ def parse_prepared_pictures(text: str) -> tuple[int | None, float | None]:
     return int(match.group(1).replace(",", "")), float(match.group(2))
 
 
+def prepare_phases(text: str) -> list[str]:
+    """One slice per `prepare` invocation in a stream that carries more than one.
+
+    A remote cell tees each phase into its own file AND prints both into one
+    stdout, and that stdout is all there is when the copy-out loses the files.
+    The rate table has the same shape in both, so a `findall` over the pair hands
+    back one cell's producers twice: cold and warm are separated first, on the
+    line each invocation ends with.
+    """
+    phases, start = [], 0
+    for match in _PREPARE_END.finditer(text):
+        phases.append(text[start : match.end()])
+        start = match.end()
+    return phases
+
+
+def parse_cache_primed(text: str) -> bool | None:
+    """Whether a cell's cache already held a run, out of the word the lane wrote.
+
+    Both remote lanes answer in one word, from different places: the cluster's
+    container reads a marker of its own, and the NAS looks at the cache directory
+    in the step that runs before it would have created it. Anything else (an ssh
+    error, a file the copy-out truncated) leaves the field unmeasured.
+    """
+    for line in text.splitlines():
+        if (word := line.strip()) in {PRIMED, COLD}:
+            return word == PRIMED
+    return None
+
+
 # `/usr/bin/time` writes its report to stderr after the command has exited.
 # BSD (`-l`, macOS) counts bytes, GNU (`-v`) counts kilobytes.
 _BSD_RSS = re.compile(r"^\s*(\d+)\s+maximum resident set size", re.MULTILINE)
@@ -337,9 +371,16 @@ def read_losses(attempt_dir: Path) -> dict:
     }
 
 
-def latest_attempt(cache_dir: Path, memory_key: str) -> Path | None:
-    """The newest attempt for a cell, or the one `latest-attempt.private.json` names."""
-    root = Path(cache_dir) / "editorial-runs" / memory_key
+def latest_attempt(runs_dir: Path, memory_key: str) -> Path | None:
+    """The newest attempt for a cell, or the one `latest-attempt.private.json` names.
+
+    `runs_dir` holds one directory per memory key. The mac lane points it at its
+    cell's `editorial-runs`; a remote cell's container copies the same directory
+    into its output volume, so the copy-out lands it under the cell's own
+    `attempts/`. Same tree, same reader, different root. The pointer file names a
+    path inside the container, so a remote read falls back to the newest on disk.
+    """
+    root = Path(runs_dir) / memory_key
     pointer = root / "latest-attempt.private.json"
     if pointer.is_file():
         try:

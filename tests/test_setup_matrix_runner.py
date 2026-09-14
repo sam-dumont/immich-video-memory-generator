@@ -23,6 +23,12 @@ from setup_matrix_plan import Cell, CellPlan, Plan, Step  # noqa: E402
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "setup_matrix"
 
 
+@pytest.fixture(autouse=True)
+def _no_copy_out_pause(monkeypatch) -> None:
+    """The pause between copy-out attempts is for a cluster, not for a test to sit out."""
+    monkeypatch.setattr(setup_matrix, "COPY_OUT_PAUSE_S", 0)
+
+
 def _cell_plan(
     cell_id: str,
     lane: str,
@@ -258,8 +264,8 @@ def _banked_cell(out_dir: Path, cell_id: str, selected: list[str]) -> None:
 def test_a_cluster_cell_that_lost_its_copy_out_still_reports_what_it_cut(tmp_path) -> None:
     """The container tees its phases into the volume; `kubectl logs` came back anyway.
 
-    `k8s-rules-service` published an empty row with `selection 1s, 14 planned from
-    130 candidates` and `generation 5m 42s` in the log beside it, because the only
+    `k8s-rules-service` published an empty row with `selection 0s, 14 planned from
+    130 candidates` and `generation 5m 13s` in the log beside it, because the only
     copy of the block the capture read was the one the copy-out never brought back.
     """
     item = _cell_plan(
@@ -273,14 +279,142 @@ def test_a_cluster_cell_that_lost_its_copy_out_still_reports_what_it_cut(tmp_pat
 
     record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
 
-    assert record["timing"]["total_s"] == 344
-    assert record["timing"]["selection_s"] == 1
-    assert record["timing"]["render_s"] == 342
+    assert record["timing"]["total_s"] == 313
+    assert record["timing"]["selection_s"] == 0
+    assert record["timing"]["render_s"] == 313
     assert (record["planned"], record["eligible"]) == (14, 130)
     # The film was named and never arrived, so nothing measured it.
     assert record["video"] == {}
     assert "copy-out" in record["measurement_notes"]["film"]
-    assert "copy-out" in record["measurement_notes"]["prepare_cold_s"]
+
+
+def test_a_cluster_cell_that_lost_its_copy_out_still_reports_what_it_prepared(tmp_path) -> None:
+    """Both prepare phases are in the same stdout as the end-of-run block."""
+    item = _cell_plan(
+        "k8s-rules-service",
+        "k8s",
+        steps=(
+            Step("logs", ("cat", str(FIXTURES / "k8s-job-logs.stdout.txt"))),
+            Step("copy-out", ("true",)),
+        ),
+    )
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert record["timing"]["prepare_cold_s"] == 0.0
+    assert record["timing"]["prepare_warm_s"] == 0.0
+    assert record["prepared"]["pictures"] == 133
+    assert record["prepared"]["seconds_per_picture"] == 0.0002
+    # The cold phase's table only, not the warm one's rows behind it.
+    assert [row["producer"] for row in record["prepared"]["producers"]] == ["previews"]
+
+
+def _copy_out_that_works_on(attempt: int, tmp_path: Path, film: Path) -> Step:
+    """A `kubectl cp` stand-in that only brings the film back on the nth try."""
+    counter = tmp_path / "copy-out.count"
+    script = tmp_path / "copy-out.sh"
+    script.write_text(
+        f"n=$(( $(cat {counter} 2>/dev/null || echo 0) + 1 ))\n"
+        f"echo $n > {counter}\n"
+        f'if [ "$n" -ge {attempt} ]; then mkdir -p {film.parent}; : > {film}; fi\n'
+    )
+    return Step("copy-out", ("sh", str(script)))
+
+
+# What the fixture's run named, under the cell directory the copy-out fills.
+_FILM = Path("k8s-rules-service_93aa9ed7_20260914_010338_1500/k8s-rules-service_93aa9ed7.mp4")
+
+
+def _copying_cell(tmp_path: Path, *, works_on: int) -> tuple[CellPlan, Path]:
+    film = tmp_path / "out" / "k8s-rules-service" / _FILM
+    item = _cell_plan(
+        "k8s-rules-service",
+        "k8s",
+        steps=(
+            Step("logs", ("cat", str(FIXTURES / "k8s-job-logs.stdout.txt"))),
+            _copy_out_that_works_on(works_on, tmp_path, film),
+        ),
+    )
+    return item, film
+
+
+def test_a_copy_out_that_ended_early_is_tried_again(tmp_path) -> None:
+    """`k8s-rules-service` lost its film to one `error: unexpected EOF` and nothing else.
+
+    A zero exit is not proof the tar stream finished, so what the copy is judged
+    on is the file the run named.
+    """
+    item, film = _copying_cell(tmp_path, works_on=2)
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert (tmp_path / "copy-out.count").read_text().strip() == "2"
+    assert film.is_file()
+    assert record["measurement_notes"].get("film") is None
+
+
+def test_a_copy_out_that_never_brings_the_film_back_says_so(tmp_path) -> None:
+    item, film = _copying_cell(tmp_path, works_on=99)
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert (tmp_path / "copy-out.count").read_text().strip() == "3"
+    assert not film.is_file()
+    assert "3 attempts" in record["measurement_notes"]["film"]
+
+
+def test_a_cluster_cell_reads_the_attempt_its_container_copied_out(tmp_path) -> None:
+    """The cache never comes back, so the attempt inside it is copied into the output volume.
+
+    Both k8s cells that finished came back with `selected_asset_ids` empty and
+    `#kept 0` beside a film that plainly had pictures in it, because the only
+    copy of the plan was the one on the per-cell editorial cache.
+    """
+    out_dir = tmp_path / "out"
+    attempt = (
+        out_dir
+        / "k8s-rules-local"
+        / "attempts"
+        / "k8s-rules-local"
+        / "attempts"
+        / "20260914T010338Z-1500ab"
+    )
+    attempt.mkdir(parents=True)
+    (attempt / "plan.private.json").write_text(
+        json.dumps(
+            {
+                "story": {"thesis": "a month of moving between the city and the woods"},
+                "carriers": [
+                    {"asset_id": "home-dog-walk-01", "taken": "2024-06-04T17:45:00+00:00"},
+                    {"asset_id": "home-breakfast-01", "taken": "2024-06-01T08:15:00+00:00"},
+                ],
+            }
+        )
+    )
+    item = _cell_plan("k8s-rules-local", "k8s", steps=(Step("logs", ("true",)),))
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), out_dir)
+
+    assert record["selected_asset_ids"] == ["home-breakfast-01", "home-dog-walk-01"]
+    assert record["cut"]["selected"][0]["asset_id"] == "home-breakfast-01"
+
+
+def test_a_remote_cell_reports_whether_its_cache_already_held_a_run(tmp_path) -> None:
+    """`prep cold 0s` over a warm bank published as a cold preparation and said nothing."""
+    out_dir = tmp_path / "out"
+    cluster = out_dir / "k8s-rules-local"
+    cluster.mkdir(parents=True)
+    (cluster / "cache-primed.txt").write_text("primed\n")
+    on_cluster = _cell_plan("k8s-rules-local", "k8s", steps=())
+    on_nas = _cell_plan(
+        "nas-rules-local", "nas", steps=(Step("make-remote-dir", ("echo", "cold")),)
+    )
+
+    cluster_record = setup_matrix.run_remote_cell(on_cluster, _plan_of(on_cluster), out_dir)
+    nas_record = setup_matrix.run_remote_cell(on_nas, _plan_of(on_nas), out_dir)
+
+    assert cluster_record["prepare_cache_primed"] is True
+    assert nas_record["prepare_cache_primed"] is False
 
 
 def test_a_remote_cell_that_printed_no_summary_invents_none(tmp_path) -> None:

@@ -41,6 +41,7 @@ from setup_matrix_capture import (  # noqa: E402
     RunSummary,
     anonymize,
     latest_attempt,
+    parse_cache_primed,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_models_fetch_seconds,
@@ -48,13 +49,17 @@ from setup_matrix_capture import (  # noqa: E402
     parse_prepared_pictures,
     parse_prepared_producers,
     parse_run_summary,
+    parse_saved_path,
     parse_time_peak_rss_mb,
+    prepare_phases,
     probe_video,
     read_cut,
     read_losses,
 )
 from setup_matrix_plan import (  # noqa: E402
+    CACHE_PRIMED_FILE,
     DERIVED_ADDRESS,
+    EDITORIAL_RUNS,
     FIXTURE_ENV,
     FIXTURE_PORT,
     INFERENCE_DEPLOYMENT,
@@ -66,7 +71,9 @@ from setup_matrix_plan import (  # noqa: E402
     KUBECTL,
     LAN_OVERLAY,
     LAN_SERVICE,
+    MAKE_REMOTE_DIR,
     MODELS_FETCH_SECONDS,
+    REMOTE_ATTEMPTS,
     REMOTE_OUT,
     CellPlan,
     Plan,
@@ -295,7 +302,7 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     if not peaks:
         record["measurement_notes"]["peak_rss_mb"] = NO_TIME_REASON
     record["timing"]["cpu_s"] = round(_child_cpu_seconds() - before_cpu, 2)
-    _apply_attempt(record, cache, item.cell.id)
+    _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id)
     return record
 
 
@@ -305,8 +312,53 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
 _K8S_POLLS = {"wait-created": await_pod, "wait": await_job}
 
 
-def _run_or_poll(step: Step, plan: Plan, item: CellPlan) -> subprocess.CompletedProcess:
-    """One command, or the poll that step stands for."""
+COPY_OUT = "copy-out"
+# `kubectl cp` streams a tar out of the collector, and that stream ends early
+# often enough to cost a cell everything it produced: `k8s-rules-service`
+# finished its cut and lost its film, its attempt and every per-phase log to one
+# `error: unexpected EOF`. The claim is still there and still mounted, so trying
+# again is cheap next to re-running the cell.
+COPY_OUT_ATTEMPTS = 3
+COPY_OUT_PAUSE_S = 5
+COPY_OUT_LOST = (
+    f"the film. The copy-out failed after {COPY_OUT_ATTEMPTS} attempts, so the file the run"
+    " named never reached this machine and nothing here measured its duration, size or codec."
+)
+
+
+def _film_is_missing(record: dict, cell_dir: Path) -> bool:
+    """The run named a file it wrote, and that file is not on this machine.
+
+    A zero exit from `kubectl cp` is not proof the copy finished. What the cell
+    came for is the film, so that is what the copy is judged on.
+    """
+    name = STDOUT_OF_THE_RUN.get(record["lane"])
+    log = cell_dir / name if name else None
+    shown = parse_saved_path(log.read_text()) if log and log.is_file() else None
+    return bool(shown) and not any(path.is_file() for path in _video_candidates(shown, cell_dir))
+
+
+def _copy_out(
+    step: Step, plan: Plan, item: CellPlan, record: dict, cell_dir: Path
+) -> subprocess.CompletedProcess:
+    """The copy, retried until the film it is for is here, and named as lost when it is not."""
+    proc = _run_step(step, plan, item)
+    for _ in range(COPY_OUT_ATTEMPTS - 1):
+        if proc.returncode == 0 and not _film_is_missing(record, cell_dir):
+            return proc
+        time.sleep(COPY_OUT_PAUSE_S)
+        proc = _run_step(step, plan, item)
+    if _film_is_missing(record, cell_dir):
+        record["measurement_notes"]["film"] = COPY_OUT_LOST
+    return proc
+
+
+def _run_or_poll(
+    step: Step, plan: Plan, item: CellPlan, record: dict, cell_dir: Path
+) -> subprocess.CompletedProcess:
+    """One command, the poll that step stands for, or the copy that has to be checked."""
+    if step.name == COPY_OUT and item.cell.lane == "k8s":
+        return _copy_out(step, plan, item, record, cell_dir)
 
     def probe() -> subprocess.CompletedProcess:
         return _run_step(step, plan, item)
@@ -321,7 +373,7 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     cell_dir.mkdir(parents=True, exist_ok=True)
     record = _new_record(item, primed=None)
     for step in item.steps:
-        proc = _run_or_poll(step, plan, item)
+        proc = _run_or_poll(step, plan, item, record, cell_dir)
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
         if proc.returncode != 0 and step.name not in {"logs", "delete"}:
@@ -333,8 +385,8 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     if record["error"]:
         _finish_failed_cell(item, plan, cell_dir)
     _read_remote_artifacts(record, cell_dir)
-    if record["timing"]["total_s"] is None:
-        _apply_stranded_summary(record, cell_dir)
+    _apply_stranded_summary(record, cell_dir)
+    _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id)
     return record
 
 
@@ -392,6 +444,29 @@ def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
     cpu = cell_dir / "cpu.txt"
     if cpu.is_file():
         record["timing"]["cpu_s"] = parse_cgroup_cpu_seconds(cpu.read_text())
+    _apply_cache_primed(record, cell_dir)
+
+
+# In the order they are trusted: the cluster's answer comes back with the run,
+# the NAS's is already on this machine when the pull-results fails.
+_CACHE_PRIMED_SOURCES = (CACHE_PRIMED_FILE, f"{MAKE_REMOTE_DIR}.stdout.log")
+
+
+def _apply_cache_primed(record: dict, cell_dir: Path) -> None:
+    """Whether this cell's cache already held a run, as the lane reported it.
+
+    A remote cell used to leave this null, so a cold preparation of 0 s over an
+    already-warm bank published as a cold preparation of 0 s, with nothing in
+    `unmeasured` to say it was a re-read.
+    """
+    for name in _CACHE_PRIMED_SOURCES:
+        path = cell_dir / name
+        if not path.is_file():
+            continue
+        primed = parse_cache_primed(path.read_text())
+        if primed is not None:
+            record["prepare_cache_primed"] = primed
+            return
 
 
 def _apply_prepared(record: dict, text: str) -> None:
@@ -475,6 +550,25 @@ STRANDED_FILM = (
 )
 
 
+def _apply_stranded_preparation(record: dict, text: str) -> None:
+    """Both prepare phases out of the run's own stdout, for whatever the files did not carry.
+
+    The container tees cold and warm into files of their own and prints both into
+    one stream, and that stream is all there is when the copy-out loses the files.
+    The rate table has the same shape in both, so the phases are split before
+    either is read: `parse_prepared_producers` over the pair returns one cell's
+    producers twice.
+    """
+    phases = prepare_phases(text)
+    for field, phase in zip(("prepare_cold_s", "prepare_warm_s"), phases, strict=False):
+        if record["timing"][field] is None:
+            record["timing"][field] = parse_prepare_seconds(phase)
+    # A truncated `prepare-cold.log` leaves a `prepared` of nulls behind, which is
+    # not a count, so the stdout still gets its turn at it.
+    if phases and not record["prepared"].get("pictures"):
+        _apply_prepared(record, phases[0])
+
+
 def _apply_stranded_summary(record: dict, cell_dir: Path) -> None:
     """A cell that cut but never got its files back still reports what it printed.
 
@@ -487,19 +581,21 @@ def _apply_stranded_summary(record: dict, cell_dir: Path) -> None:
     log = cell_dir / name if name else None
     if log is None or not log.is_file():
         return
-    summary = parse_run_summary(log.read_text())
-    if summary.total_s is None:
+    text = log.read_text()
+    _apply_stranded_preparation(record, text)
+    summary = parse_run_summary(text)
+    if record["timing"]["total_s"] is not None or summary.total_s is None:
         return
     _apply_measured_block(record, summary)
     for field, value in record["timing"].items():
         if value is None:
             record["measurement_notes"].setdefault(field, STRANDED_ARTIFACTS)
-    if summary.video_path:
-        record["measurement_notes"]["film"] = STRANDED_FILM
+    if summary.video_path and _film_is_missing(record, cell_dir):
+        record["measurement_notes"].setdefault("film", STRANDED_FILM)
 
 
-def _locate_video(shown: str, cell_dir: Path) -> Path:
-    """The file the run named, as a path on this machine.
+def _video_candidates(shown: str, cell_dir: Path) -> list[Path]:
+    """Every path the file a run named could be at on this machine, best first.
 
     A local cell prints whatever `--output` was given relative to the directory
     the runner starts it in, and a remote cell prints a path inside its own
@@ -510,11 +606,16 @@ def _locate_video(shown: str, cell_dir: Path) -> Path:
     if shown.startswith(f"{REMOTE_OUT}/"):
         candidates.append(cell_dir / shown[len(REMOTE_OUT) + 1 :])
     candidates.append(cell_dir / named.name)
+    return candidates
+
+
+def _locate_video(shown: str, cell_dir: Path) -> Path:
+    candidates = _video_candidates(shown, cell_dir)
     return next((path for path in candidates if path.is_file()), candidates[0])
 
 
-def _apply_attempt(record: dict, cache: Path, memory_key: str) -> None:
-    attempt = latest_attempt(cache, memory_key)
+def _apply_attempt(record: dict, runs_dir: Path, memory_key: str) -> None:
+    attempt = latest_attempt(runs_dir, memory_key)
     if attempt is None:
         return
     cut = read_cut(attempt)
