@@ -396,15 +396,20 @@ def check_hardware() -> CheckResult:
         from immich_memories.processing.hardware import (
             HWAccelBackend,
             detect_hardware_acceleration,
+            nvenc_capability_hint,
         )
 
         caps = detect_hardware_acceleration()
 
         if caps.backend == HWAccelBackend.NONE:
+            # The capability line leads when there is a card, because `preflight`
+            # prints details only under -v and a GPU node encoding in software is
+            # a misconfiguration rather than the expected answer (#936).
+            hint = nvenc_capability_hint()
             return CheckResult(
                 name="Hardware",
                 status=CheckStatus.WARNING,
-                message="No GPU acceleration",
+                message=hint or "No GPU acceleration",
                 details="Video encoding will use CPU (slower)",
             )
 

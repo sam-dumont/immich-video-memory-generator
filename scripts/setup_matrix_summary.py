@@ -38,6 +38,10 @@ CONDITIONS = (
     "Selection and render seconds are the run's own measured-this-run block, not a wall clock"
     " around the process.",
     "Token counts come from the end-of-run summary, which rounds at or above 1000.",
+    "The render device column is two answers, because they are two pieces of silicon:"
+    " what drew the title screens and what encoded the film. Both are read off lines"
+    " the run printed, and a cell that printed neither shows a dash rather than a"
+    " guess from its lane.",
 )
 
 
@@ -124,6 +128,7 @@ def build_summary(
     image: str,
     rows: list[dict],
     inference_warmup_s: float | None = None,
+    inference_gpu_product: str | None = None,
 ) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
     reference = next(
@@ -167,6 +172,11 @@ def build_summary(
         # How long the inference service took to answer its first real request,
         # which is a cost of the setup and not of the cell that would have paid it.
         "inference_warmup_s": inference_warmup_s,
+        # Which card answered the facts requests. Read off the node the service
+        # pod landed on, because unless the run pinned one with
+        # `--inference-node-product` the scheduler picks, and a table comparing
+        # two cards has to say which one was doing the classifying underneath.
+        "inference_gpu_product": inference_gpu_product,
         "reference_cell": REFERENCE_CELL,
         "scope": f"One monthly memory over {month}, run once per setup.",
         "conditions": list(CONDITIONS),
@@ -185,6 +195,7 @@ _HEADERS = (
     "prep warm",
     "selection",
     "render",
+    "render device",
     "peak RSS",
     "cost",
     "#kept",
@@ -205,12 +216,27 @@ def _fraction(value: Any) -> str:
     return "-" if value is None else f"{float(value):.0%}"
 
 
+def render_device(row: dict) -> str:
+    """What drew the titles and what encoded the film, as one column.
+
+    Two answers, because they are two pieces of silicon and they disagreed on the
+    first cluster run: `CUDA titles / software` is a Job that got a shared card
+    for the title kernels and no NVENC to encode with, and it is why those rows
+    are slower than the card suggests.
+    """
+    titles, encoder = row.get("title_backend"), row.get("encoder")
+    if not titles and not encoder:
+        return "-"
+    return f"{titles or '?'} titles / {encoder or '?'}"
+
+
 def _row_cells(row: dict) -> list[str]:
     timing = row.get("timing") or {}
     usage = row.get("hosted_usage") or {}
     video = row.get("video") or {}
     if row.get("skip_reason"):
-        return [row["id"], row["tier"], row["reader"], row["facts"], *(["skipped"] * 10)]
+        columns = len(_HEADERS) - 4
+        return [row["id"], row["tier"], row["reader"], row["facts"], *(["skipped"] * columns)]
     return [
         row["id"],
         row["tier"],
@@ -221,11 +247,35 @@ def _row_cells(row: dict) -> list[str]:
         _seconds(timing.get("prepare_warm_s")),
         _seconds(timing.get("selection_s")),
         _seconds(timing.get("render_s")),
+        render_device(row),
         _megabytes(timing.get("peak_rss_mb")),
         "-" if usage.get("est_cost_eur") is None else f"EUR {usage['est_cost_eur']:.3f}",
         str(len(row.get("selected_asset_ids") or [])),
         _fraction(row.get("overlap_vs_cell_1")),
         _seconds(video.get("duration_s")),
+    ]
+
+
+# Which card, which the column cannot say: it names the silicon path and two
+# cards share one. This is the half that answers "T1000 or 1070".
+_CARD_LEAD = (
+    "These cells asked the cluster for one named card and pinned"
+    " `hardware.backend: nvidia`, so the render column above is NVENC on:"
+)
+
+
+def _render_devices(rows: list[dict]) -> list[str]:
+    """Which cells rendered on a GPU, and on which card."""
+    named = [row for row in rows if row.get("gpu_product")]
+    if not named:
+        return []
+    return [
+        "",
+        "## Render device",
+        "",
+        _CARD_LEAD,
+        "",
+        *[f"- `{row['id']}`: {row['gpu_product']} ({render_device(row)})" for row in named],
     ]
 
 
@@ -241,6 +291,7 @@ def build_markdown(summary: dict) -> str:
         "|" + "|".join(["---"] * len(_HEADERS)) + "|",
     ]
     lines += ["| " + " | ".join(_row_cells(row)) + " |" for row in summary["cells"]]
+    lines += _render_devices(summary["cells"])
     order_breaks = [row["id"] for row in summary["cells"] if row.get("order_kept") is False]
     if order_breaks:
         lines += [

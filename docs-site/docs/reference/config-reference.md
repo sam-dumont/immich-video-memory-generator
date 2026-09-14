@@ -218,13 +218,20 @@ it off: photos sharing an identical timestamp still group.
 ```yaml
 hardware:
   enabled: true                  # false = CPU encoding, no GPU probing at all
+  backend: "auto"                # auto, none, nvidia, apple, vaapi, qsv
   encoder_preset: "balanced"     # fast, balanced, quality
   gpu_decode: true               # Hardware video decoding
 ```
 
-The backend is detected automatically (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first
-hit wins); there is no override. `hardware.enabled: false` is the only way to force CPU. On multi-GPU
-Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`.
+`auto` detects the backend for you (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first hit
+wins), and it is what almost everyone wants. `hardware.enabled: false` is the only way to force CPU.
+On multi-GPU Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`.
+
+Naming a backend probes that one and nothing else, and it is for measuring rather than for running:
+on a box with two encode paths, first hit wins can hand the render the other chip and the timing you
+publish is then about hardware you did not mean to test. A named backend that cannot encode here
+logs a warning and falls back to software. `backend` covers the video render; the burst merge during
+download still detects for itself.
 
 `encoder_preset` controls encoder speed/effort; it does not replace `output.crf`. On Apple,
 `fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.

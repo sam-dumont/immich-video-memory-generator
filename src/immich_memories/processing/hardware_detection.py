@@ -6,6 +6,7 @@ import contextlib
 import logging
 import platform
 import subprocess
+from collections.abc import Callable
 from functools import lru_cache
 
 from immich_memories.processing.hardware import (
@@ -280,27 +281,37 @@ def _detect_qsv() -> HWAccelCapabilities | None:
     return caps
 
 
-@lru_cache(maxsize=1)
-def detect_hardware_acceleration() -> HWAccelCapabilities:
+def _detectors() -> tuple[
+    tuple[str, HWAccelBackend, Callable[[], HWAccelCapabilities | None]], ...
+]:
+    """Probed in this order, first that can encode wins.
+
+    Built per call rather than held as a constant, so patching one detector in a
+    test patches the one this walks.
+    """
+    return (
+        ("NVIDIA", HWAccelBackend.NVIDIA, _detect_nvidia),
+        ("Apple", HWAccelBackend.APPLE, _detect_apple),
+        ("Intel QSV", HWAccelBackend.QSV, _detect_qsv),
+        ("VAAPI", HWAccelBackend.VAAPI, _detect_vaapi),
+    )
+
+
+@lru_cache(maxsize=6)
+def detect_hardware_acceleration(backend: str = "auto") -> HWAccelCapabilities:
     """Detect available hardware acceleration.
 
-    Returns the best available hardware acceleration backend.
-    Detection order: NVIDIA > Apple > QSV > VAAPI > None
-
-    Returns:
-        HWAccelCapabilities with detected hardware info.
+    `backend` is `hardware.backend`. `auto` walks NVIDIA, Apple, QSV, VAAPI and
+    takes the first that can encode. Naming one probes that one and nothing else,
+    which is what a measurement needs: on a box with two encode paths, a run that
+    claims to have used NVENC has to fail visibly rather than quietly encode on
+    the other chip. A named backend that cannot encode here falls to software.
     """
     logger.info("Detecting hardware acceleration capabilities...")
 
-    # Try each backend in order of preference
-    detectors = [
-        ("NVIDIA", _detect_nvidia),
-        ("Apple", _detect_apple),
-        ("Intel QSV", _detect_qsv),
-        ("VAAPI", _detect_vaapi),
-    ]
-
-    for name, detector in detectors:
+    for name, candidate, detector in _detectors():
+        if backend not in ("auto", candidate.value):
+            continue
         try:
             caps = detector()
             if caps and caps.has_encoding:
@@ -309,5 +320,12 @@ def detect_hardware_acceleration() -> HWAccelCapabilities:
         except (RuntimeError, OSError, subprocess.SubprocessError) as e:
             logger.debug(f"Error detecting {name}: {e}")
 
-    logger.info("No hardware acceleration detected, using software encoding")
+    if backend not in ("auto", HWAccelBackend.NONE.value):
+        logger.warning(
+            "hardware.backend is pinned to %s and nothing here encodes with it. "
+            "Encoding in software.",
+            backend,
+        )
+    else:
+        logger.info("No hardware acceleration detected, using software encoding")
     return HWAccelCapabilities(backend=HWAccelBackend.NONE)
