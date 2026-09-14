@@ -129,6 +129,7 @@ def build_summary(
     rows: list[dict],
     inference_warmup_s: float | None = None,
     inference_gpu_product: str | None = None,
+    captioner_warmup_s: float | None = None,
 ) -> dict:
     """The record, with every row's overlap against the reference cut worked out."""
     reference = next(
@@ -177,6 +178,10 @@ def build_summary(
         # `--inference-node-product` the scheduler picks, and a table comparing
         # two cards has to say which one was doing the classifying underneath.
         "inference_gpu_product": inference_gpu_product,
+        # The same figure for the caption server the full-tier cluster cells
+        # call: weights onto a cold claim plus the first completion, paid once
+        # by the run rather than by whichever cell happened to go first.
+        "captioner_warmup_s": captioner_warmup_s,
         "reference_cell": REFERENCE_CELL,
         "scope": f"One monthly memory over {month}, run once per setup.",
         "conditions": list(CONDITIONS),

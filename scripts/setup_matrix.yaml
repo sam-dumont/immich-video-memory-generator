@@ -53,6 +53,39 @@ baseline_config:
   inference.fallback_to_local: true
   editorial.preparation.tier: no_captions
 
+  # Every field the timeline plan reads, at the app's own schema defaults.
+  #
+  # WHY all of them, when only one was ever measured wrong: a Mac or NAS cell
+  # copies the operator's config and writes these pins over it, while a cluster
+  # cell's ConfigMap is built from the pins ALONE. Anything left out is the
+  # operator's value on two lanes and the schema's on the third, and the lanes
+  # stop being comparable with nothing in the table saying so.
+  # `title_screens.ending_duration` is how that surfaced: 4.0 s in the operator's
+  # config against 7.0 s on the schema, and those three seconds of ending screen
+  # are the whole reason every cluster cell planned 14 shots while every other
+  # cell planned 15.
+  title_screens.enabled: true
+  title_screens.locale: auto
+  title_screens.style_mode: auto
+  title_screens.animated_background: true
+  title_screens.show_decorative_lines: false
+  title_screens.title_duration: 3.5
+  title_screens.month_divider_duration: 2.0
+  title_screens.ending_duration: 7.0
+  title_screens.show_month_dividers: true
+  title_screens.month_divider_threshold: 2
+  title_screens.use_first_name_only: true
+  # The overlap the plan takes back off the content budget is worked out from
+  # these two. There is no `defaults.transition_buffer` on the schema.
+  defaults.transition: smart
+  defaults.transition_duration: 0.5
+  # Seconds one photo holds, which is what the editorial plan sizes shots with.
+  photos.enabled: true
+  photos.duration: 4.0
+  # Only read when a memory sizes its own duration, and this manifest asks for
+  # 60 s. Pinned anyway: the ConfigMap sees nothing this file does not name.
+  analysis.optimal_clip_duration: 5.0
+
 libraries:
   # The public run. tests/e2e/fake_library.py is a stock month (June 2024) that
   # tells a story; `--serve-fixture` puts it on the LAN so the NAS and the
