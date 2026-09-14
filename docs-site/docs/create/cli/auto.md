@@ -150,8 +150,8 @@ Cooldown, repetition rules and failure backoff still apply. `--force` only skips
 cooldown.
 
 The complete child stdout and stderr are retained under the configured cache at
-`automation-output/<attempt-id>.private.log` — successful runs, failed exits and
-runs killed by the two-hour timeout alike. Files are readable only by their owner,
-with configured credentials redacted. Older runs may have no log. Nothing evicts
-them yet: one log per attempt stays until you delete it, and `runs storage` counts
-the directory.
+`automation-output/<attempt-id>.private.log`. Successful runs, failed exits and
+runs killed by the two-hour timeout all get one. Files are readable only by their
+owner, with configured credentials redacted. Older runs may have no log. Nothing
+evicts them yet: one log per attempt stays until you delete it, and `runs storage`
+counts the directory.
