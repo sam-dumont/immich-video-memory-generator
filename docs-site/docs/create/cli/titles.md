@@ -9,7 +9,7 @@ Title screens are the intro cards, month dividers, and ending screens that get i
 
 ## Date and place captions
 
-`generate --date-overlay --place-overlay` adds small, translucent context to clips:
+`generate --add-date --add-place` adds small, translucent context to clips:
 48 px on a 1080p frame, at 85% opacity. Date and place appear independently when
 they change. Missing metadata does not restart a repeated caption.
 
@@ -42,20 +42,7 @@ Generate a standalone title screen to preview how it looks before committing to 
 immich-memories titles test [OPTIONS]
 ```
 
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--year` | `-y` | int | current year | Year to display |
-| `--birthday-age` | n/a | int | n/a | Age for birthday title (e.g., `1` for "1st Year") |
-| `--person` | `-p` | string | n/a | Person name for subtitle |
-| `--month` | `-m` | int | n/a | Month number 1-12 (for month divider) |
-| `--type` | n/a | choice | `title` | `title`, `month`, or `ending` |
-| `--orientation` | n/a | choice | `landscape` | `landscape`, `portrait`, `square` |
-| `--resolution` | `-r` | choice | `1080p` | `720p`, `1080p`, `4k` |
-| `--locale` | `-l` | choice | `en` | `en` or `fr` |
-| `--style` | `-s` | choice | `random` | `modern_warm`, `elegant_minimal`, `vintage_charm`, `playful_bright`, `soft_romantic`, `random` |
-| `--output` | `-o`, `-O` | path | `./title_screen_preview.mp4` | Output file |
-| `--download-fonts` | n/a | flag | n/a | Download fonts before generating |
-| `--no-animated-background` | n/a | flag | n/a | Use static gradient instead of animation |
+Every flag is in the [CLI reference](../../reference/cli-reference.md#titles-test).
 
 Examples:
 

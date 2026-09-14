@@ -190,7 +190,7 @@ judged less focused than the shorter metadata cut.
 | Mode | To the caption server | To the reader | Elsewhere |
 |---|---|---|---|
 | rules + `metadata_only` | nothing | nothing | Immich reads; Nominatim for trip GPS; map tiles for title screens |
-| rules + `no_captions` | nothing | nothing | same |
+| rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
 | `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |
@@ -221,4 +221,4 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
-Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).
+Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).

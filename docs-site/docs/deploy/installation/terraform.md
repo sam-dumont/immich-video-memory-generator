@@ -27,6 +27,25 @@ single-user, single-replica; do not scale the deployment beyond one pod.
 
 Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
 
+:::caution The module has no models claim
+The Kustomize base grew a third PVC (`immich-memories-models`) and a `fetch-models` init
+container; this module has neither. On any tier but `metadata_only` the first cut therefore stops
+at prepare with `public heads need the pinned DINOv2 ONNX export at ...`, `nsfw_marqo has no
+model` and `doc_docling ... is not in /models/huggingface`. Until the module catches up
+([#928](https://github.com/sam-dumont/immich-video-memory-generator/issues/928)), either run the
+fetch in the pod once, into the cache PVC, and point the three paths at it:
+
+```bash
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories models fetch
+```
+
+with `env` carrying `IMMICH_MEMORIES_TRIAGE__ENCODER`,
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX` and
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR` under
+`/home/immich/.immich-memories/models`, or use [Kubernetes](./kubernetes.md) instead, which does
+this for you.
+:::
+
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` (`run_as_user` / `fs_group`
 1000, all capabilities dropped, `RuntimeDefault` seccomp, `read_only_root_filesystem = true`).
 These three mounts are the only writable paths:

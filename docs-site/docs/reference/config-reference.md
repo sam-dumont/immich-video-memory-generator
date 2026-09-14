@@ -572,7 +572,8 @@ producers and the key is computed over the model artifact, never over where it r
 provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
-to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+to the service and keeps the two detectors in the app, on whatever provider the app's ONNX Runtime
+has; the detectors are the cheap half.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
 cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of

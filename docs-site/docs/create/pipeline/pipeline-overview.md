@@ -75,8 +75,9 @@ encoder, a lower resolution and fewer clips.
 - **Originals** of the selected sources are downloaded (3 workers by default,
   `analysis.download_workers`) and each interval trimmed with FFmpeg. A Live Photo chosen for its
   motion plays its video; one chosen as a still is held.
-- **Photos** render frame by frame in Python: Ken Burns is one `cv2.warpAffine` per frame at
-  30 fps for the seconds granted, over a blurred background when the aspect differs. HEIC decode
+- **Photos** render frame by frame in Python: Ken Burns is a `cv2.warpAffine` per frame at
+  30 fps for the seconds granted, two of them on the blurred-background path (the sharp crop and
+  the background) and one when the aspect already matches. HEIC decode
   and gain-map HDR happen here; sources are capped at 1.5× the output size.
 - **Title screens** render on the GPU when the kernel library initialises, PIL otherwise, and
   encode with the final video's encoder.

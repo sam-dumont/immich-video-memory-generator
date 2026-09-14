@@ -61,8 +61,9 @@ setting appears in both, the top-level value wins.
 
 Unknown keys inside a section are ignored, with one exception: the keys of the removed per-clip
 scorer (`content_analysis`, `audio_content`, `speech`, `transcription`, `description_llm`,
-`analysis.max_refinement_passes`, `photos.max_ratio` and the rest of that family) are refused at
-startup by name, so an old file cannot keep loading while its settings do nothing. Unknown
+`analysis.max_refinement_passes`, `photos.max_ratio` and the rest of that family) are dropped by
+name and logged, so an old file does not keep loading while its settings silently do nothing. The
+run continues: refusing to start locked an upgrade out of its own app over a dead line. Unknown
 top-level keys and invalid values (`codec: av1`) fail with a validation error.
 
 ## Paths in the config are host paths
@@ -150,7 +151,7 @@ These fields expand `${VAR_NAME}` at load time:
 | `ace_step` | `api_url`, `api_key` |
 | `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
 | `editorial` | `annotation_database` |
-| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir` |
+| `editorial.preparation` | `head_bundle`, `detector_python`, `detector_cache_dir`, `marqo_onnx`, `caption_api_key` |
 
 Only the braced form expands. A bare `$VAR` is left as written, because a `$` in a password is
 ordinary; a warning says so at load time if it matches a variable you have set. Every other string

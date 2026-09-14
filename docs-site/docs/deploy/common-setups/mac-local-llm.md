@@ -85,9 +85,23 @@ or drop it into the model directory yourself. The weights are on Hugging Face:
 | Captions | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` (revision `fa57db46`) | 1–2 GB |
 
 The weights stay resident while the servers are up: read them as the floor for how much unified
-memory the models alone take. The caption server is a second service on its own port (8092 by
-default) and has to advertise the alias `smolvlm2-500m-base-public`; the
-[self-hosting guide](../self-hosting.md) stands both of them up.
+memory the models alone take.
+
+The caption server is a second service on its own port (8092 by default), and the app checks one
+thing before it sends a picture to it: that `GET /models` advertises `smolvlm2-500m-base-public`.
+Whatever you serve has to answer to that name. On a Mac that is mlxcel, which is two commands:
+
+```bash
+brew install lablup/tap/mlxcel
+hf download mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
+  --revision fa57db46815177fbdfd65cc85a2b3416a8332268
+mlxcel serve --model <the snapshot path hf printed> \
+  --alias smolvlm2-500m-base-public --port 8092
+```
+
+oMLX cannot load SmolVLM2 at all, so the reader you started above is not it: these are two
+processes on two ports. [Caption server](../installation/caption-server.md) has the rest, and the
+[self-hosting guide](../self-hosting.md) stands both of them up in order.
 
 Then point Immich Memories at it in `~/.immich-memories/config.yaml`:
 

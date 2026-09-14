@@ -28,6 +28,11 @@ this service later; today it serves `/facts` only.
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
 encode: they do not run inference, and that stays true on every page here.
 
+The card accelerates the **DINOv2 encoder and its six heads** and both detectors. All three are
+ONNX graphs, and all three open on the provider the deployment chose, so the `-cuda` image moves
+every producer onto the GPU rather than one of three. If the card turns a graph down, that seat
+falls back to the CPU and logs a WARNING saying so.
+
 Both are published by the release, so you pull rather than build:
 
 ```bash
@@ -80,8 +85,9 @@ there is nothing to write for it, and the CUDA one is the block above. From a ch
 `docker/hwaccel.inference.yml` instead, which holds both as `extends:` targets.
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
-If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
-image is the CPU one: those are the only two causes.
+`CPUExecutionProvider` on a GPU host means one of four things: the image is the CPU one, the device
+reservation did not reach the container, `PROVIDER` names `cpu`, or the driver and CUDA runtime in
+the image do not match. Check the tag first: it is the usual one.
 
 Each producer holds its own session, so each gets its own answer:
 `producers.heads.providers`, `producers.nsfw_marqo.providers` and `producers.doc_docling.providers`
@@ -137,8 +143,9 @@ the service's own settings above take one. The base NetworkPolicy already allows
 
 A fresh PVC is empty, and that is all right. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
 that setting the service fetches what it is missing the first time something asks for it: the
-pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot, each
-checked against the same digest `immich-memories models fetch` pins. The first `/facts` call
+pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot. The two
+ONNX exports are checked against the same SHA-256 `immich-memories models fetch` pins; the Docling
+snapshot is pinned by Hugging Face revision, not by digest. The first `/facts` call
 after a cold start waits for the download. Nothing after it does.
 
 To fill the volume yourself instead, `kubectl cp` the two ONNX exports into `/cache`, or run
@@ -193,9 +200,12 @@ it and delete it. See [Setup matrix](../../contribute/setup-matrix.md).
 | `POST /facts` | one picture in: what do the frozen classifiers say about it |
 
 ```bash
-curl -s localhost:8092/facts -H 'content-type: application/json' \
-  -d "{\"image\": \"$(base64 -i photo.jpg)\", \"producers\": [\"heads\"]}"
+python3 -c 'import base64,json,sys; print(json.dumps({"image": base64.b64encode(open(sys.argv[1],"rb").read()).decode(), "producers": ["heads"]}))' photo.jpg \
+  | curl -s localhost:8092/facts -H 'content-type: application/json' --data-binary @-
 ```
+
+(`base64 -i` is the macOS spelling and GNU `base64` wraps its output, so the shell one-liner that
+looks obvious here is not portable.)
 
 ```json
 {"producers": {"heads": {"encoder_key": "…", "facts": [
@@ -230,7 +240,7 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime. The app's `facts_concurrency` is what fills it |
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
-| `DETECTOR_CACHE_DIR` | the Hugging Face cache | where the detector snapshots live |
+| `DETECTOR_CACHE_DIR` | `/cache/huggingface` in the published image (`$HF_HOME` otherwise) | where the detector snapshots live |
 | `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the pinned exports and the Docling snapshot itself |
 | `MAX_IMAGE_BYTES` | `16777216` | refuse anything larger |
 
@@ -295,9 +305,8 @@ only a faster device or a smaller scope will move it.
 ## Not yet
 
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
-- One picture per request. Sending a batch would cut the per-request overhead again and let the
-  service run one ONNX batch instead of several, but it needs a new request and response shape with
-  a per-picture error path, so it is
-  [its own change](https://github.com/sam-dumont/immich-video-memory-generator/issues/943).
+- One picture per request. `facts_concurrency` sends several at once, so the wire is busy, but
+  the service still runs one ONNX graph per picture rather than one batch. A batched request and
+  response shape, with a per-picture error path, is not built.
 
 For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.

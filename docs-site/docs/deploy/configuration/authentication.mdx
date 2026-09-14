@@ -25,10 +25,15 @@ workflow state lives in the process; a shared secret or volume does not make rep
 
 ## Basic auth
 
+Two variables, in a `.env` beside `docker-compose.yml` or in the service's `environment:`:
+
 ```bash
 IMMICH_MEMORIES_AUTH_USERNAME=admin
 IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
+
+Running the app from a shell instead, these need `export` in front of each line, or the process
+does not see them.
 
 Set both; one alone is ignored. Setting both turns auth on with `provider: basic`. Passwords are
 compared in constant time. The YAML form:
