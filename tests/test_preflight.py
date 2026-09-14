@@ -360,3 +360,42 @@ def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
 
     assert result.status is CheckStatus.ERROR
     assert "caption_api_key" in (result.details or "")
+
+
+def test_hardware_row_names_the_nvidia_video_capability_when_a_card_is_present() -> None:
+    """A GPU node that encodes in software is a misconfiguration, and preflight is
+    where a self-hoster should meet it rather than after a long run (#936)."""
+    from immich_memories.preflight import check_hardware
+    from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
+
+    with (
+        # WHY: no test may probe real ffmpeg encoders; this is the detection boundary
+        patch(
+            "immich_memories.processing.hardware.detect_hardware_acceleration",
+            return_value=HWAccelCapabilities(backend=HWAccelBackend.NONE),
+        ),
+        # WHY: the container runtime's own marker that a card was handed to this pod
+        patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": "all"}),
+    ):
+        result = check_hardware()
+
+    assert result.status is CheckStatus.WARNING
+    assert "NVIDIA_DRIVER_CAPABILITIES=compute,video,utility" in result.message
+
+
+def test_hardware_row_says_nothing_about_nvidia_on_a_card_less_host() -> None:
+    from immich_memories.preflight import check_hardware
+    from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
+
+    with (
+        patch(
+            "immich_memories.processing.hardware.detect_hardware_acceleration",
+            return_value=HWAccelCapabilities(backend=HWAccelBackend.NONE),
+        ),
+        # WHY: nvidia-smi is the second witness; a GPU-less host has no such binary
+        patch("subprocess.run", side_effect=FileNotFoundError),
+        patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": ""}),
+    ):
+        result = check_hardware()
+
+    assert result.message == "No GPU acceleration"
