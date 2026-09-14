@@ -159,8 +159,23 @@ def announcing_stages(on_stage: Callable[[StageUpdate], None] | None) -> Iterato
         _STAGE_SINK.reset(token)
 
 
+_last_stage: StageUpdate | None = None
+
+
+def last_announced_stage() -> StageUpdate | None:
+    """Where the run had got to, for an error that carries no message of its own.
+
+    Deliberately a module global, not a context variable: the text requests run on their
+    own thread with a copied context, so a value set there never reaches the error
+    boundary that has to print something.
+    """
+    return _last_stage
+
+
 def announce_stage(update: StageUpdate) -> None:
     """Tell the run where it is, if anyone is listening; never raises."""
+    global _last_stage
+    _last_stage = update
     sink = _STAGE_SINK.get()
     if sink is None:
         return

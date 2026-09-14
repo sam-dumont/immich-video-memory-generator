@@ -36,8 +36,11 @@ Five moods (calm, energetic, happy, nostalgic, tender) in acoustic and electroni
 30 s each, looped with a crossfade to fill longer videos. They were generated locally with
 ACE-Step 1.5 from nothing sampled, so there is no attribution requirement; the settings and each
 track's tempo, key and seed are in `LICENSE-MUSIC` inside the package. The pick follows the
-memory's mood when the pipeline has one; today the per-clip emotion field the mood aggregation
-reads is not written by anything, so the choice is whole-library and random.
+memory's mood. With a configured text model, automatic selection and the preview read the saved
+cut's thesis, story labels and prepared captions for kept pictures. They send no new images.
+The answer is reused for identical text and model settings; `runs why` reports its source.
+Without usable text or a model, the existing local defaults apply. A failed text call never
+switches to vision. `music add --analyze-frames` is the explicit option for a standalone film.
 
 When a memory holds photos, a bundled track whose measured beat lands within 0.2 beats of the
 photo cadence is preferred, so cuts land with the pulse. The window is loose on purpose: the

@@ -16,13 +16,15 @@ from immich_memories.analysis.llm_metrics import collecting
 from immich_memories.config_models_llm import LLMConfig
 
 
-def _openai_response(content='{"ok": true}', finish_reason="stop", usage=None):
+def _openai_response(content='{"ok": true}', finish_reason="stop", usage=None, model=None):
     # WHY: the LLM server is the external boundary these tests measure across.
     response = AsyncMock()
     response.status_code = 200
     body = {"choices": [{"message": {"content": content}, "finish_reason": finish_reason}]}
     if usage is not None:
         body["usage"] = usage
+    if model is not None:
+        body["model"] = model
     response.json = MagicMock(return_value=body)
     response.raise_for_status = lambda: None
     return response
@@ -226,3 +228,76 @@ def test_a_run_that_never_used_the_model_stores_no_llm_metrics(tmp_path) -> None
 
     assert run is not None
     assert run.llm_metrics == {}
+
+
+def test_a_stage_that_measures_itself_does_not_hide_its_spend_from_the_run() -> None:
+    """The defect: the run's own bill read zero while the reader made 93 calls.
+
+    `plan_structure` opens its own collector so `plan.private.json` can report
+    what the selection cost. Under a contextvar that only the innermost holder
+    could write, that scope *replaced* the run's collector for the whole of
+    selection -- 90 of one measured run's 93 paid calls -- and the three the
+    preparation stage made before it opened were the only ones left anywhere.
+    """
+    from immich_memories.analysis import llm_metrics
+
+    with llm_metrics.collecting() as run_total:
+        # The preparation stage: episode reads and the period account.
+        llm_metrics.record_reply(prompt_tokens=300, completion_tokens=30)
+        with llm_metrics.collecting() as selection:
+            llm_metrics.record_reply(prompt_tokens=5000, completion_tokens=400)
+            llm_metrics.record_cache_hit()
+            llm_metrics.record_wall(12.0)
+
+        assert selection.calls == 1
+        assert selection.prompt_tokens == 5000
+        assert run_total.calls == 2
+        assert run_total.prompt_tokens == 5300
+        assert run_total.completion_tokens == 430
+        assert run_total.cache_hits == 1
+        assert run_total.wall_seconds == 12.0
+
+
+@pytest.mark.asyncio
+async def test_reasoning_tokens_are_counted_and_attributed_to_the_model_that_served() -> None:
+    """A reasoning model bills its thinking, and the run block never showed it.
+
+    One measured call came back with 13,469 reasoning tokens against a 5.4k
+    prompt. Billed at the completion rate, that is most of what the run cost,
+    and `completion_tokens` alone does not say so.
+    """
+    from immich_memories.analysis.llm_query import query_llm
+
+    reply = _openai_response(
+        model="glm-5.3-flash",
+        usage={
+            "prompt_tokens": 5400,
+            "completion_tokens": 13800,
+            "completion_tokens_details": {"reasoning_tokens": 13469},
+        },
+    )
+    # WHY: the LLM server is the external boundary reporting its own usage.
+    with collecting() as counters, patch("httpx.AsyncClient.post", return_value=reply):
+        await query_llm("Judge this cut", _thinking_config(thinking=False))
+
+    assert counters.reasoning_tokens == 13469
+    assert counters.completion_tokens == 13800
+    assert counters.by_model["glm-5.3-flash"].calls == 1
+    assert counters.by_model["glm-5.3-flash"].reasoning_tokens == 13469
+
+
+@pytest.mark.asyncio
+async def test_two_models_in_one_run_are_billed_apart() -> None:
+    """A run reads with one model and captions with another; the bill is not one price."""
+    from immich_memories.analysis.llm_query import query_llm
+
+    reader = _openai_response(model="glm-5.3-flash", usage={"prompt_tokens": 900})
+    captioner = _openai_response(model="qwen3-vl-8b", usage={"prompt_tokens": 120})
+    # WHY: the LLM server is the external boundary; two replies from two models.
+    with collecting() as counters, patch("httpx.AsyncClient.post", side_effect=[reader, captioner]):
+        await query_llm("Judge this cut", _thinking_config(thinking=False))
+        await query_llm("Describe this", _thinking_config(thinking=False))
+
+    assert set(counters.by_model) == {"glm-5.3-flash", "qwen3-vl-8b"}
+    assert counters.by_model["glm-5.3-flash"].prompt_tokens == 900
+    assert counters.by_model["qwen3-vl-8b"].prompt_tokens == 120

@@ -1,0 +1,8 @@
+```json
+{
+  "F01": "A diamond ring placed in a wooden box, handcrafted at the workbench",
+  "F04": "The twins celebrated their second birthday with cakes",
+  "F08": "The baby was born; first hours together in the hospital",
+  "F10": "First morning portraits: parents holding the newborn"
+}
+```

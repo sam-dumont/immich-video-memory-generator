@@ -183,3 +183,9 @@ def test_capture_pool_outcomes(page: Page, launch_app_url: str, screenshot_dir: 
     page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
     expect(page.locator(".pool-outcome").first).to_contain_text("In the cut")
     _save(page, screenshot_dir, _name("memory-pool-outcomes-grid", theme))
+
+
+def test_capture_automation_walkthrough(page: Page, launch_app_url: str, launch_workspace):
+    from tests.e2e.test_automation_pages import test_choose_generate_and_read_the_same_automatic_run
+
+    test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace)

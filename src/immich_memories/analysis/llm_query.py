@@ -38,6 +38,7 @@ from immich_memories.analysis.llm_wire import (
     anthropic_answer,
     anthropic_headers,
     anthropic_payload,
+    anthropic_reasoned,
     anthropic_usage,
     apply_adaptations,
     apply_anthropic_reasoning,
@@ -52,7 +53,9 @@ from immich_memories.analysis.llm_wire import (
     reasoning_headroom,
     reasoning_only_detail,
     record_invalid_response,
+    remember_reasoning,
     response_body,
+    served_model,
     shape_for_provider,
     widen_for_reasoning,
 )
@@ -341,6 +344,7 @@ async def _query_ollama(
         llm_metrics.record_reply(
             prompt_tokens=body.get("prompt_eval_count", 0) or 0,
             completion_tokens=body.get("eval_count", 0) or 0,
+            model=served_model(body),
         )
         if require_complete and body.get("done_reason") in {"length", "max_tokens", "truncated"}:
             observe(transport_observer, 1, "incomplete", resp.status_code)
@@ -357,6 +361,34 @@ async def _query_ollama(
         return raw_text
 
 
+def _grow_anthropic_for_reasoning(
+    endpoint: tuple[str, str], body: dict, usage: dict, *, answered: bool
+) -> bool:
+    """Learn that this endpoint thinks, and say whether an empty reply is worth re-asking.
+
+    The learning happens on every reply, answered or not: a host told `disabled` that
+    puts a thinking block in front of a perfectly good answer has still said it reasons,
+    and the next call is the one that needs the room.
+
+    Whether to ask again is judged on the content channel rather than `stop_reason`:
+    with headroom a reply is meant to bill more than the caller asked for, and the one
+    thing that says the thinking crowded out the answer is that no text block came back
+    at all. The dialect bills thinking inside `output_tokens`, so a reply with nothing
+    else in it spent all of them reasoning.
+    """
+    if anthropic_reasoned(body):
+        remember_reasoning(endpoint)
+    if answered or not widen_for_reasoning(
+        endpoint, reasoning_tokens=usage.get("output_tokens", 0) or 0, answered=False
+    ):
+        return False
+    logger.warning(
+        "The reply spent its whole budget thinking and wrote no answer; "
+        "retrying with room for the reasoning"
+    )
+    return True
+
+
 async def _query_anthropic(
     prompt: str,
     config: LLMConfig,
@@ -371,9 +403,21 @@ async def _query_anthropic(
     """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
     base_url = config.base_url.rstrip("/")
     headers = anthropic_headers(config)
+    endpoint = (base_url, config.model)
     payload = anthropic_payload(prompt, config, temperature, max_tokens, images)
-    timeout = apply_anthropic_reasoning(payload, config, thinking, max_tokens, timeout)
+    timeout = apply_anthropic_reasoning(payload, config, thinking, max_tokens, timeout, endpoint)
     shape_for_provider(payload, config)
+    again = partial(
+        _query_anthropic,
+        prompt,
+        config,
+        temperature,
+        max_tokens,
+        timeout,
+        images=images,
+        transport_observer=transport_observer,
+        require_complete=require_complete,
+    )
     async with httpx.AsyncClient(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:
@@ -393,9 +437,16 @@ async def _query_anthropic(
             # discounted cache-read subset.
             prompt_tokens=(usage.get("input_tokens", 0) or 0) + cached_input + cache_creation_input,
             cached_prompt_tokens=cached_input,
+            # This dialect folds the thinking blocks into output_tokens and
+            # never breaks them out, so there is no reasoning subset to report.
             completion_tokens=usage.get("output_tokens", 0) or 0,
+            model=served_model(body),
         )
         raw_text = anthropic_answer(body, resp, transport_observer)
+        if _grow_anthropic_for_reasoning(endpoint, body, usage, answered=raw_text is not None):
+            observe(transport_observer, 1, "reasoning_widened", resp.status_code)
+            llm_metrics.record_truncation()
+            return await again(thinking=thinking)
         truncated = body.get("stop_reason") == "max_tokens"
         if truncated and require_complete:
             observe(transport_observer, 1, "incomplete", resp.status_code)
@@ -405,17 +456,7 @@ async def _query_anthropic(
             observe(transport_observer, 1, "thinking_fallback", resp.status_code)
             llm_metrics.record_truncation()
             logger.warning("Thinking hit the token budget; retrying without thinking")
-            return await _query_anthropic(
-                prompt,
-                config,
-                temperature,
-                max_tokens,
-                timeout,
-                thinking=False,
-                images=images,
-                transport_observer=transport_observer,
-                require_complete=require_complete,
-            )
+            return await again(thinking=False)
         if raw_text is None:
             record_invalid_response(transport_observer, resp.status_code)
             raise ValueError(reasoning_only_detail(body))

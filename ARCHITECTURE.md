@@ -146,6 +146,8 @@ src/immich_memories/
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
+│   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
+│   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
@@ -154,6 +156,7 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
 │   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
 │   ├── source_filter.py        # Drop doorbell / dashcam / screen-recorder uploads by filename
@@ -168,6 +171,7 @@ src/immich_memories/
 │   ├── llm_wire.py             # The two request dialects, what a reply says, and the reasoning budget
 │   ├── llm_batch.py            # A stage's independent prompts as one provider batch (half price, async): the two wire dialects and their transports
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
+│   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │
@@ -218,6 +222,7 @@ src/immich_memories/
 │   ├── music_generator_client.py # Music generation client
 │   ├── music_generator_models.py # Music generation data models
 │   ├── music_sources.py        # Music source providers (local library)
+│   ├── text_mood.py            # Banked music judgment from saved cut text; private answering-route record
 │   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step -> MusicGen fallback)
 │   ├── bundled_music.py        # The 28 bundled royalty-free tracks (`music` extra), used with no backend
 │   ├── track_tempo.py          # Measure a bundled track's tempo (numpy onset autocorrelation, no librosa)
@@ -536,3 +541,7 @@ clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Pre-commit**: Run `make ci` before committing
+
+The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.
+`ui/pages/suggestions.py` uses `AutoRunner`; `ui/pages/runs.py` reads `RunDatabase`
+and the shared run index/storyboard. Neither page owns a separate job store.
