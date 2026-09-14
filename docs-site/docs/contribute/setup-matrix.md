@@ -6,30 +6,126 @@ title: Setup matrix
 # Running the setup matrix
 
 The capability matrix varies what the product is asked for. The setup matrix varies the machine it
-runs on: ten setups, one memory each, the same month of the same library. It answers one question,
-"how do the same pictures come out under each mode, and what does each mode tax", and the answer is
-a table of preparation, selection and render seconds, peak memory, the pictures each setup chose,
-the overlap against the reference cut, and the film.
+runs on: fourteen setups, one memory each, the same month of the same library. It answers one
+question, "how do the same pictures come out under each mode, and what does each mode tax", and the
+answer is a table of preparation, selection and render seconds, peak memory, the pictures each setup
+chose, the overlap against the reference cut, and the film.
 
-`scripts/setup_matrix.yaml` holds the ten cells. `scripts/setup_matrix.py` runs them.
+`scripts/setup_matrix.yaml` holds the cells. `scripts/setup_matrix.py` runs them.
 
-| Cell | Lane | Reader | Picture facts | Tier |
-|---|---|---|---|---|
-| `mac-local` | Mac | local model | in process | full |
-| `mac-rules` | Mac | rules | in process | full |
-| `nas-rules-local` | NAS | rules | in process | no_captions |
-| `nas-rules-service` | NAS | rules | inference service | no_captions |
-| `nas-hosted-melious` | NAS | hosted | inference service | no_captions |
-| `nas-hosted-zai` | NAS | hosted | inference service | no_captions |
-| `k8s-rules-service` | Kubernetes | rules | inference service | no_captions |
-| `k8s-hosted-melious` | Kubernetes | hosted | inference service | no_captions |
-| `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions |
-| `k8s-rules-local` | Kubernetes | rules | in process | no_captions |
+| Cell | Lane | Reader | Picture facts | Tier | What it answers |
+|---|---|---|---|---|---|
+| `mac-local` | Mac | local model | in process | full | The reference cut. |
+| `mac-rules` | Mac | rules | in process | full | What the editorial model is worth. |
+| `nas-rules-local` | NAS | rules | in process | no_captions | The shipped NAS default. |
+| `nas-rules-service` | NAS | rules | inference service | no_captions | What the classifiers cost a NAS. |
+| `nas-hosted-melious` | NAS | hosted | inference service | no_captions | A NAS that buys judgement. |
+| `nas-hosted-zai` | NAS | hosted | inference service | no_captions | Provider result or hosted result. |
+| `k8s-rules-service` | Kubernetes | rules | inference service | no_captions | The cluster with no model bill. |
+| `k8s-hosted-melious` | Kubernetes | hosted | inference service | no_captions | The same job, hosted reader. |
+| `k8s-hosted-zai` | Kubernetes | hosted | inference service | no_captions | The cheapest published setup. |
+| `k8s-rules-local` | Kubernetes | rules | in process | no_captions | The inference service against itself. |
+| `k8s-gpu-t1000` | Kubernetes | rules | inference service | no_captions | When do you need a GPU. |
+| `k8s-gpu-1070` | Kubernetes | rules | inference service | no_captions | T1000 or GTX 1070. |
+| `k8s-full-rules` | Kubernetes | rules | inference service | full | What captioning a whole month costs a cluster. |
+| `k8s-full-melious` | Kubernetes | hosted | inference service | full | `mac-local` without the Mac. |
 
 "Picture facts" is where the detectors and the encoder run, in process or in the inference service.
 Captions are a third endpoint again, set per cell by `editorial.preparation.caption_base_url`, and
 only tier `full` asks for any: a cell can read its facts in process and still send its captions out.
 Only the two Mac cells caption at all.
+
+## The two GPU cells
+
+Every one of the ten cells above encodes on a CPU, so after the first run the table had no answer to
+either question the owner asked next: when do you need a GPU, and did you try the GTX 1070 against
+the T1000. `k8s-gpu-t1000` and `k8s-gpu-1070` are `k8s-rules-service` with the render moved onto a
+named card. Same reader, same picture facts, same tier, same 2 CPU request and 4 GB limit, so the
+only thing that differs between those three rows is what encoded the film.
+
+The Job gets `runtimeClassName: nvidia`, `resources.limits.nvidia.com/gpu: 1`, the
+`nvidia.com/gpu` toleration and a `nodeSelector` on `nvidia.com/gpu.product`. That last one is the
+whole trick, and it comes out of the cell:
+
+```yaml
+  - id: k8s-gpu-t1000
+    k8s:
+      gpu_product: NVIDIA-T1000-8GB-SHARED
+```
+
+A node label and never a hostname. A hostname names the same machine today and the wrong card the
+day a GPU moves between boxes, and it would put somebody's host into a transcript meant for a pull
+request. The label is written by the GPU operator, `kubectl get nodes -L nvidia.com/gpu.product`
+lists what a cluster has, and a cell naming a label no node carries sits Pending until its schedule
+wait gives up, which is a clearer failure than a render that silently went somewhere else.
+
+The container also gets `NVIDIA_VISIBLE_DEVICES=all` and
+`NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`, the same pair the app's GPU overlay sets. The
+second one is what puts the encoder in the pod: without `video` there is a CUDA device and no NVENC,
+which is exactly what the first cluster run hit.
+
+And the cell pins `hardware.backend: nvidia` in its config. Detection takes the first backend that
+can encode and treats software as none, so a pod that came up short on driver capabilities would
+have encoded on the CPU and published it as a GPU row. Named, the miss is a warning in the log and
+the row can be thrown out instead of believed.
+
+Each of those cells records its card in its own `timing.json` as `gpu_product`, and `summary.md`
+grows a `## Render device` section naming it. The value is the label the Job selected on, which is
+also the label the node carries: a node without it does not match the selector, so the pod could not
+have run anywhere else.
+
+## The render device column
+
+The first cluster run is why that column exists. Those Jobs are plain `base/job.yaml` with no GPU
+request at all, and all three of them logged
+`Title kernels: quadrants 1.3.0 on the CUDA backend`: the device plugin hands out a shared card and
+the kernel library takes what it finds, so the title screens, which are the phase a GPU helps most,
+were already accelerated. The encode was not. Every NVENC probe in those same logs died on
+`Terminating thread with return code -22 (Invalid argument)`, because the NVIDIA runtime exposed
+`compute,utility` to the pod and the encoder was never there to find. Reading those rows as CPU rows
+or as GPU rows would both have been wrong.
+
+So every cell on every lane now records two things off its own log, and the table shows them as one
+column:
+
+| Column value | What it means |
+|---|---|
+| `PIL titles / software` | No GPU anywhere. The title screens went through the Pillow renderer. |
+| `CUDA titles / software` | A shared card drew the titles and nothing encoded on it. |
+| `CUDA titles / h264_nvenc` | The whole render is on the card. |
+| `Metal titles / h264_videotoolbox` | The Mac lane. |
+
+`title_backend` comes from the one line `titles/kernels.py` prints per process, and `encoder` from
+the line the assembly prints on its way in. Neither is inferred from the lane: a cell that printed
+neither shows a dash, because "it is a NAS, so it must have been software" is a guess and this table
+does not publish those.
+
+## The service gets a card too
+
+Pinning the render says nothing about the classifiers. The inference service has its own Deployment
+and lands on whichever GPU node the scheduler picks, so two service cells can be answered by two
+different cards with nothing in the table saying so.
+`--inference-node-product NVIDIA-T1000-8GB-SHARED` pins it for a run. The selector is written into
+the rendered overlay at apply time, the way the image tag already is, so nothing in `deploy/`
+changes and no card is committed. Pinned or not, the run reads the label off the node the service
+pod actually landed on and publishes it as `inference_gpu_product` in `summary.data.json`.
+
+## The full tier in the cluster
+
+`k8s-full-rules` and `k8s-full-melious` ask for tier `full`, which wants a caption per picture, and
+the endpoint that serves them in-cluster is a captioner overlay that is not in this tree yet. They
+are declared anyway, because a setup nobody can run is still a setup the table should name:
+
+```yaml
+    requires_overlay: deploy/kubernetes/overlays/captioner
+```
+
+While that directory is absent the planner keeps the row and marks it
+`captioner overlay not in this tree yet`, the dry run prints the reason, and the published record
+lists it under `unmeasured`. The day the directory lands, the same cells run: the runner applies the
+overlay before the cells that named it and deletes it afterwards, along with the inference overlay
+and under the same `--keep-service`. Their caption endpoint is
+`http://captioner:8092/v1`, cluster DNS, so no address is derived and none is written down.
 
 ## One cache per cell
 
@@ -215,6 +311,10 @@ The cells that use the inference service bring
 the end, plus `inference-lan` when a NAS cell is in the run. `--inference-device` picks CPU or CUDA, and `auto` asks the cluster whether a node carries
 the GPU operator's label. `--keep-service` leaves it running.
 
+`--inference-node-product` pins the service to one card by node label, for a run that wants to know
+what the classifiers cost on each. It is rendered into the overlay at apply time and never
+committed, and whether it is set or not the run records the card the service pod landed on.
+
 `--inference-tag` is what the service runs, and it defaults to `--image-tag` so the service under
 test is the release the cells are. The committed overlays pin a release of their own, and a pin
 ages: the first cluster lane ran a `0.85.0-cuda` service against a `0.86.2` app image, so those
@@ -311,7 +411,8 @@ against each other.
 
 Everything goes under `output/setup-matrix/<library>/<timestamp>/`, which is gitignored because a
 real run carries real footage. Per cell: the pinned config, every command's stdout and stderr, the
-video and its `ffprobe` read, and `timing.json`, which is that cell's own record. A cell dir
+video and its `ffprobe` read, and `timing.json`, which is that cell's own record. That record also
+carries `title_backend`, `encoder` and, for the two cells that pinned one, `gpu_product`. A cell dir
 holding a `timing.json` is a cell that ran, which is what lets separate lane invocations add up.
 
 Two files at the top: `summary.data.json` (schema `setup-matrix-v1`, shaped like the research data
@@ -356,7 +457,7 @@ make test-one T=tests/test_setup_matrix_summary.py
 make test-one T=tests/test_setup_matrix_readiness.py
 ```
 
-The plan tests are the real gate: the ten cells never run in CI, so what is asserted is that the
+The plan tests are the real gate: the cells never run in CI, so what is asserted is that the
 plan they would run is the right one, that it is identical between calls, and that no value from
 the environment reaches the rendered text. The readiness tests stand in for the two things that
 cannot be reproduced without a cluster: a fake `kubectl` for a Job that fails, and a fake service

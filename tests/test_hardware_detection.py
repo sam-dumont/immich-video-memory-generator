@@ -357,6 +357,30 @@ class TestDetectHardwareAcceleration:
         assert caps.backend == HWAccelBackend.NVIDIA
         detect_hardware_acceleration.cache_clear()
 
+    def test_a_named_backend_probes_that_one_and_no_other(self):
+        """`hardware.backend` exists so a measurement can say which chip it ran on.
+
+        On a box with two encode paths, first-hit-wins would quietly hand the run
+        the other one, and the row would carry a number about the wrong hardware.
+        """
+        detect_hardware_acceleration.cache_clear()
+        apple = HWAccelCapabilities(backend=HWAccelBackend.APPLE, supports_h264_encode=True)
+        # WHY: a detector talks to ffmpeg, and no unit test may reach real hardware.
+        with (
+            patch(
+                "immich_memories.processing.hardware_detection._detect_apple", return_value=apple
+            ) as apple_probe,
+            patch(
+                "immich_memories.processing.hardware_detection._detect_nvidia", return_value=None
+            ) as nvidia_probe,
+        ):
+            caps = detect_hardware_acceleration("nvidia")
+
+        assert caps.backend == HWAccelBackend.NONE, "software, rather than the other chip"
+        assert nvidia_probe.called
+        assert not apple_probe.called
+        detect_hardware_acceleration.cache_clear()
+
 
 # ---------------------------------------------------------------------------
 # hardware.py helper functions (pure logic, no subprocess)

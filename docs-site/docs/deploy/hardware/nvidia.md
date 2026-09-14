@@ -45,6 +45,13 @@ Nothing to select: NVIDIA is probed first, so if NVENC works it is used. On a mu
 the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`: there is no `device_index` in
 the config.
 
+`hardware.backend: nvidia` probes NVENC and nothing else. Leave it on `auto` for normal use. It is
+there for a benchmark: detection treats software as no backend at all, so a box missing the `video`
+driver capability would encode on the CPU and still look like a GPU run. Named, the miss is a
+warning in the log and the timing can be thrown out rather than believed. The
+[setup matrix](../../contribute/setup-matrix.md) pins it in the two cluster cells that render on a
+named card.
+
 ## In Docker
 
 The image does not bundle drivers; the NVIDIA Container Toolkit injects them. NVENC needs the

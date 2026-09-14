@@ -94,6 +94,14 @@ class HardwareAccelConfig(BaseModel):
     # Auto-detect available hardware by default
     enabled: bool = Field(default=True, description="Enable hardware acceleration")
 
+    # `auto` walks NVIDIA, Apple, QSV, VAAPI and takes the first that can encode.
+    # Naming one probes that one only, which is how a measurement says which chip
+    # it ran on: a host where the named backend cannot encode falls to software
+    # and says so, instead of publishing another chip's numbers under its name.
+    backend: Literal["auto", "none", "nvidia", "apple", "vaapi", "qsv"] = Field(
+        default="auto", description="Which encode backend the render probes"
+    )
+
     # Encoding settings
     encoder_preset: Literal["fast", "balanced", "quality"] = Field(
         default="balanced", description="Encoder speed/quality tradeoff"
