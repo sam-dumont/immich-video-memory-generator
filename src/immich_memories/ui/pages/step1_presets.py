@@ -423,10 +423,16 @@ def _render_trip_params(state: AppState) -> None:
     state.memory_preset_params.setdefault("year", current_year)
 
     async def load_trip_years() -> None:
-        await _load_trip_year_options(state, year_select)
-        year_select.on_value_change(on_year_change)
-        await _detect_trips_for_year(year_select.value)
-        year_select.enable()
+        # The picker is disabled for the duration of this load. Anything that
+        # escapes -- a render error, a client that disconnected mid-await --
+        # would strand it disabled for the rest of the session, with a page
+        # reload the only way back.
+        try:
+            await _load_trip_year_options(state, year_select)
+            year_select.on_value_change(on_year_change)
+            await _detect_trips_for_year(year_select.value)
+        finally:
+            year_select.enable()
 
     if state.connected_user and current_year:
         year_select.disable()
