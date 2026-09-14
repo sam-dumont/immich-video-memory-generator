@@ -75,6 +75,13 @@ _PLAN = {
 }
 
 
+class _Candidate:
+    """The least a trace needs of a pool item: an id to name it by."""
+
+    def __init__(self, asset_id: str) -> None:
+        self.id = asset_id
+
+
 def _provenance(name: str) -> DecisionProvenance:
     return DecisionProvenance(
         pass_name=name,
@@ -202,6 +209,29 @@ class TestTraceRoundTrip:
         restored = Trace.from_dict(json.loads(json.dumps(original.as_dict())))
         assert restored.story_of("woods-9") == original.story_of("woods-9")
         assert restored.story_of("garden-1") == original.story_of("garden-1")
+
+    def test_a_saved_run_still_knows_which_pictures_its_final_cut_dropped(self):
+        """A real run drops most of the pool at the planner, not at a pass.
+
+        The passes reject a few and the planner keeps fifteen of a hundred and
+        thirty: without the final-cut stage, every picture in between reads as
+        one the run never saw.
+        """
+        original = _trace()
+        original.record(
+            "editorial final cut",
+            [_Candidate("garden-1"), _Candidate("garden-2"), _Candidate("lake-1")],
+            [_Candidate("garden-1"), _Candidate("lake-1")],
+        )
+
+        restored = Trace.from_dict(json.loads(json.dumps(original.as_dict())))
+
+        kept_by_every_pass = restored.story_of("garden-2")
+        assert kept_by_every_pass.dropped_at == "editorial final cut"
+        assert restored.story_of("garden-1").shipped
+        # The pass that rejected it said why; the stage only counts it again.
+        assert restored.story_of("woods-9").dropped_at == "picture-review"
+        assert restored.story_of("woods-9").reason == "a near duplicate of the path shot"
 
 
 class TestRunSummary:

@@ -208,6 +208,8 @@ def _render_photo_card(
 
 
 def _render_outcome(text: str) -> None:
+    if not text:
+        return
     ui.label(text).classes("pool-outcome text-xs leading-snug mt-1").style(
         "color: var(--im-text-secondary)"
     )
