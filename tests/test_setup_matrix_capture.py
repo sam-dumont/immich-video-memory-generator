@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from setup_matrix_capture import (  # noqa: E402
     anonymize,
     clock_seconds,
+    parse_cache_primed,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_models_fetch_seconds,
@@ -24,6 +25,7 @@ from setup_matrix_capture import (  # noqa: E402
     parse_run_summary,
     parse_saved_path,
     parse_time_peak_rss_mb,
+    prepare_phases,
 )
 
 from immich_memories.analysis.llm_metrics import LLMCounters  # noqa: E402
@@ -240,6 +242,32 @@ def test_a_real_cold_prepare_yields_its_count_and_every_producer_row() -> None:
             "seconds": 15.0,
         },
     ]
+
+
+def test_the_two_prepares_of_one_remote_stdout_are_read_apart() -> None:
+    """A container tees each phase into a file AND prints both into one stream.
+
+    That stream is all there is when the copy-out loses the files, and the rate
+    table is the same shape in both halves, so reading the pair as one returns
+    the cell's producers twice over.
+    """
+    text = (FIXTURES / "k8s-job-logs.stdout.txt").read_text()
+
+    phases = prepare_phases(text)
+
+    assert len(phases) == 2
+    assert parse_prepared_pictures(phases[0]) == (133, 0.0002)
+    assert parse_prepared_pictures(phases[1]) == (133, 0.0)
+    assert [row["producer"] for row in parse_prepared_producers(text)] == ["previews", "previews"]
+    assert [row["producer"] for row in parse_prepared_producers(phases[0])] == ["previews"]
+
+
+def test_a_lane_says_in_one_word_whether_the_cache_already_held_a_run() -> None:
+    """Neither remote lane can tell from the directory: both create it before the run."""
+    assert parse_cache_primed("primed\n") is True
+    assert parse_cache_primed("cold\n") is False
+    assert parse_cache_primed("ssh: connect to host: Connection refused\n") is None
+    assert parse_cache_primed("") is None
 
 
 def test_the_models_fetch_phase_is_read_from_the_container_s_own_stopwatch() -> None:

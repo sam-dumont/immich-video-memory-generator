@@ -54,9 +54,18 @@ NAS cell's cache is not pulled back with its results: it is previews and thumbna
 gigabyte, it means nothing off the NAS, and leaving it there is what makes a re-run of that cell
 warm.
 
-`prepare_cache_primed` follows from this. It is true when the cell's own cache directory was
-already there before the run, which is to say the cell has run before, and the record then says
-that its cold preparation is a re-read rather than a first derivation.
+`prepare_cache_primed` follows from this. It is true when the cell's own cache already held a run,
+which is to say the cell has run before, and the record then says that its cold preparation is a
+re-read rather than a first derivation.
+
+Each lane answers that from somewhere different, because on two of the three the directory being
+there proves nothing. The Mac cell's cache is created by the run itself, so the runner looks before
+it starts. The NAS cell's is created by `make-remote-dir` a moment before the container starts, so
+that step looks first and prints `primed` or `cold` before its own `mkdir -p`. The cluster's is a
+subPath the kubelet creates before the container is even scheduled, so the container leaves a
+marker file of its own (`/cache/.setup-matrix-cell`) and reports on the way in. Remote cells used to
+leave the field null: `k8s-hosted-melious` published a 0 s cold preparation over an already-warm
+bank with nothing under `unmeasured` to say it was a re-read.
 
 ## A remote cell's config names container roots only
 
@@ -250,6 +259,12 @@ image's WORKDIR is `/app`: a source relative to the claim root was
 `tar: setup-matrix/<cell>: Cannot stat` on the second real run, and the film, the attempt and every
 per-step log stayed on the volume while the cell published an empty row.
 
+That copy is also flaky, and a zero exit is not proof it finished. `k8s-rules-service` lost its film
+to `error: unexpected EOF` on a copy that reported nothing else wrong. So the copy is tried up to
+three times with a pause between, and what it is judged on is the file the run named: the loop stops
+as soon as that file is on this machine, and if three tries do not bring it back the cell records
+`the film. The copy-out failed after 3 attempts` under `unmeasured` rather than a blank column.
+
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
 Pending and never completes, and the single long wait used to watch one for three hours. The second
@@ -281,11 +296,22 @@ with a completion, so the cost column is empty; token counts at or above 1000 ar
 nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
 rather than a first derivation, which the record says out loud.
 
+The cut itself comes back the same way on every lane. The editorial cache holds the attempt (the
+plan, the projection, the selection trace) and that cache is never pulled off a NAS or a cluster,
+so a remote cell's container copies its own memory's `editorial-runs/<cell>` into `/out/attempts/`
+on the way out and the copy-out brings that back with everything else. Only that memory's directory:
+the bank beside it is every fact the library ever derived. The capture then reads the attempt with
+the same reader the Mac lane uses, off a different root. Before this, both cluster cells that
+finished published `selected_asset_ids: []` and `#kept 0` next to a film that plainly had pictures
+in it.
+
 A remote cell that cut a film and failed to copy it back still reports its numbers. The container
 tees every phase into its output volume, but the run's own stdout came back with the step that ran
-it (`kubectl logs` for a cluster cell, the ssh session for a NAS one), and the end-of-run block is
-read from there when the volume's copy never arrived. What did not come back is named under
-`unmeasured`: the film, and whichever per-phase timings were only ever written to the volume.
+it (`kubectl logs` for a cluster cell, the ssh session for a NAS one), and the end-of-run block and
+both prepare tables are read from there when the volume's copy never arrived. Cold and warm are
+split apart before either is read: the rate table has the same shape in both, so reading the pair as
+one stream returns the cell's producers twice. What did not come back is named under `unmeasured`:
+the film, and whichever per-phase timings were only ever written to the volume.
 
 Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
 largest of the three. The kernel's own counter is the maximum over every child the runner has
