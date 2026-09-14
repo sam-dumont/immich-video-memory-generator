@@ -1,287 +1,233 @@
-# One household, multiple Immich accounts
+# Household memories using the existing people model
 
-Status: proposed. Design only; the configuration and flags below are not implemented.
+Status: proposed, design only. Implement after the PostgreSQL people migration in
+[#871](https://github.com/sam-dumont/immich-video-memory-generator/issues/871).
 Refs [#717](https://github.com/sam-dumont/immich-video-memory-generator/issues/717),
 [#718](https://github.com/sam-dumont/immich-video-memory-generator/issues/718) and
 [#720](https://github.com/sam-dumont/immich-video-memory-generator/issues/720).
 
-## The request
+## Decision
 
-Two parents keep photos in separate Immich accounts. A child has a different face ID in each
-account. Some photos exist in both libraries; others belong to only one parent. A monthly
-memory of the children should use both libraries, count a shared original once, and respect
-either parent's favourite. An anniversary selection should require both people in the same
-photo, not merely somewhere in the combined pool.
+Use the people model we already have, with both accounts' existing tagged people. Build
+persistent extensions on the PostgreSQL repository once it lands. The primary acceptance
+case runs before Immich 3.2, without an upgrade, re-ingest, face reset or Immich tag remapping.
+Native clustering is optional for libraries already using it, never a prerequisite.
 
-Start with two accounts on one server. Keep the server in every source reference so a second
-server cannot collide with the first. An external library inside one account remains part of
-that account's existing discovery scope; it does not need a second identity account.
+There is no new `identities.subjects` registry, second birthday field or parallel people
+editor. Today `people.yaml` holds the companion. Under #871 the same people move into
+PostgreSQL and YAML becomes import/export. Saved groups refer to those people.
 
-This changes how an existing memory finds its sources. It adds no memory type, face recognition
-model, account synchronisation, asset copying or mutation of either Immich library.
+The target is two accounts on one Immich server: a memory can include photos from both,
+find a person across the selected accounts, and count an identical original once. Requiring two
+people means both appear in the same item. Either owner's favourite must count when the
+run explicitly includes both accounts' favourite evidence.
 
-## What to reuse, and what has changed
+## Optional Immich 3.2.0 support
 
-Credit: [Mike7154's discussion and reference fork](https://github.com/sam-dumont/immich-video-memory-generator/discussions/703).
-The fork supplies account/subject/group models, Protocol-based discovery, an `ExitStack` for
-clients, Boolean-query tests, and CLI/UI examples. Reuse that work with attribution.
-Reference inspected: [cad6eb27](https://github.com/Mike7154/immich-video-memory-generator/commit/cad6eb274353470a43624ecc89debad64e6bc829),
-especially `config_models_identity.py`, `identity_source.py`, `identity_generation.py` and their tests.
+The [official release notes](https://immich.app/blog/v3.2.0-release) introduce cluster
+groups: trusted users on one instance can share face clustering and recognize their own
+people in shared assets. Names and birth dates remain per-user. This supersedes #717's
+blanket assumption that sharing cannot carry usable person identity on every version.
+It does not remove the need to support existing libraries with separate account people IDs.
 
-Three parts need adapting to current main:
+Retroactive recognition currently requires a facial-recognition reset for the group;
+the release notes say that this loses names and birth dates. Reading a library must never
+create a cluster group, accept an invitation or trigger that reset. Existing tagged people
+are valuable data, not disposable setup state.
 
-- `analysis/editorial_source.py::fetch_full_window_source` fetches the whole period without
-  person filters. Filtering the cross-account fetch first would discard the context the editor
-  now reads. Keep the complete context pool separate from eligible carriers.
-- The fork's `identity_source.py` keeps the first checksum match. #717 instead requires
-  favourite first, primary account second, and a stable tie-break.
-- The fork closes discovery clients and renders through the primary client. That assumes
-  partner sharing grants access to every selected asset. A partner-only favourite disproves it.
+Version-pinned source clarifies the optional integration, not the current library's behavior:
 
-Current integration points:
-
-| Existing code | Design use |
+| Immich 3.2.0 behavior | Consequence here |
 | --- | --- |
-| `api/person_expression.py` | One bounded AND/OR expression model; logical subject keys become its leaves. |
-| `analysis/selection_source.py` | Preserve scope, chronology, favourites, provenance and audience rules. Its existing coalescer handles representations of one asset, not copies owned by different accounts. |
-| `cli/_run_inputs.py::ResolvedRunInputs` | Consume one resolved identity selection; do not create a second generation orchestrator. |
-| `people/companion.py` | Preserve confirmed people facts and merged face clusters; qualify their account scope. |
-| `cache/thumbnail_cache.py`, `cache/video_cache.py`, `store/editorial_preparation.py` | Replace bare remote IDs only on the new identity route; these stores currently key by asset ID. |
-| `automation/generation_request.py`, `scheduling/executor.py` | Carry the same selector and scope into unattended generation. |
+| [`mapPerson` returns `personGroupId` as the public person ID](https://github.com/immich-app/immich/blob/v3.2.0/server/src/dtos/person.dto.ts#L174), while [`findOrFail` looks up that group for the viewing user](https://github.com/immich-app/immich/blob/v3.2.0/server/src/services/person.service.ts#L659). | Accept native group IDs when present. Do not copy another user's name into the companion or require existing tags to be rebuilt. |
+| [`searchMetadata` passes `viewingUserId`; `getUserIdsToSearch` includes timeline-enabled partners](https://github.com/immich-app/immich/blob/v3.2.0/server/src/services/search.service.ts). | A verified native shared view may reduce discovery reads. It must cover the same explicit scope as the two-account route. |
+| [`mapAsset` returns `isFavorite` only to the asset owner](https://github.com/immich-app/immich/blob/v3.2.0/server/src/dtos/asset-response.dto.ts#L227). | A shared response's false value cannot establish that the partner did not star it. Owner-authenticated evidence is needed for the either-owner rule. |
+| [`mapAsset` includes the raw asset ID, owner, people and checksum](https://github.com/immich-app/immich/blob/v3.2.0/server/src/dtos/asset-response.dto.ts). | Retain those fields for matching, exact-copy deduplication and access checks. |
 
-## Configuration contract
+For that optional route, cluster membership and asset access are separate prerequisites.
+A server version alone proves neither. Shared albums need their own explicit scope; a cluster
+group is not permission to read another user's whole account.
 
-`identities` is optional, top-level configuration. Without an explicit subject/group selection,
-the existing single-account route stays unchanged. Configuring a partner does not silently add
-their library to every memory.
+Our `api/search_service.py` already requests `withPeople` on `/search/metadata`. First test
+the existing route against each account on the current server. Test 3.2 clustering separately
+on a disposable fixture; Search v2 can be an adapter improvement later. Neither requires
+replacing the existing bounded AND/OR expression model.
 
-Proposed example, using invented labels and placeholder IDs:
+## Reuse the companion, then its PostgreSQL repository
 
-```yaml
-identities:
-  accounts:
-    partner:
-      api_key: ${PARTNER_IMMICH_API_KEY}
-      # url and api_version inherit immich unless explicitly supplied
-  subjects:
-    child_a:
-      display_name: Child A
-      people: {primary: [PRIMARY_CHILD_A_ID], partner: [PARTNER_CHILD_A_ID]}
-    child_b:
-      display_name: Child B
-      people: {primary: [PRIMARY_CHILD_B_ID], partner: [PARTNER_CHILD_B_ID]}
-    parent_a:
-      display_name: Parent A
-      people: {primary: [PRIMARY_PARENT_A_ID], partner: [PARTNER_PARENT_A_ID]}
-    parent_b:
-      display_name: Parent B
-      people: {primary: [PRIMARY_PARENT_B_ID], partner: [PARTNER_PARENT_B_ID]}
-  groups:
-    children:
-      display_name: Children
-      subjects: [child_a, child_b]
-      match: any
-    parents:
-      display_name: Parents together
-      subjects: [parent_a, parent_b]
-      match: all
-    parent_with_children:
-      display_name: Parent with children
-      required: [parent_a]
-      any_of: [child_a, child_b]
-```
+These are existing contracts, not proposed new configuration:
 
-`primary` is a reserved alias for the existing `immich` connection, not a second copy of its
-credentials. Additional accounts may inherit that URL or name another server. Reuse
-`expand_env_vars` and `ApiVersionPolicy`; unresolved credential references fail before discovery.
-Credentials stay server-side, out of browser storage, command arguments and run manifests.
-
-A subject key is its stable identity; `display_name` is presentation. Accept the fork's scalar
-person-ID form as a one-element list. Multiple IDs within one account mean alternative face
-clusters for the same person, matching the existing companion's merged-ID model.
-
-Reject unknown references, empty groups, mixed group syntaxes and a qualified face ID assigned
-to two subjects. An account may lack a binding for a subject; that is missing evidence, not a
-reason to drop the whole account. Never bind people by matching display names automatically.
-Do not support groups containing groups in the first version.
-
-Normalize `subjects + match` to `any(...)` or `all(...)`. Normalize the composite form to
-`all(required..., any(any_of...))`, omitting an absent arm. Both arms empty is invalid.
-Keep the existing expression limits; do not expand nested expressions into an unbounded list
-of clauses. Labels use display names; identity and dedup keys use subject keys.
-
-An optional subject `birth_date` is the explicit date for identity-based requests. Otherwise
-use a confirmed companion date only when mapped entries agree. Conflicts are reported, not
-resolved by whichever account answered first. Existing single-account birthday behavior stays
-unchanged here; the shared birthday resolver belongs to the #719 dependency below.
-
-## Resolve once, retain the source through export
-
-The proposed `identity_source` boundary returns a frozen selection, canonical sources, and a
-source resolver. It composes the existing clients rather than pretending several servers are
-one `SyncImmichClient`.
-
-```mermaid
-flowchart LR
-    A[Primary account] --> S[Full period and qualified origins]
-    B[Partner account] --> S
-    S --> D[Deduplicate and resolve logical people]
-    D --> E[Existing story editor]
-    E --> R[Read each selected source through its account]
-    R --> V[One memory video]
-```
-
-1. Resolve the requested subject/group into a canonical expression and its participating
-   accounts: the union of accounts named by its subjects. Record that set in the request.
-2. Authenticate each account and bind its configured alias to the server endpoint and current
-   user ID (`get_current_user` already calls `/users/me`). Open clients with `ExitStack` for the
-   whole worker lifetime, including preview preparation and rendering. Redact failures by alias.
-3. Fetch the same exact windows from every participating account, including photos, videos and
-   needed Live Photo companions. Preserve the existing visibility, place and library boundaries.
-   People-query fan-out may assist discovery, but cannot narrow the editor's context pool.
-4. Qualify remote references before combining results. Build checksum groups, choose a stable
-   representative, and retain every admitted copy's origin, favourite and face evidence.
-5. Evaluate the subject expression on logical evidence for each canonical source. Return both
-   the full context and carrier eligibility to the existing source pipeline. Existing provenance,
-   privacy, owner-exclusion and audience rules still apply; a star bypasses none of them.
-6. Resolve every thumbnail, original, companion and burst member through its recorded account.
-   Delivery uses the existing primary upload connection and album settings. Reading the partner
-   account does not opt it into receiving an upload.
-
-A requested account that is unavailable or unauthorized fails the combined request before
-editing. Do not publish a smaller memory as a successful complete household run. In automation,
-record the failed attempt and leave existing retry/backoff rules in charge. An accessible empty
-account is valid and has a zero count. A missing face binding is reported separately from an
-account failure; it never becomes positive evidence.
-
-## Source identity, duplicates and access
-
-Keep three identifiers distinct:
-
-| Identifier | Meaning |
+| Existing boundary | Keep |
 | --- | --- |
-| Subject key | One logical person, independent of account and display name. |
-| Remote reference | Server namespace + authenticated account identity + raw asset UUID. Used for access. |
-| Canonical source ID | Stable, filesystem-safe ID for one admitted content item in this identity scope. Used in plans and caches. |
+| `people/companion.py` | One record with `ids`, `name`, `birth_date`, `confirmed` and `inferred`. Human confirmations survive refresh. |
+| `people/context.py::load_people_prompt_context` | Every ID in an entry resolves to the same context; owner and relationship references resolve through that mapping. |
+| `analysis/editorial_people.py::_merged_identities` | One editorial person for the entry's IDs; the first ID currently anchors its canonical identity. |
+| `people/editor.py` | One place to edit people, roles, notes and relationships. |
+| `api/person_expression.py` | Existing bounded expression tree and leaf mapping for person selection. |
 
-Collapse different objects only with a recognized, nonempty checksum of the same media kind.
-Normalize documented checksum encodings in the API adapter. Without a usable checksum, dedup
-only the same `(server namespace, remote UUID)` object, retaining each account's
-access reference. Equal raw UUIDs on different servers are not duplicates. Similar-looking
-edits and re-encodes remain distinct sources.
+Preserve the imported canonical reference and all aliases during #871 P6. If PostgreSQL
+uses internal row IDs, those must not leak into existing requests, links or editorial token
+ordering. Keep manual people and confirmed relationships even when a roster refresh no
+longer returns the old Immich ID. Never merge people merely because their names match.
 
-Choose the representative by `(favourite first, primary first, account alias, remote UUID)`.
-This follows #717 even when the winning favourite belongs only to the partner. The canonical
-favourite is OR across admitted copies. Retain all origins and logical face evidence, while
-using the chosen representative's ordinary metadata consistently. Record metadata disagreements
-and the chosen origin so the result can be explained. Pagination and response order cannot
-change the winner or the final `(capture time, canonical ID)` order.
+Attach the second account's existing person ID to the same companion person through an
+explicit confirmation in the existing editor. This is a local association, not an Immich
+face merge or remapping job. For example, one existing person can have the primary account's
+ID and the partner account's different ID, with one name, birthday and confirmation block.
+Store which account can query each ID alongside that person's aliases in PostgreSQL.
+Credentials remain in connection settings. One account/person binding cannot belong to two
+companion people; several face clusters within an account may belong to the same person.
 
-AND means co-occurrence in one canonical item. If two exact copies have complementary face
-tags, their explicitly mapped subjects can satisfy AND. Two different photos cannot, even if
-taken at the same time. This deliberately improves on the fork's per-account AND query, which
-can miss complementary tags across copies. Do not infer identities absent from all copies.
+Preserve existing IDs and facts when adding a binding. Conflicting names or dates from the
+second account do not overwrite the companion's facts. A missing binding is unresolved
+evidence, not permission to match by name or a reason to reject unrelated account assets.
+On an already clustered 3.2 library, a native group ID can serve both account bindings.
+Changed IDs still require review; a scan cannot transfer confirmations to an unrelated face.
 
-The canonical ID uses a versioned identity-scope namespace plus content identity, independent
-of the representative's account and favourite flag. For missing checksums it uses the server
-namespace and remote UUID. The adapter projects that ID into pipeline DTOs while keeping raw references
-in the resolver; synthetic IDs must never be sent to an Immich endpoint. Resolve before the
-existing same-asset coalescer so different owners are not mistaken for conflicting DTOs.
+Saved groups add a label and an expression referring to existing canonical people. For
+example, a group can represent `any(child A, child B)` or
+`all(parent A, any(child A, child B))`. The words here are illustrative; saved references
+use canonical IDs, so renaming somebody does not change membership. Groups have no copied
+names, birthdays, roles or independent subject records. Group names must be unambiguous;
+dangling person references are validation errors. Keep the existing expression size limits
+and omit nested saved-group references in the first implementation.
 
-The run manifest freezes the representative and origin map. A later run can choose differently
-after a star or permission change; resuming an existing run must not silently change its source.
-If a chosen original disappears mid-run, report the failed source instead of switching accounts
-or swallowing the clip. Deterministic fallback to an equivalent origin can be a later feature.
-Verify downloaded material against the recorded content identity, when available, before reuse.
+## PostgreSQL sequencing and portability
 
-Live Photo stills and motion are separate content items linked by qualified references. Equal
-stills do not prove equal motion. Keep the selected copy's validated companion/burst lineage,
-rewrite all member references through the resolver, and never pair a still with another
-account's unrelated video because their bare IDs match.
+[#871](https://github.com/sam-dumont/immich-video-memory-generator/issues/871) and the
+[current store design](../research/2026-09-01-annotation-store-design.md) own persistence.
+The first implementation waits for its repository and people import/editor path, including
+P1 and P6. Any account connections also depend on its settings and secret handling (P4/P5).
+Run-history changes depend on P3. These are prerequisites, not an instruction to reorder
+the PostgreSQL release work.
 
-## Cache and replay contract
+Before that foundation lands, complete this design and bounded, read-only compatibility
+checks. Do not add temporary SQLite tables, extend the live YAML schema with account/group
+state, or build a dual-write migration bridge. The current companion writer reconstructs
+its top-level keys on a scan; bolting groups into that file now would also require a second
+writer migration.
 
-No blanket migration of existing single-account asset IDs or annotation rows. The identity route
-gets a versioned namespace; legacy requests, serialized walls and prompt bytes remain unchanged.
-Two participating-account sets must not accidentally share private run artifacts or eligibility.
+Once the foundation lands:
 
-Cache pixel facts and descriptions against canonical content plus the actual preview digest,
-recipe and producer version. A change of representative alone should reuse identical evidence;
-a different preview must not. Face mappings, favourites, dates and owner-confirmed facts are
-mutable metadata and need their own fingerprint. A changed subject binding must invalidate
-selection inputs without forcing identical pixels through analysis again.
+- Extend its existing people repository with confirmed aliases and saved expressions where
+  needed. CLI, UI, scheduler and editorial callers consume the same people records.
+- Keep expression expansion and checksum grouping as pure operations over typed values.
+  Pass loaded values into them; no SQL or YAML access inside selection logic.
+- Store durable groups and any required access bindings through #871 migrations. YAML
+  export/import must round-trip the same records, confirmations and references. It is not
+  a second active store. Updates to people and dependent group references are transactional.
+- Keep connection settings separate from person facts. Reuse the settings source/locking
+  rules and encrypted secrets. A connection contains access details, never a second roster.
+- Use existing stable asset references and content keys. Freeze source choices in the
+  existing per-attempt records; do not design another run database or rewrite every cache.
+- Test repository behavior against the real PostgreSQL test target from #871. Retain the
+  migration's byte-identical editorial replay acceptance before adding household behavior.
 
-Extend `source-snapshot.private.json` with a versioned identity manifest: canonical expression,
-account scope, origin map, representative decisions and metadata fingerprint. Store no keys.
-Keep credentials in a separate authorization fingerprint: key rotation invalidates access and
-discovery state, not the subject's identity or unchanged pixel facts. Replacing the authenticated
-user behind an account alias changes its scope and cannot reuse that user's private results.
+Exact table names and repository methods belong to the landed PostgreSQL code. This design
+specifies their behavior without inventing a competing persistence abstraction in advance.
 
-The current `people.yaml` contains unqualified face IDs. Introduce a versioned account-qualified
-binding for identity mode while preserving confirmed entries. Do not concatenate two rosters
-into the existing file or let a refresh overwrite one parent's confirmations with the other's.
-Household-level confirmations live under subject keys in that versioned companion, with source
-bindings in `identities`. They outrank inferred account roles. Conflicting account-level
-confirmations need an explicit household decision; refresh must not choose one silently.
+## Discovery, favourites and duplicates
 
-## CLI, page and unattended runs
+For the current setup, open an authenticated client for each explicitly selected account
+and verify its identity with `/users/me`. A household run records admitted owners and source
+scope. Filter each response to its intended owner/scope so partner sharing does not introduce
+additional accounts. Preserve existing visibility and audience rules. Use the same date windows
+for photos and videos; keep the complete context pool that
+`analysis/editorial_source.py::fetch_full_window_source` gives the story editor. Person
+selection determines eligible carriers without discarding the surrounding context.
 
-Proposed CLI: `generate --memory-type monthly_highlights --group children --year 2024 --month 6`
-or `generate --memory-type person_spotlight --subject child_a --year 2024`.
-Resolve before source acquisition; project into `ResolvedRunInputs` and the existing pipeline.
-Reject combining `--subject` and `--group`, or either with `--person` / `--people-expression`.
-Unsupported selector/memory-type combinations fail explicitly, never ignore the selector.
+Resolve each account's returned people IDs through that account's bindings to the existing
+companion. Read favourites through the owning account. Do not infer an owner's star from a
+partner-visible response. Selecting both accounts explicitly grants the requested read scope;
+merely configuring a second credential does not add its library to every memory.
 
-Initial #718 enablement: monthly highlights, year in review and custom windows accept either
-selector; person spotlight accepts a subject; multi-person accepts a group. Keep the existing
-window calculations. Trip, album and annual-story combinations remain unavailable until their
-catalogue/membership or date-window integrations carry the same qualified scope. The UI must
-disable those combinations too, rather than offering a choice the CLI cannot honour.
+Keep both clients alive through preview and export. Retain an access-account reference with
+each raw asset ID; every original, thumbnail and companion read uses that reference. The
+existing primary connection remains the upload destination. Reading a second account does
+not opt it into uploads. A native shared view can later reduce reads where equivalent people,
+scope and access have been verified; owner-only favourite evidence still needs its owner.
 
-The Memory brief gets the equivalent selector using existing components. Show human names and
-“Either child” / “Both parents together”, plus the participating account labels. Show per-account
-discovery counts, duplicate count and unique pool size in Details; expose UUIDs only in private
-diagnostics. Preview, Cut, reload, owner exclusions, recut and Export all retain the same scope.
-Account keys never enter a URL or the browser session.
+If a selected account or required owner favourite read fails, fail the run
+before editing instead of presenting an incomplete result as complete. A one-account run
+can still use its existing semantics, but cannot claim to include both owners' favourites.
 
-Schedules and `GenerationRequest` carry the stable selector and its resolved scope signature.
-History retains display names and the selected subject/group key. Automatic candidate keys bind
-the normalized expression, participating accounts and date windows, so equivalent CLI/UI runs
-dedup together while different household scopes do not consume each other's slot. Reuse the
-existing variety, cap, lease and failure policies; do not add a second scheduler.
+Deduplicate in two steps:
 
-## Delivery slices and acceptance evidence
+1. Multiple responses for the same server asset UUID represent one object. Merge evidence
+   from authorized readers without counting the object twice.
+2. Distinct asset UUIDs with a recognized, nonempty equal checksum and the same media kind
+   are exact copies. Keep all contributing raw references. Prefer a favourited copy, then
+   the primary owner's copy, then stable owner/asset IDs. Sort the final pool consistently.
 
-| Slice | Must be true before it ships |
+A missing checksum permits only same-object deduplication. Similar pictures, edited exports
+and re-encodes are not proved identical by this rule. Near-duplicate work can later use the
+embedding store reserved by #871; it is not needed to collapse byte-identical copies.
+
+Evaluate person expressions against canonical people on each deduplicated item. Exact
+copies may contribute complementary, explicitly resolved tags. Separate photos cannot
+satisfy an AND merely because each contains one of the requested people.
+
+Do not replace raw Immich IDs globally with synthetic IDs. Keep a content-group key separate
+from the representative asset reference, using the landed store's content-key conventions.
+Cache content-derived facts by that stable key where appropriate; owner metadata and access
+remain tied to their source. Stars or response order must not force the same bytes through
+analysis again. Freeze the chosen representative and evidence in the attempt record for
+replay, while allowing a later run to observe changed stars or permissions.
+
+Test a partner-only source that the primary credential cannot download: its recorded owner
+client must handle preview and export. Keep each still's companion lineage;
+equal still checksums do not prove equal motion. A failed source read is an explicit failed
+attempt, not permission to substitute another account's source silently.
+
+Two accounts on the same server are supported without requiring native shared people.
+Multiple servers remain outside this first slice; do not redesign all cache keys for them.
+
+## Issue slices after PostgreSQL
+
+Credit: [Mike7154's discussion and reference fork](https://github.com/sam-dumont/immich-video-memory-generator/discussions/703)
+provided the household use case and Boolean-selection examples. Its configuration proposal
+predates this reassessment; reuse useful behavior tests with attribution, not its duplicate
+subject registry.
+
+| Issue | Revised scope |
 | --- | --- |
-| #717 foundation | Config validation, bounded expression resolution, qualified origins, deterministic dedup and resolver/cache contracts pass against two fake accounts. No user-facing feature claim yet. |
-| #718 existing memory types | CLI generation uses the full context and correct account through a real export. Publish the temporary UI divergence in `tests/test_surface_parity.py`. Include a fixture transcript. |
-| #720 UI and unattended selection | Same request yields the same pool, eligibility and cut from CLI, Memory and scheduled generation. Remove the declared divergence. Include browser walkthrough and screenshots. |
-| #720 annual stories | Still depends on [#719](https://github.com/sam-dumont/immich-video-memory-generator/issues/719). Its birthday-to-birthday windows and anniversary rules are outside this design's implementation scope; do not close #720 while that dependency remains. |
+| #717 | Bind both accounts' existing IDs to existing people, retain account access through export, deduplicate exact copies and preserve owner favourites over the PostgreSQL foundation. Native 3.2 IDs are optional. |
+| #718 | Existing `--person` / `--people-expression` selection resolves the companion's canonical people and aliases. Add saved-group selection only as a reference to those same people. No parallel `--subject` namespace. |
+| #720 | The existing people editor manages saved groups; wizard, scheduler and automation pass the same resolved expression and explicit source scope. Ship CLI/UI parity together and test UI changes in a browser. |
 
-Use vertical TDD slices during implementation. Required cases include:
+These revisions need agreement before implementation; this design PR does not close the
+three issues. Their old `identities:` examples should not be treated as the implementation
+contract. Annual birthday windows still depend on
+[#719](https://github.com/sam-dumont/immich-video-memory-generator/issues/719); no second
+birth-date authority is introduced here. Merge and release sequencing stays with the owner.
 
-- One child, two face IDs, both accounts' unique photos included; legacy mode unchanged.
-- Two face clusters for one subject stay one person; equal names alone never merge identities.
-- ANY, ALL and required-plus-any groups; complementary tags on exact copies; two different
-  photos cannot satisfy ALL; missing bindings never become matches.
-- Favourite partner copy wins; primary wins an unstarred tie; reversing account/page order
-  changes nothing; an unstarred occasion remains context.
-- Partner-only originals and Live motion render using partner credentials, including after
-  a page reload. Same bare UUID across two servers never aliases a cache or download.
-- Duplicate stills with different companions preserve the chosen copy's motion lineage.
-- A star changes the representative without recaptioning identical previews; a changed preview
-  or mapping invalidates the appropriate evidence; different accounts cannot read stale results.
-- One account unavailable, empty, revoked mid-render or rebound to another user; no silent
-  partial household success, leaked credentials or upload to an unintended account.
-- CLI/UI/scheduler parity, cancellation and replay of the frozen identity manifest.
+## Acceptance before calling it supported
 
-Use the two-account household as the later private acceptance case: a bounded month containing
-one shared favourite, one partner-only photo, and one partner-only Live Photo. First compare
-discovery, duplicate decisions and the proposed cut; then render locally. Keep real IDs, names,
-dates, captions and screenshots out of public PR evidence. Hermetic fixtures demonstrate the
-contract publicly. No real-library access is required to review this design.
+Use synthetic fixtures for pure behavior and real PostgreSQL for storage tests. With the
+owner's two-account library, use bounded read-only checks and keep names, IDs, credentials,
+server addresses and source material out of public artifacts.
 
-This PR edits only this proposal. Config reference, setup instructions and memory-type docs
-belong with the implementing slices and their owners. It does not enter the deployment/matrix
-files, release sequencing, or the separately owned docs-debt work.
+- Import an existing companion and preserve all IDs, canonical references, manual entries,
+  dates, confirmations and reciprocal links. Export/import is idempotent. A refresh preserves
+  confirmed data; renaming a person leaves groups and scheduled references intact.
+- Prove the current pre-3.2 setup works with existing tags and explicit companion bindings.
+  Both accounts' sources must resolve to the same existing person, with no Immich writes,
+  upgrade, re-ingest, face reset or retagging. Test missing and conflicting bindings too.
+- Separately test native IDs on a disposable 3.2 fixture with clustering already configured,
+  and on 3.2 without clustering. Upgrading alone must not break existing bindings or change
+  source scope. Record actual capabilities, not just a successful version request.
+- Compare one scoped partner-owned favourite through both readers. Verify the owner flag
+  survives enrichment and wins exact-copy selection; test unavailable owner evidence too.
+- Test repeated asset IDs, equal checksums with distinct IDs, missing checksums, reversed
+  page order and complementary tags. A checksum group counts once; two different photos
+  cannot satisfy same-item AND. A favourite change reuses content-derived analysis.
+- Verify photo/video context parity, download and Live Photo companion access, permission
+  loss, stable replay and existing audience boundaries. Test the same group through CLI,
+  browser and scheduler before marking #718/#720 complete.
+
+Research performed for this proposal: inspected the current companion and editorial mapping,
+#871's migration plan and the upstream v3.2.0 source linked above. A prior read-only account
+check confirmed that the supplied second credential belongs to the intended account. The
+owner confirms the private library is not on 3.2 and will not be reclustered for this feature.
+Cross-account person resolution, favourites and duplicate counts remain unverified there.
+No Immich settings or tagged people were changed.
