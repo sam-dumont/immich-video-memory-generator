@@ -127,14 +127,20 @@ Title rendering       PIL renderer: static title screens, no animation and no SD
 
 The end-to-end numbers are on [Running modes](../running-modes.md#what-to-expect-on-a-first-run),
 measured on the same month across a Mac, a Synology DS423+ and a Kubernetes cluster. The CPU-only
-row to read is the NAS: **1,483 s to render a 54-second film on four Celeron cores**, against 49 s
-for the same job on the Mac, and 1.4404 s per picture of preparation at `no_captions`. The cluster
-cell, also encoding on the CPU, took 304 to 331 s per film.
+row to read is the NAS: **1,483 s to render a 54-second film on four Celeron cores**, against 81 s
+for a film the same length on the Mac, and 1.4404 s per picture of preparation at `no_captions`,
+about 90 % of it the two detectors and the six heads. The cluster cells, also encoding on the CPU,
+took 362 to 380 s per film on a real month.
 
-What is true by construction rather than by measurement: the heads and the detectors have no GPU
-path here, so a card does not shorten them, and every producer banks its answer, so a second cut
-over the same period skips them. Title rendering is the part a GPU would actually take off your
-hands.
+Losing the hardware encoder is the smaller part of that. Measured on one cluster node with only the
+encoder changed, software encoding cost 15 % of the render: 257.8 s against 218.6 s, because
+downloading the originals from Immich was half of both. The
+[hardware overview](./overview.md#what-the-card-is-actually-worth) has the phase table.
+
+What is true by construction rather than by measurement: there is no card on this box to put the
+heads and the detectors on, and every producer banks its answer, so a second cut over the same
+period skips them entirely. If the classifiers are the bill, the way out is not a faster CPU but
+the [inference service](../installation/inference-service.md) on a box that has a card.
 
 ### Title rendering used to be the bottleneck
 

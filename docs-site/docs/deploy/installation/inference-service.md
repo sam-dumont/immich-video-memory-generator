@@ -283,6 +283,12 @@ of the scope is per-request latency, not throughput, and the service was sitting
 `REQUEST_THREADS` seats with nothing in them. A 13,552-picture month would have taken 2.6 hours of
 facts alone, against 23 to 40 ms a picture for the same work computed in process on a Mac.
 
+At the default of 8, that month was measured: **0.2445 s a picture, 87 % of a 64-minute
+preparation**, with the classifiers on a T1000 behind the service. The card is most of that
+difference. On the fixture month the same pod paid 0.6083 s a picture to a CPU-backed service and
+0.1957 s to a GPU-backed one, while a pod computing its own facts in process managed 0.2555 s. The
+service is worth standing up for a slow host or for a card, not for a fast pod.
+
 Raising it re-derives nothing and moves no row: the answers are banked in the order the pictures
 were asked for, whatever order they come back in, and a fact's identity is still the artifact that
 produced it. Match it to the service's `REQUEST_THREADS` and give the pod the CPU to go with them;

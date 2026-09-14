@@ -156,13 +156,16 @@ The setup matrix measured this box again in September 2026, on the 133-picture d
 `no_captions`: 1.4404 s per picture cold, 0.5963 s of it the encoder and its six heads and 0.6930 s
 the two detectors. That is the same work as the 1.23 s per picture in the tier table above, on a
 different month and a different run: two single observations a fifth apart, not a change in the
-code. Plan on the slower one. Then then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
-month is 19,520 s of preparation at that rate, so about 5 h 25 min before the render starts. The
-second run over the same month prepares in 0 s and selects in 5 s.
+code. Plan on the slower one. Then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
+month is 19,520 s of preparation at that rate, so about 5 h 25 min before the render starts. That
+5 h 25 min is a rate multiplied by a count: the NAS lane on a real month was set up and stopped
+before it ran, so nobody has waited through it. The second run over the same month prepares in 0 s
+and selects in 5 s.
 
 The render is the part a warm cache does not help. Two ways out, neither required: move the picture
 facts to a GPU box with the [inference service](../installation/inference-service.md), which took
-this NAS from 180 s to 120 s of cold preparation on the demo month, and
+this NAS from 180 s to 120 s of cold preparation on the demo month, 1.4404 s a picture down to
+1.0865, and
 [#931](https://github.com/sam-dumont/immich-video-memory-generator/issues/931), a render worker
 beside that service so the NAS stops encoding on its own CPU. The render worker is not built yet.
 [Running modes](../running-modes.md#what-to-expect-on-a-first-run) has the same month on a Mac and
@@ -187,9 +190,10 @@ Leave `llm.base_url` unset and the provider name fills in its own URL: `openai` 
 takes `openai-compatible` (or `anthropic`) plus a `base_url` of your own, which is how a Melious
 endpoint is configured. The model has to take images and hold a 32k context either way.
 
-One monthly selection was measured on a hosted reader at 537.4 s and about $0.256 in tokens,
-against 1,451.9 s for the local 30B. That is one measurement of one month:
-[Running modes](../running-modes.md) says so, and years and trips have not been priced.
+On a real month, six readers were timed head to head: 8 s for no model at all, 14 to 25 minutes for
+the hosted ones, 19 minutes for the local 30B. One cut's tokens were priced at EUR 0.143 at list.
+Four other candidates failed that month outright. Which ones and why:
+[Readers](../readers.md). Only monthly memories were priced; years and trips were not.
 
 ### Adding captions later
 

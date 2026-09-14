@@ -94,6 +94,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'deploy/self-hosting',
         'deploy/running-modes',
+        'deploy/readers',
         {
           type: 'category',
           label: 'Installation',

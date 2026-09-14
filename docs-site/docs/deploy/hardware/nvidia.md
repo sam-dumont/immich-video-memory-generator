@@ -142,7 +142,18 @@ Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardwa
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
 automatically; see [the overview](./overview.md#quality-one-dial-calibrated-per-encoder).
 
-Just don't buy the card for the encode alone. Encoding is the larger half of a CPU-only assembly again: title rendering was ~263 s of a ~339 s assembly at `--cpus=2` until the blur fix cut a 1080p title frame from 578 ms to 64 ms. An NVIDIA card takes work off both halves. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split.
+Just don't buy the card for the encode alone. Measured on a T1000 with the same cut and the same
+node, only the encoder changed: NVENC finished the pipeline in 218.6 s against 257.8 s for libx264.
+The encode itself went from 95.1 s to 53.8 s, which is 1.77x, but downloading the originals from
+Immich was 48 to 59 % of both runs and the card does nothing for it. Net effect on the render:
+about 15 %. The full table is on [the overview](./overview.md#what-the-card-is-actually-worth).
+
+Where the card earns more is preparation. Put the ONNX encoder, the six heads and both detectors
+behind the [inference service](../installation/inference-service.md) on CUDA and the same cluster
+pod went from 0.6083 s a picture to 0.1957 s on the fixture month. On a real month the GPU-backed
+service ran at 0.2445 s a picture, which was 87 % of the preparation.
+
+Encoding is the larger half of a CPU-only assembly again: title rendering was ~263 s of a ~339 s assembly at `--cpus=2` until the blur fix cut a 1080p title frame from 578 ms to 64 ms. On the cluster run above, CPU assembly split 95.1 s of encode against 17.4 s of title and ending screens. An NVIDIA card takes work off both halves. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split.
 
 The `editorial-cuda` extra pins ONNX Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9. Version 1.27 and newer require CUDA 13; see the [official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html). Do not install the CPU `editorial` extra beside it.
 

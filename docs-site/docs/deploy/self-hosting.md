@@ -92,7 +92,9 @@ omlx start        # serves on port 8000
 ```
 
 Pull the model from the dashboard at `http://localhost:8000/admin/chat`. Anything else is expected
-to work and ungraded (see [what has been tested](#what-has-been-tested)).
+to work and ungraded (see [what has been tested](#what-has-been-tested)). Five other readers, local
+and hosted, were timed and priced on one real month, and four candidates were rejected with a
+measured reason: [Readers](./readers.md).
 
 ## 4. Serve the captions
 
@@ -154,8 +156,10 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 
 The cold pass runs every producer the tier asks for over every eligible picture and banks the
 answers by producer and exact input; the second cut of that month is mostly the render. Measured
-on a four-core Celeron NAS: 1.23 s per picture for every producer except the caption, 30.9 s for
-the caption. That is the whole reason `editorial.preparation.tier` exists.
+on a four-core Celeron NAS: 1.23 s per picture for every producer except the caption (1.44 s on a
+second run a fifth later), 30.9 s for the caption. That is the whole reason
+`editorial.preparation.tier` exists. What a first run costs on each host, end to end, is on
+[Running modes](./running-modes.md#what-a-first-run-costs-end-to-end).
 
 ## One machine, or two
 
@@ -177,7 +181,8 @@ scale and encode; none of them runs inference.
 | Seat | Configuration | Status |
 |---|---|---|
 | Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, Apple Silicon | **Graded**: the matrix ran on this |
-| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown |
+| Reader | Five others, local and hosted | **Measured** for time and money on one real month, not for quality: [Readers](./readers.md) |
+| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown. Four candidates failed a real month; the [rejections](./readers.md#not-supported-and-why) say how |
 | Reader | Text-only models | **Unsupported.** The picture pass posts images |
 | Captions | `SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
 | Captions | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` Q8_0 under llama.cpp | **Accepted**: passes the alias and all three schema controls, wording differs |

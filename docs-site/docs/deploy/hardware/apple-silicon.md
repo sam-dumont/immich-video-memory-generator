@@ -9,7 +9,7 @@ Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this 
 
 ## What you get
 
-- **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores.
+- **VideoToolbox encoding**: uses the dedicated media engine on the chip instead of the CPU cores. Measured on an M5 Max, a 55-second monthly film rendered in 81 s, against 362 s for the same length on a Kubernetes pod encoding in software and 1,483 s on a four-core Celeron NAS.
 - **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
 - **A place to put the editor's models**: the graded reader and the caption server both run here,
   on Metal, which is why this is the only single-machine layout anyone has run end to end. The

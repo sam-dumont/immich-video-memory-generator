@@ -12,9 +12,56 @@ run inference. The reader and the caption server are separate services with thei
 ([Running modes](../running-modes.md)); an NVIDIA card can run the encoder and the detectors, but
 through CUDA in the [inference service](../installation/inference-service.md).
 
-The encode is not where a run spends its time. On a CPU-only box the title screens are: measured
-at `--cpus=2`, 263 s of a 339 s assembly ([CPU-only](./cpu-only.md)). A GPU earns its keep on
-titles first.
+The encode is not where a run spends its time. Downloading the originals from Immich is, and no
+card touches that. The measured split is below.
+
+## What the card is actually worth
+
+One controlled comparison: the same cluster node, the same cut, the same 15 clips, GPU title
+kernels on both sides, and only the video encoder changed.
+
+| Phase | `h264_nvenc` | `libx264` |
+|---|---:|---:|
+| Download the originals | 129.9 s (59 %) | 123.2 s (48 %) |
+| Assembly | 71.5 s (33 %) | 117.9 s (46 %) |
+| Music | 12.1 s (6 %) | 11.9 s (5 %) |
+| **Pipeline** | **218.6 s** | **257.8 s** |
+| of the assembly: the encode alone | 53.8 s | 95.1 s |
+| of the assembly: title and ending screens | 10.4 s | 17.4 s |
+
+So the card is worth **1.77x on the encode**, **1.65x on the whole assembly**, and **15 % of the
+render**. It buys nothing on the download, which is half the wall clock. A cheap card and a fast
+link to Immich beat an expensive card and a slow one.
+
+One caveat on that pair: the two cells ran a patch release apart (0.96.0 and 0.97.0) because the
+first CPU-encode attempt failed and was retried. Same node, same requests, same cache state, and
+the download and music phases came out within 6 % of each other, which is what you would expect of
+two runs that differ only in the encoder.
+
+A machine that cannot open NVENC therefore renders about 15 % slower. It does not refuse the film,
+and the log names the cause.
+
+## What a GPU is worth off the render
+
+Two other things move more than the encoder does:
+
+**The classifiers.** The encoder, its six context heads and both detectors are ONNX sessions, and
+they open on whatever provider ONNX Runtime has. Put them on a card behind the
+[inference service](../installation/inference-service.md) and preparation changes shape: on the
+fixture month the same cluster pod paid **0.6083 s a picture** to a CPU-backed service and
+**0.1957 s** to a GPU-backed one. On a real 13,552-picture month the GPU-backed service ran at
+0.2445 s a picture, 87 % of a 64-minute preparation. A pod fast enough to compute its own facts in
+process managed 0.2555 s, so the service earns its keep on slow hosts and on cards, not on quick
+ones.
+
+**The title kernels.** They need a CPU with AVX when there is no card. The Celeron J-series in a
+typical Synology has none, the kernel library dies with SIGILL as it loads, and every title falls
+back to the PIL renderer: same text, same timing, an animated gradient still, no bokeh particles,
+no SDF text. That is not a speed question, it is a "this machine cannot run them at all" question.
+See [CPUs without AVX](./cpu-only.md#cpus-without-avx).
+
+What no GPU buys you is the editor's reader. That is a separate service with its own hardware,
+usually 17 GB of weights: [Running modes](../running-modes.md) and [Readers](../readers.md).
 
 ## Backends
 
