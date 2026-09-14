@@ -314,7 +314,7 @@ class RuntimeEditorialPlanner:
             self._backend._context = replace(context, artifact_dir=attempt.directory)
 
             def stage(update: StageUpdate) -> None:
-                attempt.stage(update)
+                update = attempt.stage(update)
                 if on_stage is not None:
                     on_stage(update)
 
@@ -468,8 +468,11 @@ def _log_preparation(result: Any) -> None:
     A wall-clock total cannot tell a self-hoster which producer their box cannot
     afford, and the artifact holding the same numbers is inside the attempt tree.
     """
+    service = result.service_rates()
     rates = " ".join(
-        f"{stage} {seconds:.3f}s/pic" for stage, seconds in sorted(result.stage_rates().items())
+        f"{stage} {seconds:.3f}s/pic"
+        + (f" ({service[stage]:.3f}s of it in the service)" if stage in service else "")
+        for stage, seconds in sorted(result.stage_rates().items())
     )
     logger.info(
         "preparation tier=%s: %d pictures requested%s",

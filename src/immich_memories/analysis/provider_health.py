@@ -30,8 +30,12 @@ class ProviderHealth:
         return self.state is ProviderState.READY
 
 
-def classify_openai_response(status_code: int, body: Any, model: str) -> ProviderHealth:
-    """Classify an OpenAI-compatible response without retaining its body."""
+def classify_provider_response(status_code: int, body: Any, model: str) -> ProviderHealth:
+    """Classify a capability check's reply without retaining its body.
+
+    The states are about the HTTP exchange, not the dialect, so one classifier
+    covers a `/chat/completions` probe and a `/v1/messages` one alike.
+    """
     if 200 <= status_code < 300:
         return ProviderHealth(ProviderState.READY, f"configured model ready: {model}")
     if status_code in {401, 403}:
@@ -45,7 +49,7 @@ def classify_openai_response(status_code: int, body: Any, model: str) -> Provide
     if status_code == 404 and model_failure:
         return ProviderHealth(ProviderState.MODEL_MISSING, f"configured model unavailable: {model}")
     if status_code == 404:
-        return ProviderHealth(ProviderState.ROUTE_MISSING, "chat-completions route unavailable")
+        return ProviderHealth(ProviderState.ROUTE_MISSING, "the model route is unavailable")
     if 400 <= status_code < 500:
         return ProviderHealth(
             ProviderState.DISABLED,

@@ -20,6 +20,12 @@ class InferenceConfig(BaseModel):
         le=300,
         description="Maximum wait for one remote picture-facts request",
     )
+    facts_concurrency: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description="How many picture-facts requests the client keeps in flight at once",
+    )
     producers: list[str] = Field(
         default_factory=lambda: list(SERVED_PRODUCERS),
         description="Which producers the service answers for; the rest run in process",

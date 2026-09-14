@@ -563,3 +563,19 @@ def test_cuda_dependency_stays_compatible_with_cuda12() -> None:
     assert "1.26.0" in ort.specifier
     assert "1.27.0" not in ort.specifier
     assert "1.28.0" not in ort.specifier
+
+
+def test_quickstart_compose_sets_no_cpu_quota() -> None:
+    """Docker's `cpus:` is a CFS quota, and not every kernel has the controller.
+
+    Synology DSM on cgroup v1 is built without CFS bandwidth, so the shipped
+    limit refused the whole `up` on a DS423+ with `NanoCPUs can not be set, as
+    your kernel does not support CPU CFS scheduler or the cgroup is not mounted`.
+    Memory limits stay: those work on every host tested.
+    """
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+
+    for name, service in compose["services"].items():
+        limits = service.get("deploy", {}).get("resources", {}).get("limits", {})
+        assert "cpus" not in limits, name
+        assert limits.get("memory"), name

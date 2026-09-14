@@ -158,6 +158,7 @@ class RunMetadata:
     source: str = "manual"  # "manual" | "scheduled" | "auto"
     automation_attempt_id: str | None = None
     last_phase: OperationalPhase | None = None
+    phase_events: list[dict[str, Any]] = field(default_factory=list)
 
     # Input parameters
     person_name: str | None = None
@@ -215,6 +216,7 @@ class RunMetadata:
             "source": self.source,
             "automation_attempt_id": self.automation_attempt_id,
             "last_phase": self.last_phase.value if self.last_phase else None,
+            "phase_events": self.phase_events,
             "person_name": self.person_name,
             "person_id": self.person_id,
             "date_range_start": (
@@ -256,6 +258,7 @@ class RunMetadata:
             source=data.get("source", "manual"),
             automation_attempt_id=data.get("automation_attempt_id"),
             last_phase=(OperationalPhase(data["last_phase"]) if data.get("last_phase") else None),
+            phase_events=data.get("phase_events") or [],
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             date_range_start=(

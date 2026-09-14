@@ -205,6 +205,7 @@ class RunTracker:
             return False
         if updated and self._run is not None:
             self._run.last_phase = event.phase
+            self._run.phase_events.append(event.to_dict())
         elif not updated:
             logger.warning("Ignored backward operational phase '%s'", event.phase.value)
         return updated

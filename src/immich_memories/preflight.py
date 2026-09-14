@@ -6,15 +6,19 @@ import hashlib
 import importlib.util
 import logging
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import httpx
+from pydantic import BaseModel
 
+from immich_memories.analysis.llm_providers import ANTHROPIC_VERSION, resolved_llm_config
 from immich_memories.analysis.provider_health import (
     ProviderHealth,
     ProviderState,
-    classify_openai_response,
+    classify_provider_response,
 )
 from immich_memories.api.compatibility import UnsupportedImmichVersion
 from immich_memories.config import Config
@@ -116,6 +120,23 @@ def check_immich(config: Config) -> CheckResult:
         )
 
 
+_UNREACHABLE = "Check the configured LLM base URL and provider availability"
+
+
+def _transport_failure(exc: Exception, unreachable: str = _UNREACHABLE) -> CheckResult:
+    """One answer for every way a provider can fail to answer at all."""
+    if isinstance(exc, httpx.ConnectError):
+        return CheckResult(
+            name="LLM", status=CheckStatus.WARNING, message="Cannot connect", details=unreachable
+        )
+    return CheckResult(
+        name="LLM",
+        status=CheckStatus.WARNING,
+        message="Connection error",
+        details=type(exc).__name__,
+    )
+
+
 def _check_ollama(base_url: str, model: str) -> CheckResult:
     """Check Ollama server availability via /api/tags.
 
@@ -154,23 +175,18 @@ def _check_ollama(base_url: str, model: str) -> CheckResult:
                 details=f"Model: {model}",
             )
 
-    except httpx.ConnectError:
-        return CheckResult(
-            name="LLM",
-            status=CheckStatus.WARNING,
-            message="Cannot connect",
-            details="Check the configured LLM base URL and that Ollama is running",
-        )
-    except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
-        return CheckResult(
-            name="LLM",
-            status=CheckStatus.WARNING,
-            message="Connection error",
-            details=type(e).__name__,
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError, OSError) as exc:
+        return _transport_failure(
+            exc, "Check the configured LLM base URL and that Ollama is running"
         )
 
 
-def _openai_health_failure(health: ProviderHealth, model: str) -> CheckResult | None:
+def _llm_health_failure(
+    health: ProviderHealth,
+    model: str,
+    route: str = "Chat-completions",
+    path: str = "/chat/completions",
+) -> CheckResult | None:
     """Translate provider health into a safe, actionable preflight failure."""
     if health.state is ProviderState.AUTH_FAILED:
         return CheckResult(
@@ -190,8 +206,8 @@ def _openai_health_failure(health: ProviderHealth, model: str) -> CheckResult | 
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
-            message="Chat-completions route unavailable",
-            details="Check that the configured base URL exposes /chat/completions",
+            message=f"{route} route unavailable",
+            details=f"Check that the configured base URL exposes {path}",
         )
     if health.available:
         return None
@@ -234,8 +250,8 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
                 response_body = response.json()
             except ValueError:
                 response_body = {}
-            health = classify_openai_response(response.status_code, response_body, model)
-            if failure := _openai_health_failure(health, model):
+            health = classify_provider_response(response.status_code, response_body, model)
+            if failure := _llm_health_failure(health, model):
                 return failure
 
             return CheckResult(
@@ -245,27 +261,93 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
                 details=f"Model: {model}",
             )
 
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError, OSError) as exc:
+        return _transport_failure(exc)
+
+
+def _anthropic_headers(api_key: str) -> dict[str, str]:
+    headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_VERSION}
+    if api_key:
+        headers["x-api-key"] = api_key
+    return headers
+
+
+def _listed_model_ids(client: httpx.Client, base_url: str) -> list[str] | None:
+    """The model ids the host publishes, or None when it publishes none.
+
+    Anthropic and z.ai's compatible route both answer `GET /v1/models` with
+    `{"data": [{"id": ...}]}` (measured 2026-09-14). A host behind a gateway
+    that serves only `/v1/messages` answers something else, and then the probe
+    below is the only way to know it is there.
+    """
+    try:
+        response = client.get(f"{base_url}/v1/models")
+        if response.status_code != 200:
+            return None
+        data = response.json().get("data")
+    except ValueError:
+        return None
+    if not isinstance(data, list):
+        return None
+    return [str(entry["id"]) for entry in data if isinstance(entry, dict) and "id" in entry]
+
+
+def _catalogue_result(listed: list[str], model: str) -> CheckResult:
+    if model and model not in listed:
+        shown = ", ".join(listed[:5])
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
-            message="Cannot connect",
-            details="Check the configured LLM base URL and provider availability",
+            message=f"Connected but missing model: {model}",
+            details=f"Available: {shown}{'...' if len(listed) > 5 else ''}",
         )
-    except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
-        return CheckResult(
-            name="LLM",
-            status=CheckStatus.WARNING,
-            message="Connection error",
-            details=type(e).__name__,
-        )
+    return CheckResult(
+        name="LLM",
+        status=CheckStatus.OK,
+        message=f"Connected (anthropic, {len(listed)} models)",
+        details=f"Model: {model}",
+    )
+
+
+def _one_token_probe(client: httpx.Client, base_url: str, model: str) -> CheckResult:
+    """Ask the host for a single token, which is the cheapest proof it answers."""
+    response = client.post(
+        f"{base_url}/v1/messages",
+        json={"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+    )
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    health = classify_provider_response(response.status_code, body, model)
+    failure = _llm_health_failure(health, model, "Messages", "/v1/messages")
+    return failure or CheckResult(
+        name="LLM",
+        status=CheckStatus.OK,
+        message="Connected (anthropic)",
+        details=f"Model: {model}",
+    )
+
+
+def _check_anthropic(base_url: str, model: str, api_key: str) -> CheckResult:
+    """Check a Messages API host: its model list where it has one, a probe where it does not."""
+    normalized = base_url.rstrip("/")
+    try:
+        with httpx.Client(timeout=10.0, headers=_anthropic_headers(api_key)) as client:
+            listed = _listed_model_ids(client, normalized)
+            if listed:
+                return _catalogue_result(listed, model)
+            return _one_token_probe(client, normalized, model)
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError, OSError) as exc:
+        return _transport_failure(exc)
 
 
 def check_llm(config: Config) -> CheckResult:
     """Check LLM provider availability.
 
-    Dispatches to the appropriate check based on config.llm.provider:
+    Dispatches on the resolved provider:
     - "ollama": GET /api/tags
+    - "anthropic": GET /v1/models, or a one-token POST /v1/messages
     - "openai-compatible": POST /chat/completions with minimal payload
 
     Args:
@@ -282,9 +364,12 @@ def check_llm(config: Config) -> CheckResult:
         return CheckResult(
             name="LLM", status=CheckStatus.SKIPPED, message="Rules reader does not use an LLM"
         )
-    provider = config.llm.provider
-    base_url = config.llm.base_url
-    model = config.llm.model
+    # A named provider is its adapter plus a URL, and the check has to reach
+    # the endpoint the run will: `zai` and `openai` both resolve to one of the
+    # two adapters, and to the vendor URL where none was set.
+    llm = resolved_llm_config(config.llm)
+    base_url = llm.base_url
+    model = llm.model
 
     if not base_url:
         return CheckResult(
@@ -294,16 +379,11 @@ def check_llm(config: Config) -> CheckResult:
             details="No base_url set",
         )
 
-    if provider == "ollama":
+    if llm.provider == "ollama":
         return _check_ollama(base_url, model)
-    if provider == "openai-compatible":
-        return _check_openai_compatible(base_url, model, config.llm.api_key)
-
-    return CheckResult(
-        name="LLM",
-        status=CheckStatus.ERROR,
-        message=f"Unknown provider: {provider}",
-    )
+    if llm.provider == "anthropic":
+        return _check_anthropic(base_url, model, llm.api_key)
+    return _check_openai_compatible(base_url, model, llm.api_key)
 
 
 def check_hardware() -> CheckResult:
@@ -316,15 +396,20 @@ def check_hardware() -> CheckResult:
         from immich_memories.processing.hardware import (
             HWAccelBackend,
             detect_hardware_acceleration,
+            nvenc_capability_hint,
         )
 
         caps = detect_hardware_acceleration()
 
         if caps.backend == HWAccelBackend.NONE:
+            # The capability line leads when there is a card, because `preflight`
+            # prints details only under -v and a GPU node encoding in software is
+            # a misconfiguration rather than the expected answer (#936).
+            hint = nvenc_capability_hint()
             return CheckResult(
                 name="Hardware",
                 status=CheckStatus.WARNING,
-                message="No GPU acceleration",
+                message=hint or "No GPU acceleration",
                 details="Video encoding will use CPU (slower)",
             )
 
@@ -496,12 +581,20 @@ def check_detector_export(config: Config) -> CheckResult:
     )
 
 
+# Nothing ships a captioner, so a failing row has to say where the recipes are.
+# A path, not a URL: the docs travel with the checkout and with the image.
+CAPTION_SETUP_PAGE = "docs/deploy/installation/caption-server.md"
+
+
 def _caption_endpoint_unreachable(base_url: str, error: Exception) -> CheckResult:
     return CheckResult(
         name="Captions",
         status=CheckStatus.ERROR,
         message="Caption endpoint unreachable",
-        details=f"{base_url}: {sanitize_error_message(str(error))}",
+        details=(
+            f"{base_url}: {sanitize_error_message(str(error))}; "
+            f"set one up with {CAPTION_SETUP_PAGE}"
+        ),
     )
 
 
@@ -547,13 +640,75 @@ def check_caption_endpoint(config: Config) -> CheckResult:
             name="Captions",
             status=CheckStatus.ERROR,
             message="Caption endpoint serves another model",
-            details=f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}",
+            details=(
+                f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}; "
+                f"serve it under that alias as in {CAPTION_SETUP_PAGE}"
+            ),
         )
     return CheckResult(
         name="Captions",
         status=CheckStatus.OK,
         message=f"Serving {API_MODEL}",
         details=base_url,
+    )
+
+
+# Every path-valued setting that describes the host rather than the library.
+# A config is portable until one of these is in it: copied to a second machine
+# it still names an interpreter under /Users, or a models directory on a volume
+# the new box does not mount, and the failure lands hours later inside a worker.
+# The encoder and the sensitive-content export are deliberately absent: they get
+# their own rows above, with the digest and the command that fixes them.
+HOST_PATH_KEYS = (
+    "output.directory",
+    "audio.local_music_dir",
+    "cache.directory",
+    "cache.database",
+    "editorial.annotation_database",
+    "editorial.preparation.head_bundle",
+    "editorial.preparation.detector_python",
+    "editorial.preparation.detector_cache_dir",
+    "triage.bundle",
+)
+
+
+def _host_paths_set_by_hand(config: Config) -> Iterator[tuple[str, Path]]:
+    """Yield (key, path) for every host path someone wrote down, defaults skipped."""
+    for key in HOST_PATH_KEYS:
+        *sections, field = key.split(".")
+        owner: BaseModel = config
+        for part in sections:
+            owner = getattr(owner, part)
+        value = str(getattr(owner, field)).strip()
+        if value and value != type(owner).model_fields[field].default:
+            yield key, Path(value).expanduser()
+
+
+def check_host_paths(config: Config) -> CheckResult:
+    """Report configured paths that are not on this host, all in one row.
+
+    A path the app writes is created inside a directory that already exists, so
+    the test is the parent: present means the app can make the rest, absent means
+    the path came from somewhere else. WARNING and not ERROR, because a NAS whose
+    music share is unmounted this morning should still be able to cut a memory.
+    """
+    missing = [
+        f"{key}={path}"
+        for key, path in _host_paths_set_by_hand(config)
+        if not path.exists() and not path.parent.is_dir()
+    ]
+    if not missing:
+        return CheckResult(
+            name="Config paths",
+            status=CheckStatus.OK,
+            message="Every configured path is on this host",
+        )
+    noun = "path is" if len(missing) == 1 else "paths are"
+    return CheckResult(
+        name="Config paths",
+        status=CheckStatus.WARNING,
+        message=f"{len(missing)} configured {noun} not on this host",
+        details=f"{'; '.join(missing)} (a config copied between hosts keeps the first host's paths)",
     )
 
 
@@ -573,6 +728,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_encoder(config),
         check_detector_export(config),
         check_caption_endpoint(config),
+        check_host_paths(config),
         check_notifications(config),
         check_hardware(),
     ]

@@ -41,7 +41,7 @@ Both must look like they're part of the same product.
 
 ## Typography
 
-**Font:** Inter (Google Fonts)
+**Font:** Inter, bundled and self-hosted; nothing is fetched from Google Fonts
 **Fallbacks:** `-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
 **No serif fonts. Ever.**
 

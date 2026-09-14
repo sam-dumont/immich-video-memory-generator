@@ -105,6 +105,35 @@ def test_the_ace_step_key_is_read_from_its_own_env_var(monkeypatch):
     assert config.ace_step.api_key == FROM_ENV
 
 
+def test_the_anthropic_key_reaches_the_reader_from_its_own_env_var(monkeypatch):
+    """The name on the tin: a Claude key is not called OPENAI_API_KEY."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FROM_ENV)
+    config = Config()
+    config.llm.provider = "anthropic"
+
+    _apply_env_overrides(config)
+
+    assert config.llm.api_key == FROM_ENV
+
+
+def test_the_configured_provider_decides_which_key_wins(monkeypatch):
+    """Two keys in one environment is normal; reading the wrong one is a 401."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "the-claude-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "the-openai-key")
+
+    anthropic_side = Config()
+    anthropic_side.llm.provider = "anthropic"
+    openai_side = Config()
+    openai_side.llm.provider = "openai"
+
+    _apply_env_overrides(anthropic_side)
+    _apply_env_overrides(openai_side)
+
+    assert anthropic_side.llm.api_key == "the-claude-key"
+    assert openai_side.llm.api_key == "the-openai-key"
+
+
 @pytest.mark.parametrize(
     ("path", "alias"),
     [(path, alias) for path, aliases in _CREDENTIAL_ENV_ALIASES.items() for alias in aliases],

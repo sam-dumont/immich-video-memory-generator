@@ -437,6 +437,14 @@ parity:  ## Replay reference editorial routes warm; fail on provider calls or ch
 # Private terms gate: the denylist itself lives outside the repo (see
 # scripts/private_terms_gate.py), so this only ever scans -- it never commits
 # or prints the terms it matches against.
+.PHONY: research-data-check privacy-range
+research-data-check:  ## Validate tracked research aggregates without a private denylist
+	uv run python scripts/private_terms_gate.py --research-data
+
+privacy-range:  ## Check PR research history and optional private terms (PRIVATE_TERMS_RANGE)
+	@test -n "$$PRIVATE_TERMS_RANGE"
+	uv run python scripts/private_terms_gate.py --terms-env PRIVATE_TERMS --range "$$PRIVATE_TERMS_RANGE"
+
 privacy-gate:  ## Scan the staged diff for private terms (denylist lives outside the repo)
 	uv run python scripts/private_terms_gate.py --staged
 
@@ -616,7 +624,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
+ci: ensure-dev research-data-check lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -696,8 +704,9 @@ docker-shell:
 # The guard tests `docker compose version`, not `command -v docker`: on macOS the
 # compose plugin lives under $HOME/.docker, so a gate run with a throwaway HOME
 # has the docker binary and no compose subcommand.
-# Both profiles, because `config` drops a profiled service from its output: the
-# default run is the one users take, the second one reads the inference body.
+# Every profile, because `config` drops a profiled service from its output: the
+# default run is the one users take, the other two read the inference and
+# captioner bodies.
 compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it alone does not bring
 	@if ! docker compose version >/dev/null 2>&1; then \
 		echo "compose-check SKIPPED: no 'docker compose' here (a skip is not a pass)"; \
@@ -715,7 +724,11 @@ compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it a
 			echo "docker-compose.yml stands alone until the inference profile is asked for"; \
 			exit 1; \
 		}; \
-		echo "docker-compose.yml stands alone, both profiles"; \
+		docker compose --profile captioner config >/dev/null || { \
+			echo "docker-compose.yml stands alone until the captioner profile is asked for"; \
+			exit 1; \
+		}; \
+		echo "docker-compose.yml stands alone, all three profiles"; \
 	fi
 
 # =============================================================================

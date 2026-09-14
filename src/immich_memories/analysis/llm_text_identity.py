@@ -12,7 +12,7 @@ COMPLETE_RETRY_POLICY = "complete-with-one-double-budget-retry-v1"
 
 def text_model_identity(resolved: LLMConfig, *, thinking: bool) -> str:
     """Identify non-secret answer settings after provider defaults are resolved."""
-    effective_thinking = bool(thinking and resolved.thinking)
+    effective_thinking = bool(thinking and resolved.reasons)
     material = {
         "provider": resolved.provider,
         "endpoint": resolved.base_url.rstrip("/"),

@@ -160,6 +160,7 @@ def register_config_commands(main: click.Group) -> None:
         - Title rendering (GPU or PIL fallback)
         - Pinned DINOv2 encoder export (presence and digest)
         - Caption endpoint (advertises the accepted alias)
+        - Configured paths that are not on this host
         - Notification delivery health
         - Hardware acceleration
         """

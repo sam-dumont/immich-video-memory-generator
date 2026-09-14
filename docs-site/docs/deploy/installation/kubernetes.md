@@ -18,12 +18,16 @@ deploy/kubernetes/
 │   └── ingress.yaml.example optional Ingress, only after enabling authentication
 ├── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
 ├── overlays/inference/      the inference service alone: Deployment, Service on 8092, cache PVC
-└── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
+└── overlays/captioner/      llama.cpp under the alias `tier: full` wants, on its own PVC
 ```
 
 ## Prerequisites
 
-1. A storage class for three `ReadWriteOnce` PVCs: cache and state 20Gi, output 50Gi, models 5Gi.
+1. A storage class for three `ReadWriteOnce` PVCs: `immich-memories-cache` 20Gi,
+   `immich-memories-output` 50Gi, `immich-memories-models` 5Gi. A deployment made before the
+   models claim existed has to add it.
 2. Immich reachable from the cluster, in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
    or external.
 3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) for the
@@ -39,10 +43,24 @@ kubectl apply -k base              # CPU only
 kubectl apply -k overlays/gpu      # or, on NVIDIA nodes
 ```
 
-`kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image tag;
-published tags carry no `v` (release `vX.Y.Z` is tag `X.Y.Z`, plus `latest`). Check the pin against
-the [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before
-you apply.
+`kubectl kustomize base` shows what will be applied.
+
+:::caution Set the tag before you apply
+`base/kustomization.yaml` and the two inference overlays each pin an image tag, and the checked-in
+pins trail the current release by a long way: nothing bumps them on a release. Published tags carry
+no `v` (release `vX.Y.Z` is image tag `X.Y.Z`, plus `latest`). Read the current one off the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) and set it:
+
+```bash
+cd deploy/kubernetes/base && kustomize edit set image \
+  ghcr.io/sam-dumont/immich-video-memory-generator=:X.Y.Z
+```
+
+or edit `images: newTag` by hand. The entry rewrites the init container as well as the app
+container, so both move together. `kubectl apply -f base/job.yaml` does not go through kustomize
+at all and runs whatever the file names, which is `:latest`: uncomment `- job.yaml` in the
+kustomization instead if you want the jobs on the same tag as the Deployment.
+:::
 
 ```bash
 kubectl port-forward -n immich-memories svc/immich-memories 8080:80
@@ -68,8 +86,12 @@ filesystem read-only. Four writable paths:
 |---|---|---|
 | `/home/immich/.immich-memories` | PVC `immich-memories-cache` | `config.yaml`, `cache/annotations.sqlite` (every banked fact and reading), `cache.db` (run history, automation state), the video cache |
 | `/app/output` | PVC `immich-memories-output` | generated videos |
-| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`) and the detector cache, both written by `immich-memories models fetch` |
+| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`), the pinned sensitive-content export (`..._MARQO_ONNX`) and the detector cache (`..._DETECTOR_CACHE_DIR`), all written by `immich-memories models fetch` |
 | `/tmp` | emptyDir 4Gi | FFmpeg intermediates; 8Gi for 4K |
+
+Three claims, then: `immich-memories-cache`, `immich-memories-output` and `immich-memories-models`.
+A deployment that predates the models claim has to add it before the next apply, or the pod stays
+in `Pending` waiting for a volume that does not exist.
 
 There is no ConfigMap. `IMMICH_URL` and `IMMICH_API_KEY` come from the Secret (`envFrom`), so any
 secret setting (`IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECRET`,
@@ -79,9 +101,56 @@ for the reader and the in-pod daily automation. Settings saved from the UI go to
 the PVC; env vars override them.
 
 The NetworkPolicy allows egress to DNS, 80 and 443, Immich on 2283, a reader on 11434 (Ollama's
-port; oMLX serves on 8000) and the caption server on 8092. Edit the ports if yours differ. Run
-`immich-memories models fetch` once (a one-off Job, or `kubectl exec` into the pod) before the
-first cut; the root filesystem is read-only, so the models live on the `/models` volume.
+port; oMLX serves on 8000) and the caption server on 8092. Edit the ports if yours differ.
+
+## The models the first cut needs
+
+Every pod in `base/` runs a `fetch-models` init container first: the same image, the same
+`immich-memories models fetch` a Docker user runs after `up`, writing the three pinned artifacts
+onto the `/models` claim. There is nothing to run by hand. A fresh claim without it gave a pod
+that came up fine and a first cut that stopped at prepare with `public heads need the pinned
+DINOv2 ONNX export at /models/triage/dinov2-small.onnx`, `nsfw_marqo has no model` and
+`doc_docling ... is not in /models/huggingface`.
+
+The init step tests for all three files and exits without a download when they are there, so a
+restart costs nothing and a nightly CronJob never goes back to the network. The root filesystem is
+read-only, which is why the models live on the claim rather than in the image. `kubectl logs -n
+immich-memories deploy/immich-memories -c fetch-models` shows what it did.
+
+## Set the preparation tier
+
+:::caution No manifest here pins a tier
+`docker-compose.yml` pins `no_captions` so a first `up` finishes with one container. Nothing under
+`deploy/kubernetes/` does, so a pod takes the code default, which is `full`, and `full` wants a
+caption server. Without one the first cut stops at prepare: the description producer stays
+outstanding and the failure names `caption_base_url`.
+
+Pick one before you apply, on the Deployment (and on the Job and CronJobs if you use them):
+
+```yaml
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
+              value: "no_captions"       # full | no_captions | metadata_only
+            # On full, with overlays/captioner applied:
+            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
+            #   value: "http://captioner:8092/v1"
+            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY
+            #   value: "1"
+```
+
+What each tier runs and gives up is on [Running modes](../running-modes.md).
+:::
+
+## Check it from outside the pod
+
+The `docker compose exec` lines elsewhere in these docs are `kubectl exec` here:
+
+```bash
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories config test
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories preflight
+```
+
+Preflight follows the reader and tier the Deployment sets, so run it after the change above and
+not before.
 
 ## GPU
 
@@ -111,6 +180,26 @@ Point the app at it with `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two unders
 `http://inference.immich-memories.svc.cluster.local:8092` from another. The base NetworkPolicy
 already allows egress on 8092. `curl /health` through a port-forward names the execution provider
 the service opened.
+
+`overlays/inference-lan` adds a second Service of type LoadBalancer on the same pods, for callers
+that are not in the cluster. It needs a load-balancer controller, and nothing behind that port
+checks a credential.
+
+## Caption server
+
+`tier: full` wants an endpoint advertising `smolvlm2-500m-base-public`, and `overlays/captioner`
+is one: llama.cpp serving the pinned SmolVLM2-500M GGUF, a ClusterIP Service on 8092, a
+NetworkPolicy and a 2Gi PVC that an init container fills and digest-checks before the server
+starts.
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/captioner
+```
+
+It does not include `base/` either, so it applies with no Immich secret. Point the app at
+`http://captioner:8092/v1` and set `caption_concurrency: 1`, because on a CPU captioner the
+default of 4 is twelve times slower. The whole recipe is on
+[Caption server](./caption-server.md).
 
 ## Batch jobs
 

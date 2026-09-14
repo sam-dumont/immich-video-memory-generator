@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from collections.abc import Iterator
@@ -36,6 +37,10 @@ def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
     except IndexError:
         # Older additive schemas have no operational telemetry column.
         last_phase = None
+    try:
+        phase_events = json.loads(row["phase_events"])
+    except IndexError:
+        phase_events = []
     return AutomationAttempt(
         id=row["id"],
         started_at=datetime.fromisoformat(row["started_at"]),
@@ -48,6 +53,7 @@ def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
         run_id=row["run_id"],
         error=row["error"],
         last_phase=OperationalPhase(last_phase) if last_phase else None,
+        phase_events=phase_events,
     )
 
 
@@ -123,8 +129,9 @@ class AutomationStateStore:
             if previous is not None and event.phase.order < previous.order:
                 return False
             conn.execute(
-                "UPDATE automation_attempts SET last_phase = ? WHERE id = ?",
-                (event.phase.value, attempt_id),
+                """UPDATE automation_attempts SET last_phase = ?,
+                   phase_events = json_insert(phase_events, '$[#]', json(?)) WHERE id = ?""",
+                (event.phase.value, json.dumps(event.to_dict()), attempt_id),
             )
             conn.commit()
         return True

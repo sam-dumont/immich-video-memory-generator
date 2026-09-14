@@ -6,10 +6,15 @@ The denylist (family names, birth dates, fine GPS, etc.) lives OUTSIDE this
 repo -- a local file, an env var, or a CI secret -- and this script never
 echoes it back: every reported hit is masked to its first character. Most
 contributors have no denylist configured at all, so that is not a failure --
-the gate prints a notice and exits clean. Only the owner's own automation
+the term scan prints a notice and skips. Only the owner's own automation
 passes --require-terms to turn "nothing configured" into a hard error.
 
+Research .data.json documents are checked against a fixed public aggregate
+schema even without a denylist. Staged scans read the index; range scans read
+every changed document in every commit, including later-deleted documents.
+
 Usage:
+    python scripts/private_terms_gate.py --research-data
     python scripts/private_terms_gate.py --staged
     python scripts/private_terms_gate.py --range origin/main..HEAD
     python scripts/private_terms_gate.py --commit-msg .git/COMMIT_EDITMSG
@@ -26,6 +31,8 @@ import sys
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+from research_data_schema import valid_research_data
 
 DEFAULT_TERMS_ENV_VAR = "IMMICH_MEMORIES_PRIVATE_TERMS"
 DEFAULT_TERMS_PATH = Path("~/.config/immich-memories/private-terms.txt")
@@ -195,6 +202,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--staged", action="store_true", help="scan `git diff --cached -U0`")
     parser.add_argument(
+        "--research-data", action="store_true", help="validate every tracked research data document"
+    )
+    parser.add_argument(
         "--range", metavar="A..B", help="scan the diff and every commit message between two refs"
     )
     parser.add_argument("--commit-msg", metavar="PATH", help="scan a commit message file")
@@ -224,8 +234,52 @@ def _collect_hits(args: argparse.Namespace, terms: Sequence[Term]) -> list[Hit]:
     return hits
 
 
+def _research_revisions(args: argparse.Namespace) -> Iterator[tuple[str, list[str]]]:
+    changed = ["--name-only", "--diff-filter=ACMRT", "-z"]
+    scope = ["--", "docs/research/"]
+    if args.research_data:
+        yield "", ["ls-files", "-z", *scope]
+    elif args.staged:
+        yield "", ["diff", "--cached", *changed, *scope]
+    if args.range:
+        for revision in _run_git(["rev-list", args.range]).splitlines():
+            yield (
+                revision,
+                ["diff-tree", "--root", "--no-commit-id", "-r", "-m", *changed, revision, *scope],
+            )
+
+
+def _research_data_ok(args: argparse.Namespace) -> bool:
+    for revision, command in _research_revisions(args):
+        for path in _run_git(command).split("\0"):
+            if path.endswith(".data.json"):
+                content = _run_git(["show", f"{revision}:{path}"])
+                if not valid_research_data(content):
+                    # Unknown keys and values may themselves be private; never echo them.
+                    print("research-data: document is outside the public aggregate schema")
+                    return False
+    return True
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    try:
+        if not _research_data_ok(args):
+            return EXIT_HITS_FOUND
+    except subprocess.CalledProcessError:
+        print("research-data: could not read the requested Git documents")
+        return EXIT_MISCONFIGURED
+    except UnicodeDecodeError:
+        # A document git cannot decode as UTF-8 is not one of the reviewed
+        # aggregate formats, and its bytes could hide anything.
+        print("research-data: document is outside the public aggregate schema")
+        return EXIT_HITS_FOUND
+    if args.research_data and not (
+        args.staged or args.range or args.commit_msg or args.text_file or args.require_terms
+    ):
+        print("research-data: public aggregate schemas passed")
+        return EXIT_OK
 
     try:
         terms = load_terms(terms_file=args.terms_file, terms_env=args.terms_env)
