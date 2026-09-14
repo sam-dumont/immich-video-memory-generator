@@ -22,6 +22,7 @@ from immich_memories.analysis.special_day import (
     active_hours,
     ask_if_special,
     candidate_days,
+    day_is_prepared,
     days_covered_by_trips,
     event_window,
     run_extent,
@@ -207,7 +208,9 @@ def scan_year(
         day_captions = {
             asset.id: captions[asset.id] for asset in items if captions and captions.get(asset.id)
         }
-        if day_captions:
+        # The same gate ask_if_special applies, asked before the downloads rather
+        # than after them: a day the bank has barely touched still costs its tiles.
+        if day_is_prepared(items, day_captions):
             verdict = ask_if_special(
                 items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
             )
