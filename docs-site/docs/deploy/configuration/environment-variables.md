@@ -125,6 +125,7 @@ A few common variables are also supported without the full prefix, for convenien
 | `IMMICH_URL` | `immich.url` |
 | `IMMICH_API_KEY` | `immich.api_key` |
 | `OPENAI_API_KEY` | `llm.api_key` |
+| `ANTHROPIC_API_KEY` | `llm.api_key`, and wins over `OPENAI_API_KEY` when `llm.provider` is `anthropic` or `zai` |
 | `MUSICGEN_ENABLED` | `musicgen.enabled` |
 | `MUSICGEN_BASE_URL` | `musicgen.base_url` |
 | `MUSICGEN_API_KEY` | `musicgen.api_key` |

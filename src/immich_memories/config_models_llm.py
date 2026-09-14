@@ -8,6 +8,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from immich_memories.config_models import expand_env_vars
 
+# The generic reasoning control. "disabled" and "auto" are the two ends: never
+# ask, and never say. The three levels in between are mapped to whatever the
+# host takes: an effort on Claude, a level of its own on z.ai.
+ThinkingLevel = Literal["disabled", "low", "high", "max", "auto"]
+
+_SWITCH_LEVELS = {"true": "high", "false": "disabled", "1": "high", "0": "disabled"}
+
 
 class LLMConfig(BaseModel):
     """Shared LLM provider settings.
@@ -47,12 +54,18 @@ class LLMConfig(BaseModel):
         le=3600,
         description="HTTP timeout for LLM requests in seconds (increase for slow local models)",
     )
-    thinking: bool = Field(
-        default=False,
+    thinking: ThinkingLevel = Field(
+        default="disabled",
         description=(
-            "Server supports a reasoning switch. When on, load-bearing calls "
-            "(selection review, titles) run the model in reasoning mode; bulk "
-            "analysis stays fast."
+            "How hard the server may reason. 'disabled' never asks; 'low', "
+            "'high' and 'max' run load-bearing calls (selection review, "
+            "titles) in reasoning mode while bulk analysis stays fast; 'auto' "
+            "sends no reasoning field at all and takes the host's default. "
+            "The level reaches hosts that take one: Claude gets adaptive "
+            "thinking and the level as an effort, z.ai gets the level itself. "
+            "Elsewhere it is on or off and 'thinking_params' carries the "
+            "dialect. The old 'true' and 'false' are still read, as 'high' "
+            "and 'disabled'."
         ),
     )
     thinking_params: dict[str, Any] = Field(
@@ -97,6 +110,21 @@ class LLMConfig(BaseModel):
             "whose strict vision schema accepts only image_url.url."
         ),
     )
+
+    @property
+    def reasons(self) -> bool:
+        """Whether this server may reason at all when a load-bearing call asks."""
+        return self.thinking != "disabled"
+
+    @field_validator("thinking", mode="before")
+    @classmethod
+    def level_from_switch(cls, v: object) -> object:
+        """Read the on/off switch this field used to be as the level it meant."""
+        if isinstance(v, bool):
+            return "high" if v else "disabled"
+        if isinstance(v, str):
+            return _SWITCH_LEVELS.get(v.strip().lower(), v)
+        return v
 
     @field_validator("api_key", mode="before")
     @classmethod

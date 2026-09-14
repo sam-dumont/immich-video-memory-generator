@@ -12,13 +12,14 @@ import asyncio
 import base64
 import binascii
 import logging
+import time
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from immich_memories.triage.encoder import provider_chain
@@ -39,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 # How often the idle sweep runs, whatever the TTL is.
 SWEEP_SECONDS = 15.0
+# What the producers themselves took, on every answer. A client that is waiting
+# 0.69 s a picture on a service that decides one in 0.03 s is waiting on the wire
+# and its own request rate, and nothing else here can tell it which.
+SERVICE_SECONDS_HEADER = "X-Facts-Seconds"
+
 # How many distinct 503 details are remembered as already said. A message that
 # carries a varying substring would otherwise grow that set for the life of a
 # process that is meant to stay up for months; forgetting the lot and saying
@@ -164,14 +170,16 @@ def _routes(app: FastAPI, settings: InferenceSettings, runtime: ProducerRuntime)
         return _health(settings, runtime)
 
     @app.post("/facts")
-    async def facts(request: FactsRequest) -> dict[str, Any]:
+    async def facts(request: FactsRequest, response: Response) -> dict[str, Any]:
         image = _decode(request.image, settings.max_image_bytes)
+        started = time.perf_counter()
         # One producer at a time: three CPU-bound seats over one picture contend
         # rather than overlap. The pool is what keeps the loop answering.
         decided = [
             await _decide(app, runtime, name, image)
             for name in _requested(request.producers, runtime.names)
         ]
+        response.headers[SERVICE_SECONDS_HEADER] = f"{time.perf_counter() - started:.4f}"
         return {
             "producers": {
                 result.producer: {

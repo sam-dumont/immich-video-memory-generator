@@ -123,7 +123,8 @@ def bank_locally(path: Path) -> None:
         connection.commit()
 
 
-def test_the_client_banks_exactly_what_the_local_producers_would(tmp_path: Path) -> None:
+def stub_service(tmp_path: Path):
+    """The real app and the real client, over stub weights."""
     runtime = ProducerRuntime(
         {
             HEADS: FixedHeads,
@@ -131,28 +132,45 @@ def test_the_client_banks_exactly_what_the_local_producers_would(tmp_path: Path)
             DOC_DOCLING: lambda: DetectorProducer(DOC_DOCLING, StubDocling()),
         }
     )
-    app = create_app(InferenceSettings(cache_dir=tmp_path), runtime=runtime)
-    config = InferenceConfig(facts_base_url="http://inference.test:8092")
-    remote_store = tmp_path / "remote.sqlite"
-    local_store = tmp_path / "local.sqlite"
-    versions = EditorialConfig().head_versions
+    return create_app(InferenceSettings(cache_dir=tmp_path), runtime=runtime)
 
+
+def bank_remotely(app, store_path: Path) -> float | None:
+    config = InferenceConfig(facts_base_url="http://inference.test:8092")
+    versions = EditorialConfig().head_versions
     with (
         TestClient(app, base_url=config.facts_base_url) as http,
         RemoteFactsClient(config, client=http) as client,
     ):
-        prepare_remote_facts(
+        return prepare_remote_facts(
             pending={asset_id: dict(versions) for asset_id in ASSETS},
-            store_path=remote_store,
+            store_path=store_path,
             client=client,
+            concurrency=config.facts_concurrency,
             preview_for=lambda _asset_id: picture(),
             check_cancelled=lambda: None,
             progress=lambda *_: None,
             on_asset=lambda _asset_id: None,
         )
+
+
+def test_the_client_banks_exactly_what_the_local_producers_would(tmp_path: Path) -> None:
+    remote_store = tmp_path / "remote.sqlite"
+    local_store = tmp_path / "local.sqlite"
+    versions = EditorialConfig().head_versions
+
+    bank_remotely(stub_service(tmp_path), remote_store)
     bank_locally(local_store)
 
     banked = rows(remote_store)
     assert banked == rows(local_store)
     assert {(head, version) for _, head, version, *_ in banked} == set(versions.items())
     assert {label for _, head, _, label, *_ in banked if head == NSFW_MARQO} == {"yes"}
+
+
+def test_the_client_reads_the_seconds_the_service_charged_itself(tmp_path: Path) -> None:
+    """Client and service have to agree on the header name, and nothing else checks it."""
+    charged = bank_remotely(stub_service(tmp_path), tmp_path / "remote.sqlite")
+
+    assert charged is not None
+    assert 0 <= charged < 60

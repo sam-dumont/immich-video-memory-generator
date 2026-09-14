@@ -126,6 +126,20 @@ Cluster DNS, so no address is derived and none is written down. The runner appli
 before the cells that named it and deletes it afterwards, along with the inference overlay and under
 the same `--keep-service`.
 
+Applying it is not the same as having it, and the gap is big enough to lose a run in. The init
+container fetches 546 MB of GGUF onto a claim that is empty the first time a cluster runs the full
+tier, and llama.cpp maps the weights before it answers anything, so `--cell k8s-full-rules` on its
+own would have asked for a caption before the server existed and died on its first picture. The
+runner waits the way it waits for the inference service: `kubectl rollout status` on the captioner
+Deployment with a fifteen minute budget, then one real request through a port-forward it throws away
+after, on the warm-up's own fifteen minutes. Both halves of what a `tier: full` cell checks have to
+pass. `/v1/models` has to advertise `smolvlm2-500m-base-public`, and one 400 px control tile has to
+come back a compact-v3 envelope, which is the failure a server started without its projector gives:
+it serves, it is blind, and the cell would find that out one picture in. The wait is published as
+`captioner_warmup_s` in `summary.data.json`, beside `inference_warmup_s`, because it is a cost of
+the setup rather than of whichever cell happened to go first. `--dry-run` prints both steps,
+`wait-captioner` and `warm-captioner`, under the overlay block.
+
 Both cells were declared before that overlay existed, and stood in the table as skipped rows reading
 `captioner overlay not in this tree yet`, because a setup nobody can run yet is still a setup the
 table should name. The gate stays now that they run: a checkout can carry less than the manifest
@@ -198,6 +212,33 @@ default: `output.directory`, `audio.local_music_dir`, `triage.encoder`, `triage.
 cache trio every lane already gets. `~` counts as a local path here too: HOME is `/models` on the
 NAS and `/home/immich` in the Job, a directory that goes away with the pod.
 
+## A cluster cell's config is the pins and nothing else
+
+The NAS gets the whole file. The cluster does not: a Job's ConfigMap is built from `baseline_config`
+and the cell's own pins alone, because the operator's config never leaves the laptop. So every key
+the manifest does not name is the operator's value on two lanes and the schema's default on the
+third, and the three lanes stop being comparable with nothing in the table saying so.
+
+`title_screens.ending_duration` is how that surfaced. The operator's config carried 4.0 s and the
+schema's own default is 7.0 s, so the cluster planned three more seconds of ending screen than
+anything else did, and every cluster cell came out at 14 shots against 15 everywhere else. The row
+was not measuring the cluster. It was measuring an unpinned key.
+
+`baseline_config` therefore pins every field the timeline plan reads: the whole `title_screens`
+block, `defaults.transition` and `defaults.transition_duration`, `photos.enabled` and
+`photos.duration`, and `analysis.optimal_clip_duration`. There is no `defaults.transition_buffer` on
+the schema: the overlap the plan takes back off the content budget is worked out from the transition
+mode and its duration. A test holds the line by loading the cluster ConfigMap and the Mac cell's
+pinned config out of the same plan and asserting those blocks are identical. Anything new that
+changes a timeline belongs in that list on the day it lands.
+
+The values are run 1's, read off `mac-local`'s own written config, and not the schema's defaults.
+`mac-local` is the reference cut every other row's overlap is measured against, and it ran at
+`locale: fr` with a 4.0 s ending screen, so pinning the schema's 7.0 s would have put every future
+cell at 14 shots against the reference's 15 and broken the reader comparison the table exists for.
+The baseline is the timeline the matrix was first measured with: changing any value in it invalidates
+every comparison against a cell measured before the change, and the older rows have to be re-run.
+
 ## Start with the dry run
 
 ```bash
@@ -219,10 +260,11 @@ Two files outside the repo, neither of them tracked:
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
 `ZAI_BASE_URL` names z.ai's Anthropic-compatible endpoint, and both zai cells pin it. The account
-behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the preset's own
-`/api/paas/v4` answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever the
-request says. `provider: zai` picks its adapter from the base URL's path, so a `/api/anthropic` base
-gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
+behind `ZAI_API_KEY` is a coding plan, which is served there and nowhere else: the other route,
+`/api/paas/v4`, answers a coding plan `429 {"code":"1113","msg":"Insufficient balance"}` whatever
+the request says. The `zai` preset defaults to the Anthropic route as well, so a cell that names no
+base URL lands on the right one. `provider: zai` picks its adapter from the base URL's path, so a
+`/api/anthropic` base gets `/v1/messages`. The runner drops `llm.base_url` and `llm.no_thinking_params` out of a hosted
 cell's copied config, because the operator's own values would otherwise outrank the provider preset,
 and a cell that names either field gets the one it named.
 

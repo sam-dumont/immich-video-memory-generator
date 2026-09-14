@@ -287,7 +287,7 @@ llm:
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
-  thinking: false                  # server has a reasoning switch
+  thinking: "disabled"             # disabled | low | high | max | auto
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
@@ -306,25 +306,41 @@ or thumbnails and the derived descriptions to that provider; see the
 
 Two adapters cover every provider: `openai-compatible` speaks
 `/chat/completions` (vLLM, mlx, Ollama's `/v1`, aggregators, OpenAI itself),
-and `anthropic` speaks the native `/v1/messages` API (Claude, or z.ai's
-Anthropic-compatible endpoint) with its own reasoning dialect handled
-natively. `openai` and `zai` are named presets: the generic adapter with the
-provider's URL and reasoning dialect pre-filled; set `provider: openai`,
-`model: gpt-5.6-terra` and an API key, and thinking works with nothing else
-to configure. An explicit `base_url` always wins over a preset, and under
-`provider: zai` it also picks the adapter: a `.../api/anthropic` base takes the
-Anthropic route, anything else the OpenAI-compatible one. An explicit
+and `anthropic` speaks the native `/v1/messages` API with its own reasoning
+dialect handled natively. That second one is generic: Claude serves it at
+`https://api.anthropic.com`, which is the preset's default, and any other host
+that copied the Messages API is reached by naming it in `base_url`.
+
+`openai`, `anthropic` and `zai` are named presets: the adapter with the
+provider's URL and reasoning dialect pre-filled; set `provider: anthropic`,
+`model: claude-sonnet-5` and an API key, and reasoning works with nothing else
+to configure. The `anthropic` preset also drops `temperature`, because Claude
+answers a request carrying one with a 400 from the 4.7 line on. An explicit
+`base_url` always wins over a preset, and under `provider: zai` it also picks
+the adapter: a `.../api/anthropic` base takes the Anthropic route, anything
+else the OpenAI-compatible one. An explicit
 `thinking_params`/`no_thinking_params` is kept too, with the provider's own
 reasoning switch filled in beside it, and a key you named yourself wins over
-the preset's.
+the preset's. On the Messages route only the `thinking` and `output_config`
+fields of those blocks go out, because the rest of that dialect is not one a
+Messages host understands; `extra_params` carries anything else.
 
-`thinking: true` runs the model in reasoning mode for two calls: title
-generation, and the special-day question in `discover-days`. Measured on the
-live endpoint, a thinking call ran 30-134 s where the same model answered in
-4-7 s without it, and it needs a 4000-token ceiling to finish reasoning, which
-matters on a paid API. Everything else runs fast, and the switch is refused
-outright alongside images: reasoning over multiple pictures is a measured
-runaway, so the editor's picture passes never see it whatever this is set to.
+`thinking` is one control with five settings. `disabled` never asks for
+reasoning. `low`, `high` and `max` run the model in reasoning mode for two
+calls: title generation, and the special-day question in `discover-days`.
+`auto` sends no reasoning field in either direction and takes the host's own
+default, which is the setting to start from on a host whose dialect you do not
+know. The old `true` and `false` still parse, as `high` and `disabled`.
+
+The level reaches the hosts that take one: Claude gets
+`thinking: {"type": "adaptive"}` with the level as `output_config.effort`, and
+z.ai gets its own level word. Everywhere else the setting is on or off and
+`thinking_params` carries the dialect. Measured on the live endpoint, a
+thinking call ran 30-134 s where the same model answered in 4-7 s without it,
+and it needs a 4000-token ceiling to finish reasoning, which matters on a paid
+API. Everything else runs fast, and reasoning is refused outright alongside
+images: reasoning over multiple pictures is a measured runaway, so the
+editor's picture passes never see it whatever this is set to.
 
 `thinking_params` is merged verbatim into a thinking request, so the switch
 matches your server's dialect: the default is Qwen's
@@ -543,6 +559,7 @@ advanced:
   inference:
     facts_base_url: ""          # blank: the heads and detectors run in the app process
     timeout_seconds: 60         # one picture, one request; the service answers all producers at once
+    facts_concurrency: 8        # how many of those requests are in flight at once (1-32)
     producers: [heads, nsfw_marqo, doc_docling]   # what the service answers for; the rest stay local
     fallback_to_local: true     # when the service cannot be reached, run the in-process producers
 ```
@@ -556,6 +573,14 @@ provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
 to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+
+`facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
+cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of
+it is the round trip rather than the classifiers: 3,709 pictures took 42.7 minutes, and a
+13,552-picture month would have taken 2.6 hours. The answers are banked in the order the pictures
+were asked for whatever order they come back in, so raising this re-derives nothing and changes no
+row. Raise it until the service is the slow half, then stop: the ceiling is 32, and the service's
+own `REQUEST_THREADS` is what decides how many it can actually decide at once.
 
 When the service does not answer, the run does not stop and does not pretend: the failure is
 recorded against the endpoint in the preparation report, which the CLI prints and the cut's
