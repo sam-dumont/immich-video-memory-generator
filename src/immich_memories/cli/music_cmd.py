@@ -165,6 +165,11 @@ def register_music_commands(main: click.Group) -> None:
     @click.option("--volume", "-v", type=float, default=-6.0, help="Music volume in dB")
     @click.option("--fade-in", type=float, default=2.0, help="Fade in duration in seconds")
     @click.option("--fade-out", type=float, default=3.0, help="Fade out duration in seconds")
+    @click.option(
+        "--analyze-frames",
+        is_flag=True,
+        help="Send video frames to the configured LLM for mood when --mood is absent",
+    )
     @click.pass_context
     def music_add(
         ctx: click.Context,
@@ -176,6 +181,7 @@ def register_music_commands(main: click.Group) -> None:
         volume: float,
         fade_in: float,
         fade_out: float,
+        analyze_frames: bool,
     ) -> None:
         """Add background music to a video with automatic ducking.
 
@@ -201,6 +207,8 @@ def register_music_commands(main: click.Group) -> None:
                 fade_out=fade_out,
                 music_volume_db=volume,
                 auto_select=music is None,
+                analyze_frames=analyze_frames,
+                llm_config=config.llm,
             )
 
         console.print("[bold]Adding Music to Video[/bold]")

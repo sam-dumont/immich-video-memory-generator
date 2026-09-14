@@ -480,6 +480,27 @@ def test_completed_automation_attempt_identity_is_exact(db: RunDatabase) -> None
     )
 
 
+def test_a_failed_automation_attempt_still_finds_the_run_it_started(db: RunDatabase) -> None:
+    """A failed generation is exactly when its run record is worth reaching."""
+    failed = RunMetadata(
+        run_id="failed-child",
+        created_at=datetime(2026, 7, 2, 9, 0),
+        status="failed",
+        memory_type="trip",
+        memory_key="trip:key",
+        source="auto",
+    )
+    failed.automation_attempt_id = "attempt-that-failed"
+    db.save_run(failed)
+
+    assert (
+        db.get_completed_run_by_automation_attempt("attempt-that-failed", memory_key="trip:key")
+        is None
+    )
+    assert db.get_run_by_automation_attempt("attempt-that-failed") == failed
+    assert db.get_run_by_automation_attempt("attempt-never-started") is None
+
+
 def test_completed_automation_attempt_identity_rejects_ambiguity(db: RunDatabase) -> None:
     """Two matching child rows are corruption, not a license to pick one."""
     first = _make_completed_run("duplicate-first", datetime(2026, 7, 2, 9, 0))

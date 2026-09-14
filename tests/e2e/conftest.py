@@ -133,6 +133,9 @@ from tests.e2e.fake_editorial import install_fake_editorial_route
 # test has to land while the six stages are still running.
 install_fake_editorial_route(stage_seconds=1.5)
 
+from tests.e2e.fake_automation import install_fake_automation
+install_fake_automation(config_path, state_dir)
+
 from immich_memories.ui.app import main
 
 main(port=int(sys.argv[3]), host="127.0.0.1", reload=False)

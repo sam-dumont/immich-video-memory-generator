@@ -41,6 +41,7 @@ from setup_matrix_capture import (  # noqa: E402
     CUT_FROM_LOG,
     RunSummary,
     anonymize,
+    apply_exact_usage,
     downloaded_asset_ids,
     film_clip_count,
     latest_attempt,
@@ -864,6 +865,7 @@ def _apply_attempt(record: dict, runs_dir: Path, memory_key: str, cell_dir: Path
     record["losses"] = read_losses(attempt)
     record["contract"] = read_contract_health(attempt, _generate_output(cell_dir))
     record.setdefault("hosted_usage", {})["images_sent"] = read_images_sent(attempt)
+    apply_exact_usage(record["hosted_usage"], attempt)
 
 
 # Two numbers only the process that ran the cell could have counted: the Mac lane
