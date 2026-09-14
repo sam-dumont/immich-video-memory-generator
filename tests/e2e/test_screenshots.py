@@ -85,6 +85,31 @@ def _open_brief(page: Page, launch_app_url: str) -> None:
 
 
 @pytest.mark.parametrize("theme", _THEMES)
+def test_trip_walkthrough(
+    page: Page, launch_app_url: str, screenshot_dir: Path, theme: str
+) -> None:
+    _open_brief(page, launch_app_url)
+    set_theme(page, theme)
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Trip")
+    trip = page.get_by_role("combobox", name="Select a trip")
+    expect(trip).to_be_visible(timeout=30_000)
+    trip.click()
+    page.get_by_role("option", name=re.compile(r"2024-06-21 to 2024-06-27")).click()
+    _save(page, screenshot_dir, _name("memory-trip-brief", theme))
+    page.get_by_role("button", name="Cut", exact=True).click()
+    export = page.get_by_role("button", name="Export", exact=True)
+    expect(export).to_be_visible(timeout=120_000)
+    _save(page, screenshot_dir, _name("memory-trip-story", theme))
+    page.get_by_role("tab", name="Story", exact=True).click()
+    expect(page.get_by_text("A week by the lake", exact=True)).to_be_visible()
+    export.click()
+    page.wait_for_url("**/step4", timeout=30_000)
+    expect(page.get_by_role("button", name="Generate Video")).to_be_visible(timeout=30_000)
+    _save(page, screenshot_dir, _name("memory-trip-export", theme))
+
+
+@pytest.mark.parametrize("theme", _THEMES)
 def test_capture_memory_walkthrough(
     page: Page, launch_app_url: str, screenshot_dir: Path, theme: str
 ) -> None:
