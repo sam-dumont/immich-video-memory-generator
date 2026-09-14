@@ -83,6 +83,13 @@ there is nothing to write for it, and the CUDA one is the block above. From a ch
 If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
 image is the CPU one: those are the only two causes.
 
+Each producer holds its own session, so each gets its own answer:
+`producers.heads.providers`, `producers.nsfw_marqo.providers` and `producers.doc_docling.providers`
+say what actually took the graph, and stay empty until that producer has been loaded. A seat on the
+CPU while the others are on the card is what a pegged CPU limit at 4% GPU looks like from outside
+the pod. If ONNX Runtime turns a graph down, the service logs one WARNING naming the seat and the
+provider it fell back to; it never serves CPU answers quietly.
+
 ## On Kubernetes
 
 `deploy/kubernetes/overlays/inference` is the service on its own: a Deployment, a ClusterIP
@@ -182,7 +189,7 @@ it and delete it. See [Setup matrix](../../contribute/setup-matrix.md).
 | Endpoint | Question |
 |---|---|
 | `GET /ping` | are you up |
-| `GET /health` | which producers are loaded, at which versions, on which provider |
+| `GET /health` | which producers are loaded, at which versions, on which provider each |
 | `POST /facts` | one picture in: what do the frozen classifiers say about it |
 
 ```bash

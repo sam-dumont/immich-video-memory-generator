@@ -119,7 +119,12 @@ def test_health_names_the_provider_a_session_would_open_on(monkeypatch, availabl
         body = client.get("/health").json()
 
     assert body["provider"] == expected
-    assert body["producers"][HEADS] == {"loaded": False, "versions": None, "encoder_key": None}
+    assert body["producers"][HEADS] == {
+        "loaded": False,
+        "versions": None,
+        "encoder_key": None,
+        "providers": [],
+    }
     assert body["encoder_key"] is None
 
 
@@ -313,6 +318,65 @@ def test_the_entrypoint_serves_one_worker_on_the_configured_port(monkeypatch):
 
 def test_the_default_loaders_serve_every_producer_the_client_asks_for():
     assert set(default_loaders(InferenceSettings())) == {HEADS, NSFW_MARQO, DOC_DOCLING}
+
+
+class RecordingDetector:
+    """# WHY: stands in for the two pinned ONNX exports (22.5 MB and 16.8 MB of
+    downloads). What is under test is the provider each seat is handed."""
+
+    classes = ("NSFW", "SFW")
+    encoder_key = detectors.MARQO_ONNX_ID
+    version = detectors.MARQO_VERSION
+    asked: list[str] = []
+
+    def __init__(self, *, provider: str, **_kwargs: object) -> None:
+        RecordingDetector.asked.append(provider)
+
+
+def test_every_seat_is_handed_the_provider_the_service_was_configured_for(monkeypatch, tmp_path):
+    """The heads used to be the only session that heard about the card.
+
+    A GPU deployment where two of the three producers quietly stay on the CPU is
+    a GPU deployment in name only: it is what pegged four cores at 4% GPU.
+    """
+    monkeypatch.setattr(RecordingDetector, "asked", [])
+    monkeypatch.setattr(detectors, "Marqo", RecordingDetector)
+    monkeypatch.setattr(detectors, "Docling", RecordingDetector)
+    loaders = default_loaders(InferenceSettings(provider="cuda", cache_dir=tmp_path))
+
+    loaders[NSFW_MARQO]()
+    loaders[DOC_DOCLING]()
+
+    assert RecordingDetector.asked == ["cuda", "cuda"]
+
+
+def test_health_names_the_provider_each_producer_is_running_on():
+    """Per producer, because they are separate sessions that can disagree."""
+
+    class AcceleratedHeads(CountingProducer):
+        session_providers = ("CUDAExecutionProvider", "CPUExecutionProvider")
+
+    detector = StubDetector(0.9)
+    # WHY: the ORT session a stubbed detector has not got; /health reads the
+    # providers off it the way it reads the encoder's.
+    detector.session = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
+    runtime = ProducerRuntime(
+        {
+            HEADS: lambda: AcceleratedHeads([]),
+            NSFW_MARQO: lambda: DetectorProducer(NSFW_MARQO, detector),
+        }
+    )
+
+    with service(runtime) as client:
+        client.post("/facts", json={"image": base64.b64encode(photograph()).decode()})
+        body = client.get("/health").json()
+
+    assert body["provider"] == "CUDAExecutionProvider"
+    assert body["producers"][HEADS]["providers"] == [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    assert body["producers"][NSFW_MARQO]["providers"] == ["CPUExecutionProvider"]
 
 
 @pytest.mark.parametrize(
