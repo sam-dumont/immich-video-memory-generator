@@ -284,16 +284,14 @@ class AutoRunner:
         return _BoundedProcessDetails("\n".join(details) or "no subprocess output")
 
     def _retain_child_output(self, attempt_id: str, stdout: Any, stderr: Any) -> None:
-        """Keep one complete transcript per attempt, whatever ended the child.
-
-        TimeoutExpired declares its streams as bytes even when the child ran with
-        text pipes, so both are normalised here rather than at each call site.
-        """
-        text = [
-            stream.decode("utf-8", "replace") if isinstance(stream, bytes) else stream or ""
-            for stream in (stdout, stderr)
-        ]
-        retain_output(self.config.cache.cache_path, attempt_id, text[0], text[1], self._secrets())
+        """Keep one complete transcript per attempt, whatever ended the child."""
+        retain_output(
+            self.config.cache.cache_path,
+            attempt_id,
+            _coerce_process_output(stdout),
+            _coerce_process_output(stderr),
+            self._secrets(),
+        )
 
     def _finish(
         self,
