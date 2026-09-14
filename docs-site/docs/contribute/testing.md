@@ -4,20 +4,22 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories has 7,461 tests: 6,838 fast unit tests that run everywhere, and 623 integration and E2E tests that need real services (FFmpeg, Immich, a browser).
+Two suites: fast unit tests that run everywhere, and integration and E2E tests that need real
+services (FFmpeg, Immich, a browser). `uv run pytest tests/ --collect-only -q` prints the current
+split. No count is written down here, because it moves with every PR.
 
 ## Testing Tiers
 
 | Tier | Where it runs | Command | What it needs |
 |------|--------------|---------|---------------|
-| **Unit tests** | CI (Linux + macOS) + local | `make test` | Nothing external |
-| **Extras** | CI + local | `make test-extras` | The torch-family extras (demucs/editorial); CI's job installs `audio`+`gpu` only, so the torch paths are effectively a local tier |
+| **Unit tests** | CI (Linux + macOS) + local | `make test` | Mostly nothing. A handful do encode real media, so FFmpeg has to be on the `PATH` |
+| **Extras** | CI + local | `make test-extras` | The torch-family extras (demucs/editorial). CI's extras job installs `dev,audio` on Linux and `dev,mac,audio` on macOS, neither of which pulls torch, so a green CI run does not prove the torch paths ran. They are effectively a local tier |
 | **Integration tests** | Local + self-hosted Linux GPU runner | `make test-integration` | FFmpeg + Immich server |
 | **E2E (Playwright)** | CI launch check + local | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`, no Immich (fake server) |
 
 ### Unit tests
 
-Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No FFmpeg, no Immich, no network.
+Cover pure logic: selection rules, config parsing, data models, assembly settings, helper functions. No Immich and no network. Not quite no FFmpeg: a few render real media through it, so the binary has to be there.
 
 ```bash
 make test          # Run all unit tests (~3 min on an M-series Mac, slower on CI)
