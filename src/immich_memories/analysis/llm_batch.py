@@ -37,8 +37,10 @@ from immich_memories.analysis.llm_providers import batch_route_for, resolved_llm
 from immich_memories.analysis.llm_query import build_llm_timeout
 from immich_memories.analysis.llm_text_identity import text_judgment_key
 from immich_memories.analysis.llm_wire import (
+    LLMReply,
     anthropic_headers,
     batch_text_payload,
+    learn_reasoning,
     openai_headers,
     read_batch_answer,
 )
@@ -131,9 +133,9 @@ class BatchCoordinator:
         self._client_factory = client_factory or _default_client
         self._sleep = sleep
         self._now = now
-        self._answers: dict[str, str] = {}
+        self._answers: dict[str, LLMReply] = {}
 
-    def answer_for(self, key: str) -> str | None:
+    def answer_for(self, key: str) -> LLMReply | None:
         """The batched answer to one exact question, or None to ask it live."""
         return self._answers.pop(key, None)
 
@@ -173,7 +175,7 @@ class BatchCoordinator:
             return None
         return route
 
-    async def _fill(self, route: str, prompts: Sequence[BatchPrompt]) -> dict[str, str]:
+    async def _fill(self, route: str, prompts: Sequence[BatchPrompt]) -> dict[str, LLMReply]:
         adapter = _ADAPTERS[route]
         headers = adapter.headers(self._config)
         async with self._client_factory(headers) as client:
@@ -257,7 +259,7 @@ class BatchRoute(Protocol):
 
     async def collect(
         self, client: httpx.AsyncClient, config: LLMConfig, handle: str
-    ) -> dict[str, str]: ...
+    ) -> dict[str, LLMReply]: ...
 
 
 class OpenAIBatchAdapter:
@@ -316,7 +318,9 @@ class OpenAIBatchAdapter:
         return status == "completed"
 
     @staticmethod
-    async def collect(client: httpx.AsyncClient, config: LLMConfig, handle: str) -> dict[str, str]:
+    async def collect(
+        client: httpx.AsyncClient, config: LLMConfig, handle: str
+    ) -> dict[str, LLMReply]:
         body = await _status(client, handle)
         output = body.get("output_file_id")
         if not output:
@@ -368,7 +372,9 @@ class AnthropicBatchAdapter:
         return body.get("processing_status") == "ended"
 
     @staticmethod
-    async def collect(client: httpx.AsyncClient, config: LLMConfig, handle: str) -> dict[str, str]:
+    async def collect(
+        client: httpx.AsyncClient, config: LLMConfig, handle: str
+    ) -> dict[str, LLMReply]:
         body = await _status(client, handle)
         url = body.get("results_url") or f"{handle}/results"
         results = await client.get(url)
@@ -394,14 +400,16 @@ async def _status(client: httpx.AsyncClient, handle: str) -> dict:
 
 def _read_results(
     config: LLMConfig, jsonl: str, reader: Callable[[dict], dict | None]
-) -> dict[str, str]:
+) -> dict[str, LLMReply]:
     """Key every answered line by its custom_id; skip the lines that carried none.
 
     Results arrive in whatever order the provider finished them, which is why
     the custom_id is the realtime request's own judgment key rather than a
     position: a stage can read them back in any order it likes.
     """
-    answers: dict[str, str] = {}
+    answers: dict[str, LLMReply] = {}
+    resolved = resolved_llm_config(config)
+    endpoint = (resolved.base_url.rstrip("/"), resolved.model)
     for line in jsonl.splitlines():
         if not line.strip():
             continue
@@ -410,11 +418,18 @@ def _read_results(
         if body is None:
             continue
         try:
-            answers[row["custom_id"]] = read_batch_answer(config, body)
+            reply = _batch_reply(config, body)
+            answers[row["custom_id"]] = reply
         except (KeyError, TypeError, ValueError) as exc:
             logger.info("Batch line %s was unreadable (%s)", row.get("custom_id"), exc)
             continue
-        _record_usage(body)
+        llm_metrics.record_batch_reply(
+            prompt_tokens=reply.prompt_tokens,
+            completion_tokens=reply.completion_tokens,
+            reasoning_tokens=reply.reasoning_tokens,
+        )
+        if resolved.provider == "openai-compatible":
+            learn_reasoning(endpoint, reply)
     return answers
 
 
@@ -434,8 +449,8 @@ def _anthropic_result(row: dict) -> dict | None:
     return message if isinstance(message, dict) else None
 
 
-def _record_usage(body: dict) -> None:
-    """Count a batched reply apart from a live one; the two are not priced alike."""
+def _batch_reply(config: LLMConfig, body: dict) -> LLMReply:
+    """Keep the answer and its billed reasoning together, including empty replies."""
     usage = body.get("usage")
     if not isinstance(usage, dict):
         usage = {}
@@ -444,9 +459,14 @@ def _record_usage(body: dict) -> None:
         prompt_tokens = (usage.get("input_tokens") or 0) + (
             usage.get("cache_read_input_tokens") or 0
         )
-    llm_metrics.record_batch_reply(
+    choices = body.get("choices") or [{}]
+    details = usage.get("completion_tokens_details") or {}
+    return LLMReply(
+        content=read_batch_answer(config, body),
+        finish_reason=str(choices[0].get("finish_reason") or body.get("stop_reason") or ""),
         prompt_tokens=int(prompt_tokens or 0),
         completion_tokens=int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
+        reasoning_tokens=int(usage.get("reasoning_tokens") or details.get("reasoning_tokens") or 0),
     )
 
 
@@ -454,7 +474,7 @@ def _default_client(headers: dict[str, str]) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=build_llm_timeout(CONTROL_TIMEOUT_SECONDS), headers=headers)
 
 
-def _run(coroutine: object) -> dict[str, str]:
+def _run(coroutine: object) -> dict[str, LLMReply]:
     """Run the batch from synchronous stage code, inside an event loop or not."""
     from immich_memories.analysis.editorial_async_bridge import _run_sync
 
