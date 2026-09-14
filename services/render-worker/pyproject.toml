@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "immich-memories-render-worker"
+version = "0.1.0"
+description = "Authenticated GPU render jobs for Immich Memories"
+requires-python = ">=3.11"
+dependencies = ["immich-memories", "fastapi>=0.115", "pydantic>=2.0", "starlette>=0.40", "uvicorn>=0.30", "pydantic-settings>=2.14.2"]
+
+[project.scripts]
+immich-memories-render-worker = "immich_memories_render_worker.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["immich_memories_render_worker"]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+# Protocol bodies are stubs; a variadic tuple return type is executable code.
+exclude_lines = ["pragma: no cover", '^\s*\.\.\.\s*$', ':\s*\.\.\.\s*$']

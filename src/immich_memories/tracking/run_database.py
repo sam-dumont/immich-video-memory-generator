@@ -663,6 +663,24 @@ class RunDatabase:
             ).fetchall()
             return {row["memory_key"] for row in rows}
 
+    def get_run_by_automation_attempt(self, automation_attempt_id: str) -> RunMetadata | None:
+        """Find the newest run of any status that one automation attempt started.
+
+        The completed-only lookup answers delivery; this one answers "where did
+        that attempt end up", which is the question a failed attempt raises.
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM pipeline_runs
+                WHERE automation_attempt_id = ?
+                ORDER BY created_at DESC, run_id DESC
+                LIMIT 1
+                """,
+                (automation_attempt_id,),
+            ).fetchone()
+        return row_to_run(row) if row else None
+
     def get_completed_run_by_automation_attempt(
         self,
         automation_attempt_id: str,

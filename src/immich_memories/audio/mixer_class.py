@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.audio.mixer import DuckingConfig
+    from immich_memories.config_models_llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class AudioMixer:
         fade_out: float = 3.0,
         music_volume_db: float = -6.0,
         auto_select: bool = True,
+        analyze_frames: bool = False,
+        llm_config: LLMConfig | None = None,
     ) -> Path:
         """Add background music to a video with intelligent ducking.
 
@@ -58,6 +61,8 @@ class AudioMixer:
             fade_out: Fade out duration in seconds
             music_volume_db: Base music volume in dB
             auto_select: Auto-select music if no path provided
+            analyze_frames: Explicitly allow vision mood analysis when no mood was supplied
+            llm_config: Configured vision provider for that opt-in
 
         Returns:
             Path to the output video with music
@@ -83,6 +88,8 @@ class AudioMixer:
                 mood=mood,
                 genre=genre,
                 tempo=tempo,
+                analyze_frames=analyze_frames,
+                llm_config=llm_config,
             )
             if selected_music is None:
                 return output_path
@@ -117,6 +124,8 @@ class AudioMixer:
         mood: str | None,
         genre: str | None,
         tempo: str | None,
+        analyze_frames: bool = False,
+        llm_config: LLMConfig | None = None,
     ) -> Path | None:
         """Auto-select music based on mood analysis.
 
@@ -126,10 +135,18 @@ class AudioMixer:
         from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
         from immich_memories.audio.music_sources import LocalMusicSource
 
-        # Analyze video mood if not provided
-        if not mood:
+        # A standalone video has no saved cut text. Vision is an explicit choice.
+        if not mood and analyze_frames:
             try:
-                analyzer = await get_mood_analyzer()
+                from immich_memories.config_models_llm import LLMConfig
+
+                configured = llm_config or LLMConfig()
+                analyzer = await get_mood_analyzer(
+                    provider=configured.provider,
+                    base_url=configured.base_url,
+                    model=configured.model,
+                    api_key=configured.api_key,
+                )
                 video_mood = await analyzer.analyze_video(video_path)
                 mood = video_mood.primary_mood
                 genre = video_mood.genre_suggestions[0] if video_mood.genre_suggestions else genre
@@ -139,6 +156,8 @@ class AudioMixer:
                 logger.warning(f"Mood analysis failed: {e}, using defaults")
                 mood = "calm"
                 genre = "ambient"
+
+        mood = mood or "calm"
 
         # Search for music in local library
         source = LocalMusicSource(music_dir=self.cache_dir)

@@ -139,3 +139,20 @@ The `automation:` and `notifications:` keys, with their defaults, are in the
 [config reference](../../reference/config-reference.md#automation). `automation.enabled` and
 `automation.daily_at` are the two a first setup needs; everything else tunes the rotation rules
 described above.
+
+## Run a specific suggestion
+
+`immich-memories auto suggest --json` includes each suggestion's `memory_key`.
+Pass that exact key to `immich-memories auto run --candidate 'KEY' --dry-run`
+to check it, then omit `--dry-run` to generate it. The runner checks eligibility
+again. A stale key fails with an explanation; it never substitutes another memory.
+Cooldown, repetition rules and failure backoff still apply. `--force` only skips
+cooldown.
+
+The complete child stdout and stderr are retained under the configured cache at
+`automation-output/<attempt-id>.private.log`. Successful runs, failed exits and
+runs killed by the two-hour timeout all get one. Files are readable only by their
+owner, with configured credentials redacted. Open the run in the web UI's **Runs**
+page to download its child output. Older runs may have no log. Nothing evicts them
+yet: one log per attempt stays until you delete it, and `runs storage` counts the
+directory.

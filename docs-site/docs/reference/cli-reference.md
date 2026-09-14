@@ -60,7 +60,7 @@ immich-memories auto install [OPTIONS]
 
 ### `auto run`
 
-Generate the top-scoring memory candidate.
+Generate the chosen eligible candidate, or the highest-scoring one.
 
 ```bash
 immich-memories auto run [OPTIONS]
@@ -68,6 +68,7 @@ immich-memories auto run [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
+| `--candidate` | text | - | Exact memory_key from auto suggest --json |
 | `--dry-run` | boolean | false | Show what would be generated |
 | `--force` | boolean | false | Skip cooldown check |
 | `--cooldown` | integer | - | Min hours since last auto-run |
@@ -364,6 +365,7 @@ immich-memories music add [OPTIONS]
 | `--volume`, `-v` | float | -6.0 | Music volume in dB |
 | `--fade-in` | float | 2.0 | Fade in duration in seconds |
 | `--fade-out` | float | 3.0 | Fade out duration in seconds |
+| `--analyze-frames` | boolean | false | Send video frames to the configured LLM for mood when --mood is absent |
 
 **Arguments:**
 - `video_path` (path)

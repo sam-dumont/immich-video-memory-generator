@@ -55,10 +55,12 @@ Adds background music to an existing video. Includes automatic audio ducking: th
 immich-memories music add VIDEO_PATH OUTPUT_PATH [OPTIONS]
 ```
 
-If you don't provide `--music`, it tries to auto-select a track by mood, and that path does **not**
-read your `llm` config: it asks an OpenAI-compatible endpoint at `http://localhost:8080/v1` with an
-empty model name. With nothing listening there the command fails rather than falling back to a
-random track. Pass `--music` explicitly, or run `music search` first and pick one.
+Without `--music`, it searches your configured local music library. `--mood` sets the mood;
+otherwise it uses calm. No frames are extracted or sent for this default selection.
+
+For a standalone film with no saved cut text, `--analyze-frames` explicitly asks the configured
+vision provider to judge sampled frames. A supplied `--mood` takes precedence. `music analyze`
+also remains an explicit request to send frames.
 
 Examples:
 

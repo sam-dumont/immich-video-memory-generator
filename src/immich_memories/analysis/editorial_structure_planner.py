@@ -610,7 +610,7 @@ def _worthiness_gate(
     bank_path = source.bank_dir / "memory-worthy.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
     criterion, marker = worth_criterion_v44(source.case.product, source.intent.subject)
-    gate_tier, gate_reason = judge_worthiness(
+    gate_tier, gate_reason, gate_rounds = judge_worthiness(
         ports.judge,
         happenings=wall.fam_ids,
         label_of=wall.anchor_label,
@@ -635,6 +635,7 @@ def _worthiness_gate(
             },
             "tiers": {wall.anchor_label[f]: t for f, t in gate_tier.items()},
             "reasons": {wall.anchor_label[f]: r for f, r in gate_reason.items()},
+            "rounds": gate_rounds,
         },
     )
     return gate_tier.copy(), gate_reason.copy(), marker

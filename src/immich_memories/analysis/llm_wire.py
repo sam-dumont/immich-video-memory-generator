@@ -109,18 +109,6 @@ def announce_adaptation(adaptation: str, before: object, after: object) -> None:
         logger.info("LLM server dialect: adapting request (%s)", adaptation)
 
 
-# Measured 2026-09-14 against z.ai's /api/anthropic route with glm-5.3-flash.
-# Where /api/paas/v4 refuses `{"type": "disabled"}` outright with code 1210,
-# this route accepts every level, answers HTTP 200, and then reasons anyway
-# when it wants to: a caption-shaped ask at the 140-token cap the callers use
-# spent all 140 tokens inside the thinking block and returned no text block at
-# all. The reasoning those small asks produced ran 300 to 930 characters, so a
-# thousand tokens of headroom carries it and the caller's cap keeps meaning
-# what it says about the answer. A host told `disabled` outright is taken at
-# its word and keeps the cap exact.
-ANTHROPIC_REASONING_HEADROOM_TOKENS = 1024
-
-
 def shape_for_provider(payload: dict, config: LLMConfig) -> None:
     """Apply the configured provider dialect before any auto-negotiation."""
     if config.max_tokens_param != "max_tokens" and "max_tokens" in payload:
@@ -243,10 +231,15 @@ def reasoning_headroom(key: tuple[str, str], *, declared: bool) -> int:
     return _REASONING_HEADROOM.setdefault(key, REASONING_HEADROOM_TOKENS)
 
 
+def remember_reasoning(key: tuple[str, str]) -> None:
+    """Record an endpoint that thinks, so the next call budgets for the thinking."""
+    _REASONING_HEADROOM.setdefault(key, REASONING_HEADROOM_TOKENS)
+
+
 def learn_reasoning(key: tuple[str, str], reply: LLMReply) -> None:
     """Remember an endpoint that billed for thinking, so the next call budgets for it."""
     if reply.reasoning_tokens > 0:
-        _REASONING_HEADROOM.setdefault(key, REASONING_HEADROOM_TOKENS)
+        remember_reasoning(key)
 
 
 def widen_for_reasoning(key: tuple[str, str], *, reasoning_tokens: int, answered: bool) -> bool:
@@ -320,9 +313,19 @@ def _messages_reasoning(params: dict) -> dict:
 
 
 def apply_anthropic_reasoning(
-    payload: dict, config: LLMConfig, thinking: bool, max_tokens: int, timeout: int
+    payload: dict,
+    config: LLMConfig,
+    thinking: bool,
+    max_tokens: int,
+    timeout: int,
+    endpoint: tuple[str, str] | None,
 ) -> int:
-    """Put the reasoning switch and the tokens it will cost on one payload."""
+    """Put the reasoning switch and the tokens it will cost on one payload.
+
+    `endpoint` is None for a queued batch line, which is granted no headroom: a
+    line that spends the answer's budget thinking comes back empty and is re-asked
+    live, where the ledger applies.
+    """
     if thinking:
         # The dialect refuses any temperature but the default while reasoning.
         payload.pop("temperature", None)
@@ -332,11 +335,21 @@ def apply_anthropic_reasoning(
     bulk = _messages_reasoning(config.no_thinking_params)
     payload.update(bulk)
     switch = bulk.get("thinking")
-    if isinstance(switch, dict) and switch.get("type") != _REASONING_OFF:
-        # A setting short of off is a request rather than a guarantee, so the
-        # answer keeps the cap the caller asked for and the reasoning the host
-        # does anyway gets its own room.
-        payload["max_tokens"] = max_tokens + ANTHROPIC_REASONING_HEADROOM_TOKENS
+    asked_off = isinstance(switch, dict) and switch.get("type") == _REASONING_OFF
+    # A setting short of off is a request rather than a guarantee, so the answer
+    # keeps the cap the caller asked for and the reasoning the host does anyway
+    # gets its own room, on the same learned ledger the OpenAI dialects use. A
+    # host told `disabled` is taken at its word until one of its replies thinks
+    # anyway: measured 2026-09-14, z.ai's /api/anthropic route ignores `disabled`
+    # and honours `low`, and a 64-token ask carrying one picture spent all 64
+    # inside the thinking block and returned no text block at all.
+    headroom = (
+        0
+        if endpoint is None
+        else reasoning_headroom(endpoint, declared=config.always_reasons or not asked_off)
+    )
+    if headroom:
+        payload["max_tokens"] = max_tokens + headroom
     return timeout
 
 
@@ -428,21 +441,24 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
 
     Built from the dialect helpers the live path uses rather than beside them,
     so a banked batch answer is the answer asking in real time would have given.
-    Reasoning is never requested here: the batched stages are the bulk reads,
-    and a queued reasoning call is the one shape whose price is not halved. Nor
-    is the live path's reasoning headroom granted — a queued line that spends
-    the answer's budget thinking comes back empty and is re-asked live, which is
-    what this route already does with every answer its stage refuses.
+    Bulk reads ask for reasoning to be disabled where the host allows it.
+    Hosts known to reason still receive the live path's reasoning headroom,
+    before provider shaping renames the token field. The caller's answer
+    budget and judgment key stay unchanged.
     """
     resolved = resolved_llm_config(config)
     if resolved.provider == "anthropic":
         payload = anthropic_payload(prompt, resolved, DEFAULT_TEMPERATURE, max_tokens, ())
-        apply_anthropic_reasoning(payload, resolved, False, max_tokens, 0)
+        apply_anthropic_reasoning(payload, resolved, False, max_tokens, 0, None)
         shape_for_provider(payload, resolved)
         return payload
     payload = openai_payload(prompt, resolved, DEFAULT_TEMPERATURE, max_tokens, (), "low")
     if resolved.no_thinking_params:
         payload.update(resolved.no_thinking_params)
+    endpoint = (resolved.base_url.rstrip("/"), resolved.model)
+    headroom = reasoning_headroom(endpoint, declared=resolved.always_reasons)
+    if headroom:
+        apply_reasoning_headroom(payload, max_tokens, headroom)
     shape_for_provider(payload, resolved)
     apply_adaptations(
         payload,
@@ -451,13 +467,32 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
     return payload
 
 
-def read_batch_answer(config: LLMConfig, body: dict) -> str:
-    """The final answer out of one completed reply, in whichever dialect it arrived.
+# What each dialect says when the ceiling arrived before the answer ended:
+# OpenAI writes `finish_reason: "length"`, Anthropic `stop_reason: "max_tokens"`.
+TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens"})
 
-    Truncation is not distinguished here the way the live path distinguishes it:
-    a batched answer that hit its ceiling comes back as the partial text, and the
-    stage's own parser refuses it, which sends that one prompt back to the live
-    path with the doubled budget it would have got anyway.
+
+def batch_answer(reply: LLMReply) -> str | None:
+    """One queued line's answer, or None where the provider never finished writing it.
+
+    The live path refuses these two shapes under `require_complete`: a reply the
+    ceiling cut off, and a reply that stopped on its own with an empty answer
+    channel. A queued line is handed out under the realtime path's own judgment
+    key, which claims that contract, so it is held to the same rule -- otherwise
+    a starved line reaches the stage as a real answer and is reported as an
+    unreadable model rather than a ceiling too low.
+    """
+    if not (reply.content or "").strip():
+        return None
+    return None if reply.finish_reason in TRUNCATED_FINISH_REASONS else reply.content
+
+
+def read_batch_answer(config: LLMConfig, body: dict) -> str:
+    """The final answer channel out of one completed reply, in whichever dialect it arrived.
+
+    Whatever was written, including the partial text of a reply the ceiling cut
+    off: this reads the channel and `batch_answer` decides whether what is in it
+    counts as an answer.
     """
     if resolved_llm_config(config).provider == "anthropic":
         content = body.get("content")
@@ -582,6 +617,18 @@ def anthropic_answer(
     return texts[0] if texts else None
 
 
+def anthropic_reasoned(body: dict) -> bool:
+    """Whether this reply thought before answering, whatever it was asked to do.
+
+    The dialect bills thinking inside `output_tokens` rather than reporting it
+    separately, so the blocks are the only evidence that an endpoint reasons.
+    """
+    content = body.get("content")
+    return isinstance(content, list) and any(
+        str(block.get("type")).startswith("thinking") for block in content
+    )
+
+
 def reasoning_only_detail(body: dict) -> str:
     """Name what came back instead of an answer, and where it stopped."""
     content = body.get("content")
@@ -605,7 +652,7 @@ def no_choices_detail(body: dict) -> str:
 
 def _completion_and_usage(
     response: httpx.Response, observer: Callable[[LLMTransportAttempt], None] | None
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, dict]:
     try:
         body = response_body(response)
         error = body.get("error")
@@ -622,7 +669,7 @@ def _completion_and_usage(
     except (KeyError, TypeError, ValueError, IndexError):
         record_invalid_response(observer, response.status_code)
         raise
-    return choice, usage
+    return body, choice, usage
 
 
 def interpret_openai_response(
@@ -633,12 +680,17 @@ def interpret_openai_response(
     attempt: int,
 ) -> LLMReply:
     """Parse one OpenAI-style reply and preserve its completed-post outcome."""
-    choice, usage = _completion_and_usage(response, observer)
+    body, choice, usage = _completion_and_usage(response, observer)
     llm_metrics.record_reply(
         prompt_tokens=usage.get("prompt_tokens", 0) or 0,
         cached_prompt_tokens=(usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
         or 0,
         completion_tokens=usage.get("completion_tokens", 0) or 0,
+        # A subset of completion_tokens in this dialect, reported apart because
+        # it is the part a reasoning model adds and nobody asked for.
+        reasoning_tokens=(usage.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
+        or 0,
+        model=served_model(body),
     )
     try:
         return _openai_completion(
@@ -679,6 +731,16 @@ def response_body(response: httpx.Response) -> dict:
     if not isinstance(body, dict):
         raise TypeError("LLM response body is not an object")
     return body
+
+
+def served_model(body: dict) -> str | None:
+    """What the server said it answered with, when it said anything.
+
+    The config's model id is what was asked for. A gateway is free to serve
+    something else, and the bill follows what it served.
+    """
+    served = body.get("model")
+    return served if isinstance(served, str) and served else None
 
 
 def record_invalid_response(

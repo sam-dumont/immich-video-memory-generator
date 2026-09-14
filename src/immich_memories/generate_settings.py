@@ -320,6 +320,7 @@ def _run_music_phase(
                 params.transition, params.transition_duration
             ),
             source=source,
+            editorial_attempt_dir=params.editorial_attempt_dir,
         )
         if not selection.path:
             if phase_started and selection.warning:

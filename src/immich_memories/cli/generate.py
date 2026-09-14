@@ -21,7 +21,13 @@ from immich_memories.cli._generate_display import (
     _build_params_table,
     _print_generation_result,
 )
-from immich_memories.cli._helpers import console, print_error, print_info, print_success
+from immich_memories.cli._helpers import (
+    console,
+    described_error,
+    print_error,
+    print_info,
+    print_success,
+)
 from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
 from immich_memories.cli.generate_options import (
@@ -662,7 +668,7 @@ def register_generate_commands(main: click.Group) -> None:
         except Exception as e:  # WHY: CLI top-level error boundary — sanitizes and displays error
             from immich_memories.security import sanitize_error_message
 
-            print_error(f"Error: {sanitize_error_message(str(e))}")
+            print_error(f"Error: {sanitize_error_message(described_error(e))}")
             sys.exit(1)
 
     # Register analyze and export-project commands from separate module

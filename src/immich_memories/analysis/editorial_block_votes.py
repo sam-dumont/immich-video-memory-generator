@@ -11,9 +11,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from typing import NamedTuple
 
+from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_structure_json import _first_object
+
+logger = logging.getLogger(__name__)
 
 BLOCK_SIZE = 12
 BLOCK_CACHE_VERSION = "block-votes-v2-exact-model-question"
@@ -68,17 +73,38 @@ def worth_criterion_v44(product: str, subject: str | None) -> tuple[str, str]:
     return WORTH_CRITERION_V44, ""
 
 
-def _picks(raw: str, answer_key: str, allowed: set[str]) -> dict[str, str]:
+def _answer_map(obj: object, answer_key: str, allowed: set[str]) -> tuple[object, str]:
+    """The mapping the contract asked for and the envelope it came in, whether or not the model
+    kept its wrapper key.
+
+    The instruction to wrap the picks in one key sits at the end of a nine-thousand-character
+    prompt, and a reader that loses it returns the same picks bare. Measured on February 2024:
+    nine of glm-5.3-flash's ten worthy replies were flat, the gate read them as "nothing
+    remarkable", and the run said nothing. A bare object is read as the answer only when every
+    key in it is a label this very block offered, which an answer to another question cannot be.
+    """
+    if not isinstance(obj, Mapping):
+        return None, "unreadable"
+    if answer_key in obj:
+        return obj[answer_key], "wrapped"
+    return (obj, "flat") if obj and allowed.issuperset(obj) else (None, "unreadable")
+
+
+def _picks(raw: str, answer_key: str, allowed: set[str]) -> tuple[dict[str, str], str]:
+    """The labels named with their reasons, and the envelope the answer arrived in."""
     try:
         obj, _tail = _first_object(raw)
     except (ValueError, KeyError, TypeError, json.JSONDecodeError, AttributeError):
-        return {}
-    value = obj.get(answer_key) if isinstance(obj, dict) else None
+        return {}, "unreadable"
+    value, envelope = _answer_map(obj, answer_key, allowed)
     if isinstance(value, list):
         value = dict.fromkeys((v for v in value if isinstance(v, str)), "")
     if not isinstance(value, Mapping):
-        return {}
-    return {k: " ".join(str(v).split()[:12]) for k, v in value.items() if k in allowed}
+        return {}, "unreadable"
+    return (
+        {k: " ".join(str(v).split()[:12]) for k, v in value.items() if k in allowed},
+        envelope,
+    )
 
 
 def _judge_model_identity(judge, supplied: str | None) -> str | None:
@@ -140,8 +166,20 @@ def _ask_orders(
             votes[order_name] = {}
             votes[f"{order_name}_failed"] = {"__error__": str(exc)[:200]}
             continue
-        votes[order_name] = _picks(raw, answer_key, {label_of[x] for x in order})
+        picked, envelope = _picks(raw, answer_key, {label_of[x] for x in order})
+        votes[order_name] = picked
+        votes[f"{order_name}_envelope"] = {"shape": envelope}
     return votes
+
+
+class _Block(NamedTuple):
+    """One block of twelve, its two orders, and the cache key covering both prompts."""
+
+    items: list[str]
+    key: str
+    stage: str
+    orders: tuple[tuple[str, list[str]], ...]
+    prompts: dict[str, str]
 
 
 def vote_blocks(
@@ -158,49 +196,87 @@ def vote_blocks(
     save: Callable[[], None] | None = None,
     max_tokens: int = 400,
     model_identity: str | None = None,
-) -> dict[str, tuple[int, str]]:
-    """Votes per item (0, 1 or 2) with the first reason given. `row_of` renders the whole listing
-    row including its label; `prompt_of` wraps a listing. `bank_key` seeds the established order;
-    the separate cache key covers the exact two questions and their model identity."""
+) -> tuple[dict[str, tuple[int, str]], list[dict]]:
+    """Votes per item (0, 1 or 2) with the first reason given, and one record per asked round.
+    `row_of` renders the whole listing row including its label; `prompt_of` wraps a listing.
+    `bank_key` seeds the established order; the separate cache key covers the exact two questions
+    and their model identity."""
     votes_of: dict[str, tuple[int, str]] = {}
+    rounds: list[dict] = []
     identity = _judge_model_identity(judge, model_identity) if bank is not None else None
     reusable = bank if identity is not None else None
     blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
+    pending = []
     for bi, block in enumerate(blocks):
         orders = _block_orders(block, bank_key(block))
         prompts = {name: prompt_of("\n".join(row_of(x) for x in order)) for name, order in orders}
-        votes = _banked_votes(
-            judge,
-            stage=f"{stage}-{bi + 1}",
-            orders=orders,
-            prompts=prompts,
+        pending.append(
+            _Block(
+                block,
+                _vote_cache_key(prompts, identity, max_tokens, answer_key),
+                f"{stage}-{bi + 1}",
+                orders,
+                prompts,
+            )
+        )
+
+    def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
+        if reusable is not None and asked.key in reusable:
+            return reusable[asked.key]
+        return _ask_orders(
+            child,
+            stage=asked.stage,
+            orders=asked.orders,
+            prompts=asked.prompts,
             answer_key=answer_key,
             label_of=label_of,
             max_tokens=max_tokens,
-            bank=reusable,
-            key=_vote_cache_key(prompts, identity, max_tokens, answer_key),
-            save=save,
         )
-        votes_of.update(_tally(block, label_of, votes))
-    return votes_of
+
+    for asked, votes in zip(pending, reader_map(judge, read, pending), strict=True):
+        if reusable is not None and asked.key not in reusable:
+            reusable[asked.key] = votes
+            if save is not None:
+                save()
+        names = [name for name, _order in asked.orders]
+        votes_of.update(_tally(asked.items, label_of, votes, names))
+        rounds.extend(_round_records(asked.stage, asked.orders, votes))
+    return votes_of, rounds
 
 
-def _banked_votes(judge, *, bank, key, save, **asking) -> dict[str, dict[str, str]]:
-    if bank is not None and key in bank:
-        return bank[key]
-    votes = _ask_orders(judge, **asking)
-    if bank is not None:
-        bank[key] = votes
-        if save is not None:
-            save()
-    return votes
+def _round_records(
+    stage: str,
+    orders: tuple[tuple[str, list[str]], ...],
+    votes: Mapping[str, dict[str, str]],
+) -> list[dict]:
+    """What each order of one block was offered, what it named, and in which envelope.
+
+    A bank written before the envelope was recorded replays as "banked": the counts still say
+    whether the round read anything, which is the question a silent zero has to answer.
+    """
+    return [
+        {
+            "round": f"{stage}-{name}",
+            "offered": len(order),
+            "picked": len(votes.get(name, {})),
+            "envelope": (
+                "failed"
+                if f"{name}_failed" in votes
+                else votes.get(f"{name}_envelope", {}).get("shape", "banked")
+            ),
+        }
+        for name, order in orders
+    ]
 
 
 def _tally(
-    block: list[str], label_of: Mapping[str, str], votes: Mapping[str, dict[str, str]]
+    block: list[str],
+    label_of: Mapping[str, str],
+    votes: Mapping[str, dict[str, str]],
+    names: Sequence[str],
 ) -> dict[str, tuple[int, str]]:
     """A row named by both orders is a firm yes, by one a maybe; a failed order does not vote."""
-    seen = [o for name, o in votes.items() if not name.endswith("_failed")]
+    seen = [votes[n] for n in names if n in votes and f"{n}_failed" not in votes]
     return {
         x: (
             sum(1 for o in seen if label_of[x] in o),
@@ -225,9 +301,10 @@ def judge_worthiness(
     bank: MutableMapping[str, dict] | None = None,
     save: Callable[[], None] | None = None,
     model_identity: str | None = None,
-) -> tuple[dict[str, int], dict[str, str]]:
+) -> tuple[dict[str, int], dict[str, str], list[dict]]:
     """The v44 memory-worthy gate: tier 0 remarkable, 1 maybe, 2 background, per happening.
-    `text_of` is the anchor row without its label (day, count, what the pictures show)."""
+    `text_of` is the anchor row without its label (day, count, what the pictures show).
+    The third return is one record per asked round, so a gate that read nothing says so."""
 
     def prompt_of(listing: str) -> str:
         return (
@@ -250,7 +327,7 @@ def judge_worthiness(
             ).encode()
         ).hexdigest()
 
-    votes = vote_blocks(
+    votes, rounds = vote_blocks(
         judge,
         stage="worthy",
         items=happenings,
@@ -263,9 +340,25 @@ def judge_worthiness(
         save=save,
         model_identity=model_identity,
     )
+    _warn_on_empty_rounds(rounds)
     tier = {f: (0 if n == 2 else 1 if n == 1 else 2) for f, (n, _r) in votes.items()}
     reason = {f: r for f, (_n, r) in votes.items()}
-    return tier, reason
+    return tier, reason, rounds
+
+
+def _warn_on_empty_rounds(rounds: Sequence[Mapping[str, object]]) -> None:
+    """A worthy round that names nobody is either a real "none of these" or a reply the reader
+    could not open, and the two are indistinguishable downstream. Say which, out loud, per round:
+    the gate's silence is the failure mode that let a whole month grade background."""
+    for entry in rounds:
+        if entry["picked"] or entry["envelope"] == "failed":
+            continue
+        logger.warning(
+            "worthy round %s read 0 of %s offered happenings (envelope=%s)",
+            entry["round"],
+            entry["offered"],
+            entry["envelope"],
+        )
 
 
 def judge_standing(
@@ -301,7 +394,7 @@ def judge_standing(
             ).encode()
         ).hexdigest()
 
-    rejections = vote_blocks(
+    rejections, _rounds = vote_blocks(
         judge,
         stage="standing",
         items=pictures,

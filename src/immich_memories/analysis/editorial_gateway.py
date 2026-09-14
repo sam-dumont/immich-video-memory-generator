@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from contextvars import copy_context
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
+
+import httpx
 
 from immich_memories.analysis.contact_sheets import ContactSheetPage
 from immich_memories.analysis.editorial_contracts import (
@@ -20,6 +24,15 @@ from immich_memories.analysis.editorial_contracts import (
 )
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_wire import LLMTransportAttempt
+from immich_memories.analysis.provider_failure import (
+    RETRY_ATTEMPTS,
+    THROTTLE,
+    ProviderCredentialRejected,
+    announce_retry,
+    group_wait,
+    provider_failure,
+    retry_wait,
+)
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
@@ -42,6 +55,8 @@ __all__ = [
 # a banked answer a lie -- the cache would return something re-asking would not
 # have produced.
 EDITORIAL_TEMPERATURE = 0.0
+
+logger = logging.getLogger(__name__)
 
 
 class EmptyVisualAnswer(ValueError):
@@ -186,20 +201,7 @@ class VisualEditorialGateway:
             )
 
         try:
-            raw_text = _run_sync(
-                query_llm(
-                    _provider_prompt(request),
-                    llm_config,
-                    temperature=EDITORIAL_TEMPERATURE,
-                    thinking=request.thinking,
-                    images=tuple(page.jpeg_bytes for page in request.pages),
-                    image_detail=request.image_detail,
-                    transport_observer=record_attempt,
-                    require_complete=True,
-                    max_tokens=request.limits.max_output_tokens,
-                    timeout_seconds=request.limits.timeout_seconds,
-                )
-            )
+            raw_text = self._answered(request, llm_config, record_attempt)
             if not raw_text.strip():
                 raise EmptyVisualAnswer(raw_text)
         except Exception as exc:
@@ -225,6 +227,57 @@ class VisualEditorialGateway:
             attempts=tuple(attempts),
         )
         return BankedVisualAnswer(raw_text, provenance, provenance, request_trace)
+
+    def _answered(
+        self,
+        request: VisualEditorialRequest,
+        llm_config: LLMConfig,
+        record_attempt: Callable[[LLMTransportAttempt], None],
+    ) -> str:
+        """Ask once, waiting out a provider that is only shedding load.
+
+        Every pass behind this gateway drops a failed call quietly -- a picture with
+        no facts, a caption that reads `!! asset description failed`, a pair left
+        unjudged. That is right for a payload the provider refuses and wrong for a
+        rate limit: a reader throttled for a minute would otherwise come out of the
+        comparison with fewer facts than its neighbours and read as a worse model.
+        """
+        held = THROTTLE.pause()
+        if held:
+            # Another call is already waiting out a rate limit on this key. Joining it
+            # beats spending an attempt discovering the same throttle.
+            time.sleep(held)
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                return _run_sync(
+                    query_llm(
+                        _provider_prompt(request),
+                        llm_config,
+                        temperature=EDITORIAL_TEMPERATURE,
+                        thinking=request.thinking,
+                        images=tuple(page.jpeg_bytes for page in request.pages),
+                        image_detail=request.image_detail,
+                        transport_observer=record_attempt,
+                        require_complete=True,
+                        max_tokens=request.limits.max_output_tokens,
+                        timeout_seconds=request.limits.timeout_seconds,
+                    )
+                )
+            except httpx.HTTPStatusError as exc:
+                refusal = provider_failure(exc, images_attached=bool(request.pages))
+                if refusal is None:
+                    raise
+                if refusal.credential:
+                    # Every pass behind this gateway drops a failed call quietly, so a
+                    # rejected key would otherwise blank a whole run's captions and facts
+                    # without anyone being told. It leaves here as something nobody catches.
+                    raise ProviderCredentialRejected(refusal) from exc
+                wait = retry_wait(refusal, attempt)
+                if wait is None:
+                    raise
+                announce_retry(logger, refusal, wait, attempt)
+                time.sleep(group_wait(refusal, wait))
+        raise AssertionError("rate-limited visual request must return or raise")
 
     def _record(
         self,

@@ -15,12 +15,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.special_day import (
     active_hours,
     ask_if_special,
     candidate_days,
+    day_is_prepared,
     days_covered_by_trips,
     event_window,
     run_extent,
@@ -152,6 +154,8 @@ def scan_year(
     extra_holidays: Iterable[str] = (),
     analysis_config: Any = None,
     trips_config: TripsConfig | None = None,
+    captions: dict[str, str] | None = None,
+    judgment_cache_path: Path | None = None,
 ) -> list[DiscoveredDay]:
     """Find the days in one year's assets that stand out, and name them.
 
@@ -201,8 +205,18 @@ def scan_year(
 
     found: list[DiscoveredDay] = []
     for day, items in sorted(candidates.items(), key=lambda kv: -len(kv[1]))[:ask]:
-        thumbnails = _thumbnails_for(items, thumbnail_for)
-        verdict = ask_if_special(items, llm_config, thumbnails=thumbnails)
+        day_captions = {
+            asset.id: captions[asset.id] for asset in items if captions and captions.get(asset.id)
+        }
+        # The same gate ask_if_special applies, asked before the downloads rather
+        # than after them: a day the bank has barely touched still costs its tiles.
+        if day_is_prepared(items, day_captions):
+            verdict = ask_if_special(
+                items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
+            )
+        else:
+            thumbnails = _thumbnails_for(items, thumbnail_for)
+            verdict = ask_if_special(items, llm_config, thumbnails=thumbnails)
         # A title, not just something written about the day. Every reader of
         # this file falls back to `what` when the title is empty, so an entry
         # with no title is how the day's own description — "Six images captured

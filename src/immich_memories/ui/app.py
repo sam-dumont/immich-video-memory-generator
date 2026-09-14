@@ -66,17 +66,12 @@ def _get_storage_secret() -> str:
     return secret
 
 
-_STEPS = [
+_NAVIGATION = [
     ("Memory", "auto_awesome", "/"),
+    ("Suggestions", "lightbulb", "/suggestions"),
+    ("Runs", "history", "/runs"),
     ("Media pool", "video_library", "/step2"),
-    ("Options", "tune", "/step3"),
-    ("Export", "download", "/step4"),
-]
-
-_EXTRA_NAV = [
-    ("Config", "description", "/settings/config"),
-    ("People", "groups", "/settings/people"),
-    ("Cache", "cached", "/settings/cache"),
+    ("Settings", "settings", "/settings/config"),
 ]
 
 
@@ -120,77 +115,28 @@ def _render_auth_controls() -> None:
     ).props("flat dense no-caps size=sm").classes("w-full").style("color: var(--im-text-secondary)")
 
 
-def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
-    """Step indicator — removed in favor of sidebar navigation.
-
-    The sidebar already highlights the active step. Keeping this function
-    as a no-op so callers don't need to change.
-    """
-
-
-def _is_step_complete(state, step: int) -> bool:
-    """Check whether a wizard step has been completed based on AppState."""
-    if step == 1:
-        return state.config is not None and state.scope_is_selected
-    if step == 2:
-        return len(state.selected_clip_ids) > 0
-    if step == 3:
-        return bool(state.generation_options)
-    return False
-
-
-def _render_step_nav(state, current_step: int) -> None:  # pragma: no cover
-    """Render the 4-step wizard nav items with completion indicators."""
+def _render_navigation() -> None:
+    path = ui.context.client.page.path
     with ui.column().classes("gap-0 px-3 mt-2"):
-        for i, (name, icon, path) in enumerate(_STEPS):
-            step_num = i + 1
-            is_active = step_num == current_step
-            is_complete = _is_step_complete(state, step_num)
-
-            def make_nav(s: int, p: str):
-                def handler():
-                    state.step = s
-                    ui.navigate.to(p)
-
-                return handler
-
-            classes = "im-nav-item"
-            if is_active:
-                classes += " im-nav-active"
-
+        for name, icon, target in _NAVIGATION:
+            active = path == target or (name == "Settings" and path.startswith("/settings/"))
+            classes = "im-nav-item" + (" im-nav-active" if active else "")
             with (
-                ui.element("div").classes(classes).on("click", make_nav(step_num, path)),
+                ui.link(target=target).classes(classes + " no-underline w-full"),
                 ui.row().classes("items-center gap-3 w-full"),
             ):
                 ui.icon(icon).classes("text-xl")
                 ui.label(name).classes("text-sm")
-                if is_complete and not is_active:
-                    ui.element("div").classes("flex-grow")
-                    ui.icon("check_circle").classes("text-xs").style(
-                        "color: var(--im-success); font-size: 16px"
-                    )
-
-
-def _render_extra_nav() -> None:  # pragma: no cover
-    """Render settings/cache nav items below the step nav."""
-    with ui.column().classes("gap-0 px-3"):
-        for name, icon, path in _EXTRA_NAV:
-
-            def make_extra_nav(p: str):
-                def handler():
-                    ui.navigate.to(p)
-
-                return handler
-
-            with (
-                ui.element("div").classes("im-nav-item").on("click", make_extra_nav(path)),
-                ui.row().classes("items-center gap-3 w-full"),
+        if path.startswith("/settings/"):
+            for name, target in (
+                ("Configuration", "config"),
+                ("People", "people"),
+                ("Cache", "cache"),
             ):
-                ui.icon(icon).classes("text-xl")
-                ui.label(name).classes("text-sm")
+                ui.link(name, f"/settings/{target}").classes("ml-8 text-sm")
 
 
-def render_sidebar(current_step: int):  # pragma: no cover
+def render_sidebar():  # pragma: no cover
     """Render Immich-style sidebar navigation. Returns drawer for toggle."""
     state = get_app_state()
     # WHY: ensure_config lazily loads config into per-session state on first page load.
@@ -203,13 +149,7 @@ def render_sidebar(current_step: int):  # pragma: no cover
             ui.icon("movie").classes("text-2xl").style("color: var(--im-primary)")
             ui.label("Immich Memories").classes("text-lg font-bold").style("color: var(--im-text)")
 
-        _render_step_nav(state, current_step)
-
-        # Extra nav (settings)
-        ui.element("div").classes("mx-4 my-3").style(
-            "height: 1px; background: var(--im-border-light)"
-        )
-        _render_extra_nav()
+        _render_navigation()
 
         # Spacer + toggles at bottom
         ui.element("div").classes("flex-grow")
@@ -226,10 +166,9 @@ def render_sidebar(current_step: int):  # pragma: no cover
     return drawer
 
 
-def page_header(title: str, step: int, drawer=None) -> None:
-    """Render a consistent page header with step indicator."""
+def page_header(title: str, drawer=None) -> None:
+    """Render the page title and drawer toggle."""
     ui.page_title(f"Immich Memories - {title}")
-    render_step_indicator(step)
     with ui.row().classes("w-full items-center gap-2 mb-2"):
         if drawer is not None:
             ui.button(icon="menu", on_click=drawer.toggle).props("flat dense round").style(
@@ -249,9 +188,9 @@ def index_page() -> None:
     from immich_memories.ui.pages.memory import render_memory
 
     apply_theme()
-    d = render_sidebar(1)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Memory", 1, drawer=d)
+        page_header("Memory", drawer=d)
         render_memory()
 
 
@@ -261,10 +200,34 @@ def step2_page() -> None:
     from immich_memories.ui.pages.step2_review import render_step2
 
     apply_theme()
-    d = render_sidebar(2)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Media pool", 2, drawer=d)
+        page_header("Media pool", drawer=d)
         render_step2()
+
+
+@ui.page("/runs")
+def runs_page(run_id: str | None = None, status: str = "all", offset: int = 0) -> None:
+    """Durable history for manual and automatic generation."""
+    from immich_memories.ui.pages.runs import render_runs
+
+    apply_theme()
+    drawer = render_sidebar()
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Runs", drawer=drawer)
+        render_runs(run_id, status, offset)
+
+
+@ui.page("/suggestions")
+def suggestions_page() -> None:
+    """The same candidates and eligibility rules the automatic runner uses."""
+    from immich_memories.ui.pages.suggestions import SuggestionsPage
+
+    apply_theme()
+    drawer = render_sidebar()
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Suggestions", drawer=drawer)
+        SuggestionsPage(get_config())
 
 
 @ui.page("/step3")
@@ -273,9 +236,9 @@ def step3_page() -> None:
     from immich_memories.ui.pages.step3_options import render_step3
 
     apply_theme()
-    d = render_sidebar(3)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Generation Options", 3, drawer=d)
+        page_header("Generation Options", drawer=d)
         render_step3()
 
 
@@ -285,9 +248,9 @@ def step4_page() -> None:
     from immich_memories.ui.pages.step4_export import render_step4
 
     apply_theme()
-    d = render_sidebar(4)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Preview & Export", 4, drawer=d)
+        page_header("Preview & Export", drawer=d)
         render_step4()
 
 
@@ -297,7 +260,7 @@ def config_page() -> None:
     from immich_memories.ui.pages.settings_config import render_config_page
 
     apply_theme()
-    d = render_sidebar(0)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
         ui.page_title("Immich Memories - Configuration")
         with ui.row().classes("w-full items-center gap-2 mb-2"):
@@ -314,7 +277,7 @@ def people_page() -> None:
     from immich_memories.ui.pages.settings_people import render_people_page
 
     apply_theme()
-    d = render_sidebar(0)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
         ui.page_title("Immich Memories - People")
         with ui.row().classes("w-full items-center gap-2 mb-2"):
@@ -331,7 +294,7 @@ def cache_page() -> None:
     from immich_memories.ui.pages.step1_cache import render_cache_management
 
     apply_theme()
-    d = render_sidebar(0)
+    d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
         ui.page_title("Immich Memories - Cache")
         with ui.row().classes("w-full items-center gap-2 mb-2"):
