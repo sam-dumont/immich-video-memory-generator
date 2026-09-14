@@ -516,7 +516,7 @@ def ask_if_special(
     # the API rather than by remembering: a single call carrying both cannot be
     # written by accident. Measured on 14 days, the one-call version reasoned
     # into its own answer and truncated 6 of them past parsing.
-    reasons = bool(getattr(llm_config, "thinking", False)) and bool(images)
+    reasons = bool(getattr(llm_config, "reasons", False)) and bool(images)
     seen = _look_at(thumbnails or [], llm_config, timeout_seconds) if reasons else None
     if reasons:
         images = []

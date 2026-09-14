@@ -36,8 +36,8 @@ The editor has two independent settings: who reads the period, and how much imag
 | Setup | What you need | What you get |
 |---|---|---|
 | **Rules only** (`reader: rules`, `tier: metadata_only`) | The app alone. A 4-core NAS is enough | All ten memory types from dates, places, favourites and people. No model, $0 in API fees. Measured on a Celeron NAS: 279 s for a month cold, 11 s warm. Simpler cuts: it can skip an occasion or spend time on a mundane object |
-| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus about 500 MB of pinned ONNX models fetched with one command | The sensitive-content and document detectors, so the family-viewing gate has evidence. First pass over a library of about ten thousand pictures on a Celeron: 3 h 41 min, then banked |
-| **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the caption server (1 to 2 GB) for a description under every picture; that first pass costs 30 s a picture |
+| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus the pinned models fetched with one command: an 88 MB encoder, a 22.5 MB detector export and a document classifier snapshot | The sensitive-content and document detectors, so the family-viewing gate has evidence. First pass over a library of about ten thousand pictures on a Celeron: 3 h 41 min, then banked |
+| **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the [caption server](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server) for a description under every picture. What that first pass costs depends entirely on where it runs: 0.16 s a picture on an Apple Silicon Mac with the MLX server, 30.9 s on a four-core Celeron |
 
 Title screens are GPU-rendered on Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 (Python 3.11 to 3.13). On an Intel Mac or Python 3.14 there is no kernel wheel and titles fall back to the PIL renderer: same text and timing, static instead of animated. `immich-memories preflight` tells you which one you get.
 
@@ -89,7 +89,7 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Photos and videos in one pool, Live Photos included. Title screens, month dividers, map fly-overs.
 - Music: your own file, 28 bundled tracks, or a generated track through ACE-Step or MusicGen. Ducking under the clips' own audio.
 - A four-page web UI (Memory, Media pool, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
-- Daily automation: one scheduled `auto run` generates a single eligible memory a day and can upload it back to Immich. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
+- Daily automation: one scheduled `auto run` either retries a pending upload or generates one eligible memory, then notifies. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
 - Privacy mode blurs every frame and moves the map to a fake city, for showing the app over your own library.
 
 How the editor decides is written up in [The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).

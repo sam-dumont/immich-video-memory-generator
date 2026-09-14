@@ -36,7 +36,7 @@ server:
 
 | Data | How it's handled |
 |------|-----------------|
-| Video content | Whole-frame Gaussian blur plus a noise texture (frosted glass, not pixelation) applied via FFmpeg before assembly. Not face detection: every pixel of every clip goes |
+| Video content | Whole-frame Gaussian blur plus a noise texture (frosted glass, not pixelation), added to the encode filter chain rather than run as a pass before it. Not face detection: every pixel of every clip goes |
 | Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio, not just detected speech: you hear people talking but cannot make out words |
 | GPS coordinates | The whole memory is moved onto one fake city: its centre lands on the city, every clip keeps its bearing and distance from that centre, and a memory spread wider than about 25 km is scaled down to fit. Home base moves with it |
 | Place names | Replaced with the fake city's name wherever the memory carried one. A clip with no place name does not gain one |

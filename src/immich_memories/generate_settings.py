@@ -92,7 +92,9 @@ def _build_assembly_settings(
     )
 
     capabilities = (
-        detect_hardware_acceleration() if config.hardware.enabled else HWAccelCapabilities()
+        detect_hardware_acceleration(config.hardware.backend)
+        if config.hardware.enabled
+        else HWAccelCapabilities()
     )
     output_crf = params.output_crf if params.output_crf is not None else config.output.effective_crf
     encoding_plan = resolve_encoding_plan(

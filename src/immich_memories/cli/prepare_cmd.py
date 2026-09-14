@@ -88,7 +88,12 @@ def _print_outcome(
     clock: ProducerClock, result: PreparationResult, *, pictures: int, library_size: int
 ) -> None:
     costs = clock.costs()
-    for line in rate_report(costs, pictures=pictures, library_size=library_size):
+    for line in rate_report(
+        costs,
+        pictures=pictures,
+        library_size=library_size,
+        service_seconds=result.service_seconds_by_stage,
+    ):
         console.print(line, highlight=False)
     if result.failures:
         print_error(f"{len(result.failures)} producer failures; the first few:")

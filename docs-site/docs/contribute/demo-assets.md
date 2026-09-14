@@ -15,6 +15,10 @@ which story, which ones the editor keeps (18) and the reason for every one it le
 file is credited in `CREDITS.md` next to the pictures, and `tests/test_fixture_library.py` pins
 the credits, the hashes and the 60 MB ceiling.
 
+136 files on disk; the setup matrix reports 133 pictures for the same month, because the
+visibility and metadata rules drop a few before selection ever sees them. Both numbers are right
+about different things, so do not reconcile them by editing one.
+
 | Command (repo root) | Produces |
 |---|---|
 | `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 47-second composition, 1920×1080 H.264; it ends on the film the product made |

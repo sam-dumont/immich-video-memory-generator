@@ -50,8 +50,8 @@ export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
 ```
 
 The scene-detection and segment-length knobs that used to live here went with the clip scorer.
-A config file that still names one is refused at startup; the environment-variable form is
-ignored in silence instead, so delete both.
+A config file that still names one starts normally and logs one warning naming every key it
+dropped; the environment-variable form is ignored in silence. Delete both.
 
 ### LLM provider
 
@@ -89,7 +89,10 @@ export IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET="quality"
 export IMMICH_MEMORIES_HARDWARE__GPU_DECODE="true"
 ```
 
-The backend (NVENC, VideoToolbox, QSV, VAAPI) is auto-detected; there is no working override.
+`IMMICH_MEMORIES_HARDWARE__BACKEND` names one instead of probing them all: `auto` (the default),
+`none`, `nvidia`, `apple`, `vaapi` or `qsv`. Leave it on `auto` for normal use. Naming one is for
+a benchmark, where a silent fall to software would otherwise look like a GPU run: a host where the
+named backend cannot encode logs a warning and encodes in software anyway.
 
 ### Output
 
@@ -125,6 +128,7 @@ A few common variables are also supported without the full prefix, for convenien
 | `IMMICH_URL` | `immich.url` |
 | `IMMICH_API_KEY` | `immich.api_key` |
 | `OPENAI_API_KEY` | `llm.api_key` |
+| `ANTHROPIC_API_KEY` | `llm.api_key`, and wins over `OPENAI_API_KEY` when `llm.provider` is `anthropic` or `zai` |
 | `MUSICGEN_ENABLED` | `musicgen.enabled` |
 | `MUSICGEN_BASE_URL` | `musicgen.base_url` |
 | `MUSICGEN_API_KEY` | `musicgen.api_key` |
@@ -162,7 +166,6 @@ Not config fields, but read by the app:
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
 | `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set. See [Authentication](authentication.mdx). |
 
-There is no environment variable for the log *level*.
 
 :::caution Scheduled jobs do not inherit your shell
 A launchd or cron job starts from a login-less environment, so nothing you `export` interactively

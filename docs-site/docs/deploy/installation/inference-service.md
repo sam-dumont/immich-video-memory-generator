@@ -28,6 +28,10 @@ this service later; today it serves `/facts` only.
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
 encode: they do not run inference, and that stays true on every page here.
 
+The card accelerates the **DINOv2 encoder and its six heads**. Both detectors open CPU ONNX
+sessions whichever image they are in: the Docling one pins `CPUExecutionProvider` and the Marqo one
+only sets a thread count. So the `-cuda` image moves one producer of three onto the GPU.
+
 Both are published by the release, so you pull rather than build:
 
 ```bash
@@ -80,8 +84,9 @@ there is nothing to write for it, and the CUDA one is the block above. From a ch
 `docker/hwaccel.inference.yml` instead, which holds both as `extends:` targets.
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
-If it says `CPUExecutionProvider` on a GPU host, the reservation did not reach the container or the
-image is the CPU one: those are the only two causes.
+`CPUExecutionProvider` on a GPU host means one of four things: the image is the CPU one, the device
+reservation did not reach the container, `PROVIDER` names `cpu`, or the driver and CUDA runtime in
+the image do not match. Check the tag first: it is the usual one.
 
 ## On Kubernetes
 
@@ -130,8 +135,9 @@ the service's own settings above take one. The base NetworkPolicy already allows
 
 A fresh PVC is empty, and that is all right. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
 that setting the service fetches what it is missing the first time something asks for it: the
-pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot, each
-checked against the same digest `immich-memories models fetch` pins. The first `/facts` call
+pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot. The two
+ONNX exports are checked against the same SHA-256 `immich-memories models fetch` pins; the Docling
+snapshot is pinned by Hugging Face revision, not by digest. The first `/facts` call
 after a cold start waits for the download. Nothing after it does.
 
 To fill the volume yourself instead, `kubectl cp` the two ONNX exports into `/cache`, or run
@@ -186,9 +192,12 @@ it and delete it. See [Setup matrix](../../contribute/setup-matrix.md).
 | `POST /facts` | one picture in: what do the frozen classifiers say about it |
 
 ```bash
-curl -s localhost:8092/facts -H 'content-type: application/json' \
-  -d "{\"image\": \"$(base64 -i photo.jpg)\", \"producers\": [\"heads\"]}"
+python3 -c 'import base64,json,sys; print(json.dumps({"image": base64.b64encode(open(sys.argv[1],"rb").read()).decode(), "producers": ["heads"]}))' photo.jpg \
+  | curl -s localhost:8092/facts -H 'content-type: application/json' --data-binary @-
 ```
+
+(`base64 -i` is the macOS spelling and GNU `base64` wraps its output, so the shell one-liner that
+looks obvious here is not portable.)
 
 ```json
 {"producers": {"heads": {"encoder_key": "…", "facts": [
@@ -220,10 +229,10 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `MARQO_ONNX` | `$CACHE_DIR/nsfw-marqo-384.onnx` | the pinned sensitive-content ONNX export |
 | `BUNDLE` | the packaged public bundle | head bundle `.npz` |
 | `PROVIDER` | `auto` | `auto`, `cpu`, `cuda` or `coreml`. `auto` takes CUDA where the provider is present and CPU otherwise |
-| `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime |
+| `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime. The app's `facts_concurrency` is what fills it |
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
-| `DETECTOR_CACHE_DIR` | the Hugging Face cache | where the detector snapshots live |
+| `DETECTOR_CACHE_DIR` | `/cache/huggingface` in the published image (`$HF_HOME` otherwise) | where the detector snapshots live |
 | `ALLOW_MODEL_DOWNLOADS` | `false` | let a cold cache fetch the pinned exports and the Docling snapshot itself |
 | `MAX_IMAGE_BYTES` | `16777216` | refuse anything larger |
 
@@ -255,8 +264,41 @@ request, and `fallback_to_local` says what happens when the service is down: the
 against the endpoint either way, and with the fallback on the app's own producers take over. The
 keys are in the [config reference](../../reference/config-reference.md#inference-service).
 
+### How many pictures at once
+
+`facts_concurrency` (default 8, 1 to 32) is how many `/facts` requests the app keeps in flight.
+
+One at a time is what the client used to do, and it is slow for a reason that has nothing to do
+with the card: measured on a cluster Job against a T1000 on `no_captions`, 3,709 pictures took 42.7
+minutes, 0.69 s each, the same rate a 133-picture demo got. A rate that does not move with the size
+of the scope is per-request latency, not throughput, and the service was sitting on
+`REQUEST_THREADS` seats with nothing in them. A 13,552-picture month would have taken 2.6 hours of
+facts alone, against 23 to 40 ms a picture for the same work computed in process on a Mac.
+
+Raising it re-derives nothing and moves no row: the answers are banked in the order the pictures
+were asked for, whatever order they come back in, and a fact's identity is still the artifact that
+produced it. Match it to the service's `REQUEST_THREADS` and give the pod the CPU to go with them;
+past that point the requests queue inside the service instead of on the wire, which buys nothing.
+
+`prepare` says which number it ran at, and the summary's `remote_facts` row gains a
+`service s/pic` column next to the wall clock:
+
+```
+producer        pending   s/picture   share    elapsed  service s/pic
+previews           1440      0.0241    9.4%       35 s              —
+remote_facts       1440      0.0921   36.0%        2 min         0.0308
+```
+
+The left number is what the app waited. The right one is what the service says it spent deciding
+the picture, off the `X-Facts-Seconds` header it puts on every answer. A wide gap is the network,
+the request rate or a queue inside the service; a narrow one means the classifiers are the cost and
+only a faster device or a smaller scope will move it.
+
 ## Not yet
 
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
+- One picture per request. `facts_concurrency` sends several at once, so the wire is busy, but
+  the service still runs one ONNX graph per picture rather than one batch. A batched request and
+  response shape, with a per-picture error path, is not built.
 
 For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.

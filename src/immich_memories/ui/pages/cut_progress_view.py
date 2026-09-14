@@ -161,6 +161,7 @@ class StageBar:
         self._bar.value = fraction
         self._caption.set_text(
             f"{progress.label} {progress.done or 0:,} of {progress.total or 0:,}"
+            + (f" · {progress.remaining_label}" if progress.remaining_label else "")
         )
         self._visible(True)
 

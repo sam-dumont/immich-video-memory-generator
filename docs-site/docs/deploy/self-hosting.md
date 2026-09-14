@@ -67,8 +67,10 @@ immich-memories models fetch
 ```
 
 That writes the encoder to `~/.immich-memories/models/triage/dinov2-small.onnx` after checking its
-SHA-256 (`478164cd…`), writes the 22.5 MB sensitive-content detector next to it, and warms the
-document classifier's snapshot into the Hugging Face cache. With them cached,
+SHA-256 (`478164cd...`), the 22.5 MB sensitive-content detector to
+`~/.immich-memories/models/detectors/nsfw-marqo-384.onnx`, and warms the document classifier's
+snapshot into the Hugging Face cache (`~/.cache/huggingface` unless
+`editorial.preparation.detector_cache_dir` names somewhere else, which in a container it should). With them cached,
 `allow_model_downloads` stays `false` and means it. The encoder digest is checked at every run; no
 other ONNX conversion passes, because ONNX exports are not byte-reproducible across torch versions.
 
@@ -96,9 +98,11 @@ to work and ungraded (see [what has been tested](#what-has-been-tested)).
 
 `full` tier only. The endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`;
 the client checks the inventory and three synthetic schema controls before it sends a single
-preview. The accepted weights are `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
-`fa57db46`; the app enforces the alias and the schema controls, not the revision. Those weights are
-MLX, so this service is Apple Silicon today. The full contract is on
+preview. Two artifacts are accepted: `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
+`fa57db46` on Apple Silicon, and the GGUF build of the same model under llama.cpp everywhere else.
+The app enforces the alias and the schema controls, not the revision. Copy-paste recipes for both,
+a compose profile and a Kubernetes overlay are on
+[Caption server](./installation/caption-server.md); the full contract is on
 [Editorial annotation setup](./configuration/editorial-preparation.md).
 
 ## 5. Point the app at them
@@ -121,8 +125,13 @@ advanced:
 ```
 
 `llm.model` must be the string the server reports at `GET /v1/models`. `llm.base_url` defaults to
-`http://localhost:8080/v1`, the app's own port: set it. Every key has an env var
-(`IMMICH_MEMORIES_LLM__BASE_URL`, `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER`, and so on):
+`http://localhost:8080/v1`, the app's own port: set it. In a container, `localhost` is the
+container, so both endpoints need real hostnames.
+
+Every key has an env var (`IMMICH_MEMORIES_LLM__BASE_URL`,
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER`, and so on), and the env var wins over the YAML.
+The shipped `docker-compose.yml` sets the tier that way, so editing `tier:` in `config.yaml` inside
+a container changes nothing until you edit the compose file too:
 [Environment variables](./configuration/environment-variables.md).
 
 ## 6. Check before you cut
@@ -171,7 +180,8 @@ scale and encode; none of them runs inference.
 | Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown |
 | Reader | Text-only models | **Unsupported.** The picture pass posts images |
 | Captions | `SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
-| Captions | The same generation under vLLM or llama.cpp | **Untested** |
+| Captions | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` Q8_0 under llama.cpp | **Accepted**: passes the alias and all three schema controls, wording differs |
+| Captions | The same generation under vLLM | **Untested** |
 | Encoder | The pinned DINOv2-small ONNX export | **Required, exact** |
 | Detectors | The pinned sensitive-content ONNX export and Docling at its pinned revision | **Tested**, ONNX Runtime on the CPU provider |
 
@@ -190,5 +200,5 @@ scale and encode; none of them runs inference.
 
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
-- [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, no animated kernels and no SDF text. `immich-memories preflight` prints which one your machine will use.
+- [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, an animated gradient still, no kernel effects and no SDF text. `immich-memories preflight` prints which one your machine will use.
 - [CPU-only](./hardware/cpu-only.md): why the title screens, not the encoder, decide render time

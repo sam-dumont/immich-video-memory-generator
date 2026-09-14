@@ -21,7 +21,7 @@ from immich_memories.analysis.editorial_contracts import EditorialCandidate
 from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
 from immich_memories.analysis.editorial_picture_facts import picture_observation_request
 from immich_memories.analysis.editorial_thumbnail_hashes import METHOD, CachedThumbnailHasher
-from immich_memories.analysis.llm_query import resolved_llm_config
+from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.selection_same_picture import (
     SamePicturePairDecision,
     confirm_same_picture_pairs,

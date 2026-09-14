@@ -18,21 +18,29 @@ that is not here, [open an issue](https://github.com/sam-dumont/immich-video-mem
 | `cdn.jsdelivr.net` (Fontsource) | a title needs a font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | keep a bundled family (Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) or drop TTFs in that folder |
 | `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, a `/models` probe, and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
 | `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names; for titles, names, places, dates and descriptions | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
+| `api.anthropic.com` | the reader, with `provider: anthropic` and no `base_url` of your own | the same tiles and lines, to Anthropic | name a host of your own in `llm.base_url` |
+| `api.z.ai` | the reader, with `provider: zai` and no `base_url` of your own | the same tiles and lines, to z.ai | name a host of your own in `llm.base_url` |
 | `advanced.inference.facts_base_url` | preparation, when set | each picture's preview, for the heads and detectors | leave it unset: the app runs them itself |
 | `ace_step.api_url`, `musicgen.base_url` | AI music through a remote API | mood, tempo, genre text; MusicGen also uploads the generated track for stem separation | `ace_step.mode: lib`, your own file with `--music`, or `--no-music` |
 | Hugging Face, torch hub, `github.com` | `models fetch`; first use of ACE-Step or Demucs | nothing about your library; weights are downloaded once | pre-seed the caches for an air-gapped box |
 | Your Apprise or ntfy targets | notifications | memory type, outcome, duration, output path, a redacted error tail; a JPEG frame if `attach_thumbnail: true` | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | the standard OIDC flow with PKCE | basic auth or the trusted-header provider |
 
-Two provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`
-(`https://api.openai.com/v1`) and `zai` (`https://api.z.ai/api/paas/v4`). `preflight` sends one
-small test completion to whatever the reader URL is.
+Three provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`
+(`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`) and `zai`
+(`https://api.z.ai/api/anthropic`). `preflight` asks whatever the reader URL is for its model list,
+and sends one small test call when the host does not publish one.
+
+`provider: anthropic` is the Messages API and reaches any host that serves it, Claude included:
+`POST {base_url}/v1/messages` with `x-api-key`, `anthropic-version: 2023-06-01`, the prompt and the
+reader's 800 px tiles as base64 `image` blocks. The key comes from `ANTHROPIC_API_KEY` as well as
+`OPENAI_API_KEY`, and the provider you configured decides which of the two wins when both are set.
 
 z.ai serves two dialects on one host, so `provider: zai` routes on the path of the `base_url` you
-set: `.../api/anthropic` takes the Anthropic adapter and its `/v1/messages`, and anything else
-(including the preset `.../api/paas/v4`) takes the OpenAI-compatible one. Send the OpenAI path to
-the Anthropic base and the reply is an HTTP 200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`,
-which the reader now reports by its code and message instead of a bare `KeyError`.
+set: `.../api/anthropic` takes the Anthropic adapter and its `/v1/messages`, and `.../api/paas/v4`
+takes the OpenAI-compatible one. Send the OpenAI path to the Anthropic base and the reply is an
+HTTP 200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`, which the reader reports by its code and
+message instead of a bare `KeyError`.
 
 A named provider's own reasoning switch fills in beside whatever else you put in
 `thinking_params` or `no_thinking_params`: replacing the block with a Qwen-shaped one used to drop

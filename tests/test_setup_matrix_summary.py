@@ -11,8 +11,10 @@ from setup_matrix_summary import (  # noqa: E402
     REFERENCE_CELL,
     build_markdown,
     build_summary,
+    estimated_cost,
     jaccard,
     order_kept,
+    render_device,
 )
 
 
@@ -90,11 +92,11 @@ def test_a_hosted_cell_declares_that_no_price_was_measured() -> None:
             _row(
                 "k8s-hosted-zai",
                 hosted=True,
-                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost_eur": None},
+                hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
             ),
         ]
     )
-    assert any("API cost in euro" in line for line in summary["unmeasured"])
+    assert any("what the API cost" in line for line in summary["unmeasured"])
 
 
 def test_a_missing_timing_is_named_not_filled_in() -> None:
@@ -137,3 +139,179 @@ def test_the_table_carries_one_row_per_cell() -> None:
     rows = [_row(REFERENCE_CELL), _row("nas-rules-local"), _row("k8s-rules-local")]
     table = [line for line in build_markdown(_summary(rows)).splitlines() if line.startswith("| ")]
     assert len(table) == len(rows) + 1, "one header row plus one row per cell"
+
+
+def test_the_table_names_the_card_a_gpu_cell_rendered_on() -> None:
+    """Two GPU rows are only worth reading if each says which card it was."""
+    summary = _summary(
+        [
+            _row(REFERENCE_CELL),
+            _row("k8s-gpu-t1000", gpu_product="NVIDIA-T1000-8GB-SHARED"),
+            _row("k8s-gpu-1070", gpu_product="NVIDIA-GeForce-GTX-1070-SHARED"),
+        ]
+    )
+    table = build_markdown(summary)
+
+    assert "## Render device" in table
+    assert "- `k8s-gpu-t1000`: NVIDIA-T1000-8GB-SHARED" in table
+    assert "- `k8s-gpu-1070`: NVIDIA-GeForce-GTX-1070-SHARED" in table
+
+
+def test_the_render_device_column_keeps_the_titles_and_the_encoder_apart() -> None:
+    """They disagreed on the first cluster run, and that disagreement is the finding.
+
+    Those Jobs asked for no GPU, drew their titles on the shared card anyway, and
+    encoded in software because the runtime gave the pod no `video` capability.
+    """
+    rows = [
+        _row(REFERENCE_CELL, title_backend="Metal", encoder="h264_videotoolbox"),
+        _row("k8s-rules-service", title_backend="CUDA", encoder="software"),
+        _row("k8s-gpu-t1000", title_backend="CUDA", encoder="h264_nvenc"),
+        _row("nas-rules-local", title_backend="PIL"),
+    ]
+    table = build_markdown(_summary(rows))
+
+    assert "render device" in table
+    assert "CUDA titles / software" in table
+    assert "CUDA titles / h264_nvenc" in table
+    assert "PIL titles / ?" in table, "half an answer is still the half the run printed"
+
+
+def test_a_cell_that_named_neither_shows_a_dash() -> None:
+    assert render_device(_row("k8s-rules-local")) == "-"
+
+
+def test_a_skipped_row_fills_every_column() -> None:
+    """One column was added and the skipped row is built by count, not by hand."""
+    table = build_markdown(_summary([_row("k8s-full-rules", skip_reason="no overlay")]))
+    header, _, row = table.splitlines()[4:7]
+    assert row.count("|") == header.count("|")
+
+
+def test_a_run_with_no_gpu_cell_gets_no_render_device_section() -> None:
+    assert "Render device" not in build_markdown(_summary([_row(REFERENCE_CELL)]))
+
+
+def test_the_record_says_which_card_answered_the_facts_requests() -> None:
+    """Unpinned, the scheduler picks, so every service row shares whichever card it got."""
+    summary = build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.84.1",
+        rows=[_row(REFERENCE_CELL)],
+        inference_gpu_product="NVIDIA-T1000-8GB-SHARED",
+    )
+    assert summary["inference_gpu_product"] == "NVIDIA-T1000-8GB-SHARED"
+    assert _summary([_row(REFERENCE_CELL)])["inference_gpu_product"] is None
+
+
+PRICES = {
+    "hosted_melious": {
+        "currency": "EUR",
+        "gemma-4-31b": {
+            "input_per_million": 0.10,
+            "output_per_million": 0.30,
+            "source": "https://melious.ai/hub/models/gemma-4-31b",
+            "retrieved": "2026-09-14",
+        },
+    }
+}
+
+
+def _priced(rows: list[dict]) -> dict:
+    return build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.84.1",
+        rows=rows,
+        pricing=PRICES,
+    )
+
+
+def test_a_priced_row_multiplies_the_list_by_the_tokens_it_measured() -> None:
+    row = _row(
+        "mac-hosted-melious-gemma-4-31b",
+        hosted=True,
+        reader="hosted_melious",
+        reader_model="gemma-4-31b",
+        contract={"rejections": 0, "repairs": 0},
+        hosted_usage={
+            "calls": 42,
+            "tokens_in": 125_400,
+            "tokens_out": 8_300,
+            "images_sent": 36,
+            "est_cost": None,
+        },
+    )
+    summary = _priced([_row(REFERENCE_CELL), row])
+
+    usage = summary["cells"][1]["hosted_usage"]
+    assert usage["est_cost"] == 0.015  # 125_400 in at 0.10 plus 8_300 out at 0.30
+    assert usage["cost_currency"] == "EUR"
+    assert usage["price_source"] == "https://melious.ai/hub/models/gemma-4-31b"
+    assert not any("what the API cost" in line for line in summary["unmeasured"])
+    table = build_markdown(summary)
+    assert "list price times measured tokens" in table
+    assert "42 calls, 125.4k in / 8.3k out, 36 tiles" in table
+
+
+def test_a_model_with_no_price_row_stays_unmeasured() -> None:
+    """A token count with no price is not money, and the table has to keep saying so."""
+    row = _row(
+        "nas-hosted-zai",
+        hosted=True,
+        reader="hosted_zai",
+        reader_model="glm-5.3-flash",
+        hosted_usage={"tokens_in": 100, "tokens_out": 10, "est_cost": None},
+    )
+    summary = _priced([_row(REFERENCE_CELL), row])
+    assert summary["cells"][1]["hosted_usage"]["est_cost"] is None
+    assert any("what the API cost" in line for line in summary["unmeasured"])
+
+
+def test_a_price_with_no_token_count_buys_nothing() -> None:
+    price = PRICES["hosted_melious"]["gemma-4-31b"]
+    assert estimated_cost({"tokens_in": None, "tokens_out": None}, price) is None
+    assert estimated_cost({"tokens_in": 10, "tokens_out": 1}, None) is None
+
+
+def test_the_contract_column_carries_the_rejections_and_the_repairs() -> None:
+    row = _row(
+        "mac-hosted-melious-glm-5.3-flash",
+        reader="hosted_melious",
+        contract={"rejections": 3, "repairs": 2},
+    )
+    assert "| 3/2 |" in build_markdown(_summary([_row(REFERENCE_CELL), row]))
+
+
+def test_a_reader_that_left_no_transcripts_says_so_rather_than_claiming_zero() -> None:
+    summary = _summary([_row(REFERENCE_CELL, reader="local_model")])
+    assert any("contract health" in line for line in summary["unmeasured"])
+
+
+def test_a_rules_cell_is_not_asked_about_contracts_it_never_had() -> None:
+    assert not any(
+        "contract health" in line for line in _summary([_row(REFERENCE_CELL)])["unmeasured"]
+    )
+
+
+def test_a_seeded_cell_points_at_the_cell_that_measured_its_preparation() -> None:
+    """Preparation is a fact about the host and the tier, and six rows of it is six copies."""
+    row = _row(
+        "mac-local-gemma4",
+        reader="local_model",
+        seeded_from="mac-local",
+        prepare_cache_primed="seeded from mac-local",
+        measurement_notes={
+            "prepare_cold_s": "preparation. This cell's bank was seeded from `mac-local`.",
+            "prepare_warm_s": "preparation. This cell's bank was seeded from `mac-local`.",
+        },
+        contract={"rejections": 0, "repairs": 0},
+    )
+    row["timing"]["prepare_cold_s"] = None
+    row["timing"]["prepare_warm_s"] = None
+    summary = _summary([_row(REFERENCE_CELL), row])
+
+    assert "| = mac-local |" in build_markdown(summary)
+    assert any("seeded from `mac-local`" in line for line in summary["unmeasured"])
+    assert not any("a true cold preparation" in line for line in summary["unmeasured"])
