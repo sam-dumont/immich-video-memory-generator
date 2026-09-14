@@ -13,7 +13,8 @@ OpenAI-compatible or Anthropic-compatible endpoint can go in `llm`. Not all of t
 Everything below was measured by the [setup matrix](../contribute/setup-matrix.md) on one real
 month, February 2024: 13,552 pictures in scope, 1,417 of them candidates, 15 kept. Same library,
 same month, the same banked facts seeded into every cell, one line of config moved. Selection is
-the reader stage only, preparation already warm.
+the reader stage only, preparation already warm. Every cost is list price times measured tokens,
+never a bill.
 
 ## What the job asks of a model
 
@@ -32,14 +33,14 @@ Three things, and a model that misses any one of them cannot be configured into 
 
 ## What each reader took
 
-| Reader | Where it runs | Selection | Overlap with the reference cut |
-|---|---|---:|---:|
-| `rules`, no model at all | nowhere | 8 s | 25 % |
-| `glm-5.3-flash` | Melious, OpenAI-compatible route | 13 min 45 s | 11 % |
-| `Huihui-Qwen3.6-35B-A3B-abliterated-oQ4e-mtp` | a local OpenAI-compatible server | 16 min 9 s | 30 % |
-| `Qwen3-VL-30B-A3B-Instruct-4bit` | the same, and the graded reference | 19 min 3 s | 100 % |
-| `gpt-5.6-luna` | OpenAI | 20 min 58 s | 11 % |
-| `glm-5.3-flash` | z.ai, Anthropic-compatible route | 25 min 16 s | 20 % |
+| Reader | Where it runs | Selection | Cost per cut | Overlap with the reference cut |
+|---|---|---:|---:|---:|
+| `rules`, no model at all | nowhere | 8 s | free | 25 % |
+| `glm-5.3-flash` | Melious, OpenAI-compatible route | 13 min 45 s | EUR 0.054 | 11 % |
+| `Huihui-Qwen3.6-35B-A3B-abliterated-oQ4e-mtp` | a local OpenAI-compatible server | 16 min 9 s | free | 30 % |
+| `Qwen3-VL-30B-A3B-Instruct-4bit` | the same, and the graded reference | 19 min 3 s | free | 100 % |
+| `gpt-5.6-luna` | OpenAI | 20 min 58 s | USD 0.168 | 11 % |
+| `glm-5.3-flash` | z.ai, Anthropic-compatible route | 25 min 16 s | flat-fee coding plan | 20 % |
 
 Every one of those kept 15 pictures and made a 54 to 55 second film. Overlap is the share of
 identical pictures against the local reference cut; it says two readers disagreed, not which one
@@ -49,20 +50,32 @@ The same model on two providers is 14 minutes against 25. Provider and model are
 
 ## What a cut costs in tokens
 
-One cut was priced end to end, on the cluster: **EUR 0.143** at list, 112 calls, 481,400 tokens in
-and 315,500 out, 40 picture tiles. Read that as the size of a monthly bill, not as a recommendation
-of the model in it: that cell ran `gemma-4-31b`, the model in the images rejection below, and 46 of
-its picture requests came back HTTP 400. It cut the month without them.
+Every cost on this page is **the provider's list price times the tokens the run measured**. It is
+not a bill. No provider in the comparison returns a price with a completion, so nothing here was
+ever charged to an account and checked. Each shop is priced in the currency it publishes in and
+nothing converts between them: an exchange rate is a number nobody measured.
 
-The Mac cells recorded no token counts, so none of them carries a price. What is on record is the
-shape of a February bill, measured on the z.ai route: **154 calls, 366,222 tokens in and 41,965
-out** for one monthly cut. Multiply that by your provider's published rate and you have your own
-estimate. At the cheapest rate in this comparison (EUR 0.10 per million in, EUR 0.40 out) it comes
-to about **EUR 0.05 a cut**. Nothing converts between currencies here: a rate is a number nobody
-measured.
+| Reader | Calls | Tokens in | Tokens out | At list |
+|---|---:|---:|---:|---|
+| `Qwen3-VL-30B-A3B-Instruct-4bit`, local | 164 | 386,706 | 36,462 | free |
+| `Huihui-Qwen3.6-35B-A3B`, local | 151 | 331,993 | 33,091 | free |
+| `glm-5.3-flash` on Melious | 156 | 368,198 | 43,280 | EUR 0.054 |
+| `glm-5.3-flash` on z.ai | 154 | 366,222 | 41,965 | no price list |
+| `gpt-5.6-luna` on OpenAI | 168 | 376,015 | 77,173 | USD 0.168 |
+| `gemma-4-31b` on Melious, cluster cell | 112 | 481,387 | 315,505 | EUR 0.143 |
 
-Two things that move the bill more than the price list does: reasoning tokens, and how many times
-the reader is asked. A month is 150 to 200 calls.
+"Calls" is the reader calls the editor's planner made. Counting POST requests in the log gives 182
+to 201 instead, because that includes the reads before the planner starts. Both numbers are true of
+the same run.
+
+One monthly memory is therefore 150 to 170 planner calls and about 370,000 input tokens, on every
+reader that finished. Input barely moves between them. **Output is where the bill is decided**, and
+it moves by a factor of twelve.
+
+The cluster row is the only one that also carries a render and a full pipeline, so read it as the
+size of a monthly bill rather than as a recommendation of the model in it: `gemma-4-31b` is the
+model in the images rejection below, and 46 of its picture requests came back HTTP 400. It cut the
+month without them.
 
 ## Not supported, and why
 
@@ -95,12 +108,21 @@ Check the message format, tools schema, or response_format.'
 them returning 200. The reader sends 800 px tiles there, so that is where the run dies. Nothing
 configurable fixes it, and a probe that only sends text will never find it.
 
-**A model that answers correctly and ruinously.** One 30B reader took 6,771 s to cut the month
-where the cheapest good one took 825 s: same seeded facts, same 15 pictures kept, 8.2 times the
-wall clock, 36.6 s a call against 4.4. On the three probe prompts it spent 20,193 output tokens
-against 2,441, at 10.3 times the cost, and most of that was reasoning: 8,681 of 9,989 output tokens
-on one prompt were inside a thinking block. A model that thinks hard about a photo caption is
-expensive twice, in money and in the hour you wait.
+**A model that answers correctly and ruinously.** Two Melious readers cut the same month from the
+same seeded facts and both kept 15 pictures. They made **the same 156 calls** and were handed
+within 1 % of the same input. What came back was not comparable:
+
+| | `muse-glimmer` | `glm-5.3-flash` |
+|---|---:|---:|
+| Tokens in | 367,273 | 368,198 |
+| Tokens out | **511,579** | **43,280** |
+| At list | **EUR 0.585** | **EUR 0.054** |
+| Selection | 1 h 53 min | 13 min 45 s |
+
+Eleven times the output for the same job, ten times the price, and eight times the wall clock. The
+probes say where it goes: on the three probe prompts muse-glimmer produced 20,193 output tokens
+against 2,441, and 8,681 of the 9,989 on one of them were inside a thinking block. A model that
+reasons at length about a photograph is expensive twice, in money and in the two hours you wait.
 
 **A model too slow to finish.** One candidate timed out on two of the three probe shapes at the
 300 s default:
@@ -144,7 +166,8 @@ leaves your network when you point at a provider is on
 
 - Quality. This page is time and money. The only reader whose output has been judged end to end is
   the local `Qwen3-VL-30B-A3B-Instruct-4bit` reference.
-- Per-cut cost on every reader but one. The Mac cells kept no token counts.
+- Any actual bill. Every cost here is list price times measured tokens, because no provider in the
+  comparison returns a price with a completion.
 - Anything but a monthly memory. Years, trips and seasons have not been priced on any reader.
 - Batch mode against these numbers. The 50 % discount two of the routes publish is documented by
   the providers, not measured here.

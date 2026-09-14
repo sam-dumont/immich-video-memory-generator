@@ -33,7 +33,7 @@ would have cost 2.6 hours of facts before anything was selected. Match it to the
 |---|---|---|---|
 | `rules` | Nothing beyond the app | The ten standard memory types, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero model requests | No story thesis. Custom free-text subjects are refused. No model reranking, no Live Photo motion choice. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
 | `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader, 16 min on the fastest local alternative |
-| `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, and 31 min on a cluster cell whose tokens cost EUR 0.143 at list | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
+| `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
 
 Which models finish the job, which do not, and what each one cost:
 [Readers](./readers.md). Rules and the local model reader cost nothing in API fees. Electricity and
@@ -157,8 +157,10 @@ second is the one to read.
 
 ### A real month: 13,552 pictures, February 2024
 
-13,552 pictures in the month, 1,417 of them eligible once the scope pass had run (1,418 on the
-cluster, which reads the library a day later), 15 kept in every cell that finished.
+13,552 pictures in the month, 15 kept in every cell that finished. Eligible candidates after the
+scope pass: **1,417 on the Mac and 1,418 on the cluster**. That one picture is a real difference in
+what the two hosts let through, not a rounding artifact, and it is worth knowing before you compare
+two cuts made on two machines and wonder why they are not identical.
 
 <!-- Fields in output/setup-matrix/february/run2/summary.data.json, per cells[] entry:
      setup id, tier tier, prepare cold timing.prepare_cold_s, prepare warm timing.prepare_warm_s,
