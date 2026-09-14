@@ -176,6 +176,15 @@ class JudgmentCache:
         except (OSError, sqlite3.Error) as exc:
             logger.debug("Judgment cache unwritable (%s): the answer is not kept", exc)
 
+    def forget(self, key: str) -> None:
+        """Drop an answer the asking contract refused, so the question is asked again."""
+        try:
+            with self._connections.connection() as conn:
+                conn.execute("DELETE FROM judgments WHERE key = ?", (key,))
+                conn.commit()
+        except (OSError, sqlite3.Error) as exc:
+            logger.debug("Judgment cache unwritable (%s): the answer is still kept", exc)
+
     def close(self) -> None:
         """Release the connections; a later question quietly reopens."""
         self._connections.close()

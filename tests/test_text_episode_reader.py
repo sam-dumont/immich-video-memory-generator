@@ -1069,3 +1069,56 @@ def test_text_representatives_drive_structure_without_reducing_the_reservoir(
 
     assert workprint.representative_ids == ("action",)
     assert workprint.moments[0].candidate_ids == ("average", "action", "portrait")
+
+
+def test_a_swallowed_provider_failure_names_the_rejecting_check_once_in_the_log(
+    tmp_path: Path,
+    caplog,
+) -> None:
+    import logging as _logging
+
+    from immich_memories.analysis.text_episode_reader import (
+        CachedTextEpisodeReader,
+        TextEpisodeRequestLimits,
+    )
+
+    noon = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    later = noon + timedelta(days=3)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                make_asset("morning", file_created_at=noon),
+                make_asset("evening", file_created_at=later),
+            )
+        ),
+    )
+    projections = project_episode_groups(prepared, ("morning", "evening"))
+    # Long enough that the two groups cannot share one request, so both packs fail alike.
+    described = "a table laid out with plates and glasses for a long lunch " * 8
+    lines = _AnnotationLines({"morning": described, "evening": described})
+    producer = EpisodeReadingProducer(
+        model_id="glm-5.3-flash",
+        prompt_version="episode-prompt-v1",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+
+    with caplog.at_level(_logging.WARNING, logger="immich_memories.analysis.text_episode_reader"):
+        result = CachedTextEpisodeReader(
+            store=EpisodeReadingStore(tmp_path / "annotations.sqlite"),
+            producer=producer,
+            annotations=lines,
+            requester=lambda _prompt: (_ for _ in ()).throw(
+                ValueError("LLM provider returned no choices: ['code', 'msg']")
+            ),
+            limits=TextEpisodeRequestLimits(max_prompt_chars=1600),
+        ).read(projections)
+
+    assert all(episode.reading is None for episode in result.episodes)
+    assert result.actual_calls == 2
+    assert [record.getMessage() for record in caplog.records] == [
+        "text episode provider failed (ValueError): LLM provider returned no choices: "
+        "['code', 'msg']"
+    ]

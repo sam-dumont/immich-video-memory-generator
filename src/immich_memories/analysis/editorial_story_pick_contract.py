@@ -22,8 +22,11 @@ def source_kind_marker(unit: Mapping[str, Any]) -> str:
     return " | live photo" if kind.startswith("live") else ""
 
 
-def _repair_question(prompt: str, *, error: str, count: int, allow_fewer: bool) -> str:
+def _repair_question(
+    prompt: str, *, error: str, count: int, allow_fewer: bool, labels: set[str]
+) -> str:
     size_rule = "at most" if allow_fewer else "exactly"
+    offered = ", ".join(f'"{label}"' for label in sorted(labels))
     shortfall_rule = (
         f'"unused_slots" must equal {count} minus the number of kept labels '
         f"(0 when keeping {count}); it is not the number of rejected candidates. "
@@ -34,6 +37,7 @@ def _repair_question(prompt: str, *, error: str, count: int, allow_fewer: bool) 
     return prompt + (
         f"\n\nThe previous answer was invalid: {error}. "
         f'Return a complete JSON object with "keep": {size_rule} {count} distinct supplied labels. '
+        f"The offered labels are {offered}. "
         f"{shortfall_rule}"
         "Do not add labels, prose or a second object."
     )
@@ -46,9 +50,11 @@ def _read_pick(
     answer = final_json_object(raw)
     if answer is None:
         raise ValueError("answer must be one complete JSON object")
-    kept = answer.get("keep")
-    if not isinstance(kept, list) or any(not isinstance(label, str) for label in kept):
+    answered = answer.get("keep")
+    if not isinstance(answered, list) or any(not isinstance(label, str) for label in answered):
         raise ValueError("keep must be an array of labels")
+    # A model that echoes back a whole offered row has still named that row.
+    kept = [label.split(" | ", 1)[0].strip() for label in answered]
     if len(kept) > count or len(set(kept)) != len(kept):
         raise ValueError(f"keep must contain at most {count} distinct labels")
     unused = count - len(kept)
@@ -79,10 +85,21 @@ def ask_moment_pick(
     record: Callable[[dict], None] | None = None,
 ) -> list[str]:
     """One whole-answer repair; never turn an invalid list into an apparent vote."""
+
+    def accepts(raw: str) -> bool:
+        """Keep the bank free of picks this contract cannot read (#908)."""
+        try:
+            _read_pick(raw, labels=labels, count=count, allow_fewer=allow_fewer)
+        except ValueError:
+            return False
+        return True
+
     error = ""
     for attempt in range(2):
         question = (
-            _repair_question(prompt, error=error, count=count, allow_fewer=allow_fewer)
+            _repair_question(
+                prompt, error=error, count=count, allow_fewer=allow_fewer, labels=labels
+            )
             if attempt
             else prompt
         )
@@ -90,6 +107,7 @@ def ask_moment_pick(
             stage + ("-repair" if attempt else ""),
             question,
             max_tokens=max(300, 100 + 10 * count),
+            accepts=accepts,
             **({"json_object": True} if allow_fewer else {}),
         )
         try:

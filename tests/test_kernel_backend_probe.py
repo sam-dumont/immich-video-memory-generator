@@ -6,12 +6,23 @@ import json
 import platform
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from immich_memories.operations import bounded_process
+
+
+@pytest.fixture(autouse=True)
+def _forget_probed_backends() -> Iterator[None]:
+    """The probe answer is cached for the life of a process, which here is the session."""
+    from immich_memories.titles.kernel_backend_probe import probe_backend_dispatch
+
+    probe_backend_dispatch.cache_clear()
+    yield
+    probe_backend_dispatch.cache_clear()
 
 
 class _RecordedRun:
@@ -141,7 +152,7 @@ def test_non_apple_hosts_try_cuda_then_vulkan_then_cpu(monkeypatch: pytest.Monke
     assert candidates == [
         (fake_ti.cuda, "CUDA", "cuda"),
         (fake_ti.vulkan, "Vulkan", "vulkan"),
-        (fake_ti.cpu, "CPU", None),
+        (fake_ti.cpu, "CPU", "cpu"),
     ]
 
 
@@ -322,7 +333,9 @@ def test_failed_gpu_probe_skips_parent_gpu_init(
     monkeypatch.setattr(
         probe_module,
         "_probe_backend",
-        lambda _backend: KernelProbeResult(KernelProbeOutcome(outcome)),
+        lambda backend: KernelProbeResult(
+            KernelProbeOutcome.SUCCESS if backend == "cpu" else KernelProbeOutcome(outcome)
+        ),
     )
     monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
     monkeypatch.setattr(kernels, "_compile_kernels", lambda: None)
@@ -331,17 +344,136 @@ def test_failed_gpu_probe_skips_parent_gpu_init(
     assert parent_inits == [{"arch": fake_ti.cpu, "offline_cache": True}]
 
 
-def test_forced_cpu_never_spawns_a_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forced_cpu_still_proves_the_cpu_can_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """IMMICH_FORCE_CPU chooses the arch, it does not vouch for the processor."""
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        KernelProbeResult,
+    )
+
     kernels, probe_module, fake_ti = _prepare_parent_init(monkeypatch)
     parent_inits: list[dict[str, object]] = []
+    probes: list[str] = []
     monkeypatch.setenv("IMMICH_FORCE_CPU", "true")
     monkeypatch.setattr(
         probe_module,
         "_probe_backend",
-        lambda _backend: pytest.fail("CPU fallback must not spawn a child"),
+        lambda backend: probes.append(backend) or KernelProbeResult(KernelProbeOutcome.SUCCESS),
     )
     monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
     monkeypatch.setattr(kernels, "_compile_kernels", lambda: None)
 
     assert kernels.init_kernels() == "CPU"
+    assert probes == ["cpu"]
     assert parent_inits == [{"arch": fake_ti.cpu, "offline_cache": True}]
+
+
+@pytest.mark.parametrize("returncode", [132, -4])
+def test_probe_names_the_signal_that_killed_the_child(
+    monkeypatch: pytest.MonkeyPatch, returncode: int
+) -> None:
+    """SIGILL is what a CPU without AVX does to the first kernel the library compiles.
+
+    It arrives as -4 straight from `wait`, or as 132 when a shell or a container
+    init sits between us and the child. Both are the same death.
+    """
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        _probe_backend,
+    )
+
+    _install_runner(monkeypatch, _RecordedRun(payload=None, returncode=returncode))
+
+    result = _probe_backend("cpu")
+
+    assert result.outcome is KernelProbeOutcome.CHILD_SIGNALLED
+    assert result.detail == "SIGILL"
+
+
+def test_a_cpu_that_kills_the_probe_child_leaves_no_backend_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-AVX case: the CPU backend is probed like any other, and it loses.
+
+    Before this, CPU was reported as working without ever running a kernel, so
+    `init_kernels()` returned "CPU" and the SIGILL landed on the render instead
+    of on a probe child.
+    """
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        KernelProbeResult,
+    )
+
+    kernels, probe_module, _fake_ti = _prepare_parent_init(monkeypatch)
+    parent_inits: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        probe_module,
+        "_probe_backend",
+        lambda _backend: KernelProbeResult(KernelProbeOutcome.CHILD_SIGNALLED, "SIGILL"),
+    )
+    monkeypatch.setattr(kernels, "_silent_init", lambda **kwargs: parent_inits.append(kwargs))
+    monkeypatch.setattr(kernels, "_compile_kernels", lambda: None)
+
+    assert kernels.init_kernels() is None
+    assert parent_inits == []
+
+
+def test_the_reason_names_the_illegal_instruction_and_the_renderer_that_takes_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.titles.kernel_backend_probe import kernel_dispatch_failure
+
+    _install_runner(monkeypatch, _RecordedRun(payload=None, returncode=132))
+
+    assert kernel_dispatch_failure() == (
+        "kernel backend crashed on this CPU: illegal instruction; "
+        "titles fall back to the PIL renderer"
+    )
+
+
+def test_a_cpu_that_dispatches_has_no_reason_to_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    from immich_memories.titles.kernel_backend_probe import kernel_dispatch_failure
+
+    _install_runner(monkeypatch, _RecordedRun(payload={"outcome": "success", "detail": None}))
+
+    assert kernel_dispatch_failure() is None
+
+
+def test_the_probe_child_is_spawned_once_for_a_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#855: the child is expensive, and a second one would re-enter the CLI."""
+    from immich_memories.titles.kernel_backend_probe import (
+        kernel_dispatch_failure,
+        probe_backend_dispatch,
+    )
+
+    spawns: list[list[str]] = []
+
+    def record(command, *, timeout, **_kwargs):  # noqa: ARG001
+        spawns.append(list(command))
+        Path(command[3]).write_text(json.dumps({"outcome": "success", "detail": None}))
+        return subprocess.CompletedProcess(list(command), 0, "", "")
+
+    # WHY: the process boundary again, counted rather than stubbed out.
+    monkeypatch.setattr(bounded_process, "run_bounded_process", record)
+
+    assert kernel_dispatch_failure() is None
+    assert probe_backend_dispatch("cpu").outcome.value == "success"
+
+    assert len(spawns) == 1
+
+
+def test_a_probe_that_times_out_says_so_without_naming_a_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.titles.kernel_backend_probe import kernel_dispatch_failure
+
+    _install_runner(
+        monkeypatch,
+        _RecordedRun(payload=None, error=subprocess.TimeoutExpired("probe", 10.0)),
+    )
+
+    reason = kernel_dispatch_failure()
+
+    assert reason is not None
+    assert reason.startswith("kernel backend did not start within 10s")
+    assert reason.endswith("titles fall back to the PIL renderer")

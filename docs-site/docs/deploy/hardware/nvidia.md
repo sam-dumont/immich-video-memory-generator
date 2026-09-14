@@ -113,7 +113,7 @@ Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardwa
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
 automatically; see [the overview](./overview.md#quality-one-dial-calibrated-per-encoder).
 
-Just don't buy the card for the encode. Encoding is the smaller half of a CPU-only assembly: title rendering was ~263 s of a ~339 s assembly at `--cpus=2`. The bigger win from this GPU is title rendering. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-is-the-bottleneck-not-encoding) for the measured split.
+Just don't buy the card for the encode alone. Encoding is the larger half of a CPU-only assembly again: title rendering was ~263 s of a ~339 s assembly at `--cpus=2` until the blur fix cut a 1080p title frame from 578 ms to 64 ms. An NVIDIA card takes work off both halves. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split.
 
 The `editorial-cuda` extra pins ONNX Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9. Version 1.27 and newer require CUDA 13; see the [official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html). Do not install the CPU `editorial` extra beside it.
 

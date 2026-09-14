@@ -574,6 +574,13 @@ class _EvidencePreparation:
         return exclusions
 
 
+def _recorded(requester, stage: str, directory: Callable[[], Path]):
+    """Keep the private prompt transcript of a reading stage, so `runs why` can show it."""
+    if not isinstance(requester, SyncTextPromptRequester):
+        return requester
+    return replace(requester, artifacts=TextPromptArtifacts(directory, stage=stage))
+
+
 def _reading_requesters(config, ports, reader_mode):
     if reader_mode == "rules":
         return "rules-v1", None, None
@@ -698,11 +705,12 @@ def build_editorial_planner(
         fetch_preview=lambda asset_id: runtime_ports.fetch_preview(client, asset_id),
         attached_sources=lambda: source_snapshot or (),
     )
-    if isinstance(period_requester, SyncTextPromptRequester):
-        period_requester = replace(
-            period_requester,
-            artifacts=TextPromptArtifacts(lambda: backend._context.artifact_dir, stage="period"),
-        )
+
+    def attempt_directory() -> Path:
+        return backend._context.artifact_dir
+
+    episode_requester = _recorded(episode_requester, "episodes", attempt_directory)
+    period_requester = _recorded(period_requester, "period", attempt_directory)
     try:
         planner = TextEditorialPlanner(
             selection_request=selection_request,

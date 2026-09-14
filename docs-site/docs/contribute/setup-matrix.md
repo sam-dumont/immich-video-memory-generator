@@ -58,6 +58,23 @@ warm.
 already there before the run, which is to say the cell has run before, and the record then says
 that its cold preparation is a re-read rather than a first derivation.
 
+## A remote cell's config names container roots only
+
+A cell's config is a copy of the operator's own, for its Immich credentials, with the axes the
+sweep varies written over the top. Every path-valued field comes along with that copy, and on a
+NAS or in a pod none of them exist: the second real remote run pushed
+`advanced.editorial.preparation.detector_python: /Users/…/venv-detectors/bin/python` to the NAS and
+`nas-rules-local` died in `detectors: FileNotFoundError` with 133 pictures still missing their
+heads, having reported no cut at all.
+
+So every remote cell gets each of those fields re-pinned to a root its container actually has
+(`/out`, `/cache`, `/models`), or blanked where blank is the field's own "work it out here"
+default: `output.directory`, `audio.local_music_dir`, `triage.encoder`, `triage.bundle`,
+`editorial.preparation.head_bundle`, `editorial.preparation.detector_python`,
+`editorial.preparation.detector_cache_dir` and `editorial.preparation.marqo_onnx`, on top of the
+cache trio every lane already gets. `~` counts as a local path here too: HOME is `/models` on the
+NAS and `/home/immich` in the Job, a directory that goes away with the pod.
+
 ## Start with the dry run
 
 ```bash
@@ -74,10 +91,15 @@ Two files outside the repo, neither of them tracked:
 
 | File | Holds |
 |---|---|
-| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_BASE_URL`, `ZAI_API_KEY` |
+| `~/.immich-memories-matrix/.env` | `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY` |
 | `~/.immich-memories-matrix/matrix.env` | `MATRIX_NAS_SSH`, `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS`, `MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` |
 
 `MATRIX_NAS_DOCKER_LIMITS` and `MATRIX_INFERENCE_BASE_URL` are the two optional entries: see below.
+There is no `ZAI_BASE_URL`: the `zai` provider preset carries the URL that serves
+`/chat/completions`, and the owner's own variable named z.ai's Anthropic-compatible endpoint, which
+answers 200 with a 404 body and `KeyError: 'choices'`. The runner drops `llm.base_url` out of a
+hosted cell's copied config so the preset can apply at all, along with `llm.no_thinking_params`,
+which is oMLX's chat-template switch and means nothing to a provider.
 
 Point at others with `--env-file`, repeatable. The Mac cells also want `OPENAI_API_KEY` in the
 shell, which is the alias the config loader maps to `llm.api_key`.
@@ -187,6 +209,15 @@ address. How long the service took to answer is published as `inference_warmup_s
 that never answers stops the run with the body it replied with, which is the only thing that names
 the model it is missing.
 
+A NAS cell's credentials go over in a file. `docker run -e NAME` takes the value from the
+environment of the shell running docker, and a non-interactive ssh session carries none of the
+runner's variables: both NAS hosted cells reached their provider with an empty key, and Melious
+answered 401 while the same key worked from the cluster, where the runner makes a Secret out of its
+own environment. `push-env` pipes `NAME=value` into `<remote>/env` under `umask 077`, the run uses
+`--env-file`, `pull-results` excludes it and `drop-env` removes it whether or not the cell worked.
+Nothing is written on this machine, the values never reach the NAS's command line, and the dry run
+prints `NAME=$NAME`.
+
 ## The cluster lane
 
 The matrix makes two claims of its own, `setup-matrix-data` and `setup-matrix-output`, before it
@@ -201,6 +232,12 @@ subPath `cache/<cell>`, mounted at `/cache`. It is kept between cells and betwee
 warm bank is the difference between a cold preparation and an afternoon of them. `--purge-claims`
 deletes it at the end of the run. The output claim is deleted per cell once the collector has
 copied the results to this machine.
+
+The collector mounts that claim on the same subPath and at the same path the Job wrote to, `/out`,
+and `kubectl cp` is given that absolute path. `kubectl cp` runs `tar` inside the container, and the
+image's WORKDIR is `/app`: a source relative to the claim root was
+`tar: setup-matrix/<cell>: Cannot stat` on the second real run, and the film, the attempt and every
+per-step log stayed on the volume while the cell published an empty row.
 
 A cell waits twice: five minutes for its pod to be scheduled, then up to three hours for the Job to
 finish. A pod that cannot be scheduled, for a claim that does not exist or a node with no room, is
@@ -232,6 +269,12 @@ Nothing in either is estimated. A number the run did not report stays null and e
 with a completion, so the cost column is empty; token counts at or above 1000 are rounded to the
 nearest 100 by the end-of-run summary; and a cell re-run over its own cache reports a re-read
 rather than a first derivation, which the record says out loud.
+
+A remote cell that cut a film and failed to copy it back still reports its numbers. The container
+tees every phase into its output volume, but the run's own stdout came back with the step that ran
+it (`kubectl logs` for a cluster cell, the ssh session for a NAS one), and the end-of-run block is
+read from there when the volume's copy never arrived. What did not come back is named under
+`unmeasured`: the film, and whichever per-phase timings were only ever written to the volume.
 
 Peak memory is measured per step, by running each local step under `/usr/bin/time` and taking the
 largest of the three. The kernel's own counter is the maximum over every child the runner has

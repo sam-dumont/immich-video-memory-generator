@@ -47,17 +47,22 @@ class QueryTextRequester:
         self._json_failure_observer = json_failure_observer
         self._json_decoding_observer = json_decoding_observer
 
-    async def request(self, request: TextRequest) -> TextCall:
-        """Return the complete answer and whether the exact prompt was already banked."""
+    async def request(
+        self, request: TextRequest, *, accepts: Callable[[str], bool] | None = None
+    ) -> TextCall:
+        """Return the complete answer and whether the exact prompt was already banked.
+
+        `accepts` is the calling contract's own check. Only an answer it can read is
+        kept or replayed: banking one it rejects makes every rerun fail from the bank
+        without ever asking the provider again.
+        """
         check_cancelled()
         started = self._monotonic()
         cache = JudgmentCache(request.cache_path)
         try:
-            raw = cache.answer_for(request.judgment_key)
+            raw = self._usable_banked_answer(cache, request, accepts)
             cache_hit = raw is not None
-            if raw is not None:
-                llm_metrics.record_cache_hit()
-            else:
+            if raw is None:
                 failure = TextCompletionFailure.from_record(
                     cache.completion_failure_for(request.judgment_key)
                 )
@@ -65,7 +70,8 @@ class QueryTextRequester:
                     llm_metrics.record_cache_hit()
                     raise failure
                 raw = await self._bounded_query(request, cache)
-                cache.remember(request.judgment_key, raw)
+                if accepts is None or accepts(raw):
+                    cache.remember(request.judgment_key, raw)
         finally:
             cache.close()
         return TextCall(
@@ -75,6 +81,20 @@ class QueryTextRequester:
             cache_hit=cache_hit,
             thinking=request.thinking,
         )
+
+    @staticmethod
+    def _usable_banked_answer(
+        cache: JudgmentCache, request: TextRequest, accepts: Callable[[str], bool] | None
+    ) -> str | None:
+        """Drop a banked answer the caller refuses; replaying it can never recover."""
+        raw = cache.answer_for(request.judgment_key)
+        if raw is None:
+            return None
+        if accepts is not None and not accepts(raw):
+            cache.forget(request.judgment_key)
+            return None
+        llm_metrics.record_cache_hit()
+        return raw
 
     async def _bounded_query(self, request, cache):
         """The original attempt and existing doubled-budget retry, with typed exhaustion."""
