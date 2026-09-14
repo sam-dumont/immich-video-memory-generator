@@ -31,6 +31,12 @@ class StructureTextJudge:
             json_decoding_observer=self._record_json_decoding,
         )
 
+    def map_independent(self, work, items):
+        """Run independent prompt chains with isolated, source-ordered call records."""
+        from immich_memories.analysis.editorial_reader_concurrency import run_reader_jobs
+
+        return run_reader_jobs(self, work, items)
+
     def _record_json_decoding(self, record: dict) -> None:
         """Preserve the original complete reply when its representation is normalized."""
         path = (

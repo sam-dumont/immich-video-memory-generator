@@ -289,6 +289,7 @@ llm:
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   always_reasons: false            # true: the endpoint thinks on every call, asked or not
   thinking: "disabled"             # disabled | low | high | max | auto
+  reader_concurrency: 4           # independent reader jobs; 1 keeps them serial
   batch: "off"                     # off | auto: queue a stage's independent prompts, half price
   batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
   batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
@@ -399,6 +400,14 @@ is retried once with more room, and the error then names the split:
 "reasoning used 12,192 of 12,192 tokens, no answer". A host that needs that
 second try is usually also worth a longer `timeout_seconds`: the retry spends
 what is left of the first call's read budget, not a fresh one.
+
+`reader_concurrency` limits independent story-reader jobs in flight (default 4,
+range 1 to 16). Different event inventories and worthiness/standing blocks can
+overlap. Pages within an event, story-episode pages and later dependent picks
+remain sequential. Set 1 if a local server handles one request best or a hosted
+provider needs a lower request rate. This changes scheduling only: prompts,
+judgment keys and source ordering stay the same. Batch delivery is configured
+separately.
 
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas

@@ -126,6 +126,12 @@ class LLMConfig(BaseModel):
             "whose strict vision schema accepts only image_url.url."
         ),
     )
+    reader_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=16,
+        description="Maximum independent reader jobs in flight. Set 1 for serial reading; prompts and bank identities stay the same.",
+    )
     batch: BatchMode = Field(
         default="off",
         description=(

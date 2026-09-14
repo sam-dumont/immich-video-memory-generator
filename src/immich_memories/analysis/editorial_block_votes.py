@@ -13,6 +13,7 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 
+from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_structure_json import _first_object
 
 BLOCK_SIZE = 12
@@ -166,34 +167,39 @@ def vote_blocks(
     identity = _judge_model_identity(judge, model_identity) if bank is not None else None
     reusable = bank if identity is not None else None
     blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
+    pending = []
     for bi, block in enumerate(blocks):
         orders = _block_orders(block, bank_key(block))
         prompts = {name: prompt_of("\n".join(row_of(x) for x in order)) for name, order in orders}
-        votes = _banked_votes(
-            judge,
-            stage=f"{stage}-{bi + 1}",
-            orders=orders,
-            prompts=prompts,
-            answer_key=answer_key,
-            label_of=label_of,
-            max_tokens=max_tokens,
-            bank=reusable,
-            key=_vote_cache_key(prompts, identity, max_tokens, answer_key),
-            save=save,
+        key = _vote_cache_key(prompts, identity, max_tokens, answer_key)
+        pending.append(
+            (
+                block,
+                key,
+                {
+                    "stage": f"{stage}-{bi + 1}",
+                    "orders": orders,
+                    "prompts": prompts,
+                    "answer_key": answer_key,
+                    "label_of": label_of,
+                    "max_tokens": max_tokens,
+                },
+            )
         )
+
+    def read(child, item):
+        _block, key, asking = item
+        if reusable is not None and key in reusable:
+            return reusable[key]
+        return _ask_orders(child, **asking)
+
+    for (block, key, _asking), votes in zip(pending, reader_map(judge, read, pending), strict=True):
+        if reusable is not None and key not in reusable:
+            reusable[key] = votes
+            if save is not None:
+                save()
         votes_of.update(_tally(block, label_of, votes))
     return votes_of
-
-
-def _banked_votes(judge, *, bank, key, save, **asking) -> dict[str, dict[str, str]]:
-    if bank is not None and key in bank:
-        return bank[key]
-    votes = _ask_orders(judge, **asking)
-    if bank is not None:
-        bank[key] = votes
-        if save is not None:
-            save()
-    return votes
 
 
 def _tally(

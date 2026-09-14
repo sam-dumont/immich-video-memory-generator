@@ -170,3 +170,12 @@ upload:
   enabled: true
   album_name: "2024 Memories"
 ```
+
+
+## Reader concurrency
+
+`advanced.llm.reader_concurrency` defaults to 4. The reader overlaps independent
+event inventories and worthiness/standing blocks, while keeping each chain of
+pages sequential. Lower it to 1 for a server that works best on one request at
+a time; values up to 16 are accepted. Changing it keeps existing judgment banks
+usable. The rules reader makes no model calls and is unaffected.

@@ -447,6 +447,16 @@ src/immich_memories/
 
 ## Key Classes & Their Relationships
 
+### Independent reader work
+
+`editorial_reader_concurrency.py` bounds model-reader jobs and copies the run's
+cancellation and metrics context into each worker. Each job owns a text judge
+and audit directory; completed call records are merged in source order.
+`editorial_block_votes.py` commits vote-bank updates on the caller thread.
+`editorial_story_planner.py` overlaps event inventories, retaining sequential
+pages within each event. Prompts and judgment identities do not include the
+concurrency setting.
+
 ### Pipeline Flow (story-first)
 
 Videos and photos are one pool, and the editor cuts from it:
