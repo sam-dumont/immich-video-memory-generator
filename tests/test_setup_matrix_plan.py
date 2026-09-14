@@ -82,8 +82,9 @@ OPERATOR_CONFIG = {
     "output": {"directory": "~/Videos/Memories", "resolution": "4K"},
     # Three blocks the operator's own config carried and the manifest did not
     # pin, which is how the cluster rows came out a shot short of every other
-    # lane. Kept here at values that are not the schema's.
-    "title_screens": {"ending_duration": 4.0, "title_duration": 3.0},
+    # lane. Kept here at values the baseline does not name, so a pin that stopped
+    # applying would show up as a lane carrying these instead.
+    "title_screens": {"ending_duration": 6.0, "title_duration": 3.0, "locale": "en"},
     "defaults": {"transition_duration": 0.8},
     "photos": {"duration": 5.0},
     "cache": {
@@ -583,6 +584,10 @@ def test_every_lane_plans_the_same_timeline(manifest: dict, tmp_path: Path) -> N
     operator's config and writes the pins over it. `title_screens.ending_duration`
     was 4.0 s there against 7.0 s on the schema, and those three seconds of ending
     screen are why every cluster cell planned 14 shots and every other cell 15.
+
+    The pinned values are run 1's, not the schema's, because `mac-local` is the
+    reference cut and it already ran at a 4.0 s ending: pinning 7.0 would have put
+    every future cell one shot away from the row it is compared against.
     """
     source = tmp_path / "operator.yaml"
     source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
@@ -599,7 +604,8 @@ def test_every_lane_plans_the_same_timeline(manifest: dict, tmp_path: Path) -> N
 
     for block in ("title_screens", "defaults", "photos"):
         assert in_the_pod[block] == on_the_laptop[block], block
-    assert in_the_pod["title_screens"]["ending_duration"] == 7.0, "the schema's own default"
+    assert in_the_pod["title_screens"]["ending_duration"] == 4.0, "what run 1 was measured with"
+    assert in_the_pod["title_screens"]["locale"] == "fr", "what run 1 was measured with"
 
 
 @pytest.mark.parametrize(

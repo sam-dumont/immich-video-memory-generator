@@ -53,33 +53,44 @@ baseline_config:
   inference.fallback_to_local: true
   editorial.preparation.tier: no_captions
 
-  # Every field the timeline plan reads, at the app's own schema defaults.
+  # Every field the timeline plan reads, at the values run 1 was measured with.
   #
-  # WHY all of them, when only one was ever measured wrong: a Mac or NAS cell
-  # copies the operator's config and writes these pins over it, while a cluster
-  # cell's ConfigMap is built from the pins ALONE. Anything left out is the
-  # operator's value on two lanes and the schema's on the third, and the lanes
-  # stop being comparable with nothing in the table saying so.
-  # `title_screens.ending_duration` is how that surfaced: 4.0 s in the operator's
-  # config against 7.0 s on the schema, and those three seconds of ending screen
-  # are the whole reason every cluster cell planned 14 shots while every other
-  # cell planned 15.
+  # WHY pinned at all: a Mac or NAS cell copies the operator's config and writes
+  # these pins over it, while a cluster cell's ConfigMap is built from the pins
+  # ALONE. Anything left out is the operator's value on two lanes and the
+  # schema's on the third, and the lanes stop being comparable with nothing in
+  # the table saying so. `title_screens.ending_duration` is how that surfaced:
+  # 4.0 s in the operator's config against 7.0 s on the schema, and those three
+  # seconds of ending screen are the whole reason every cluster cell planned 14
+  # shots while every other cell planned 15.
+  #
+  # WHY these values and not the schema's: `mac-local` is the reference cut every
+  # other row's overlap is measured against, and it already ran at `locale: fr`
+  # and a 4.0 s ending. Pinning the schema's 7.0 s would have made every FUTURE
+  # cell plan 14 shots against the reference's 15 and broken the reader
+  # comparison the table exists for. These came off
+  # `output/setup-matrix/demo/run1/mac-local/config.yaml`. Changing one of them
+  # is changing the timeline, and no row measured after it compares with a row
+  # measured before it.
   title_screens.enabled: true
-  title_screens.locale: auto
+  title_screens.locale: fr
   title_screens.style_mode: auto
   title_screens.animated_background: true
   title_screens.show_decorative_lines: false
   title_screens.title_duration: 3.5
   title_screens.month_divider_duration: 2.0
-  title_screens.ending_duration: 7.0
+  title_screens.ending_duration: 4.0
   title_screens.show_month_dividers: true
   title_screens.month_divider_threshold: 2
   title_screens.use_first_name_only: true
   # The overlap the plan takes back off the content budget is worked out from
-  # these two. There is no `defaults.transition_buffer` on the schema.
+  # these two. There is no `defaults.transition_buffer` on the schema: run 1's
+  # config files carry one, left over from a release that had the field.
   defaults.transition: smart
   defaults.transition_duration: 0.5
   # Seconds one photo holds, which is what the editorial plan sizes shots with.
+  # Run 1's copied configs named `photos.enabled` and nothing else, so 4.0 is
+  # both the schema's default and what those cells ran.
   photos.enabled: true
   photos.duration: 4.0
   # Only read when a memory sizes its own duration, and this manifest asks for

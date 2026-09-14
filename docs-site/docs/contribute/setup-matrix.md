@@ -224,13 +224,20 @@ schema's own default is 7.0 s, so the cluster planned three more seconds of endi
 anything else did, and every cluster cell came out at 14 shots against 15 everywhere else. The row
 was not measuring the cluster. It was measuring an unpinned key.
 
-`baseline_config` therefore pins every field the timeline plan reads, at the app's own defaults: the
-whole `title_screens` block, `defaults.transition` and `defaults.transition_duration`,
-`photos.enabled` and `photos.duration`, and `analysis.optimal_clip_duration`. There is no
-`defaults.transition_buffer` on the schema: the overlap the plan takes back off the content budget
-is worked out from the transition mode and its duration. A test holds the line by loading the
-cluster ConfigMap and the Mac cell's pinned config out of the same plan and asserting those blocks
-are identical. Anything new that changes a timeline belongs in that list on the day it lands.
+`baseline_config` therefore pins every field the timeline plan reads: the whole `title_screens`
+block, `defaults.transition` and `defaults.transition_duration`, `photos.enabled` and
+`photos.duration`, and `analysis.optimal_clip_duration`. There is no `defaults.transition_buffer` on
+the schema: the overlap the plan takes back off the content budget is worked out from the transition
+mode and its duration. A test holds the line by loading the cluster ConfigMap and the Mac cell's
+pinned config out of the same plan and asserting those blocks are identical. Anything new that
+changes a timeline belongs in that list on the day it lands.
+
+The values are run 1's, read off `mac-local`'s own written config, and not the schema's defaults.
+`mac-local` is the reference cut every other row's overlap is measured against, and it ran at
+`locale: fr` with a 4.0 s ending screen, so pinning the schema's 7.0 s would have put every future
+cell at 14 shots against the reference's 15 and broken the reader comparison the table exists for.
+The baseline is the timeline the matrix was first measured with: changing any value in it invalidates
+every comparison against a cell measured before the change, and the older rows have to be re-run.
 
 ## Start with the dry run
 
