@@ -58,6 +58,10 @@ class PreparationResult:
     tier: str = "full"
     seconds_by_stage: Mapping[str, float] = field(default_factory=dict)
     pictures_by_stage: Mapping[str, int] = field(default_factory=dict)
+    # What another machine charged itself for a stage that ran there. Wall clock
+    # minus this is the wire and the waiting, which is what a remote pass is
+    # usually spending, and the only number that says which to go and fix.
+    service_seconds_by_stage: Mapping[str, float] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -84,11 +88,19 @@ class PreparationResult:
         These are the numbers the tier decision turns on, taken on the machine that
         will run it rather than on the machine the table was written on.
         """
-        return {
-            stage: round(self.seconds_by_stage[stage] / pictures, 4)
-            for stage, pictures in self.pictures_by_stage.items()
-            if pictures and stage in self.seconds_by_stage
-        }
+        return _per_picture(self.seconds_by_stage, self.pictures_by_stage)
+
+    def service_rates(self) -> dict[str, float]:
+        """Seconds per picture the service itself reported, for the stages that ran there."""
+        return _per_picture(self.service_seconds_by_stage, self.pictures_by_stage)
+
+
+def _per_picture(seconds: Mapping[str, float], pictures: Mapping[str, int]) -> dict[str, float]:
+    return {
+        stage: round(seconds[stage] / count, 4)
+        for stage, count in pictures.items()
+        if count and stage in seconds
+    }
 
 
 @dataclass(frozen=True)
@@ -163,6 +175,7 @@ class _Acquisition:
     # per-producer numbers a wall-clock total cannot: the tier decision turns on them.
     seconds: dict[str, float] = field(default_factory=dict)
     pictures: dict[str, int] = field(default_factory=dict)
+    service_seconds: dict[str, float] = field(default_factory=dict)
 
     @contextmanager
     def timed(self, stage: str, pictures: int) -> Iterator[None]:
@@ -237,7 +250,7 @@ class _Acquisition:
         self.check()
         try:
             with self.timed("remote_facts", len(pending)):
-                prepare_remote_facts(
+                charged = prepare_remote_facts(
                     pending=pending,
                     store_path=self.store_path,
                     config=self.inference_config,
@@ -245,6 +258,10 @@ class _Acquisition:
                     check_cancelled=self.check,
                     progress=self.report,
                     on_asset=self.note,
+                )
+            if charged is not None:
+                self.service_seconds["remote_facts"] = (
+                    self.service_seconds.get("remote_facts", 0.0) + charged
                 )
             return True
         except RemoteFactsError as exc:
@@ -404,6 +421,7 @@ def prepare_editorial_annotations(
             preparation_config.tier,
             stage.seconds.copy(),
             stage.pictures.copy(),
+            stage.service_seconds.copy(),
         )
 
 

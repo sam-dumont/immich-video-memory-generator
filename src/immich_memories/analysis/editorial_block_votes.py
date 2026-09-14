@@ -90,7 +90,7 @@ def _judge_model_identity(judge, supplied: str | None) -> str | None:
     config = getattr(getattr(judge, "config", None), "llm", None)
     if config is None:
         return None
-    from immich_memories.analysis.llm_query import resolved_llm_config
+    from immich_memories.analysis.llm_providers import resolved_llm_config
     from immich_memories.analysis.llm_text_identity import text_model_identity
 
     return text_model_identity(resolved_llm_config(config), thinking=False)

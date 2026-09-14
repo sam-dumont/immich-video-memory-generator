@@ -220,7 +220,7 @@ Every setting is an environment variable prefixed `IMMICH_MEMORIES_INFERENCE_`:
 | `MARQO_ONNX` | `$CACHE_DIR/nsfw-marqo-384.onnx` | the pinned sensitive-content ONNX export |
 | `BUNDLE` | the packaged public bundle | head bundle `.npz` |
 | `PROVIDER` | `auto` | `auto`, `cpu`, `cuda` or `coreml`. `auto` takes CUDA where the provider is present and CPU otherwise |
-| `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime |
+| `REQUEST_THREADS` | `4` | the thread pool in front of ONNX Runtime. The app's `facts_concurrency` is what fills it |
 | `IDLE_UNLOAD_SECONDS` | `300` | drop idle weights; `0` holds them |
 | `PRELOAD` | `false` | load every producer at boot instead of on first use |
 | `DETECTOR_CACHE_DIR` | the Hugging Face cache | where the detector snapshots live |
@@ -255,8 +255,42 @@ request, and `fallback_to_local` says what happens when the service is down: the
 against the endpoint either way, and with the fallback on the app's own producers take over. The
 keys are in the [config reference](../../reference/config-reference.md#inference-service).
 
+### How many pictures at once
+
+`facts_concurrency` (default 8, 1 to 32) is how many `/facts` requests the app keeps in flight.
+
+One at a time is what the client used to do, and it is slow for a reason that has nothing to do
+with the card: measured on a cluster Job against a T1000 on `no_captions`, 3,709 pictures took 42.7
+minutes, 0.69 s each, the same rate a 133-picture demo got. A rate that does not move with the size
+of the scope is per-request latency, not throughput, and the service was sitting on
+`REQUEST_THREADS` seats with nothing in them. A 13,552-picture month would have taken 2.6 hours of
+facts alone, against 23 to 40 ms a picture for the same work computed in process on a Mac.
+
+Raising it re-derives nothing and moves no row: the answers are banked in the order the pictures
+were asked for, whatever order they come back in, and a fact's identity is still the artifact that
+produced it. Match it to the service's `REQUEST_THREADS` and give the pod the CPU to go with them;
+past that point the requests queue inside the service instead of on the wire, which buys nothing.
+
+`prepare` says which number it ran at, and the summary's `remote_facts` row gains a
+`service s/pic` column next to the wall clock:
+
+```
+producer        pending   s/picture   share    elapsed  service s/pic
+previews           1440      0.0241    9.4%       35 s              —
+remote_facts       1440      0.0921   36.0%        2 min         0.0308
+```
+
+The left number is what the app waited. The right one is what the service says it spent deciding
+the picture, off the `X-Facts-Seconds` header it puts on every answer. A wide gap is the network,
+the request rate or a queue inside the service; a narrow one means the classifiers are the cost and
+only a faster device or a smaller scope will move it.
+
 ## Not yet
 
 - The captioner is not in the image yet, so `/v1/chat/completions` is still your own caption server.
+- One picture per request. Sending a batch would cut the per-request overhead again and let the
+  service run one ONNX batch instead of several, but it needs a new request and response shape with
+  a per-picture error path, so it is
+  [its own change](https://github.com/sam-dumont/immich-video-memory-generator/issues/943).
 
 For an image check before a release, dispatch the Release workflow with `inference_only: true`. It builds commit-tagged CPU and CUDA images without creating a version or moving `latest`; the CUDA base account is reused at UID/GID 1000 so the cache volume has the same ownership as the CPU image.

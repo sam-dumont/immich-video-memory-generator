@@ -1032,6 +1032,31 @@ INFERENCE_ROLLOUT = (
     f"--timeout={INFERENCE_ROLLOUT_TIMEOUT}",
 )
 
+CAPTIONER_OVERLAY = "deploy/kubernetes/overlays/captioner"
+CAPTIONER_DEPLOYMENT = "deployment/immich-memories-captioner"
+CAPTIONER_SERVICE = "captioner"
+CAPTIONER_PORT = 8092
+# Longer than the inference rollout, which waits out an image pull and nothing
+# else. This one waits out an init container fetching 546 MB of GGUF onto a claim
+# that is empty the first time a cluster ever runs the full tier.
+CAPTIONER_ROLLOUT_TIMEOUT = "15m"
+CAPTIONER_ROLLOUT = (
+    *KUBECTL,
+    "rollout",
+    "status",
+    CAPTIONER_DEPLOYMENT,
+    f"--timeout={CAPTIONER_ROLLOUT_TIMEOUT}",
+)
+# What the readiness probe goes through. The local port is picked at run time and
+# the forward is thrown away after, so the transcript names the shape rather than
+# a port nothing will listen on twice.
+CAPTIONER_FORWARD = (
+    *KUBECTL,
+    "port-forward",
+    f"svc/{CAPTIONER_SERVICE}",
+    f"<a free local port>:{CAPTIONER_PORT}",
+)
+
 
 def overlay_path(device: str) -> str:
     """Which overlay directory a device choice applies. `auto` is resolved before this."""
@@ -1085,9 +1110,18 @@ def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
 
     Torn down the way the inference overlay is, `--keep-service` included: a run
     that kept one service running meant to keep the other.
+
+    The captioner also gets the two steps the inference service gets, because
+    `apply` returning says nothing about a server that has half a gigabyte of
+    weights to fetch and map first.
     """
     name = Path(path).name
     steps = [Step(f"apply-{name}", (*KUBECTL, "apply", "-k", path))]
+    if path == CAPTIONER_OVERLAY:
+        steps += [
+            Step(f"wait-{name}", CAPTIONER_ROLLOUT),
+            Step(f"warm-{name}", CAPTIONER_FORWARD),
+        ]
     if not keep:
         steps.append(Step(f"delete-{name}", (*KUBECTL, "delete", "-k", path, "--ignore-not-found")))
     return tuple(steps)

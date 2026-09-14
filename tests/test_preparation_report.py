@@ -54,3 +54,22 @@ def test_wall_clock_is_stated_in_the_unit_a_person_would_say_it_in() -> None:
     assert human_duration(26) == "26 s"
     assert human_duration(200) == "3 min"
     assert human_duration(13_260) == "3 h 41 min"
+
+
+def test_a_producer_that_ran_elsewhere_shows_what_that_machine_itself_spent() -> None:
+    """0.69 s a picture against 0.03 s of compute is a wire problem, and only the split says so."""
+    clock = _clock([("pixels", 5.0), ("remote_facts", 69.0)], pictures=100)
+
+    lines = rate_report(
+        clock.costs(), pictures=100, library_size=100, service_seconds={"remote_facts": 3.0}
+    )
+
+    assert "service s/pic" in lines[0]
+    assert "0.0300" in [line for line in lines if line.startswith("remote_facts")][0]
+    assert "—" in [line for line in lines if line.startswith("pixels")][0]
+
+
+def test_a_run_with_nothing_offloaded_grows_no_column_it_cannot_fill() -> None:
+    clock = _clock([("pixels", 5.0)], pictures=100)
+
+    assert "service" not in "\n".join(rate_report(clock.costs(), pictures=100, library_size=100))

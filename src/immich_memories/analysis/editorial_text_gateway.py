@@ -19,7 +19,8 @@ from immich_memories.analysis.editorial_json_completion import (
 )
 from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
-from immich_memories.analysis.llm_query import LLMIncompleteResponse, query_llm, resolved_llm_config
+from immich_memories.analysis.llm_providers import resolved_llm_config
+from immich_memories.analysis.llm_query import LLMIncompleteResponse, query_llm
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cache.judgment_cache import JudgmentCache

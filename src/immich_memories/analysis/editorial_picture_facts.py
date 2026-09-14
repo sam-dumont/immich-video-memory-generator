@@ -29,7 +29,8 @@ from immich_memories.analysis.editorial_model_attestation import (
     EXPECTED_REVISION,
     EXPECTED_TREE_SHA256,
 )
-from immich_memories.analysis.llm_query import LLMIncompleteResponse, resolved_llm_config
+from immich_memories.analysis.llm_providers import resolved_llm_config
+from immich_memories.analysis.llm_query import LLMIncompleteResponse
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.strict_json import final_json_object

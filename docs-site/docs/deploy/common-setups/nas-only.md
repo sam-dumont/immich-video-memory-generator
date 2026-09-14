@@ -137,6 +137,31 @@ The run prints one line per cut with the per-producer cost
 `docker compose logs immich-memories | grep "preparation tier"` tells you which producer a box
 cannot afford. Run the same month twice: the difference is the cold cost.
 
+### What the first run costs
+
+Plan an overnight for the first pass over a big month, and seconds for every pass after it.
+
+<!-- Fields in output/setup-matrix/demo/run1/summary.data.json, cell nas-rules-local:
+     1.4404 prepared.seconds_per_picture, 0.5963 and 0.6930 prepared.producers[].seconds_per_picture
+     for public_heads and detectors, 1,483 s timing.render_s, 54.0 s video.duration_s,
+     180 s and 120 s timing.prepare_cold_s for nas-rules-local and nas-rules-service,
+     0 s timing.prepare_warm_s, 5 s timing.selection_s. 13,552 is prepared.pictures in
+     output/setup-matrix/february/run2/summary.data.json. -->
+
+The setup matrix measured this box again in September 2026, on the 133-picture demo month at
+`no_captions`: 1.4404 s per picture cold, 0.5963 s of it the encoder and its six heads and 0.6930 s
+the two detectors, then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
+month is 19,520 s of preparation at that rate, so about 5 h 25 min before the render starts. The
+second run over the same month prepares in 0 s and selects in 5 s.
+
+The render is the part a warm cache does not help. Two ways out, neither required: move the picture
+facts to a GPU box with the [inference service](../installation/inference-service.md), which took
+this NAS from 180 s to 120 s of cold preparation on the demo month, and
+[#931](https://github.com/sam-dumont/immich-video-memory-generator/issues/931), a render worker
+beside that service so the NAS stops encoding on its own CPU. The render worker is not built yet.
+[Running modes](../running-modes.md#what-to-expect-on-a-first-run) has the same month on a Mac and
+on a Kubernetes cluster.
+
 ### Adding captions later
 
 Point the container at a caption endpoint and run the same scope again on the `full` tier:
