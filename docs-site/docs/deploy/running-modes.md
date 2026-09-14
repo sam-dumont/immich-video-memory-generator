@@ -222,3 +222,16 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 ## Title rendering
 
 Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).
+
+
+## Render worker: service contract available
+
+The first slice of the render worker is an isolated job service under
+`services/render-worker/`. It accepts an already selected cut, downloads the
+sources directly from Immich, and uses the existing renderer. It requires CUDA
+title kernels and NVENC, validates the finished MP4, and serves it once.
+
+This slice does not change CLI or web rendering. App-side handoff, NAS setup and
+cluster deployment are still pending. The service README documents its
+versioned API, bearer authentication, bounded queue and temporary storage.
+There is no new matrix timing claim yet.
