@@ -27,7 +27,12 @@ from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_single_flight import TEXT_JUDGMENTS
 from immich_memories.analysis.llm_text_identity import text_model_identity
-from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
+from immich_memories.analysis.llm_wire import (
+    LLMIncompleteResponse,
+    LLMReply,
+    LLMTransportAttempt,
+    batch_answer,
+)
 from immich_memories.analysis.provider_failure import (
     RETRY_ATTEMPTS,
     THROTTLE,
@@ -321,7 +326,7 @@ class SyncTextPromptRequester:
             ]
         )
 
-    def _batched(self, prompt: str, max_tokens: int) -> str | None:
+    def _batched(self, prompt: str, max_tokens: int) -> LLMReply | None:
         if self.batch is None:
             return None
         key = batch_prompt_key(self.llm_config, prompt, max_tokens=max_tokens)
@@ -338,8 +343,42 @@ class SyncTextPromptRequester:
                 raise
             return await self._query(prompt, max_tokens=retry_tokens)
 
+    def _read_queued(self, prompt: str, reply: LLMReply, *, max_tokens: int) -> str | None:
+        """Put one queued reply on the record, and say whether it answered at all."""
+        if self.artifacts:
+            self.artifacts.finish(
+                self.artifacts.start(
+                    prompt,
+                    self.llm_config,
+                    max_tokens=max_tokens,
+                    timeout_seconds=self.timeout_seconds,
+                    thinking=self.thinking,
+                    transport="batch",
+                ),
+                raw=reply.content or "",
+                billed={
+                    "finish_reason": reply.finish_reason,
+                    "completion_tokens": reply.completion_tokens,
+                    "reasoning_tokens": reply.reasoning_tokens,
+                },
+            )
+        answer = batch_answer(reply)
+        if answer is None:
+            llm_metrics.record_truncation()
+            logger.warning(
+                "Queued line wrote no answer (%s; reasoning %d of %d tokens); asking it live",
+                reply.finish_reason or "no finish reason",
+                reply.reasoning_tokens,
+                reply.completion_tokens,
+            )
+        return answer
+
     async def _query(self, prompt: str, *, max_tokens: int) -> str:
-        batched = self._batched(prompt, max_tokens)
+        queued = self._batched(prompt, max_tokens)
+        if queued is not None:
+            answer = self._read_queued(prompt, queued, max_tokens=max_tokens)
+            if answer is not None:
+                return answer
         call = (
             self.artifacts.start(
                 prompt,
@@ -347,15 +386,11 @@ class SyncTextPromptRequester:
                 max_tokens=max_tokens,
                 timeout_seconds=self.timeout_seconds,
                 thinking=self.thinking,
-                transport="batch" if batched is not None else "realtime",
+                transport="realtime",
             )
             if self.artifacts
             else None
         )
-        if batched is not None:
-            if self.artifacts:
-                self.artifacts.finish(call, raw=batched)
-            return batched
         billed = BilledReply()
         try:
             raw = await query_llm(

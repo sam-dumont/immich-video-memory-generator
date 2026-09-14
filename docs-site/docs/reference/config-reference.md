@@ -421,6 +421,21 @@ the same millisecond.
 accept only `image_url.url` and reject requests carrying anything more. Set it
 to `false` for those servers: the `zai` preset already does.
 
+Queued OpenAI-compatible requests use the same reasoning headroom as live
+calls: the answer budget plus 16,384 tokens for a host declared or learned to
+reason, or its larger learned allowance. This is room to finish, not a fixed
+charge. Non-reasoning hosts keep the answer budget alone.
+
+Batch result records retain each reply's finish reason, completion tokens and
+reasoning tokens, including empty replies. A queued line the provider cut short,
+or one that stopped with nothing in the answer channel, is not handed back as an
+answer: it is recorded as it arrived, counted under `llm_truncated`, and asked
+again in real time, where the ceiling can still grow. Run metrics count a
+batch's reasoning inside `llm_reasoning_tokens`, and `llm_batch_reasoning_tokens`
+names the batched share of it; both are subsets of `llm_completion_tokens` and
+neither is added to it a second time. Reasoning reported by a batch also teaches
+the live caller that this server and model need reasoning headroom.
+
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
 the query layer reads those 400s, adapts the request, and remembers the
