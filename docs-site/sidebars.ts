@@ -100,6 +100,7 @@ const sidebars: SidebarsConfig = {
             'deploy/installation/docker',
             'deploy/installation/uv-pip',
             'deploy/installation/inference-service',
+            'deploy/installation/caption-server',
             'deploy/installation/kubernetes',
             'deploy/installation/terraform',
           ],

@@ -1,4 +1,4 @@
-# The setup matrix (#873): ONE memory, ten setups.
+# The setup matrix (#873): ONE memory, fourteen setups.
 #
 # This is not the capability matrix. That one varies what the product is asked
 # for (ten memory types, seeds, replays) on one machine. This one varies the
@@ -262,3 +262,89 @@ cells:
     tier: no_captions
     why: One pod doing everything, to price the inference service against itself.
     requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]
+
+  # The two GPU render cells. Everything above encodes on a CPU, so the table has
+  # no answer to "when do you need a GPU" and none to "which card". These two are
+  # `k8s-rules-service` with the render moved onto a named card: same reader, same
+  # facts, same tier, same CPU request, so the only difference between the three
+  # rows is what encoded the film.
+  #
+  # `k8s.gpu_product` is the node label the GPU operator writes, and it is what
+  # the Job selects on. A hostname would pin the same machine today and the wrong
+  # card the day a GPU moves, and it would put somebody's host in a transcript.
+  - id: k8s-gpu-t1000
+    lane: k8s
+    reader: rules
+    facts: service
+    tier: no_captions
+    why: The same cluster job with the render on a T1000, which is the small card.
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]
+    inference_overlay: true
+    k8s:
+      gpu_product: NVIDIA-T1000-8GB-SHARED
+    config:
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+      # Pinned, not detected. Detection takes the first backend that can encode,
+      # and a pod whose driver capabilities came up short would encode in software
+      # and publish it as a GPU row. Named, the miss is a warning in the log and
+      # the row can be thrown out instead of believed.
+      hardware.backend: nvidia
+
+  - id: k8s-gpu-1070
+    lane: k8s
+    reader: rules
+    facts: service
+    tier: no_captions
+    why: The same render on a GTX 1070, to tell a card apart from a GPU.
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]
+    inference_overlay: true
+    k8s:
+      gpu_product: NVIDIA-GeForce-GTX-1070-SHARED
+    config:
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+      hardware.backend: nvidia
+
+  # Tier full in the cluster. Both cells want a caption per picture, and what
+  # serves them is the captioner overlay: llama.cpp behind a `captioner` Service
+  # on 8092, which is where the URL below comes from. `requires_overlay` is the
+  # contract either way -- the runner applies that overlay before the cells that
+  # named it and tears it down with the inference one, and a checkout that does
+  # not carry the directory skips the cell with a reason rather than dropping the
+  # row.
+  - id: k8s-full-rules
+    lane: k8s
+    reader: rules
+    facts: service
+    tier: full
+    why: What captioning every picture costs a cluster, with no editorial model.
+    requires_env: [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE]
+    inference_overlay: true
+    requires_overlay: deploy/kubernetes/overlays/captioner
+    config:
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+      # In-cluster DNS, the way the facts URL is. Nothing outside the cluster
+      # calls this one, so no address is derived and none is written down.
+      editorial.preparation.caption_base_url: http://captioner:8092/v1
+
+  - id: k8s-full-melious
+    lane: k8s
+    reader: hosted_melious
+    facts: service
+    tier: full
+    why: The full tier with a hosted reader, which is `mac-local` without the Mac.
+    requires_env:
+      [MATRIX_K8S_CONTEXT, MATRIX_K8S_NAMESPACE, MELIOUS_AI_BASE_URL, MELIOUS_AI_KEY]
+    inference_overlay: true
+    requires_overlay: deploy/kubernetes/overlays/captioner
+    config:
+      editorial.reader: model
+      llm.provider: openai-compatible
+      llm.base_url: $env:MELIOUS_AI_BASE_URL
+      llm.model: qwen3-30b-a3b-instruct
+      llm.api_key: ${MELIOUS_AI_KEY}
+      inference.facts_base_url: http://inference:8092
+      inference.fallback_to_local: false
+      editorial.preparation.caption_base_url: http://captioner:8092/v1

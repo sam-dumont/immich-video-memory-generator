@@ -44,6 +44,7 @@ from setup_matrix_capture import (  # noqa: E402
     parse_cache_primed,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
+    parse_encoder,
     parse_models_fetch_seconds,
     parse_prepare_seconds,
     parse_prepared_pictures,
@@ -51,6 +52,7 @@ from setup_matrix_capture import (  # noqa: E402
     parse_run_summary,
     parse_saved_path,
     parse_time_peak_rss_mb,
+    parse_title_backend,
     prepare_phases,
     probe_video,
     read_cut,
@@ -85,12 +87,17 @@ from setup_matrix_plan import (  # noqa: E402
     dry_run_text,
     fetches_models,
     inference_image,
+    inference_node_command,
     inference_overlay_steps,
     load_manifest,
     needs_lan_address,
+    node_product_command,
     overlay_path,
+    pin_inference_node,
     purge_claims_command,
     read_cells,
+    required_overlay_steps,
+    required_overlays,
     retag_inference,
 )
 from setup_matrix_readiness import (  # noqa: E402
@@ -497,6 +504,17 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "tier": cell.tier,
         "why": cell.why,
         "hosted": cell.hosted,
+        # The card this cell rendered on. It is the label the Job selects on, so
+        # the pod could not have run anywhere else: a node without it does not
+        # match, and the cell would have failed Pending rather than moved.
+        "gpu_product": cell.gpu_product or None,
+        # What actually drew the titles and what actually encoded the film, read
+        # off the run's own log on every lane. The two are not one answer: the
+        # first cluster Jobs drew their titles on CUDA and still encoded in
+        # software, because the runtime gave the pod `compute,utility` and NVENC
+        # was never there to probe.
+        "title_backend": None,
+        "encoder": None,
         "skip_reason": item.skip_reason,
         "prepare_cache_primed": primed,
         # Whether the run emptied this cell's bank before it prepared, which is
@@ -528,7 +546,19 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
     }
 
 
+def _apply_render_device(record: dict, text: str) -> None:
+    """What drew the titles and what encoded the film, from lines the run printed.
+
+    Never inferred from the lane. A cell that printed neither keeps None and the
+    table shows a dash: "it is a CPU cell, so it must have been libx264" is a
+    guess, and this table does not publish those.
+    """
+    record["title_backend"] = record.get("title_backend") or parse_title_backend(text)
+    record["encoder"] = record.get("encoder") or parse_encoder(text)
+
+
 def _apply_run_summary(record: dict, text: str, cell_dir: Path) -> None:
+    _apply_render_device(record, text)
     summary = parse_run_summary(text)
     _apply_measured_block(record, summary)
     if summary.video_path:
@@ -594,6 +624,7 @@ def _apply_stranded_summary(record: dict, cell_dir: Path) -> None:
     if log is None or not log.is_file():
         return
     text = log.read_text()
+    _apply_render_device(record, text)
     _apply_stranded_preparation(record, text)
     summary = parse_run_summary(text)
     if record["timing"]["total_s"] is not None or summary.total_s is None:
@@ -788,6 +819,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--inference-device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument(
+        "--inference-node-product",
+        default="",
+        help="pin the inference service to one card by its nvidia.com/gpu.product node label,"
+        " for a run comparing what the service costs on each. Rendered into the overlay at"
+        " apply time and never committed. Unset, the scheduler picks and the run records"
+        " which card it got.",
+    )
+    parser.add_argument(
         "--keep-service", action="store_true", help="leave the inference overlay running"
     )
     parser.add_argument(
@@ -864,13 +903,23 @@ def main(argv: list[str] | None = None) -> int:
             keep=opts.keep_service,
             lan=lan,
             tag=opts.inference_tag or opts.image_tag,
+            node_product=opts.inference_node_product,
         )
         if needs_overlay
         else ()
     )
+    # The overlays a cell declared it cannot run without. A cell whose overlay is
+    # not in this tree was already skipped by the planner, so nothing here asks
+    # the cluster for a directory that does not exist.
+    declared = required_overlays(tuple(item.cell for item in plan.runnable))
 
     if opts.dry_run:
-        print(dry_run_text(plan, overlay=overlay))
+        declared_steps = tuple(
+            step
+            for path in declared
+            for step in required_overlay_steps(path, keep=opts.keep_service)
+        )
+        print(dry_run_text(plan, overlay=(*overlay, *declared_steps)))
         _report_skips(plan)
         return 0
 
@@ -885,13 +934,19 @@ def main(argv: list[str] | None = None) -> int:
         return _summarize(plan, opts, out_dir)
 
     try:
-        return _execute(plan, opts, out_dir, overlay)
+        return _execute(plan, opts, out_dir, overlay, declared)
     finally:
         if server is not None:
             server.close()
 
 
-def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple) -> int:
+def _execute(
+    plan: Plan,
+    opts: argparse.Namespace,
+    out_dir: Path,
+    overlay: tuple,
+    declared: tuple[str, ...],
+) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # The service comes up before any config is written, because a NAS cell's
@@ -901,9 +956,15 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
     lan = plan.environment.get(INFERENCE_ENV) == DERIVED_ADDRESS
     served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     warmup: float | None = None
+    served_on: str | None = None
+    for path in declared:
+        _apply_overlay(plan, path, up=True)
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
-        bring_up_inference(plan, overlay_path(device), served)
+        bring_up_inference(plan, overlay_path(device), served, opts.inference_node_product)
+        served_on = read_inference_gpu_product(plan)
+        if served_on:
+            print(f"inference is on {served_on}")
         if lan:
             _apply_overlay(plan, LAN_OVERLAY, up=True)
             plan.environment[INFERENCE_ENV] = f"http://{_lan_address(plan)}:{INFERENCE_PORT}"
@@ -941,14 +1002,19 @@ def _execute(plan: Plan, opts: argparse.Namespace, out_dir: Path, overlay: tuple
         if served and row.get("facts") == "service":
             row["inference_image"] = served
 
-    if overlay and not opts.keep_service:
-        if lan:
-            _apply_overlay(plan, LAN_OVERLAY, up=False)
-        _apply_overlay(plan, overlay_path(device), up=False)
+    if not opts.keep_service:
+        # The declared overlays first: they are what the cells called, and the
+        # inference service is what those overlays called in turn.
+        for path in declared:
+            _apply_overlay(plan, path, up=False)
+        if overlay:
+            if lan:
+                _apply_overlay(plan, LAN_OVERLAY, up=False)
+            _apply_overlay(plan, overlay_path(device), up=False)
     if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
         _run_bare(purge_claims_command(), plan)
 
-    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records), warmup)
+    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on)
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
 
@@ -979,6 +1045,7 @@ def _publish_summary(
     out_dir: Path,
     rows: list[dict],
     warmup: float | None = None,
+    inference_gpu_product: str | None = None,
 ) -> None:
     summary = build_summary(
         library=plan.library,
@@ -986,6 +1053,7 @@ def _publish_summary(
         image=plan.image,
         rows=rows,
         inference_warmup_s=warmup,
+        inference_gpu_product=inference_gpu_product,
     )
     if opts.anonymize:
         summary = anonymize(summary)
@@ -1013,7 +1081,30 @@ def _run_bare(command: tuple[str, ...], plan: Plan) -> subprocess.CompletedProce
     )
 
 
-def bring_up_inference(plan: Plan, path: str, image: str) -> None:
+def read_inference_gpu_product(plan: Plan) -> str:
+    """Which card the inference pod landed on, off the node it was scheduled to.
+
+    Asked of the pod and not of the Deployment: with no `--inference-node-product`
+    the scheduler picks, and a table comparing two cards has to say which one was
+    answering the facts requests underneath every service row. A cluster with no
+    GPU answers nothing here, which is the honest empty.
+    """
+    node = _query(plan, inference_node_command())
+    return _query(plan, node_product_command(node)) if node else ""
+
+
+def _query(plan: Plan, command: tuple[str, ...]) -> str:
+    proc = subprocess.run(  # noqa: S603
+        [_substitute(part, plan.environment) for part in command],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def bring_up_inference(plan: Plan, path: str, image: str, node_product: str = "") -> None:
     """Apply the inference overlay and come back only once its new pod can be reached.
 
     `apply` returns as soon as the API server has the manifest. When the tag has
@@ -1023,7 +1114,7 @@ def bring_up_inference(plan: Plan, path: str, image: str) -> None:
     are not for it, so the pull is waited out here where `rollout status` is the
     thing that says what happened.
     """
-    _apply_overlay(plan, path, up=True, image=image)
+    _apply_overlay(plan, path, up=True, image=image, node_product=node_product)
     if _run_bare(INFERENCE_ROLLOUT, plan).returncode != 0:
         raise SystemExit(
             f"{INFERENCE_DEPLOYMENT} never rolled out within {INFERENCE_ROLLOUT_TIMEOUT}, so "
@@ -1031,11 +1122,14 @@ def bring_up_inference(plan: Plan, path: str, image: str) -> None:
         )
 
 
-def _apply_overlay(plan: Plan, path: str, *, up: bool, image: str = "") -> None:
+def _apply_overlay(
+    plan: Plan, path: str, *, up: bool, image: str = "", node_product: str = ""
+) -> None:
     if not up:
         _run_bare((*KUBECTL, "delete", "-k", path, "--ignore-not-found"), plan)
     elif image:
-        _apply_rendered(plan, retag_inference(_render_overlay(path), image))
+        rendered = retag_inference(_render_overlay(path), image)
+        _apply_rendered(plan, pin_inference_node(rendered, node_product))
     else:
         _run_bare((*KUBECTL, "apply", "-k", path), plan)
 
