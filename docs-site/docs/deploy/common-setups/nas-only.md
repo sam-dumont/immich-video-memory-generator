@@ -79,15 +79,25 @@ services:
       # Only on the full tier:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://model-box.lan:8092/v1"
     restart: unless-stopped
+    # cpuset, not cpus: see below. Drop the line to leave the cores uncapped.
+    cpuset: "0-3"
     deploy:
       resources:
         limits:
           memory: 4G
-          cpus: "4"
 
 volumes:
   immich-memories-config:
 ```
+
+### Do not cap the CPU with `cpus:` on a Synology
+
+Docker's `cpus:` (and `--cpus` on the command line) is a CFS quota, and DSM runs a cgroup v1
+kernel built without the CFS bandwidth controller. A DS423+ answered `docker compose up` with
+`NanoCPUs can not be set, as your kernel does not support CPU CFS scheduler or the cgroup is not
+mounted` and started nothing at all. `cpuset: "0-3"` pins the same four cores and works there;
+the shipped `docker-compose.yml` sets no CPU limit for that reason. Memory limits are fine on
+every NAS tested.
 
 `llm.model` must be the exact string the reader reports at `GET /v1/models`. On the `full` tier
 the caption endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`; the client
