@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.operations.phases import OperationalPhase
@@ -76,3 +77,4 @@ class AutomationAttempt:
     run_id: str | None = None
     error: str | None = None
     last_phase: OperationalPhase | None = None
+    phase_events: list[dict[str, Any]] = field(default_factory=list)

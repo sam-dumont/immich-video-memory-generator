@@ -45,6 +45,7 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         ),
         source=_row_value(row, "source", "manual"),
         automation_attempt_id=_row_value(row, "automation_attempt_id"),
+        phase_events=json.loads(_row_value(row, "phase_events") or "[]"),
         last_phase=(
             OperationalPhase(_row_value(row, "last_phase"))
             if _row_value(row, "last_phase")
