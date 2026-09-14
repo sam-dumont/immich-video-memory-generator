@@ -50,7 +50,6 @@ def test_absent_source_length_is_unknown_not_the_planned_hold(value):
         '{"keep":["M09"]}',
         '{"keep":[]}',
         '{"keep":[1]}',
-        '{"keep":"M01"}',
     ],
 )
 def test_invalid_response_is_repaired_in_full_without_truncating_it(answer):
@@ -237,3 +236,16 @@ def test_a_refused_pick_is_asked_again_on_the_next_run_instead_of_replayed(tmp_p
         run()
     assert run() == ["M01"]
     assert len(asked) == 3
+
+
+def test_one_label_where_a_list_belongs_is_one_pick():
+    """The slip that broke the period read on a local 35B: a bare string for a list.
+
+    A single offered label is not ambiguous, and the answer here is exhausted, so
+    a repair round would raise StopIteration rather than quietly rescue the pick.
+    """
+    judge = Answers([json.dumps({"keep": "M01"})])
+
+    assert ask_moment_pick(judge, "pick", "Choose one row.", labels={"M01", "M02"}, count=1) == [
+        "M01"
+    ]

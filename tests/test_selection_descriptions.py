@@ -14,7 +14,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
-from immich_memories.analysis.llm_query import LLMTransportAttempt
+from immich_memories.analysis.llm_wire import LLMTransportAttempt
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,

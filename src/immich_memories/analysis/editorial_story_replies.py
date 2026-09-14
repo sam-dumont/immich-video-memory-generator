@@ -16,6 +16,7 @@ from immich_memories.analysis.editorial_structure_json import (
     close_inner_containers,
     json_scan,
 )
+from immich_memories.analysis.strict_json import model_text_rows
 
 STORY_VERSION = "period-story-v3-stories"
 ROLES = {"central", "supporting", "texture", "incidental"}
@@ -321,7 +322,9 @@ def _read_synthesis(raw, valid):
     titles = dict(valid) if isinstance(valid, Mapping) else dict.fromkeys(valid, "")
     priorities, unresolved = _priorities(obj, titles)
     uncertainties = [
-        str(u)[:300] for u in (obj.get("uncertainties") or []) if isinstance(u, str) and u.strip()
+        str(u)[:300]
+        for u in (model_text_rows(obj.get("uncertainties")) or [])
+        if isinstance(u, str) and u.strip()
     ]
     stories, unresolved = _read_stories(obj, titles, priorities, unresolved)
     about = obj.get("about")

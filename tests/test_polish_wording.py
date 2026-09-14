@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from immich_memories.analysis.llm_query import TRANSPORT_RETRIES, LLMTransportAttempt
+from immich_memories.analysis.llm_wire import TRANSPORT_RETRIES, LLMTransportAttempt
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cli import main
 from immich_memories.config_models_llm import LLMConfig

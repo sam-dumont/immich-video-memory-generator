@@ -1,0 +1,12 @@
+{
+"schema_version": "period-insight-text-v1",
+"thesis": "The family spent June 2024 primarily in Brussels, engaging in daily domestic routines and local exploration. A mid-month trip extended their stay into Belgium’s forests and France’s alpine regions, blending active sightseeing with relaxed leisure before returning home.",
+"evidence": [
+{"observation": "Extended stay in Brussels marked by consistent indoor/outdoor domestic life.", "episodes": [1, 5, 7]},
+{"observation": "Mid-June travel expanded scope to Tervuren, Dijon, Annecy, and Semnoz.", "episodes": [23, 28, 29]},
+{"observation": "Nature and landscape features dominate the travel segment.", "episodes": [23, 35, 40]},
+{"observation": "Family members frequently appear together during key events.", "episodes": [15, 16, 35]}
+],
+"tensions": "Urban routine versus expansive nature exploration.",
+"recurring_threads": "Lake views, family gatherings, nature immersion."
+}

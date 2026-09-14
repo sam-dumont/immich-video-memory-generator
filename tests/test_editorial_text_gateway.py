@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -278,3 +279,35 @@ def test_a_poisoned_bank_from_an_earlier_run_is_forgotten_and_asked_again(
     )
 
     assert (call.raw, call.cache_hit) == ('{"keep":["M01"]}', False)
+
+
+def test_a_bounded_failure_row_names_the_reasoning_that_took_the_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two empty answers read the same on disk unless the token split is on the row."""
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
+
+    async def starved(_prompt: str, _config: Any, **kwargs: Any) -> str:
+        kwargs["transport_observer"](
+            LLMTransportAttempt(
+                1,
+                "response",
+                200,
+                None,
+                finish_reason="length",
+                completion_tokens=8492,
+                reasoning_tokens=8492,
+            )
+        )
+        return ""
+
+    monkeypatch.setattr(gateway, "query_llm", starved)
+    request = replace(_request(tmp_path), json_object=True)
+
+    with pytest.raises(gateway.TextCompletionFailure) as raised:
+        asyncio.run(gateway.QueryTextRequester().request(request))
+
+    assert [row["reasoning_tokens"] for row in raised.value.attempts] == [8492, 8492]
+    assert [row["finish_reason"] for row in raised.value.attempts] == ["length", "length"]
+    assert [row["max_tokens"] for row in raised.value.attempts] == [1200, 2400]
