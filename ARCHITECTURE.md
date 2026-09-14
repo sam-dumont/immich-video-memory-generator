@@ -537,6 +537,20 @@ soundtrack, automation, llm, auth, server), and `Config` in `config_loader.py`
 assembles them into one flat settings object. A file naming a key of the removed
 clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it.
 
+## Render worker (S1)
+
+`services/render-worker/immich_memories_render_worker/` owns the authenticated
+versioned job API. `admission.py` names a job after its cut (`memory_key` plus
+the binding digest) and refuses an envelope that drifted from the binding it
+carries, before any byte is fetched. `jobs.py` serializes GPU work, validates
+artifacts, enforces the job deadline and sweeps scratch at boot; `store.py`
+keeps atomic job transitions behind a repository contract ready for a future
+PostgreSQL implementation, with a per-job JSON record so a restart can say a
+render died with its process. `native.py` and `native_plan.py` adapt selected
+cuts to the existing generator: a missing NVENC is a recorded degradation, a
+changed selection is a refusal. The app does not call this service yet;
+orchestration and deployment belong to later slices of #931.
+
 ## Conventions
 
 - **Max file length**: 800 lines soft / 1000 hard (enforced in CI via `make file-length`)
