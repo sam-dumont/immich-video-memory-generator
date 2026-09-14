@@ -47,8 +47,13 @@ def _run_details(db: RunDatabase, run_id: str) -> None:
     else:
         ui.label("No saved cut is available for this run.")
     if record.automation_attempt_id:
-        log = output_log_path(config.cache.cache_path, record.automation_attempt_id)
-        if log.is_file():
+        # `generate --automation-attempt-id` accepts any string, and only an id
+        # automation itself opened addresses a transcript.
+        try:
+            log = output_log_path(config.cache.cache_path, record.automation_attempt_id)
+        except ValueError:
+            log = None
+        if log is not None and log.is_file():
             ui.button("Download child output", on_click=lambda: ui.download.file(log))
         else:
             ui.label("No child output was retained for this run.")

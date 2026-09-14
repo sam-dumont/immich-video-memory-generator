@@ -51,3 +51,40 @@ def test_page_navigation_preserves_destinations_and_current_location(
         client.delete()
         if "session_id" in session:
             remove_session(session["session_id"])
+
+
+def test_a_run_row_with_a_hand_typed_attempt_id_still_opens(monkeypatch, tmp_path):
+    """`generate --automation-attempt-id` takes any string; the page must survive one."""
+    from datetime import datetime
+
+    from immich_memories.config_loader import Config, get_config, set_config
+    from immich_memories.tracking import RunDatabase
+    from immich_memories.tracking.models import RunMetadata
+    from immich_memories.ui.pages.runs import render_runs
+
+    config = Config(
+        cache={"database": str(tmp_path / "runs.db"), "directory": str(tmp_path / "cache")}
+    )
+    record = RunMetadata(
+        run_id="hand-typed",
+        created_at=datetime(2026, 7, 2, 9, 0),
+        status="failed",
+        source="auto",
+    )
+    record.automation_attempt_id = "last-nights-run"
+    RunDatabase(config.cache.database_path).save_run(record)
+    previous = get_config()
+    set_config(config)
+    # WHY: the HTTP session is the external boundary; the database and page are real.
+    monkeypatch.setattr(type(app.storage), "user", property(lambda _storage: {}))
+    client = Client(ui.page("/runs"))
+    try:
+        with client:
+            render_runs(run_id="hand-typed")
+        texts = [
+            element.text for element in client.elements.values() if isinstance(element, ui.label)
+        ]
+        assert any("No child output" in text for text in texts)
+    finally:
+        client.delete()
+        set_config(previous)
