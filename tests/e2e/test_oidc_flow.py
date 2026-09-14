@@ -18,6 +18,7 @@ import pytest
 from playwright.sync_api import Page
 
 from tests.e2e.conftest import _REPO_ROOT
+from tests.e2e.redaction import redact_page
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -150,4 +151,9 @@ def test_oidc_login_flow(
     username = page.get_by_text("testuser")
     assert username.is_visible(timeout=5000)
 
+    # This shot carries the connection line, which renders the signed-in
+    # account's display name or, when it has none, its email address. Every
+    # other screenshot test redacts before it shoots; this one did not, and
+    # published a real address.
+    redact_page(page)
     page.screenshot(path=str(screenshot_dir / "oidc-authenticated.png"))

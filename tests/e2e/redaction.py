@@ -26,7 +26,9 @@ _INPUT_REDACTIONS = [
 # Regex patterns (as JS source) → replacement strings for visible text nodes
 _TEXT_REDACTIONS = [
     (r"Connected as: .+", "Connected as: user@example.com"),
-    (r"Immich Connection: .+", "Immich Connection: user@example.com"),
+    # The label has been rendered with a colon and with an em dash; match either,
+    # and anything else that separates the label from the account.
+    (r"Immich Connection[^A-Za-z0-9]+.+", "Immich Connection: user@example.com"),
     # Catch-all: any email address that slipped past the specific patterns above
     (r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "user@example.com"),
     (r"http:\/\/\d+\.\d+\.\d+\.\d+:\d+", "https://photos.example.com"),

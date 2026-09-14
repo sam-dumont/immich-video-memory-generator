@@ -189,3 +189,20 @@ def test_capture_automation_walkthrough(page: Page, launch_app_url: str, launch_
     from tests.e2e.test_automation_pages import test_choose_generate_and_read_the_same_automatic_run
 
     test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace)
+
+
+def no_address_on_screen(page) -> None:
+    """A screenshot that reaches the docs site must carry no real address.
+
+    The redaction rewrites the connection line, but a page can grow a new place
+    that renders one. This fails the capture rather than the review.
+    """
+    import re as _re
+
+    text = page.evaluate("document.body.innerText")
+    found = [
+        hit
+        for hit in _re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", text)
+        if not hit.endswith(("@example.com", "@example.test", "@example.org"))
+    ]
+    assert not found, f"a real-looking address reached a screenshot: {found}"
