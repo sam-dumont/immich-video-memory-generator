@@ -304,7 +304,11 @@ Anthropic-compatible endpoint) with its own reasoning dialect handled
 natively. `openai` and `zai` are named presets: the generic adapter with the
 provider's URL and reasoning dialect pre-filled; set `provider: openai`,
 `model: gpt-5.6-terra` and an API key, and thinking works with nothing else
-to configure. Explicit `base_url`/`thinking_params` always win over a preset.
+to configure. An explicit `base_url` always wins over a preset, and under
+`provider: zai` it also picks the adapter: a `.../api/anthropic` base takes the
+Anthropic route, anything else the OpenAI-compatible one. An explicit
+`thinking_params`/`no_thinking_params` is kept too, with the provider's own
+reasoning switch merged on top of it.
 
 `thinking: true` runs the model in reasoning mode for two calls: title
 generation, and the special-day question in `discover-days`. Measured on the
@@ -329,9 +333,9 @@ parseable in it. This field is sent on every non-thinking call: it hangs off
 the switch, not off `thinking`, because a server that reasons by default does
 so whether or not you turned reasoning on. The default is Qwen's
 `chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
-that reason only when asked (the `openai` and `zai` presets already do). A
-server that rejects the field is detected from its 400 and asked without it
-from then on.
+that reason only when asked (the `openai` preset already does, while `zai`
+sends its own `thinking: {"type": "disabled"}`). A server that rejects the
+field is detected from its 400 and asked without it from then on.
 
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas

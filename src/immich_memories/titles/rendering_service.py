@@ -69,7 +69,7 @@ class RenderingService:
         card — and titles are the most expensive stage there is.
         """
         if self.backend is None:
-            logger.info("Kernel library unavailable, falling back to the PIL renderer")
+            logger.warning("Title rendering: %s", self._no_backend_reason())
         elif self.backend in _GPU_BACKENDS:
             logger.info("Title rendering on GPU: %s", self.backend)
         else:
@@ -78,6 +78,18 @@ class RenderingService:
                 "Titles will be markedly slower than the footage around them.",
                 self.backend,
             )
+
+    @staticmethod
+    def _no_backend_reason() -> str:
+        """Say which of the two ways to lose the kernels this machine took.
+
+        "Kernel library unavailable" covered both, and on a CPU without AVX it
+        was actively misleading: the library is installed and imports fine, it
+        is the first kernel it compiles that the processor cannot execute.
+        """
+        from .kernel_backend_probe import kernel_dispatch_failure
+
+        return kernel_dispatch_failure() or "the kernel library found no usable backend here"
 
     @property
     def use_gpu(self) -> bool:

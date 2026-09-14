@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -57,6 +58,7 @@ class StructureTextJudge:
         json_object: bool = False,
         json_fields: tuple[str, ...] = (),
         json_empty_array_pairs: tuple[tuple[str, str], ...] = (),
+        accepts: Callable[[str], bool] | None = None,
     ) -> str:
         n = len(self.calls) + 1
         d = self.out / "calls"
@@ -75,7 +77,7 @@ class StructureTextJudge:
         )
         started = time.monotonic()
         try:
-            call = _run_sync(self.requester.request(request))
+            call = _run_sync(self.requester.request(request, accepts=accepts))
         except TextCompletionFailure as exc:
             write_secret_file(
                 d / f"{n:02d}-{stage}.failure.private.json",

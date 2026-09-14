@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -35,6 +36,8 @@ from immich_memories.store.episode_readings import (
     EpisodeReadingStore,
     EpisodeRepresentative,
 )
+
+logger = logging.getLogger(__name__)
 
 TEXT_EPISODE_PROMPT_VERSION = "episode-prompt-v1"
 TEXT_EPISODE_MAX_OUTPUT_TOKENS = 4_000
@@ -231,6 +234,7 @@ class CachedTextEpisodeReader:
         self._request_plan_guard = request_plan_guard
         self._strict_persistence_readback = strict_persistence_readback
         self._record_evidence = record_evidence
+        self._reported_failures: set[str] = set()
 
     @property
     def producer(self) -> EpisodeReadingProducer:
@@ -413,6 +417,10 @@ class CachedTextEpisodeReader:
         except Exception as exc:  # WHY: one failed pack cannot remove other episodes
             detail = str(exc).strip() or type(exc).__name__
             reason = f"text episode provider failed ({type(exc).__name__}): {detail}"
+            # Without this the run only ever says "no readable episode evidence" (#908).
+            if reason not in self._reported_failures:
+                self._reported_failures.add(reason)
+                logger.warning(reason)
             for scope in pack:
                 failed.add(_scope_key(scope))
                 unavailable_by_group[scope.identity.group_id] = reason

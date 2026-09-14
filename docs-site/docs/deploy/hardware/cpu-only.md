@@ -68,6 +68,26 @@ Metal on Apple Silicon, CUDA or Vulkan on a card, and a CPU backend everywhere e
 GPU renderer but force it onto the processor (a broken driver, or comparing timings), set
 `IMMICH_FORCE_CPU=1`.
 
+### CPUs without AVX
+
+The CPU backend needs AVX. On a processor without it (Celeron J-series such as the J4125 in a
+Synology DS423+, and older Atom) the library imports and initialises fine, then dies with SIGILL on
+the first kernel it compiles. That used to kill the run at title generation, after the whole
+selection had been paid for.
+
+The dispatch probe now runs a real kernel on the CPU backend too, in a child process, so the crash
+lands there instead. A machine that fails it renders static titles through PIL, and says so in
+`immich-memories preflight` before you start:
+
+```
+Title rendering       WARNING   kernel backend crashed on this CPU: illegal
+                                instruction; titles fall back to the PIL renderer
+```
+
+Losing the kernels costs animation, not time. The profile in #900 measured the PIL renderer at
+4.4 s for a content-backed title against 19.8 s for the kernel renderer on a CPU backend: on a box
+with no AVX, PIL is both the only renderer and the faster one.
+
 ### Where the GPU kernels exist
 
 Verified against PyPI for Quadrants 1.3.0 (`pip index versions quadrants`, and the `urls` list in

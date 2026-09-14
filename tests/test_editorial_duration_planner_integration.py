@@ -128,7 +128,8 @@ class EditorialJudge:
         self.bank = {} if bank is None else bank
         self.require_hits = require_hits
 
-    def ask(self, stage, prompt, max_tokens=260, **options):
+    def ask(self, stage, prompt, max_tokens=260, *, accepts=None, **options):
+        # `accepts` is the caller's own contract check, not part of what was asked.
         key = (prompt, max_tokens, tuple(sorted(options.items())))
         hit = key in self.bank
         if self.require_hits and not hit:

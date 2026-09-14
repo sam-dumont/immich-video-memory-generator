@@ -186,7 +186,10 @@ slow part. A run that does not fit logs one `WARNING` naming the setting.
   cannot be reached stops the run; `no_captions` does not turn it off.
 - Generate music: MusicGen and ACE-Step want GPU servers. Upload your own track instead.
 - Animated title screens on the GPU: they fall back to the PIL renderer, without the particle
-  effects and animated gradients.
+  effects and animated gradients. On a CPU with no AVX, the J4125 in the tested DS423+ included,
+  the kernel renderer is out entirely: it dies with SIGILL on the first kernel it compiles, a
+  child-process probe catches that at startup, and every title is PIL-rendered. See
+  [CPUs without AVX](../hardware/cpu-only.md#cpus-without-avx).
 
 ## NAS notes
 

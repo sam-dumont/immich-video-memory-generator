@@ -37,6 +37,7 @@ class StructureJudge(Protocol):
         json_object: bool = False,
         json_fields: tuple[str, ...] = (),
         json_empty_array_pairs: tuple[tuple[str, str], ...] = (),
+        accepts: Callable[[str], bool] | None = None,
     ) -> str: ...
 
 
