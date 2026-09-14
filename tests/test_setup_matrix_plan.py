@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import stat
 import sys
 from pathlib import Path
 
@@ -17,14 +18,17 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from matrix_pinned_config import pinned_config  # noqa: E402
+from matrix_pinned_config import pinned_config, read_operator_immich  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     DERIVED_ADDRESS,
+    FROM_OPERATOR_CONFIG,
     GPU_PRODUCT_LABEL,
+    IMMICH_KEY_ENV,
     INFERENCE_ENV,
     INFERENCE_IMAGE,
     LAN_OVERLAY,
     NODE_PRODUCT_PATH,
+    REPO_ROOT,
     PlanError,
     build_plan,
     dry_run_text,
@@ -134,12 +138,15 @@ def test_the_manifest_holds_the_fourteen_setups(manifest: dict) -> None:
     assert [cell.id for cell in cells][0] == "mac-local", "the reference cut must come first"
 
 
-def test_a_full_environment_skips_only_what_this_tree_cannot_build(
-    manifest: dict, tmp_path: Path
-) -> None:
-    """Every variable present, so the only thing left to skip is a missing overlay."""
+def test_a_full_environment_skips_nothing(manifest: dict, tmp_path: Path) -> None:
+    """Every variable present and every overlay in the tree, so all fourteen run.
+
+    The two full-tier cluster cells were the last holdout: they were declared
+    against a tree that did not yet carry the captioner overlay they name.
+    """
     plan = _plan(manifest, tmp_path, FULL_ENV)
-    assert {item.cell.id for item in plan.skipped} == {"k8s-full-rules", "k8s-full-melious"}
+    assert plan.skipped == ()
+    assert len(plan.runnable) == 14
 
 
 def test_the_nas_service_cells_need_no_hand_set_inference_address(
@@ -306,13 +313,38 @@ def test_a_nas_cell_hands_its_key_over_in_a_file_not_an_empty_flag(
     assert "--env-file $MATRIX_NAS_OUT/nas-hosted-zai/env" in steps["run"]
     assert "ZAI_API_KEY=$ZAI_API_KEY" in steps["push-env"]
     assert "umask 077" in steps["push-env"], "the file holds a key and nothing else may read it"
-    assert order.index("push-env") < order.index("run") < order.index("drop-env")
+    assert order.index("push-env") < order.index("run") < order.index("drop-credentials")
     assert "--exclude=./env" in steps["pull-results"], "a key never comes back with the results"
-    # A cell with no credential has no file to write, to name or to remove.
-    assert [name for name in order if name in {"push-env", "drop-env"}] == ["push-env", "drop-env"]
+    # A cell with no credential has no env file to write or to name.
     rules_steps = {step.name: str(step) for step in rules.steps}
     assert "push-env" not in rules_steps
     assert "--env-file" not in rules_steps["run"]
+
+
+def test_the_config_pushed_to_the_nas_is_readable_by_nobody_else(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """It is the operator's own config with the pins over the top, key included.
+
+    The NAS mounts its shares for the household, so the file is 0600 before it is
+    tarred and the far side extracts under a umask that says the same thing. It
+    is never pulled back, and it leaves with the env file whether or not the cell
+    worked.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    plan = _plan(manifest, tmp_path, FULL_ENV, library="february")
+    item = next(one for one in plan.cells if one.cell.id == "nas-rules-local")
+    steps = {step.name: str(step) for step in item.steps}
+    remote = "$MATRIX_NAS_OUT/nas-rules-local"
+
+    written = pinned_config(source, tmp_path / "cell.yaml", item.pins)
+
+    assert yaml.safe_load(written.read_text())["immich"]["api_key"] == "operator-key"
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert "umask 077" in steps["push-config"]
+    assert "--exclude=./config.yaml" in steps["pull-results"]
+    assert f"rm -f {remote}/env {remote}/config.yaml" in steps["drop-credentials"]
 
 
 def test_the_dry_run_prints_the_env_file_by_reference(manifest: dict, tmp_path: Path) -> None:
@@ -476,6 +508,81 @@ def test_a_cluster_secret_is_created_from_the_environment_not_a_file(
     # A cell with no credential gets no secret and no envFrom to dangle on.
     assert [step.name for step in rules.steps if "secret" in step.name] == []
     assert "secretRef" not in rules.manifests["job.yaml"]
+
+
+def test_a_real_librarys_cluster_cell_is_told_where_immich_is(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The ConfigMap is built from the pins, and a real library pins no Immich at all.
+
+    Every k8s cell of run 2 died in the same second on "Immich not configured.
+    Run 'immich-memories config' first." The URL is carried into the ConfigMap
+    because a server address is not a secret; the key is not, because a ConfigMap
+    is readable by anything that can read the namespace.
+    """
+    plan = _plan(manifest, tmp_path, FULL_ENV, library="february")
+    for item in (one for one in plan.cells if one.cell.lane == "k8s"):
+        config = yaml.safe_load(
+            yaml.safe_load(item.manifests["configmap.yaml"])["data"]["config.yaml"]
+        )
+        create = str(next(step for step in item.steps if step.name == "make-secret"))
+        assert config["immich"] == {"url": FROM_OPERATOR_CONFIG}, item.cell.id
+        assert IMMICH_KEY_ENV not in item.manifests["configmap.yaml"], item.cell.id
+        assert f"--from-literal={IMMICH_KEY_ENV}={FROM_OPERATOR_CONFIG}" in create
+        assert "secretRef" in item.manifests["job.yaml"], item.cell.id
+
+
+def test_the_fixture_library_still_brings_its_own_immich(manifest: dict, tmp_path: Path) -> None:
+    """`demo` names the fixture server and a fake key, and nothing is carried for it."""
+    plan = _plan(manifest, tmp_path, FULL_ENV)
+    rules = next(item for item in plan.cells if item.cell.id == "k8s-rules-local")
+    config = yaml.safe_load(
+        yaml.safe_load(rules.manifests["configmap.yaml"])["data"]["config.yaml"]
+    )
+
+    assert config["immich"]["api_key"] == "fake-immich-api-key"
+    assert config["immich"]["url"] == "$MATRIX_FIXTURE_BASE_URL"
+    assert [step.name for step in rules.steps if "secret" in step.name] == []
+
+
+def test_the_nas_reads_the_operators_key_out_of_its_own_config_file(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """Only the cluster needs the key carried: the NAS is handed the whole config.
+
+    The file it gets is a copy of the operator's with the pins over the top, key
+    included, which is why the NAS lane of run 2 ran when every cluster cell died.
+    """
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump(OPERATOR_CONFIG))
+    plan = _plan(manifest, tmp_path, FULL_ENV, library="february")
+    nas = next(item for item in plan.cells if item.cell.id == "nas-rules-local")
+    cluster = next(item for item in plan.cells if item.cell.id == "k8s-rules-local")
+
+    pushed = yaml.safe_load(pinned_config(source, tmp_path / "nas.yaml", nas.pins).read_text())
+
+    assert pushed["immich"]["api_key"] == OPERATOR_CONFIG["immich"]["api_key"]
+    assert pushed["immich"]["url"] == OPERATOR_CONFIG["immich"]["url"]
+    assert OPERATOR_CONFIG["immich"]["api_key"] not in str(cluster.manifests)
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        (None, "does not exist"),
+        ({"immich": {"url": "http://immich.invalid:2283"}}, "names no immich.url"),
+    ],
+)
+def test_an_operator_config_with_no_immich_stops_before_the_cluster_does(
+    tmp_path: Path, config: dict | None, message: str
+) -> None:
+    """An empty Secret is the same dead Job, three hours later and harder to read."""
+    source = tmp_path / "operator.yaml"
+    if config is not None:
+        source.write_text(yaml.safe_dump(config))
+
+    with pytest.raises(SystemExit, match=message):
+        read_operator_immich(source)
 
 
 def test_the_nas_script_reaches_the_remote_shell_as_one_argument(
@@ -1254,29 +1361,49 @@ def test_a_pinned_service_says_so_in_the_dry_run() -> None:
     assert "inference-node" not in [step.name for step in unpinned]
 
 
-# --- a cell that names an overlay this tree does not carry --------------------
+# --- the full tier in the cluster ---------------------------------------------
+
+CAPTIONER_OVERLAY = "deploy/kubernetes/overlays/captioner"
 
 
-def test_the_full_tier_cluster_cells_wait_for_the_captioner_overlay(
+def test_the_full_tier_cluster_cells_point_at_the_captioner_service(manifest: dict) -> None:
+    """The URL is the Service's own name and port, read off the overlay that serves it.
+
+    Spelled by hand it would be right until somebody renamed the Service, and a
+    `tier: full` cell pointing at a name nothing answers fails on its first
+    picture, hours into a run.
+    """
+    documents = yaml.safe_load_all((REPO_ROOT / CAPTIONER_OVERLAY / "service.yaml").read_text())
+    service = next(d for d in documents if d and d["kind"] == "Service")
+    url = f"http://{service['metadata']['name']}:{service['spec']['ports'][0]['port']}/v1"
+
+    for cell_id in ("k8s-full-rules", "k8s-full-melious"):
+        cell = next(cell for cell in read_cells(manifest) if cell.id == cell_id)
+        assert cell.tier == "full"
+        assert cell.config["editorial.preparation.caption_base_url"] == url
+
+
+def test_the_full_tier_cluster_cells_run_now_the_overlay_is_here(
     manifest: dict, tmp_path: Path
 ) -> None:
-    """Declared now, skipped until the overlay lands. A setup nobody can run is still a setup."""
+    """Declared before the overlay existed, skipped with a reason, and now runnable."""
     plan = _plan(manifest, tmp_path, FULL_ENV)
-    skipped = {item.cell.id: item.skip_reason for item in plan.skipped}
-    assert skipped["k8s-full-rules"] == "captioner overlay not in this tree yet"
-    assert skipped["k8s-full-melious"] == "captioner overlay not in this tree yet"
-    full = next(cell for cell in read_cells(manifest) if cell.id == "k8s-full-rules")
-    assert full.tier == "full"
-    assert full.config["editorial.preparation.caption_base_url"] == "http://captioner:8092/v1"
+
+    assert {"k8s-full-rules", "k8s-full-melious"} <= {item.cell.id for item in plan.runnable}
+    assert required_overlays(read_cells(manifest)) == (CAPTIONER_OVERLAY,)
 
 
-def test_the_same_cell_runs_the_day_the_overlay_lands(manifest: dict, tmp_path: Path) -> None:
+def test_a_cell_whose_overlay_is_absent_is_still_skipped_with_a_reason(
+    manifest: dict, tmp_path: Path
+) -> None:
+    """The gate stays behind the cells that passed it: a checkout can carry less."""
     cell = next(cell for cell in read_cells(manifest) if cell.id == "k8s-full-rules")
-    (tmp_path / cell.requires_overlay).mkdir(parents=True)
+    assert overlay_skip_reason(cell, tmp_path) == "captioner overlay not in this tree yet"
+    assert required_overlays((cell,), tmp_path) == ()
 
+    (tmp_path / cell.requires_overlay).mkdir(parents=True)
     assert overlay_skip_reason(cell, tmp_path) is None
     assert required_overlays((cell,), tmp_path) == (cell.requires_overlay,)
-    assert required_overlays((cell,), tmp_path / "empty") == ()
 
 
 def test_a_declared_overlay_comes_down_with_the_inference_one() -> None:

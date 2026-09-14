@@ -306,11 +306,13 @@ cells:
       inference.fallback_to_local: false
       hardware.backend: nvidia
 
-  # Tier full in the cluster, declared before it can run. Both cells want a
-  # caption per picture, and the endpoint that serves them is a captioner overlay
-  # a sibling branch is adding. `requires_overlay` is the whole contract: while
-  # that directory is absent the planner skips the cell with a reason, and the day
-  # it lands the run applies it and tears it down with the inference overlay.
+  # Tier full in the cluster. Both cells want a caption per picture, and what
+  # serves them is the captioner overlay: llama.cpp behind a `captioner` Service
+  # on 8092, which is where the URL below comes from. `requires_overlay` is the
+  # contract either way -- the runner applies that overlay before the cells that
+  # named it and tears it down with the inference one, and a checkout that does
+  # not carry the directory skips the cell with a reason rather than dropping the
+  # row.
   - id: k8s-full-rules
     lane: k8s
     reader: rules

@@ -81,10 +81,15 @@ container: give them real hostnames.
 | Preparation (previews, heads, detectors) | 2 to 4 GB | 2+ cores |
 | Assembly (title screens + FFmpeg encode) | 4 to 8 GB | 4+ cores |
 
-Those are the working sizes the compose limits (`memory: 4G`, `cpus: 4`) were set around, not a
-profile of this image. Fine for 1080p; for 4K, give it 8 GB. On a CPU-only box the title screens
-cost more than the encode: at `--cpus=2`, 263 s of a 339 s assembly. See
-[CPU-only](../hardware/cpu-only.md).
+Those are the working sizes the compose limit (`memory: 4G`) was set around, not a profile of this
+image. Fine for 1080p; for 4K, give it 8 GB. On a CPU-only box the title screens cost more than
+the encode: at `--cpus=2`, 263 s of a 339 s assembly. See [CPU-only](../hardware/cpu-only.md).
+
+The file sets no CPU limit. `cpus:` is a CFS quota and some kernels are built without the
+controller: a Synology DS423+ on cgroup v1 refused the whole `up` with `NanoCPUs can not be set,
+as your kernel does not support CPU CFS scheduler or the cgroup is not mounted`. To cap the cores,
+add `cpuset: "0-3"` to the service, which pins them without a quota, or put `cpus: "4"` back under
+`deploy.resources.limits` on a host that has the controller.
 
 The image is 2.37 GB on disk with `INSTALL_EXTRAS=all` on arm64, down from 7.08 GB, because
 torch comes from the CPU wheel index and the detectors are ONNX graphs. The reader and the caption

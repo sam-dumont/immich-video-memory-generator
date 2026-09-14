@@ -1,0 +1,19 @@
+# The two GGUF files, nothing else: 437 MB of weights plus the 109 MB
+# projector. Separate from `immich-memories-models`, which holds the ONNX
+# exports `models fetch` writes, because this claim is mounted read-only by a
+# pod that never runs the app.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-memories-caption-models
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories-captioner
+    app.kubernetes.io/component: captioner
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # storageClassName: local-path

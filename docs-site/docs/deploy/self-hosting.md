@@ -96,9 +96,11 @@ to work and ungraded (see [what has been tested](#what-has-been-tested)).
 
 `full` tier only. The endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`;
 the client checks the inventory and three synthetic schema controls before it sends a single
-preview. The accepted weights are `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
-`fa57db46`; the app enforces the alias and the schema controls, not the revision. Those weights are
-MLX, so this service is Apple Silicon today. The full contract is on
+preview. Two artifacts are accepted: `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
+`fa57db46` on Apple Silicon, and the GGUF build of the same model under llama.cpp everywhere else.
+The app enforces the alias and the schema controls, not the revision. Copy-paste recipes for both,
+a compose profile and a Kubernetes overlay are on
+[Caption server](./installation/caption-server.md); the full contract is on
 [Editorial annotation setup](./configuration/editorial-preparation.md).
 
 ## 5. Point the app at them
@@ -171,7 +173,8 @@ scale and encode; none of them runs inference.
 | Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown |
 | Reader | Text-only models | **Unsupported.** The picture pass posts images |
 | Captions | `SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
-| Captions | The same generation under vLLM or llama.cpp | **Untested** |
+| Captions | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` Q8_0 under llama.cpp | **Accepted**: passes the alias and all three schema controls, wording differs |
+| Captions | The same generation under vLLM | **Untested** |
 | Encoder | The pinned DINOv2-small ONNX export | **Required, exact** |
 | Detectors | The pinned sensitive-content ONNX export and Docling at its pinned revision | **Tested**, ONNX Runtime on the CPU provider |
 

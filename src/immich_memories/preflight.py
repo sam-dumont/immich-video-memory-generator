@@ -6,10 +6,13 @@ import hashlib
 import importlib.util
 import logging
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import httpx
+from pydantic import BaseModel
 
 from immich_memories.analysis.provider_health import (
     ProviderHealth,
@@ -496,12 +499,20 @@ def check_detector_export(config: Config) -> CheckResult:
     )
 
 
+# Nothing ships a captioner, so a failing row has to say where the recipes are.
+# A path, not a URL: the docs travel with the checkout and with the image.
+CAPTION_SETUP_PAGE = "docs/deploy/installation/caption-server.md"
+
+
 def _caption_endpoint_unreachable(base_url: str, error: Exception) -> CheckResult:
     return CheckResult(
         name="Captions",
         status=CheckStatus.ERROR,
         message="Caption endpoint unreachable",
-        details=f"{base_url}: {sanitize_error_message(str(error))}",
+        details=(
+            f"{base_url}: {sanitize_error_message(str(error))}; "
+            f"set one up with {CAPTION_SETUP_PAGE}"
+        ),
     )
 
 
@@ -547,13 +558,75 @@ def check_caption_endpoint(config: Config) -> CheckResult:
             name="Captions",
             status=CheckStatus.ERROR,
             message="Caption endpoint serves another model",
-            details=f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}",
+            details=(
+                f"{base_url} advertises {sorted(map(str, served))}, not {API_MODEL}; "
+                f"serve it under that alias as in {CAPTION_SETUP_PAGE}"
+            ),
         )
     return CheckResult(
         name="Captions",
         status=CheckStatus.OK,
         message=f"Serving {API_MODEL}",
         details=base_url,
+    )
+
+
+# Every path-valued setting that describes the host rather than the library.
+# A config is portable until one of these is in it: copied to a second machine
+# it still names an interpreter under /Users, or a models directory on a volume
+# the new box does not mount, and the failure lands hours later inside a worker.
+# The encoder and the sensitive-content export are deliberately absent: they get
+# their own rows above, with the digest and the command that fixes them.
+HOST_PATH_KEYS = (
+    "output.directory",
+    "audio.local_music_dir",
+    "cache.directory",
+    "cache.database",
+    "editorial.annotation_database",
+    "editorial.preparation.head_bundle",
+    "editorial.preparation.detector_python",
+    "editorial.preparation.detector_cache_dir",
+    "triage.bundle",
+)
+
+
+def _host_paths_set_by_hand(config: Config) -> Iterator[tuple[str, Path]]:
+    """Yield (key, path) for every host path someone wrote down, defaults skipped."""
+    for key in HOST_PATH_KEYS:
+        *sections, field = key.split(".")
+        owner: BaseModel = config
+        for part in sections:
+            owner = getattr(owner, part)
+        value = str(getattr(owner, field)).strip()
+        if value and value != type(owner).model_fields[field].default:
+            yield key, Path(value).expanduser()
+
+
+def check_host_paths(config: Config) -> CheckResult:
+    """Report configured paths that are not on this host, all in one row.
+
+    A path the app writes is created inside a directory that already exists, so
+    the test is the parent: present means the app can make the rest, absent means
+    the path came from somewhere else. WARNING and not ERROR, because a NAS whose
+    music share is unmounted this morning should still be able to cut a memory.
+    """
+    missing = [
+        f"{key}={path}"
+        for key, path in _host_paths_set_by_hand(config)
+        if not path.exists() and not path.parent.is_dir()
+    ]
+    if not missing:
+        return CheckResult(
+            name="Config paths",
+            status=CheckStatus.OK,
+            message="Every configured path is on this host",
+        )
+    noun = "path is" if len(missing) == 1 else "paths are"
+    return CheckResult(
+        name="Config paths",
+        status=CheckStatus.WARNING,
+        message=f"{len(missing)} configured {noun} not on this host",
+        details=f"{'; '.join(missing)} (a config copied between hosts keeps the first host's paths)",
     )
 
 
@@ -573,6 +646,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_encoder(config),
         check_detector_export(config),
         check_caption_endpoint(config),
+        check_host_paths(config),
         check_notifications(config),
         check_hardware(),
     ]
