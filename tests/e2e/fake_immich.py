@@ -400,6 +400,15 @@ def _handler_type(
                     },
                 )
                 return
+            if path.startswith("/api/people/") and path.endswith("/statistics"):
+                person_id = path.split("/")[-2]
+                count = sum(
+                    person_id == f"person-{name.lower()}"
+                    for picture in ALL_PICTURES
+                    for name in picture.people
+                )
+                self._send_json(200, {"assets": count})
+                return
             if path == "/api/timeline/buckets":
                 self._send_json(200, _buckets_for_query(query))
                 return

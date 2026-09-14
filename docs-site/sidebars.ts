@@ -24,6 +24,8 @@ const sidebars: SidebarsConfig = {
           label: 'Using the Web UI',
           items: [
             'create/web-ui/memory',
+            'create/web-ui/suggestions',
+            'create/web-ui/runs',
             'create/web-ui/settings',
           ],
         },

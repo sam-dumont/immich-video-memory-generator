@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.analysis.contact_sheets import build_contact_sheets
 from immich_memories.analysis.editorial_contracts import EditorialCandidate
+from immich_memories.analysis.provider_failure import ProviderCredentialRejected
 from immich_memories.analysis.strict_json import final_json_object
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 
@@ -291,6 +292,8 @@ def _ask_one_pair(
                 image_detail="high",
             )
         )
+    except ProviderCredentialRejected:
+        raise  # a rejected key would leave every pair unjudged without a word
     except Exception:  # noqa: BLE001 - one failed pair keeps both frames, it never cuts
         return None
     payload = final_json_object(answer.raw_text) or {}

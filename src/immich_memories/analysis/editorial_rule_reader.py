@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime
 from operator import itemgetter
 from statistics import median
@@ -32,6 +33,10 @@ class NoModelJudge:
 
     def ask(self, *args, **kwargs) -> str:
         raise RuntimeError("rules reader reached a model-only decision")
+
+    def record_failure(self, stage: str, record: Mapping[str, Any]) -> None:
+        """Rules answer nothing, so nothing can fail to parse; keep any claim visible anyway."""
+        self.calls.append({"stage": stage, "failure": dict(record)})
 
 
 class RuleStructureReader:

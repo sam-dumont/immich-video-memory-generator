@@ -39,6 +39,7 @@ from immich_memories.automation.status import (
 )
 from immich_memories.automation.variety import VarietyDecision
 from immich_memories.config_loader import Config
+from immich_memories.operations.auto_output import retain_output
 from immich_memories.operations.bounded_process import run_bounded_process
 from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.tracking.models import RunMetadata
@@ -113,6 +114,7 @@ class StartedAutoRun:
         cooldown_hours: int | None = None,
         upload: bool = False,
         dry_run: bool = False,
+        candidate_key: str | None = None,
     ) -> AutoRunResult:
         """Run the decision this attempt owns, releasing its lease when it ends."""
         try:
@@ -122,6 +124,7 @@ class StartedAutoRun:
                 cooldown_hours=cooldown_hours,
                 upload=upload,
                 dry_run=dry_run,
+                candidate_key=candidate_key,
             )
         finally:
             self.lease.release()
@@ -280,6 +283,16 @@ class AutoRunner:
             details.append(f"stderr:\n{stderr_tail}")
         return _BoundedProcessDetails("\n".join(details) or "no subprocess output")
 
+    def _retain_child_output(self, attempt_id: str, stdout: Any, stderr: Any) -> None:
+        """Keep one complete transcript per attempt, whatever ended the child."""
+        retain_output(
+            self.config.cache.cache_path,
+            attempt_id,
+            _coerce_process_output(stdout),
+            _coerce_process_output(stderr),
+            self._secrets(),
+        )
+
     def _finish(
         self,
         attempt: AutomationAttempt,
@@ -389,10 +402,12 @@ class AutoRunner:
         return result
 
     def _suggest_one_for_attempt(
-        self, attempt: AutomationAttempt
+        self, attempt: AutomationAttempt, candidate_key: str | None = None
     ) -> tuple[MemoryCandidate | None, AutoRunResult | None]:
         """Return one candidate or the terminal result of candidate discovery."""
-        candidates = self.suggest(limit=1)
+        candidates = self.suggest(limit=None if candidate_key is not None else 1)
+        if candidate_key is not None:
+            candidates = [c for c in candidates if c.memory_key == candidate_key]
         if self.last_suggest_status.outcome is SuggestOutcome.PREFLIGHT_FAILED:
             reason = "Immich preflight failed"
             result = self._finish(
@@ -402,6 +417,9 @@ class AutoRunner:
                 error=self.last_suggest_status.error or reason,
             )
             return None, result
+        if not candidates and candidate_key is not None:
+            reason = f"Candidate is no longer eligible: {candidate_key}. Run auto suggest again."
+            return None, self._finish(attempt, AutoOutcome.FAILED, reason, error=reason)
         if not candidates:
             logger.info("No eligible candidates found")
             result = self._finish(attempt, AutoOutcome.SKIPPED, "no eligible candidates")
@@ -420,6 +438,26 @@ class AutoRunner:
             dry_run=dry_run,
             pending=self._prepared_pending_delivery,
         )
+
+    def _pending_delivery_leg(
+        self,
+        attempt: AutomationAttempt,
+        *,
+        dry_run: bool,
+        candidate_key: str | None,
+    ) -> AutoRunResult | None:
+        """Run the queued-delivery leg, unless an explicit choice asked to generate.
+
+        An explicit choice must not reach delivery telemetry: phase updates are
+        forward-only, so a delivery phase written here would drop every phase the
+        generation child later reports.
+        """
+        if candidate_key is not None:
+            return None
+        preflight_result = self._prepare_pending_delivery_retry(attempt)
+        if preflight_result is not None:
+            return preflight_result
+        return self.retry_pending_delivery(attempt, dry_run=dry_run)
 
     def _pending_delivery_retry(self) -> PendingDeliveryRetry:
         """Bind this runner's durable collaborators to one retry state machine."""
@@ -458,7 +496,7 @@ class AutoRunner:
             error=preflight_error,
         )
 
-    def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
+    def suggest(self, limit: int | None = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_backoff_skips: dict[str, str] = {}
@@ -506,6 +544,7 @@ class AutoRunner:
         cooldown_hours: int | None = None,
         upload: bool = False,
         dry_run: bool = False,
+        candidate_key: str | None = None,
     ) -> AutoRunResult:
         """Run one durable automation decision and return its exact outcome."""
         try:
@@ -520,6 +559,7 @@ class AutoRunner:
             cooldown_hours=cooldown_hours,
             upload=upload,
             dry_run=dry_run,
+            candidate_key=candidate_key,
         )
 
     def _run_one_under_lease(
@@ -530,19 +570,18 @@ class AutoRunner:
         cooldown_hours: int | None,
         upload: bool,
         dry_run: bool,
+        candidate_key: str | None = None,
     ) -> AutoRunResult:
         """Execute and persist one automation decision while its lease is held."""
         candidate: MemoryCandidate | None = None
 
         try:
             self.state.record_discovery(attempt.id)
-            preflight_result = self._prepare_pending_delivery_retry(attempt)
-            if preflight_result is not None:
-                return preflight_result
-
-            retry_result = self.retry_pending_delivery(attempt, dry_run=dry_run)
-            if retry_result is not None:
-                return retry_result
+            delivery_result = self._pending_delivery_leg(
+                attempt, dry_run=dry_run, candidate_key=candidate_key
+            )
+            if delivery_result is not None:
+                return delivery_result
 
             effective_cooldown = resolve_cooldown_hours(
                 cooldown_hours,
@@ -551,7 +590,7 @@ class AutoRunner:
             if not force and is_within_cooldown(self.db, effective_cooldown):
                 return self._finish(attempt, AutoOutcome.SKIPPED, "cooldown active")
 
-            candidate, candidate_result = self._suggest_one_for_attempt(attempt)
+            candidate, candidate_result = self._suggest_one_for_attempt(attempt, candidate_key)
             if candidate_result is not None:
                 return candidate_result
             assert candidate is not None
@@ -578,6 +617,7 @@ class AutoRunner:
             try:
                 process = self.execute(cmd)
             except subprocess.TimeoutExpired as exc:
+                self._retain_child_output(attempt.id, exc.stdout, exc.stderr)
                 details = self._process_details(exc.stdout, exc.stderr)
                 timeout_error = _BoundedProcessDetails(
                     f"{_GENERATION_TIMEOUT_REASON}\n{details.text}"
@@ -599,6 +639,8 @@ class AutoRunner:
                     candidate=candidate,
                     error=launch_error,
                 )
+
+            self._retain_child_output(attempt.id, process.stdout, process.stderr)
 
             if process.returncode != 0:
                 reason = f"generation subprocess exited with code {process.returncode}"

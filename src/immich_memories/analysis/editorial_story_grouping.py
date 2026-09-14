@@ -12,6 +12,7 @@ import json
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import pages
+from immich_memories.analysis.editorial_page_recovery import failure_kind, record_page_failure
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
     _read_synthesis,
@@ -145,15 +146,26 @@ def _group_stories(
     are consecutive. A violating answer is re-asked once with the violation named."""
     base = _grouping_prompt(evidence, contract=contract, prior=prior)
     prompt, result = base, None
+    attempts: list[dict] = []
     for attempt in (1, 2):
-        raw = judge.ask(f"{stage}-try{attempt}" if attempt > 1 else stage, prompt, max_tokens=4500)
+        asked = f"{stage}-try{attempt}" if attempt > 1 else stage
+        raw = judge.ask(asked, prompt, max_tokens=4500)
         try:
             result = _read_synthesis(raw, allowed)
-        except (ValueError, json.JSONDecodeError) as exc:
+        except ValueError as exc:
             # an unparseable answer is re-asked once with the failure named; the second failure raises
+            attempts.append(
+                {
+                    "stage": asked,
+                    "max_tokens": 4500,
+                    "failure_kind": failure_kind(exc),
+                    "error": str(exc),
+                    "raw": raw,
+                }
+            )
             record({"stage": stage, "attempt": attempt, "unparseable": str(exc)[:200]})
             if attempt == 2:
-                raise
+                raise record_page_failure(judge, stage, attempts) from exc
             prompt = (
                 base
                 + f"\n\nPREVIOUS ANSWER REJECTED: it was not valid JSON ({str(exc)[:80]}). Answer again, JSON only.\n"

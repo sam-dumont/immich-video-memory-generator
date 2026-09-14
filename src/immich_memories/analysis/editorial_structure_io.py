@@ -5,15 +5,19 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from immich_memories.analysis.editorial_async_bridge import _run_sync
 from immich_memories.analysis.editorial_case import TextRequest
 from immich_memories.analysis.editorial_reranking import rerank
-from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+from immich_memories.analysis.editorial_text_failures import (
+    StageCallFailure,
+    TextCompletionFailure,
+)
 from immich_memories.analysis.editorial_text_gateway import QueryTextRequester
 from immich_memories.security import write_secret_file
 
@@ -49,6 +53,42 @@ class StructureTextJudge:
         )
         write_secret_file(path, json.dumps(failure, ensure_ascii=False, indent=2))
 
+    def record_failure(self, stage: str, record: Mapping[str, Any]) -> None:
+        """Retain a stage's own exhausted envelope recovery, which the gateway never sees.
+
+        The gateway records only what it can judge itself. A page the asking stage could
+        not read left nothing in calls/ at all, so a failed run showed a decoder message
+        and no way to tell which stage produced it.
+        """
+        path = self.out / "calls" / f"{len(self.calls):02d}-json-failure-{stage}.private.json"
+        write_secret_file(path, json.dumps(dict(record), ensure_ascii=False, indent=2))
+
+    def _failed_call(
+        self,
+        n: int,
+        stage: str,
+        failure: TextCompletionFailure | StageCallFailure,
+        request: TextRequest,
+        *,
+        seconds: float,
+        cache_hit: bool = False,
+    ) -> None:
+        """One shape for every call that ended without an answer: artifact, then call row."""
+        write_secret_file(
+            self.out / "calls" / f"{n:02d}-{stage}.failure.private.json",
+            json.dumps(failure.as_record(), ensure_ascii=False, indent=2),
+        )
+        self.calls.append(
+            {
+                "stage": stage,
+                "wall_seconds": round(seconds, 3),
+                "warning": str(failure),
+                "cache_hit": cache_hit,
+                "judgment_key": request.judgment_key,
+                "response_contract": "bounded failure",
+            }
+        )
+
     def ask(
         self,
         stage: str,
@@ -79,21 +119,16 @@ class StructureTextJudge:
         try:
             call = _run_sync(self.requester.request(request, accepts=accepts))
         except TextCompletionFailure as exc:
-            write_secret_file(
-                d / f"{n:02d}-{stage}.failure.private.json",
-                json.dumps(exc.as_record(), ensure_ascii=False, indent=2),
-            )
-            self.calls.append(
-                {
-                    "stage": stage,
-                    "wall_seconds": round(time.monotonic() - started, 3),
-                    "warning": str(exc),
-                    "cache_hit": exc.cache_hit,
-                    "judgment_key": request.judgment_key,
-                    "response_contract": "bounded failure",
-                }
+            self._failed_call(
+                n, stage, exc, request, seconds=time.monotonic() - started, cache_hit=exc.cache_hit
             )
             raise
+        except Exception as exc:
+            # A connection the provider dropped reaches here with nothing recorded and,
+            # for httpx read errors, nothing to print either. Name it before it travels.
+            failure = StageCallFailure(stage, call=n, cause=exc, seconds=time.monotonic() - started)
+            self._failed_call(n, stage, failure, request, seconds=failure.seconds)
+            raise failure from exc
         write_secret_file(d / f"{n:02d}-{stage}.response.private.txt", call.raw)
         self.calls.append(
             {

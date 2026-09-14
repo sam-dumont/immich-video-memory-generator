@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from immich_memories.analysis.llm_wire import (
+    GROWN_REASONING_HEADROOM_TOKENS,
+    REASONING_HEADROOM_TOKENS,
+)
 from immich_memories.config_models_llm import LLMConfig
 
 
@@ -656,7 +660,7 @@ class TestAnthropicReasoningBlocks:
     @pytest.mark.asyncio
     async def test_the_callers_cap_buys_the_answer_and_not_the_reasoning(self):
         from immich_memories.analysis.llm_query import query_llm
-        from immich_memories.analysis.llm_wire import ANTHROPIC_REASONING_HEADROOM_TOKENS
+        from immich_memories.analysis.llm_wire import REASONING_HEADROOM_TOKENS
 
         config = LLMConfig(
             provider="zai",
@@ -670,7 +674,7 @@ class TestAnthropicReasoningBlocks:
             await query_llm("Caption this picture", config, max_tokens=140)
 
         payload = mock_post.call_args.kwargs["json"]
-        assert payload["max_tokens"] == 140 + ANTHROPIC_REASONING_HEADROOM_TOKENS
+        assert payload["max_tokens"] == 140 + REASONING_HEADROOM_TOKENS
 
     @pytest.mark.asyncio
     async def test_the_reasoning_in_front_of_the_answer_is_skipped(self):
@@ -758,6 +762,76 @@ _LIVE = pytest.mark.skipif(
     not (os.environ.get("ZAI_API_KEY") and os.environ.get("ZAI_BASE_URL")),
     reason="needs a z.ai coding-plan key and its Anthropic base; absent in CI",
 )
+
+
+class TestAnthropicImageCallsGetReasoningRoom:
+    """Measured 2026-09-14 on z.ai's /api/anthropic with glm-5.3-flash.
+
+    Six probe shapes answered `end_turn` with a text block; the one carrying a
+    picture spent its whole 64-token budget inside the thinking block and came
+    back with `stop_reason max_tokens` and blocks ['thinking']. That is the
+    reasoning-budget defect #968 fixed on the OpenAI dialects, on the one route
+    it did not reach.
+    """
+
+    @staticmethod
+    def _config():
+        return LLMConfig(
+            provider="zai",
+            base_url="https://api.z.ai/api/anthropic",
+            model="glm-5.3-flash",
+            api_key="k",
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_picture_that_bought_only_thinking_is_asked_again_with_room(self):
+        from immich_memories.analysis.llm_query import query_llm
+
+        starved = _anthropic_blocks(
+            [{"type": "thinking", "thinking": "Looking at the image", "signature": "s"}],
+            stop_reason="max_tokens",
+        )
+        starved.json = MagicMock(
+            return_value={
+                "content": [{"type": "thinking", "thinking": "Looking", "signature": "s"}],
+                "stop_reason": "max_tokens",
+                "usage": {"input_tokens": 12, "output_tokens": 64},
+            }
+        )
+        answered = _anthropic_response('{"subject_action": "a dock"}')
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", side_effect=[starved, answered]) as mock_post:
+            result = await query_llm(
+                "Inspect this one image", self._config(), max_tokens=64, images=(b"jpegbytes",)
+            )
+
+        assert result == '{"subject_action": "a dock"}'
+        first, second = (call.kwargs["json"] for call in mock_post.call_args_list)
+        assert first["max_tokens"] == 64 + REASONING_HEADROOM_TOKENS
+        assert second["max_tokens"] == 64 + GROWN_REASONING_HEADROOM_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_a_reply_that_thought_teaches_the_endpoint_even_when_it_answered(self):
+        from immich_memories.analysis.llm_query import query_llm
+        from immich_memories.analysis.llm_wire import _REASONING_HEADROOM
+
+        config = LLMConfig(provider="anthropic", model="claude-sonnet-4-5", api_key="k")
+        reasoned = _anthropic_blocks(
+            [
+                {"type": "thinking", "thinking": "Considering", "signature": "s"},
+                {"type": "text", "text": "Blue"},
+            ]
+        )
+
+        # WHY: the LLM server is the external boundary this request reaches.
+        with patch("httpx.AsyncClient.post", return_value=reasoned):
+            assert await query_llm("What colour", config, max_tokens=140) == "Blue"
+
+        # A host told `disabled` that thinks anyway has said so; the next call pays for it.
+        assert _REASONING_HEADROOM[("https://api.anthropic.com", "claude-sonnet-4-5")] == (
+            REASONING_HEADROOM_TOKENS
+        )
 
 
 class TestLiveAnthropicCompatibleHost:

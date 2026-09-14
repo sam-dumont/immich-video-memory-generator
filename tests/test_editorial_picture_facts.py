@@ -13,9 +13,11 @@ import httpx
 import pytest
 from PIL import Image
 
+from immich_memories.analysis import editorial_gateway as gateway_module
 from immich_memories.analysis import editorial_picture_facts as module
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
+from immich_memories.analysis.provider_failure import ProviderCredentialRejected
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.config_models_llm import LLMConfig
 
@@ -359,5 +361,174 @@ def test_preview_acquisition_error_is_not_treated_as_an_unreadable_image(tmp_pat
     try:
         with pytest.raises(OSError, match="preview acquisition failed"):
             reader.observe("a")
+    finally:
+        reader.close()
+
+
+MALFORMED = (
+    "code invalid_request_error, message 'The request was rejected as malformed. "
+    "Check the message format, tools schema, or response_format.'"
+)
+
+
+def refusal(status=400, body=MALFORMED, headers=None):
+    request = httpx.Request("POST", "http://localhost:9999/v1/chat/completions")
+    return httpx.HTTPStatusError(
+        f"Client error '{status}' for url '{request.url}' - provider said {body}",
+        request=request,
+        response=httpx.Response(status, request=request, headers=headers or {}),
+    )
+
+
+def test_a_refused_image_payload_costs_one_fact_not_the_whole_run(tmp_path, monkeypatch):
+    """Measured 2026-09-14: a hosted model refused every picture and 39 answered calls died."""
+    calls = fake_transport(monkeypatch, failure=refusal())
+    reader = provider(tmp_path)
+    try:
+        result = reader.observe("a")
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "provider_refused"
+        assert result["status_code"] == 400
+        assert result["images_attached"] is True
+        assert "rejected as malformed" in result["provider_message"]
+        assert reader.metrics()["provider_refusals"] == 1
+        assert reader.metrics()["unavailable_members"] == 1
+    finally:
+        reader.close()
+    assert len(calls) == 1
+    with sqlite3.connect(tmp_path / "facts.sqlite") as connection:
+        # A payload the provider will not take is its configuration, not an answer to bank.
+        assert connection.execute("SELECT count(*) FROM visual_judgments").fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT count(*) FROM visual_completion_failures").fetchone()[0] == 0
+        )
+
+
+def test_a_downed_provider_is_waited_out_before_it_costs_a_picture(tmp_path, monkeypatch):
+    """Measured 2026-09-14: one 503 at planner call 188 threw away 187 good answers."""
+    waits: list[float] = []
+    monkeypatch.setattr(gateway_module.time, "sleep", waits.append)
+    answers = [refusal(status=503, body="code provider_error, message 'try again'"), RAW]
+
+    # WHY: replaces the only external boundary, the vision provider's HTTP transport.
+    async def flaky(_prompt, _llm_config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", flaky)
+    reader = provider(tmp_path)
+    try:
+        assert reader.observe("a")["status"] == "available"
+        assert reader.metrics()["provider_unavailable"] == 0
+    finally:
+        reader.close()
+    assert waits == [2.0]
+
+
+def test_a_provider_that_stays_down_is_recorded_apart_from_a_refusal(tmp_path, monkeypatch):
+    """Lost in the end, but as the weather rather than as this payload's fault."""
+    monkeypatch.setattr(gateway_module.time, "sleep", lambda _seconds: None)
+    fake_transport(monkeypatch, failure=refusal(status=503, body="code overloaded, message 'busy'"))
+    reader = provider(tmp_path)
+    try:
+        result = reader.observe("a")
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "provider_unavailable"
+        assert reader.metrics()["provider_unavailable"] == 1
+        assert reader.metrics()["provider_refusals"] == 0
+        assert reader.metrics()["rate_limited"] == 0
+    finally:
+        reader.close()
+
+
+def test_a_bare_500_is_asked_once_more_and_no_further(tmp_path, monkeypatch):
+    """A 500 can be the request rather than the weather, so it does not buy four tries."""
+    waits: list[float] = []
+    monkeypatch.setattr(gateway_module.time, "sleep", waits.append)
+    calls = fake_transport(
+        monkeypatch, failure=refusal(status=500, body="code internal, message 'oops'")
+    )
+    reader = provider(tmp_path)
+    try:
+        assert reader.observe("a")["reason"] == "provider_unavailable"
+    finally:
+        reader.close()
+    assert len(calls) == 2 and waits == [2.0]
+
+
+RATE_LIMIT = "code rate_limit, message 'slow down'"
+
+
+def test_a_rate_limit_is_waited_out_before_it_can_cost_a_picture(tmp_path, monkeypatch):
+    """A throttled provider must not hand one matrix cell fewer facts than its neighbours."""
+    waits: list[float] = []
+    monkeypatch.setattr(gateway_module.time, "sleep", waits.append)
+    answers = [refusal(status=429, body=RATE_LIMIT, headers={"retry-after": "7"}), RAW]
+
+    # WHY: replaces the only external boundary, the vision provider's HTTP transport.
+    async def throttled(_prompt, _llm_config, **kwargs):
+        kwargs["transport_observer"](LLMTransportAttempt(1, "response", 200))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", throttled)
+    reader = provider(tmp_path)
+    try:
+        assert reader.observe("a")["status"] == "available"
+        assert reader.metrics()["rate_limited"] == 0
+    finally:
+        reader.close()
+    assert waits == [7.0]  # the provider's own Retry-After, not our backoff
+
+
+def test_an_unending_rate_limit_is_recorded_apart_from_a_refusal(tmp_path, monkeypatch):
+    """Once the waits are spent the picture is still lost, but never as `provider_refused`."""
+    monkeypatch.setattr(gateway_module.time, "sleep", lambda _seconds: None)
+    fake_transport(monkeypatch, failure=refusal(status=429, body=RATE_LIMIT))
+    reader = provider(tmp_path)
+    try:
+        result = reader.observe("a")
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "rate_limited"
+        assert reader.metrics()["rate_limited"] == 1
+        assert reader.metrics()["provider_refusals"] == 0
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_rejected_credential_stops_the_run_instead_of_emptying_it(tmp_path, monkeypatch, status):
+    """An expired key must not quietly produce a whole memory with no observed facts."""
+    fake_transport(
+        monkeypatch, failure=refusal(status=status, body="code invalid_api_key, message 'bad key'")
+    )
+    reader = provider(tmp_path)
+    try:
+        with pytest.raises(ProviderCredentialRejected, match="rejected its credential"):
+            reader.observe("a")
+        assert reader.metrics()["provider_refusals"] == 0
+    finally:
+        reader.close()
+
+
+def test_a_quota_named_with_retry_after_is_transient_whatever_status_carries_it(
+    tmp_path, monkeypatch
+):
+    """Some providers spell an exhausted quota 403 and say when to come back."""
+    monkeypatch.setattr(gateway_module.time, "sleep", lambda _seconds: None)
+    fake_transport(
+        monkeypatch,
+        failure=refusal(
+            status=403, body="code quota, message 'come back'", headers={"retry-after": "3"}
+        ),
+    )
+    reader = provider(tmp_path)
+    try:
+        assert reader.observe("a")["reason"] == "rate_limited"
     finally:
         reader.close()

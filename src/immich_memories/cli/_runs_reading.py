@@ -162,3 +162,8 @@ def register_reading_commands(runs: click.Group) -> None:
         console.print(
             why_text(asset_id, trace.story_of(asset_id), read_storyboard(attempt)), highlight=False
         )
+        from immich_memories.audio.text_mood import music_mood_note
+
+        note = music_mood_note(attempt)
+        if note:
+            console.print(note, highlight=False)

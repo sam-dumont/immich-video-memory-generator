@@ -254,7 +254,7 @@ class CandidateDiscovery:
     def discover(
         self,
         *,
-        limit: int,
+        limit: int | None,
         recent_auto_runs: list[RunMetadata],
     ) -> DiscoveryResult:
         """Detect, score, and rank memory candidates from the Immich library."""

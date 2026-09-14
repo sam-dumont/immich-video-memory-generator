@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import pages
+from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_story_grouping import _synthesize
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
@@ -333,10 +335,18 @@ def read_period_story(
         prompt, open_episodes, closed = _page_request(
             page, episodes, first_seen, last_seen, contract
         )
-        raw = judge.ask(f"story-episodes-{number}", prompt, max_tokens=1400 + 220 * len(page))
         try:
-            updates = read_episode_page(
-                raw, offered={r["reading"] for r in page}, existing=open_episodes, closed=closed
+            updates = read_page_answer(
+                judge,
+                stage=f"story-episodes-{number}",
+                prompt=prompt,
+                max_tokens=1400 + 220 * len(page),
+                read=partial(
+                    read_episode_page,
+                    offered={r["reading"] for r in page},
+                    existing=open_episodes,
+                    closed=closed,
+                ),
             )
         except ValueError as exc:
             audit.update(status="incomplete", failure=str(exc))
