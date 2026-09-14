@@ -22,15 +22,15 @@ is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 
 | Feature | With GPU | Without GPU | Impact |
 |---------|----------|-------------|--------|
-| Title screens | Animated GPU-rendered (bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text. And the dominant cost of a run (see below) |
+| Title screens | GPU kernels: bokeh particles, SDF text, the animated deblur of a content-backed card | PIL: the same animated gradient and text, without the kernel effects | Simpler visuals, same text and timing |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
 | SDF text rendering | GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **What runs on this CPU, identically to a GPU box:**
 - Clip discovery from Immich
-- The six context heads over the pinned ONNX encoder, and the two detectors (both are CPU-only by
-  construction: the Docling one pins `CPUExecutionProvider`, the Marqo one just sets thread count)
+- The six context heads over the pinned ONNX encoder, and the two detectors (all three are ONNX
+  sessions, and with no card to take they open on `CPUExecutionProvider`)
 - Burst and near-duplicate collapsing
 - Audio ducking and music mixing
 - Assembly, and all CLI and UI functionality
@@ -41,12 +41,15 @@ is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 
 ## Configuration
 
-No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. A hardware encoder (NVENC, Quick Sync, VAAPI) is only used if it passes a one-frame test encode at startup: FFmpeg builds such as Debian's list those encoders on every machine, so the listing alone is not trusted. On a box without the matching GPU or driver you get a single `Hardware encoder probe failed for …` log line and software encoding. To explicitly force CPU encoding (skip GPU probing entirely):
+No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. A hardware encoder (NVENC, Quick Sync, VAAPI) is only used if it passes a one-frame test encode at startup: FFmpeg builds such as Debian's list those encoders on every machine, so the listing alone is not trusted. On a box without the matching GPU or driver you get a single `Hardware encoder probe failed for …` log line and software encoding. To force software encoding and skip the encoder probe:
 
 ```yaml
 hardware:
   enabled: false
 ```
+
+That is the video encoder only. It does not touch the title kernels, which have their own probe
+and their own switch (`IMMICH_FORCE_CPU=1`), and it does not move any model off a device.
 
 ## Title kernels
 
@@ -85,7 +88,7 @@ Title rendering       WARNING   kernel backend crashed on this CPU: illegal
                                 instruction; titles fall back to the PIL renderer
 ```
 
-Losing the kernels costs animation, not time. The profile in #900 measured the PIL renderer at
+Losing the kernels costs effects, not time. The profile in #900 measured the PIL renderer at
 4.4 s for a content-backed title against 19.8 s for the kernel renderer on a CPU backend: on a box
 with no AVX, PIL is both the only renderer and the faster one.
 
@@ -107,10 +110,13 @@ at all rather than a long build:
 This app needs Python 3.11 or later, so the usable range here is **3.11 to 3.13**.
 
 On the two platforms with no wheel, title screens fall back to the PIL renderer. That loses the
-animated kernels (bokeh particles, the gradient animation, the slow-motion deblur of a
-content-backed card) and the SDF text path; you still get the same title text, the same timing and
-the same encoding on a static gradient. The fallback is logged once at startup, and
-`immich-memories preflight` says which renderer a machine will use before you start a long run:
+kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text
+path. It does not lose animation as such: `renderer_pil.py` composes every frame and draws an
+animated gradient behind the text unless `animated_background` is off, which `preset: fast` turns
+off on every renderer. Same title text, same timing, same encoding.
+
+The fallback is logged once at startup, and `immich-memories preflight` says which renderer a
+machine will use before you start a long run. Its row overstates the loss:
 
 ```
 Title rendering       PIL renderer: static title screens, no animation and no SDF text
@@ -119,17 +125,16 @@ Title rendering       PIL renderer: static title screens, no animation and no SD
 
 ## Performance expectations
 
-The one end-to-end measurement is in the [NAS-only guide](../common-setups/nas-only.md#preparation-tiers-what-the-nas-pays):
-a 14-clip monthly, 62 s of 1080p out, cold cache, 4 cores and no GPU took 10 min 08 s with
-`preset: fast` and 15 min 42 s on the default profile. The analysis phase was 7.4 of those
-10 minutes.
+The end-to-end numbers are on [Running modes](../running-modes.md#what-to-expect-on-a-first-run),
+measured on the same month across a Mac, a Synology DS423+ and a Kubernetes cluster. The CPU-only
+row to read is the NAS: **1,483 s to render a 54-second film on four Celeron cores**, against 49 s
+for the same job on the Mac, and 1.4404 s per picture of preparation at `no_captions`. The cluster
+cell, also encoding on the CPU, took 304 to 331 s per film.
 
-Read that for the render, not for preparation: the Analysis column measured the retired per-clip
-scorer, which is not the work this product does any more, and preparation on the current route is
-[measured only on a NAS](../common-setups/nas-only.md#preparation-tiers-what-the-nas-pays). What is true by
-construction rather than by measurement is that the heads and the detectors have no GPU path here,
-so a card does not shorten them, and that every producer banks its answer, so a second cut over
-the same period skips them. Title rendering is the part a GPU would actually take off your hands.
+What is true by construction rather than by measurement: the heads and the detectors have no GPU
+path here, so a card does not shorten them, and every producer banks its answer, so a second cut
+over the same period skips them. Title rendering is the part a GPU would actually take off your
+hands.
 
 ### Title rendering used to be the bottleneck
 

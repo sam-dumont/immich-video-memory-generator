@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,20 @@ class StageUpdate:
     # The verb a counted stage is shown with: preparation passes prepare,
     # the editorial reads read.
     verb: str = "Preparing"
+    remaining_seconds: float | None = None
+
+    @property
+    def identity(self) -> tuple[str, str, str, int | None]:
+        return self.phase, self.label, self.verb, self.total
+
+    @property
+    def remaining_label(self) -> str:
+        """The same deliberately rounded stage estimate on the page and terminal."""
+        seconds = self.remaining_seconds
+        if seconds is None or not self.counted or self.fraction == 1:
+            return ""
+        amount = f"{ceil(seconds)}s" if seconds < 60 else f"{ceil(seconds / 60)}m"
+        return f"~{amount} left in this stage"
 
     @property
     def counted(self) -> bool:
@@ -74,6 +90,7 @@ class StageUpdate:
             "done": self.done,
             "total": self.total,
             "verb": self.verb,
+            "remaining_seconds": self.remaining_seconds,
         }
 
     @classmethod
@@ -90,9 +107,36 @@ class StageUpdate:
                 total=None if total is None else int(total),
                 recent_asset_ids=tuple(str(v) for v in record.get("recent_asset_ids") or ()),
                 verb=str(record.get("verb") or "Preparing"),
+                remaining_seconds=record.get("remaining_seconds"),
             )
         except (ValueError, TypeError):
             return None
+
+
+class StageClock:
+    """Measure only work observed in this stage; never borrow another pass's rate."""
+
+    def __init__(self) -> None:
+        self._previous: StageUpdate | None = None
+        self._started = 0.0
+        self._baseline = 0
+
+    def measure(self, update: StageUpdate) -> StageUpdate:
+        now = time.monotonic()
+        previous = self._previous
+        if (
+            previous is None
+            or previous.identity != update.identity
+            or (update.done or 0) < (previous.done or 0)
+        ):
+            self._started = now
+            self._baseline = update.done or 0
+        self._previous = update
+        completed = (update.done or 0) - self._baseline
+        remaining = None
+        if completed > 0 and update.total and update.done is not None:
+            remaining = (now - self._started) * max(0, update.total - update.done) / completed
+        return replace(update, remaining_seconds=remaining)
 
 
 # The run's stage sink, reachable from layers that never see the `on_stage`

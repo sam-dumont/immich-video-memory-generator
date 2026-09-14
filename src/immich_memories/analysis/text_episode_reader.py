@@ -387,6 +387,7 @@ class CachedTextEpisodeReader:
                 "complete episode annotation evidence exceeds the request limit"
             )
         calls = 0
+        _offer_batch(self._requester, packs, lines, self._limits)
         for pack in packs:
             calls += 1
             announce_stage(
@@ -527,6 +528,20 @@ def _episode_provenance(
         request_key=request_key,
         cache_hit=bool(episodes) and all(episode.cache_hit for episode in episodes),
     )
+
+
+def _offer_batch(requester, packs, lines, limits) -> None:
+    """Hand the whole page fan-out to the provider's batch route in one go.
+
+    Every pack carries one or more episodes' own annotation lines and nothing
+    else: no pack is shown another pack's answer, which is the property a batch
+    needs. The moment inventory next door does not have it -- each of its pages
+    is told what the pages before it found -- so it stays a sequence.
+    """
+    offer = getattr(requester, "prefetch", None)
+    if not callable(offer):
+        return
+    offer(tuple((_prompt_for(pack, lines), _completion_budget(pack, limits)) for pack in packs))
 
 
 def _read_missing(

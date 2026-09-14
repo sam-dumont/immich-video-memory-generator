@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from collections import Counter
 from itertools import groupby
 from pathlib import Path
@@ -16,6 +17,7 @@ from immich_memories.api.person_expression import PersonExpression
 from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
 from immich_memories.ui.pages.memory_brief import MEMORY_TYPE_LABELS
 from immich_memories.ui.pages.step1_people import PEOPLE_CONDITION_PANEL
+from tests.e2e.conftest import _build_launch_environment
 from tests.e2e.fake_editorial import _EPISODES, PREVIEW_STAGE, STAGES
 from tests.e2e.fake_library import (
     CARRIERS,
@@ -26,6 +28,7 @@ from tests.e2e.fake_library import (
     pool_line,
     summary_line,
 )
+from tests.e2e.test_demo_assets import _TRIP_CLI_BOOTSTRAP
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = pytest.mark.e2e
@@ -91,6 +94,135 @@ def test_the_brief_offers_the_cli_memory_types(page: Page, launch_app_url: str) 
     page.get_by_role("combobox", name="Memory type").click()
 
     expect(page.get_by_role("option")).to_have_text(list(MEMORY_TYPE_LABELS.values()))
+    page.keyboard.press("Escape")
+
+
+def test_the_brief_finds_the_lake_trip_across_photographed_days(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Trip")
+    trip = page.get_by_role("combobox", name="Select a trip")
+    expect(trip).to_be_visible(timeout=30_000)
+    trip.click()
+    option = page.get_by_role(
+        "option", name=re.compile(r"2024-06-21 to 2024-06-27, 7d, \d+ assets")
+    )
+    expect(option).to_be_visible()
+    option.click()
+    expect(page.get_by_role("button", name="Cut", exact=True)).to_be_enabled()
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_role("button", name="Export", exact=True)).to_be_visible(timeout=120_000)
+    expected = sum(p.story_key == "S0002" for p in CARRIERS)
+    expect(page.locator(".storyboard-shot")).to_have_count(expected)
+    root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [
+            str(root / ".venv/bin/python"),
+            "-c",
+            _TRIP_CLI_BOOTSTRAP,
+            str(launch_workspace.config_path),
+            str(launch_workspace.root / "state"),
+            "generate",
+            "--memory-type",
+            "trip",
+            "--year",
+            "2024",
+            "--trip-index",
+            "1",
+            "--no-render",
+            "--no-music",
+            "--quiet",
+        ],
+        cwd=root,
+        env=_build_launch_environment(launch_workspace.root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    transcript = completed.stdout + completed.stderr
+    evidence = root / "test-results"
+    evidence.mkdir(exist_ok=True)
+    (evidence / "trip-cli.txt").write_text(
+        transcript.replace(str(launch_workspace.root), "<fixture-workspace>")
+    )
+    assert completed.returncode == 0, transcript
+    assert "2024-06-21 to 2024-06-27" in transcript
+    assert "Trip plan complete:" in transcript
+
+
+@pytest.mark.parametrize("middle_type", ["IMAGE", "VIDEO"])
+def test_the_brief_keeps_new_year_trips_whole_and_excludes_buffer_only_trips(
+    page: Page, launch_app_url: str, monkeypatch, middle_type: str
+) -> None:
+    from tests.e2e import fake_immich
+
+    dates = (
+        "2023-12-05",
+        "2023-12-07",
+        "2023-12-30",
+        "2023-12-31",
+        "2024-01-01",
+        "2025-01-05",
+        "2025-01-07",
+    )
+    template = next(a for a in fake_immich.TIMELINE_ASSETS if a["exifInfo"]["city"] == "Annecy")
+    home_video = next(
+        a
+        for a in fake_immich.TIMELINE_ASSETS
+        if a["type"] == "VIDEO" and a["exifInfo"]["city"] == "Brussels"
+    )
+    assets = tuple(
+        {
+            **template,
+            "id": f"new-year-{i}",
+            "type": middle_type if i == 3 else "IMAGE",
+            "fileCreatedAt": f"{day}T12:00:00.000Z",
+        }
+        for i, day in enumerate(dates)
+    )
+    # WHY: replace the HTTP fixture's library, keeping the real client and GPS detector.
+    monkeypatch.setattr(fake_immich, "TIMELINE_ASSETS", (*assets, home_video))
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Trip")
+    trip = page.get_by_role("combobox", name="Select a trip")
+    expect(trip).to_be_visible(timeout=30_000)
+    trip.click()
+    expect(page.get_by_role("option")).to_have_count(1)
+    expect(page.get_by_role("option")).to_have_text(
+        re.compile(r"2023-12-30 to 2024-01-01, 3d, 3 assets")
+    )
+    page.keyboard.press("Escape")
+
+
+@pytest.mark.parametrize("only_photos", [False, True])
+def test_the_trip_picker_offers_a_year_with_only_photos(
+    page: Page, launch_app_url: str, monkeypatch, only_photos: bool
+) -> None:
+    from tests.e2e import fake_immich
+
+    template = next(a for a in fake_immich.TIMELINE_ASSETS if a["exifInfo"]["city"] == "Annecy")
+    photos = tuple(
+        {
+            **template,
+            "id": f"photo-year-{day}",
+            "type": "IMAGE",
+            "fileCreatedAt": f"2018-07-0{day}T12:00:00.000Z",
+        }
+        for day in (1, 2, 3)
+    )
+    # WHY: cover both a photo-only year in a mixed library and a photo-only library.
+    existing = () if only_photos else fake_immich.TIMELINE_ASSETS
+    monkeypatch.setattr(fake_immich, "TIMELINE_ASSETS", (*existing, *photos))
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Trip")
+    _choose(page, "Year", "2018")
+    trip = page.get_by_role("combobox", name="Select a trip")
+    expect(trip).to_be_visible(timeout=30_000)
+    trip.click()
+    expect(page.get_by_role("option")).to_have_text(
+        re.compile(r"2018-07-01 to 2018-07-03, 3d, 3 assets")
+    )
     page.keyboard.press("Escape")
 
 
@@ -167,7 +299,7 @@ def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
 
 
 def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
-    page: Page, launch_app_url: str
+    page: Page, launch_app_url: str, launch_workspace
 ) -> None:
     """The wait has to look alive: the user's own library goes past, and a bar moves."""
     _brief_for_june(page, launch_app_url)
@@ -176,9 +308,11 @@ def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
     strip = page.locator(".q-img").locator("visible=true")
     expect(strip.first).to_be_visible(timeout=60_000)
     # A real bar for the pass that reports numbers, from the engine's own count.
-    expect(page.get_by_text(re.compile(rf"^{PREVIEW_STAGE} \d+ of {len(LIBRARY)}$"))).to_be_visible(
-        timeout=60_000
-    )
+    expect(
+        page.get_by_text(
+            re.compile(rf"^{PREVIEW_STAGE} \d+ of {len(LIBRARY)} · ~\d+s left in this stage$")
+        )
+    ).to_be_visible(timeout=60_000)
     # Bounded by construction: a long stage must not grow the page.
     expect(page.locator(".q-linear-progress")).to_have_count(1)
     assert strip.count() <= 12
@@ -186,6 +320,43 @@ def test_the_cut_shows_the_pictures_it_is_working_on_while_it_works(
     # away instead of lingering under the Editing row.
     expect(_active_stage(page)).to_be_visible(timeout=60_000)
     expect(strip).to_have_count(0)
+    expect(page.get_by_text(re.compile("left in this stage"))).to_be_hidden()
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    expect(page.locator(".storyboard-shot")).to_have_count(len(CARRIERS))
+    root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [
+            str(root / ".venv/bin/python"),
+            "-c",
+            _TRIP_CLI_BOOTSTRAP,
+            str(launch_workspace.config_path),
+            str(launch_workspace.root / "state"),
+            "generate",
+            "--memory-type",
+            "monthly_highlights",
+            "--year",
+            "2024",
+            "--month",
+            "6",
+            "--no-render",
+            "--no-music",
+            "--quiet",
+        ],
+        cwd=root,
+        env=_build_launch_environment(launch_workspace.root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    transcript = completed.stdout + completed.stderr
+    evidence = root / "test-results"
+    evidence.mkdir(exist_ok=True)
+    (evidence / "stage-progress-cli.txt").write_text(
+        transcript.replace(str(launch_workspace.root), "<fixture-workspace>")
+    )
+    assert completed.returncode == 0, transcript
+    assert "left in this stage" in transcript
+    assert f"Selected {len(CARRIERS)} clips" in transcript
 
 
 def test_the_detail_lines_are_folded_away_until_asked_for(page: Page, launch_app_url: str) -> None:
@@ -504,3 +675,85 @@ def test_the_picker_says_together_or_any_of_these_people_without_a_condition(
     requested = set(_request_of_the_cut_after(launch_workspace, before)["requested_assets"])
     assert requested == _EITHER_ASSETS
     assert requested > _CONDITION_ASSETS
+
+
+def test_pool_outcomes_match_saved_cut_and_survive_ticks(
+    page: Page, launch_app_url, launch_workspace
+):
+    from immich_memories.cli._runs_reading import why_text
+    from immich_memories.operations.candidate_fates import CandidateFates
+
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_role("tab", name="Story", exact=True)).to_be_visible(timeout=120_000)
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    fates = CandidateFates.read(_newest_attempt(launch_workspace))
+    labels = page.locator(".pool-outcome")
+    expect(labels).to_have_count(min(_PAGE, len(LIBRARY)))
+    assert labels.all_text_contents() == [fates.describe(p.asset_id) for p in LIBRARY[:_PAGE]]
+    before = labels.first.inner_text()
+    page.get_by_role("checkbox", name="Include").first.click()
+    expect(labels.first).to_have_text(before)
+    _evidence(page, "824-pool-outcomes-list")
+    page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
+    expect(labels).to_have_count(min(_PAGE, len(LIBRARY)))
+    page.locator(".media-pool-grid .cursor-pointer").first.click()
+    expect(labels.first).to_have_text(before)
+    _evidence(page, "824-pool-outcomes-grid")
+    assert fates.trace is not None
+    dropped = next(p for p in LIBRARY[:_PAGE] if not p.shipped)
+    assert dropped.drop_reason in why_text(
+        dropped.asset_id, fates.trace.story_of(dropped.asset_id), fates.board
+    )
+    assert dropped.drop_reason in fates.describe(dropped.asset_id)
+
+    # Run the same month through the real Click entry point with the fixture editor.
+    from tests.e2e.conftest import _build_launch_environment
+    from tests.e2e.test_demo_assets import _TRIP_CLI_BOOTSTRAP
+
+    root = Path(__file__).resolve().parents[2]
+    prefix = [
+        str(root / ".venv/bin/python"),
+        "-c",
+        _TRIP_CLI_BOOTSTRAP,
+        str(launch_workspace.config_path),
+        str(launch_workspace.root / "state"),
+    ]
+    transcript = []
+    commands = [
+        [
+            "generate",
+            "--memory-type",
+            "monthly_highlights",
+            "--year",
+            "2024",
+            "--month",
+            "6",
+            "--no-render",
+            "--no-music",
+            "--quiet",
+        ],
+        ["runs", "why", dropped.asset_id, "--run", str(_newest_attempt(launch_workspace))],
+    ]
+    for command in commands:
+        if command[0] == "runs":
+            command[-1] = str(_newest_attempt(launch_workspace))
+        result = subprocess.run(
+            prefix + command,
+            cwd=root,
+            env=_build_launch_environment(launch_workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        transcript.append(result.stdout + result.stderr)
+        assert result.returncode == 0, transcript[-1]
+    cli_fates = CandidateFates.read(_newest_attempt(launch_workspace))
+    assert cli_fates.board is not None and fates.board is not None
+    assert [s.asset_id for s in cli_fates.board.shots] == [s.asset_id for s in fates.board.shots]
+    assert dropped.drop_reason in " ".join(transcript[-1].split())
+    evidence = root / "test-results"
+    evidence.mkdir(exist_ok=True)
+    (evidence / "pool-outcomes-cli.txt").write_text(
+        "\n".join(transcript).replace(str(launch_workspace.root), "<fixture-workspace>")
+    )

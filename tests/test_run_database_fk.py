@@ -299,9 +299,11 @@ def test_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path: Pa
         "run_id",
         "error",
         "last_phase",
+        "phase_events",
     }
     assert "automation_attempt_id" in run_columns
     assert "last_phase" in run_columns
+    assert "phase_events" in run_columns
     assert "last_phase" in attempt_columns
     assert "idx_runs_automation_attempt" in run_indexes
 

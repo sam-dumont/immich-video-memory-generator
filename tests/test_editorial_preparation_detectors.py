@@ -4,7 +4,7 @@ import logging
 import signal
 import sqlite3
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -204,3 +204,151 @@ def test_cancellation_terminates_detector_process_group(monkeypatch, tmp_path):
     assert captured[0][0][1].endswith("editorial_preparation_detectors.py")
     assert captured[0][1]["env"]["HF_HUB_OFFLINE"] == "1"
     assert captured[0][1]["env"]["HF_HUB_CACHE"] == "/configured/cache"
+
+
+class FakeSession:
+    """An ORT session that remembers what it was opened with."""
+
+    def __init__(self, model_path, options, providers, running=None):
+        self.model_path = model_path
+        self.options = options
+        self.providers = list(providers)
+        self._running = list(providers if running is None else running)
+
+    def get_inputs(self):
+        return [SimpleNamespace(name="input")]
+
+    def get_providers(self):
+        return list(self._running)
+
+    def run(self, _outputs, _feed):
+        return [np.zeros((1, len(detectors.DOCLING_LABELS)), dtype=np.float32)]
+
+
+def _fake_onnxruntime(monkeypatch, available, opened, *, refuse=(), running=None):
+    """# WHY: ONNX Runtime is the boundary under test -- which execution providers
+    a session is opened with, and what it answers when one turns the graph down.
+    No CUDA host exists on Apple Silicon, so the runtime is what has to be stood in for."""
+
+    def session(path, options, providers):
+        opened.append(list(providers))
+        if providers[0] in refuse:
+            raise RuntimeError(f"{providers[0]} could not be initialised")
+        return FakeSession(path, options, providers, running)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "onnxruntime",
+        SimpleNamespace(
+            get_available_providers=lambda: list(available),
+            SessionOptions=lambda: SimpleNamespace(
+                intra_op_num_threads=0, graph_optimization_level=None
+            ),
+            GraphOptimizationLevel=SimpleNamespace(ORT_ENABLE_EXTENDED="extended"),
+            InferenceSession=session,
+        ),
+    )
+
+
+def _fake_snapshot(monkeypatch, tmp_path):
+    """# WHY: hf_hub_download is the Hugging Face boundary; the pinned Docling
+    snapshot is 16.8 MB and this test never reads a byte of it."""
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"not read: the session is stood in for too")
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(hf_hub_download=lambda *_args, **_kwargs: str(model)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("choice", "available", "expected"),
+    [
+        (
+            "auto",
+            ("CUDAExecutionProvider", "CPUExecutionProvider"),
+            ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        ),
+        ("auto", ("CPUExecutionProvider",), ["CPUExecutionProvider"]),
+        (
+            "cuda",
+            ("CUDAExecutionProvider", "CPUExecutionProvider"),
+            ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        ),
+        ("cpu", ("CUDAExecutionProvider", "CPUExecutionProvider"), ["CPUExecutionProvider"]),
+    ],
+)
+def test_a_detector_session_is_opened_on_the_provider_the_deployment_chose(
+    monkeypatch, tmp_path, choice, available, expected
+):
+    opened: list[list[str]] = []
+    _fake_onnxruntime(monkeypatch, available, opened)
+    _fake_snapshot(monkeypatch, tmp_path)
+
+    detectors.Docling(allow_downloads=False, cache_dir=None, provider=choice)
+
+    assert opened == [expected]
+
+
+def test_naming_a_provider_the_runtime_was_not_built_with_is_refused(monkeypatch, tmp_path):
+    _fake_onnxruntime(monkeypatch, ("CPUExecutionProvider",), [])
+    _fake_snapshot(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="CUDAExecutionProvider is unavailable"):
+        detectors.Docling(allow_downloads=False, cache_dir=None, provider="cuda")
+
+
+def test_a_card_that_refuses_the_graph_is_said_once_and_the_cpu_decides(
+    monkeypatch, tmp_path, caplog
+):
+    opened: list[list[str]] = []
+    monkeypatch.setattr(detectors, "_ANNOUNCED", set())
+    _fake_onnxruntime(
+        monkeypatch,
+        ("CUDAExecutionProvider", "CPUExecutionProvider"),
+        opened,
+        refuse=("CUDAExecutionProvider",),
+    )
+    _fake_snapshot(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger=detectors.__name__):
+        detectors.Docling(allow_downloads=False, cache_dir=None, provider="cuda")
+        detectors.Docling(allow_downloads=False, cache_dir=None, provider="cuda")
+
+    assert opened[0] == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    assert opened[1] == ["CPUExecutionProvider"]
+    said = [record.getMessage() for record in caplog.records]
+    assert len(said) == 1, said
+    assert "doc_docling" in said[0]
+    assert "deciding on CPUExecutionProvider" in said[0]
+
+
+def test_a_session_the_card_never_joined_names_what_is_running(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(detectors, "_ANNOUNCED", set())
+    _fake_onnxruntime(
+        monkeypatch,
+        ("CUDAExecutionProvider", "CPUExecutionProvider"),
+        [],
+        running=["CPUExecutionProvider"],
+    )
+    _fake_snapshot(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger=detectors.__name__):
+        detectors.Docling(allow_downloads=False, cache_dir=None, provider="cuda")
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "doc_docling: asked for CUDAExecutionProvider, running on CPUExecutionProvider"
+    ]
+
+
+def test_the_in_process_worker_takes_the_card_where_there_is_one(monkeypatch, tmp_path):
+    """No knob: the worker runs on whatever the host it was configured for has."""
+    opened: list[list[str]] = []
+    _fake_onnxruntime(monkeypatch, ("CUDAExecutionProvider", "CPUExecutionProvider"), opened)
+    _fake_snapshot(monkeypatch, tmp_path)
+    _database, job = _job(tmp_path, {"doc_docling": ["a"]})
+
+    detectors._open_detector("doc_docling", job)
+
+    assert opened == [["CUDAExecutionProvider", "CPUExecutionProvider"]]

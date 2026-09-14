@@ -104,6 +104,53 @@ does not degrade politely into one that can. See
 [the self-hosting guide](../../deploy/self-hosting.md#what-has-been-tested).
 :::
 
+## Batch mode
+
+Reading the event evidence is one prompt per episode, and those prompts do not read each
+other. Every hosted provider sells that shape cheaper: hand the whole pile over at once,
+get it back within the day, pay half. Set `llm.batch: auto` and the stage does exactly
+that.
+
+```yaml
+advanced:
+  llm:
+    batch: "auto"               # off (default) | auto
+    batch_min_requests: 8       # below this, asking one at a time is quicker
+    batch_max_wait_minutes: 60  # then ask whatever is left in real time
+```
+
+**When it pays.** An unattended run: the nightly `auto run`, a scheduled memory, a matrix
+cell. Half the bill on the largest stage of a hosted run is real money, and nobody is
+watching the bar.
+
+**When it does not.** A run someone is sitting in front of. A batch is queued work, not a
+slow call. OpenAI publishes a 24 hour completion window and usually answers in minutes;
+"usually" is not a promise you want between a click and a video.
+
+**What it costs you if it goes wrong: the discount, and nothing else.** Anything the
+provider has not answered by `batch_max_wait_minutes` is asked in real time, as is any
+line it refused, and any answer the stage's own parser will not read. The run finishes
+either way. While it waits, the progress line says which provider it is waiting on, how
+many prompts are out, and when they were submitted.
+
+**Which hosts.** Two routes cover the field, and the declared one is probed once before
+anything is queued:
+
+| Provider | Route | Discount |
+|---|---|---|
+| OpenAI | `/v1/batches` (Batch API) | 50%, documented |
+| Anthropic, and hosts serving its API | `/v1/messages/batches` (Message Batches) | 50%, documented |
+| Melious | `/v1/batches`, same shape as OpenAI | none: their docs say batches run at the same per-token rate |
+| z.ai | answers 404 on `/v1/messages/batches` | no batch route; stays realtime, with the reason in the log |
+
+A host that does not serve the route it was expected to serve gets asked once, logs why,
+and reads in real time for the rest of the run.
+
+**Which stages.** Only the event evidence read, because it is the only stage whose prompts
+are independent of each other. The period account is a single prompt. The moment inventory
+pages are each told what the pages before them found. The story picks read the stages
+above them. A batch is submitted whole, so none of those can be in one.
+
 ## LLM Title Generation
 
 Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app hands a local LLM a day-by-day summary of where the trip went and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". English and French are the two locales the app ships; it classifies the trip pattern at the same time.
@@ -177,35 +224,8 @@ ollama serve
 
 ## Configuration
 
-One section names the model; the editor, titles and mood detection all read it.
-
-```yaml
-advanced:
-  llm:
-    base_url: "http://localhost:8000/v1"   # example: oMLX. The default is 8080, the app's own port
-    model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
-    api_key: ""                            # local servers ignore it
-    provider: "openai-compatible"          # or ollama | openai | zai | anthropic
-    timeout_seconds: 300                   # the default
-    thinking: "disabled"                   # disabled | low | high | max | auto
-```
-
-`model` has to be the string the server reports at `GET /v1/models`, not the name you typed
-somewhere else.
-
-A separate `title_llm` section can point trip titles at a different model:
-
-```yaml
-advanced:
-  title_llm:
-    provider: "openai-compatible"
-    base_url: "http://localhost:11434/v1"
-    model: "llama3.2"
-    timeout_seconds: 300
-```
-
-**Fields do not fall back to `llm`.** The switch is all-or-nothing on `title_llm.model`: set it
-and the whole `title_llm` block is used, with every field you left out taking its *built-in*
-default; `provider: openai-compatible`, `base_url: http://localhost:8080/v1`, empty `api_key`.
-Leave `title_llm.model` empty and `llm` is used instead. Write out every field you care about, or
-the two-line version above silently resets five others.
+Every `llm:` key, with its default, is in the
+[config reference](../../reference/config-reference.md#llm-vision-model). The three that have to be
+right: `base_url` (which defaults to the app's own port, so set it), `model` (the exact string the
+server reports at `GET /v1/models`) and `provider`, which picks the dialect and, on `openai`,
+`anthropic` and `zai`, fills in the vendor URL when you leave `base_url` alone.

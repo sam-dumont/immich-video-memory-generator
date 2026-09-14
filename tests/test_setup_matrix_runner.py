@@ -21,6 +21,7 @@ import setup_matrix  # noqa: E402
 import yaml  # noqa: E402
 from setup_matrix_plan import (  # noqa: E402
     FROM_OPERATOR_CONFIG,
+    HOMEBASE_PINS,
     IMMICH_KEY_ENV,
     Cell,
     CellPlan,
@@ -47,6 +48,7 @@ def _cell_plan(
     manifests: dict[str, str] | None = None,
     operator_immich: bool = False,
     fresh_cache: bool = False,
+    pins: dict | None = None,
 ) -> CellPlan:
     cell = Cell(
         id=cell_id,
@@ -61,7 +63,7 @@ def _cell_plan(
     )
     return CellPlan(
         cell=cell,
-        pins={},
+        pins=pins or {},
         config_yaml="",
         steps=steps,
         manifests=manifests or {},
@@ -112,6 +114,30 @@ def test_a_cell_is_cold_unless_its_own_cache_is_already_on_disk(tmp_path) -> Non
 
     assert fresh["prepare_cache_primed"] is False
     assert rerun["prepare_cache_primed"] is True
+
+
+def test_a_record_says_the_cell_was_handed_a_home_and_never_says_which_one(tmp_path) -> None:
+    """The marker the table reads to claim the three lanes measured the same places.
+
+    Run 1's eight cluster cells planned against Null Island and not one field in
+    any record said so. It stays a word: coordinates are the operator's home and
+    belong in no file that gets published.
+    """
+    cache = tmp_path / "cache"
+    replayed = _replayed_mac_cell(cache)
+    pinned = _cell_plan(
+        "mac-local",
+        "mac",
+        steps=replayed.steps,
+        cache_dir=str(cache),
+        pins=dict.fromkeys(HOMEBASE_PINS, "$MATRIX_HOMEBASE_LATITUDE"),
+    )
+
+    with_home = setup_matrix.run_local_cell(pinned, _plan_of(pinned), tmp_path / "out")
+    without = setup_matrix.run_local_cell(replayed, _plan_of(replayed), tmp_path / "out")
+
+    assert with_home["homebase"] == "pinned"
+    assert without["homebase"] == "unset"
 
 
 def test_a_cell_that_emptied_its_bank_is_cold_over_a_cache_that_was_there(tmp_path) -> None:
@@ -388,6 +414,50 @@ def test_a_copy_out_that_ended_early_is_tried_again(tmp_path) -> None:
     assert record["measurement_notes"].get("film") is None
 
 
+def _copy_out_that_truncates(tmp_path: Path, film: Path) -> Step:
+    """A tar that brings the film back and still exits 1 on a member it could not finish."""
+    counter = tmp_path / "copy-out.count"
+    script = tmp_path / "copy-out-truncated.sh"
+    script.write_text(
+        f"n=$(( $(cat {counter} 2>/dev/null || echo 0) + 1 ))\n"
+        f"echo $n > {counter}\n"
+        f"mkdir -p {film.parent}; : > {film}\n"
+        'echo "./a-take/mastered_calm_acoustic_s522.wav: Truncated tar archive:'
+        ' Unknown error: -1" >&2\n'
+        'echo "tar: Error exit delayed from previous errors." >&2\n'
+        "exit 1\n"
+    )
+    return Step("copy-out", ("sh", str(script)))
+
+
+def test_a_truncated_copy_out_is_tried_again_and_does_not_lose_the_cell(tmp_path) -> None:
+    """`k8s-gpu-t1000` published `error: copy-out exited 1` over a film that had arrived.
+
+    One member of the archive ended early, tar exited 1 for it, and the cell was
+    marked failed with its 54.5 s film sitting in the directory. The copy is tried
+    again, and what it is judged on is the film: a member tar could not finish is
+    a note, not a lost row.
+    """
+    film = tmp_path / "out" / "k8s-rules-service" / _FILM
+    item = _cell_plan(
+        "k8s-rules-service",
+        "k8s",
+        steps=(
+            Step("logs", ("cat", str(FIXTURES / "k8s-job-logs.stdout.txt"))),
+            _copy_out_that_truncates(tmp_path, film),
+            Step("delete-output-claim", ("true",)),
+        ),
+    )
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert (tmp_path / "copy-out.count").read_text().strip() == "2"
+    assert record["error"] is None
+    assert "Truncated tar archive" in record["measurement_notes"]["copy_out"]
+    # The tear-down after a tolerated copy still runs, so no claim is left held.
+    assert (tmp_path / "out" / "k8s-rules-service" / "delete-output-claim.stdout.log").is_file()
+
+
 def test_a_copy_out_that_never_brings_the_film_back_says_so(tmp_path) -> None:
     item, film = _copying_cell(tmp_path, works_on=99)
 
@@ -528,6 +598,8 @@ def test_the_dry_run_shows_the_card_the_service_was_pinned_to(tmp_path, capsys) 
         "MATRIX_K8S_CONTEXT=a-context\n"
         "MATRIX_K8S_NAMESPACE=a-namespace\n"
         "MATRIX_FIXTURE_BASE_URL=http://a-fixture.invalid:8078\n"
+        "MATRIX_HOMEBASE_LATITUDE=12.3456\n"
+        "MATRIX_HOMEBASE_LONGITUDE=-7.8910\n"
     )
     arguments = [
         "--dry-run",
@@ -621,3 +693,195 @@ def test_a_cluster_cell_is_handed_the_operators_immich_at_the_last_moment(tmp_pa
     assert written == "data:\n  url: http://immich.invalid:2283\n"
     assert "operator-key" not in written
     assert f"--from-literal={IMMICH_KEY_ENV}=operator-key" in created
+
+
+def test_the_dry_run_says_which_captioner_the_full_tier_cells_will_get(tmp_path, capsys) -> None:
+    """The device is half of what a full-tier row costs, so the plan has to name it.
+
+    Pinned, the transcript applies that overlay by name. On `auto` it prints the
+    rule instead of an answer, because resolving it means asking a cluster and a
+    dry run asks nothing.
+    """
+    env_file = tmp_path / "matrix.env"
+    env_file.write_text(
+        "MATRIX_K8S_CONTEXT=a-context\n"
+        "MATRIX_K8S_NAMESPACE=a-namespace\n"
+        "MATRIX_FIXTURE_BASE_URL=http://a-fixture.invalid:8078\n"
+        "MATRIX_HOMEBASE_LATITUDE=12.3456\n"
+        "MATRIX_HOMEBASE_LONGITUDE=-7.8910\n"
+    )
+    arguments = [
+        "--dry-run",
+        "--cell",
+        "k8s-full-rules",
+        "--env-file",
+        str(env_file),
+        "--out",
+        str(tmp_path / "out"),
+    ]
+
+    assert setup_matrix.main([*arguments, "--inference-device", "cuda"]) == 0
+    pinned = capsys.readouterr().out
+    assert setup_matrix.main(arguments) == 0
+    undecided = capsys.readouterr().out
+
+    assert "apply-captioner-cuda" in pinned
+    assert "overlays/captioner-cuda" in pinned
+    assert "captioner-device" in undecided, "an auto run has to say what decides it"
+    assert "probe-gpu" in undecided
+
+
+# A cell whose attempt never came back is not a cell that cut nothing. The film
+# is here and the run named every picture it fetched to make it, so the row can
+# say how many it kept and which ones -- what it cannot say is the order they
+# played in, because a download order is not a play order.
+
+
+def test_a_cell_that_lost_its_attempt_recovers_its_cut_from_the_log(tmp_path) -> None:
+    """`k8s-gpu-t1000` published `selected_asset_ids: []` beside a 54.5 s film."""
+    item = _cell_plan(
+        "k8s-rules-service",
+        "k8s",
+        steps=(
+            Step("logs", ("cat", str(FIXTURES / "k8s-job-logs.stdout.txt"))),
+            Step("copy-out", ("true",)),
+        ),
+    )
+
+    record = setup_matrix.run_remote_cell(item, _plan_of(item), tmp_path / "out")
+
+    assert len(record["selected_asset_ids"]) == 14
+    assert "home-breakfast-02" in record["selected_asset_ids"]
+    assert record["cut_source"] == setup_matrix.CUT_FROM_LOG
+    # The film counted 14 clips too, so the recovered set is the whole cut.
+    assert "14" in record["measurement_notes"]["cut"]
+
+
+def test_a_recovered_cut_never_claims_an_order_it_could_not_read(tmp_path) -> None:
+    """The videos are fetched first and concurrently, so a fetch order is not a cut order.
+
+    Chronological order is a hard rule, and a table that reported it broken off a
+    download order would be raising a false alarm about the loudest finding it has.
+    """
+    from setup_matrix_summary import build_summary
+
+    summary = build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.1.0",
+        rows=[
+            {
+                "id": "mac-local",
+                "tier": "full",
+                "reader": "model",
+                "facts": "local",
+                "hosted": False,
+                "skip_reason": None,
+                "timing": {},
+                "selected_asset_ids": ["a", "b", "c"],
+            },
+            {
+                "id": "k8s-gpu-t1000",
+                "tier": "no_captions",
+                "reader": "rules",
+                "facts": "service",
+                "hosted": False,
+                "skip_reason": None,
+                "timing": {},
+                "cut_source": setup_matrix.CUT_FROM_LOG,
+                "selected_asset_ids": ["c", "b", "a"],
+            },
+        ],
+    )
+    recovered = next(row for row in summary["cells"] if row["id"] == "k8s-gpu-t1000")
+
+    assert recovered["order_kept"] is None
+    assert recovered["overlap_vs_cell_1"] == 1.0
+
+
+def test_no_row_is_ordered_against_a_reference_cut_that_was_itself_recovered(tmp_path) -> None:
+    """Every other row's order is read against `mac-local`, so a fetch order there poisons all of them."""
+    from setup_matrix_summary import build_summary
+
+    def row(cell_id: str, selected: list[str], **extra: object) -> dict:
+        return {
+            "id": cell_id,
+            "tier": "full",
+            "reader": "rules",
+            "facts": "local",
+            "hosted": False,
+            "skip_reason": None,
+            "timing": {},
+            "selected_asset_ids": selected,
+            **extra,
+        }
+
+    summary = build_summary(
+        library="demo",
+        month="2024-06",
+        image="ghcr.io/example/app:0.1.0",
+        rows=[
+            row("mac-local", ["a", "b", "c"], cut_source=setup_matrix.CUT_FROM_LOG),
+            row("nas-rules-local", ["c", "b", "a"]),
+        ],
+    )
+
+    assert next(r for r in summary["cells"] if r["id"] == "nas-rules-local")["order_kept"] is None
+
+
+def test_a_recapture_rebuilds_a_record_from_the_directory_that_is_already_there(
+    tmp_path,
+) -> None:
+    """Reading a cell again must not need the cell run again: the cluster ones cost hours."""
+    out_dir = tmp_path / "out"
+    cell_dir = out_dir / "k8s-rules-service"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "logs.stdout.log").write_text((FIXTURES / "k8s-job-logs.stdout.txt").read_text())
+    item = _cell_plan("k8s-rules-service", "k8s")
+
+    record = setup_matrix.recapture_cell(item, _plan_of(item), out_dir)
+
+    assert record["timing"]["total_s"] == 313
+    assert (record["planned"], record["eligible"]) == (14, 130)
+    assert len(record["selected_asset_ids"]) == 14
+    assert record["error"] is None
+
+
+def test_a_recapture_keeps_what_only_the_running_process_could_measure(tmp_path) -> None:
+    """Peak memory and CPU on the Mac lane are counted live; no file holds them."""
+    out_dir = tmp_path / "out"
+    cell_dir = out_dir / "k8s-rules-service"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "logs.stdout.log").write_text((FIXTURES / "k8s-job-logs.stdout.txt").read_text())
+    (cell_dir / "timing.json").write_text(
+        json.dumps({"id": "k8s-rules-service", "timing": {"peak_rss_mb": 1974.0, "cpu_s": 2643.7}})
+    )
+    item = _cell_plan("k8s-rules-service", "k8s")
+
+    record = setup_matrix.recapture_cell(item, _plan_of(item), out_dir)
+
+    assert record["timing"]["peak_rss_mb"] == 1974.0
+    assert record["timing"]["cpu_s"] == 2643.7
+
+
+def test_a_recapture_reports_the_home_the_run_had_and_not_the_one_the_plan_has(
+    tmp_path,
+) -> None:
+    """The plan is today's and the directory is the run's.
+
+    `k8s-gpu-t1000` was cut before anything pinned a home. A recapture that
+    answered off today's manifest would put "pinned" on a row made at Null
+    Island, which is the exact claim the marker exists to make honestly.
+    """
+    out_dir = tmp_path / "out"
+    cell_dir = out_dir / "k8s-rules-service"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "logs.stdout.log").write_text((FIXTURES / "k8s-job-logs.stdout.txt").read_text())
+    (cell_dir / "timing.json").write_text(json.dumps({"id": "k8s-rules-service", "timing": {}}))
+    item = _cell_plan(
+        "k8s-rules-service", "k8s", pins=dict.fromkeys(HOMEBASE_PINS, "$MATRIX_HOMEBASE_LATITUDE")
+    )
+
+    record = setup_matrix.recapture_cell(item, _plan_of(item), out_dir)
+
+    assert record["homebase"] == "unknown"

@@ -19,7 +19,7 @@ immich-memories config test
 It prints one line and exits 1 on failure. `URL not configured` and `API key not configured` mean
 the setting never reached the process.
 
-- The URL needs its protocol (`https://`) and no trailing slash.
+- The URL needs its protocol (`https://`). A trailing slash is tidied up rather than refused, so it is a style preference, not a requirement.
 - A `403 Forbidden` means the key exists but lacks rights: recreate it with **All**, or the read
   plus upload plus album scopes the quick start lists.
 - Immich must be v2 or v3. Immich 1.x is refused at connect time.
@@ -64,6 +64,8 @@ immich-memories runs why <asset id> --run <run id>
 
 says where it passed and where it was dropped, with the reason. On the Memory page, tick it on
 the pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include <asset id>`.
+Neither overrides the audience gate or conjures media that is not there: a picture the gate holds
+at family-only, or one whose file Immich cannot serve, stays out however you ask for it.
 
 ## No Videos Found
 

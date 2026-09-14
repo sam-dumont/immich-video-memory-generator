@@ -108,8 +108,7 @@ class HeadsProducer:
 
     @property
     def session_providers(self) -> tuple[str, ...]:
-        get_providers = getattr(self._encoder.session, "get_providers", None)
-        return tuple(get_providers()) if get_providers else ()
+        return running_providers(self._encoder.session)
 
     def decide(self, image: bytes) -> ProducerFacts:
         store = _CaptureStore()
@@ -128,6 +127,16 @@ class HeadsProducer:
                 for fact in store.facts
             ),
         )
+
+
+def running_providers(session: object) -> tuple[str, ...]:
+    """What ONNX Runtime actually took the graph, for a producer that holds a session.
+
+    A stubbed model in a test holds none, and a producer that is not an ORT seat
+    at all need not grow one: both answer with nothing rather than an error.
+    """
+    get_providers = getattr(session, "get_providers", None)
+    return tuple(get_providers()) if get_providers else ()
 
 
 class DetectorModel(Protocol):
@@ -159,6 +168,10 @@ class DetectorProducer:
     @property
     def versions(self) -> Mapping[str, str]:
         return {self.name: self._detector.version}
+
+    @property
+    def session_providers(self) -> tuple[str, ...]:
+        return running_providers(getattr(self._detector, "session", None))
 
     def decide(self, image: bytes) -> ProducerFacts:
         with Image.open(BytesIO(image)) as handle:
@@ -199,7 +212,7 @@ def heads_loader(
 
 
 def detector_loader(
-    name: str, *, allow_downloads: bool, cache_dir: str | None, marqo_onnx: Path
+    name: str, *, provider: str, allow_downloads: bool, cache_dir: str | None, marqo_onnx: Path
 ) -> Callable[[], Producer]:
     if name not in {NSFW_MARQO, DOC_DOCLING}:
         raise KeyError(name)
@@ -207,11 +220,14 @@ def detector_loader(
     def load() -> Producer:
         if name == NSFW_MARQO:
             seed(MARQO_ONNX, marqo_onnx, allow_downloads=allow_downloads)
-            return DetectorProducer(name, detectors.Marqo(model_path=marqo_onnx))
+            return DetectorProducer(name, detectors.Marqo(model_path=marqo_onnx, provider=provider))
         # Docling is a Hugging Face snapshot rather than a release asset, so the
         # hub does its own fetching under the same flag.
         return DetectorProducer(
-            name, detectors.Docling(allow_downloads=allow_downloads, cache_dir=cache_dir)
+            name,
+            detectors.Docling(
+                allow_downloads=allow_downloads, cache_dir=cache_dir, provider=provider
+            ),
         )
 
     return load

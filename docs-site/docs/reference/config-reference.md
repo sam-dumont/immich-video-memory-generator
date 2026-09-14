@@ -287,7 +287,11 @@ llm:
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
+  always_reasons: false            # true: the endpoint thinks on every call, asked or not
   thinking: "disabled"             # disabled | low | high | max | auto
+  batch: "off"                     # off | auto: queue a stage's independent prompts, half price
+  batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
+  batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
@@ -376,6 +380,26 @@ there the level is a request rather than a setting: a non-thinking call gets
 the first `text` block is the answer, and a reply that is all reasoning is
 reported with its `stop_reason` instead of read as an empty answer.
 
+`always_reasons` is the same problem on the `/chat/completions` side, and it
+bites hardest on hosted endpoints. A reasoning model bills its private
+thinking inside `max_tokens`, so the budget a reader asks for its answer is
+the budget the thinking spends first. Measured on one hosted API with the same
+17 KB monthly read: 245 thinking tokens on the lightest model, 4,126 and 6,256
+on two others and 13,469 on the heaviest, all of them returning HTTP 200 and an
+empty answer at the reader's 4,000-token ask. Every such call now asks for the
+cheapest reasoning the host sells and adds 16,384 tokens of room on top of the
+caller's cap, so
+the cap keeps meaning what it says about the answer. The room is a ceiling and
+not a bill: a model that does not think that long is not charged for it, and
+an endpoint that never reasons is left exactly at the cap. It is learned from
+the first reply that reports reasoning tokens and remembered per server and
+model; set `always_reasons: true` to spare that first call, which otherwise
+comes back empty. A reply that still hits the ceiling without writing a word
+is retried once with more room, and the error then names the split:
+"reasoning used 12,192 of 12,192 tokens, no answer". A host that needs that
+second try is usually also worth a longer `timeout_seconds`: the retry spends
+what is left of the first call's read budget, not a fresh one.
+
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas
 accept only `image_url.url` and reject requests carrying anything more. Set it
@@ -419,6 +443,7 @@ title_llm:
   api_key: ""
   timeout_seconds: 300
   send_image_detail: true        # same switch as llm.send_image_detail
+  always_reasons: false          # same switch as llm.always_reasons
 ```
 
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
@@ -478,7 +503,7 @@ editorial:
     caption_base_url: http://localhost:8092/v1
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
-    caption_concurrency: 4
+    caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
     head_bundle: ""              # packaged public six-head bundle
     detector_python: ""          # current Python interpreter
@@ -572,7 +597,8 @@ producers and the key is computed over the model artifact, never over where it r
 provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
-to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+to the service and keeps the two detectors in the app, on whatever provider the app's ONNX Runtime
+has; the detectors are the cheap half.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
 cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of

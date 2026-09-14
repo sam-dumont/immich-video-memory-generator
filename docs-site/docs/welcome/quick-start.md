@@ -75,7 +75,20 @@ snapshot, all fetched by `immich-memories models fetch`), `tier: full` adds a ca
 `reader: model` adds a vision reader. The [self-hosting guide](../deploy/self-hosting.md) walks all
 of it in order. A cut with a configured piece missing stops and says which.
 
-## 3. Launch
+## 3. Fetch and check
+
+Skip the first line on `tier: metadata_only`, which downloads nothing.
+
+```bash
+immich-memories models fetch   # the pinned encoder and both detectors, about 500 MB, once
+immich-memories preflight      # Immich, the reader, the model digests, the caption alias, hardware
+```
+
+Preflight follows the reader and tier you set in step 2: rules skips the reader row, `no_captions`
+skips the caption alias, `metadata_only` skips the model files. Every row that fails names what
+to fix. In Docker, put `docker compose exec immich-memories` in front of both.
+
+## 4. Launch
 
 **Web UI** (recommended for first run):
 

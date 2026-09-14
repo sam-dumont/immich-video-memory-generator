@@ -10,18 +10,11 @@ Three subcommands for finding, analyzing, and adding music to your videos.
 ## music search
 
 Search your local music library by mood, or by any word in a track's title, artist or folder name.
+Every flag is in the [CLI reference](../../reference/cli-reference.md#music).
 
 ```bash
 immich-memories music search [OPTIONS]
 ```
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--mood` | `-m` | string | n/a | Mood filter (`happy`, `calm`, `energetic`, etc.) |
-| `--genre` | `-g` | string | n/a | Genre filter (`acoustic`, `electronic`, `cinematic`, etc.) |
-| `--tempo` | `-t` | choice | n/a | `slow`, `medium`, or `fast` |
-| `--min-duration` | n/a | float | `60` | Minimum track duration in seconds |
-| `--limit` | `-n` | int | `10` | Number of results to return |
 
 Example:
 
@@ -43,10 +36,8 @@ Analyzes a video file to determine its mood. Uses your configured LLM to extract
 immich-memories music analyze VIDEO_PATH [OPTIONS]
 ```
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--ollama-url` | string | from config | Override Ollama API URL |
-| `--ollama-model` | string | from config | Override vision model |
+`--ollama-url` overrides the configured reader's base URL whatever provider it is set to; the name
+is historical and it is not Ollama-specific.
 
 Example:
 
@@ -63,15 +54,6 @@ Adds background music to an existing video. Includes automatic audio ducking: th
 ```bash
 immich-memories music add VIDEO_PATH OUTPUT_PATH [OPTIONS]
 ```
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--music` | `-m` | path | auto-select | Music file to use |
-| `--mood` | n/a | string | n/a | Override mood for auto music selection |
-| `--genre` | `-g` | string | n/a | Override genre for auto music selection |
-| `--volume` | `-v` | float | `-6.0` | Music volume in dB |
-| `--fade-in` | n/a | float | `2.0` | Fade in duration in seconds |
-| `--fade-out` | n/a | float | `3.0` | Fade out duration in seconds |
 
 If you don't provide `--music`, it tries to auto-select a track by mood, and that path does **not**
 read your `llm` config: it asks an OpenAI-compatible endpoint at `http://localhost:8080/v1` with an

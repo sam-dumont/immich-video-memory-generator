@@ -260,7 +260,8 @@ def run_cmd(
         _print_auto_run_result(result)
 
     if result.outcome is AutoOutcome.FAILED:
-        click.echo(f"{result.outcome.value}: {result.reason}: {result.error}", err=True)
+        detail = f": {result.error}" if result.error and result.error != result.reason else ""
+        click.echo(f"{result.outcome.value}: {result.reason}{detail}", err=True)
         ctx.exit(1)
 
 

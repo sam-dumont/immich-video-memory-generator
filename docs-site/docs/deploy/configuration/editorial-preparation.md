@@ -24,8 +24,13 @@ pip install "immich-memories[editorial]"      # ONNX Runtime and Hugging Face Hu
 pip install "immich-memories[editorial-cuda]" # instead of editorial, on a CUDA host
 ```
 
-`all` and `all-mac` include `editorial`. Never install both: `onnxruntime-gpu` already contains
-the CPU provider and the two distributions own the same import name.
+`all` and `all-mac` include `editorial`. Never install `editorial` and `editorial-cuda` together:
+`onnxruntime-gpu` already contains the CPU provider, the two distributions own the same import
+name, and whichever pip wrote last is the one that answers.
+
+The card is for the encoder, its six heads and both detectors. All three are ONNX sessions and all
+three open on whatever provider ONNX Runtime has, so `editorial-cuda` puts every seat on the card
+and plain `editorial` puts every seat on the CPU. The same holds inside the CUDA inference image.
 
 ## Configuration
 
@@ -42,7 +47,7 @@ advanced:
       caption_base_url: http://localhost:8092/v1
       caption_api_key: ""    # bearer token, if the server asks for one
       caption_timeout_seconds: 90
-      caption_concurrency: 4
+      caption_concurrency: 1 # one CPU captioner cannot do four at once
       batch_size: 32
       head_bundle: ""        # the packaged public six-head bundle
       detector_python: ""    # a separate detector environment, if you want one
@@ -72,8 +77,8 @@ training coefficients, no library photographs, no owner-trained heads.
 
 ## Detectors
 
-Two ONNX graphs on ONNX Runtime's CPU provider. The worker reads previews locally and commits each
-batch; nothing is uploaded to Hugging Face.
+Two ONNX graphs, opened on the same provider as the encoder. The worker reads previews locally and
+commits each batch; nothing is uploaded to Hugging Face.
 
 | Producer | Artifact | Pinned by | Facts |
 |---|---|---|---|

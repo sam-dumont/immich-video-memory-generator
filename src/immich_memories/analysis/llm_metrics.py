@@ -33,6 +33,7 @@ _active: ContextVar[LLMCounters | None] = ContextVar("llm_counters", default=Non
 __all__ = [
     "LLMCounters",
     "collecting",
+    "record_batch_reply",
     "record_cache_hit",
     "record_reply",
     "record_wall",
@@ -50,6 +51,13 @@ class LLMCounters:
     completion_tokens: int = 0
     truncated: int = 0
     wall_seconds: float = 0.0
+    # The subset of the three counters above that a provider batch answered
+    # rather than a live call. A subset rather than a separate tally, so every
+    # existing reader of `calls` still sees every reply the run paid for; what
+    # a batch changes is the price, not whether the question was asked.
+    batch_calls: int = 0
+    batch_prompt_tokens: int = 0
+    batch_completion_tokens: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False, compare=False)
 
     def as_metrics(self) -> dict[str, float | int]:
@@ -71,6 +79,9 @@ class LLMCounters:
                 "llm_completion_tokens": self.completion_tokens,
                 "llm_truncated": self.truncated,
                 "llm_wall_seconds": round(self.wall_seconds, 3),
+                "llm_batch_calls": self.batch_calls,
+                "llm_batch_prompt_tokens": self.batch_prompt_tokens,
+                "llm_batch_completion_tokens": self.batch_completion_tokens,
             }
         return {name: value for name, value in candidates.items() if value}
 
@@ -85,6 +96,11 @@ class LLMCounters:
                 completion_tokens=self.completion_tokens - mark.completion_tokens,
                 truncated=self.truncated - mark.truncated,
                 wall_seconds=self.wall_seconds - mark.wall_seconds,
+                batch_calls=self.batch_calls - mark.batch_calls,
+                batch_prompt_tokens=self.batch_prompt_tokens - mark.batch_prompt_tokens,
+                batch_completion_tokens=(
+                    self.batch_completion_tokens - mark.batch_completion_tokens
+                ),
             )
 
     def snapshot(self) -> LLMCounters:
@@ -98,6 +114,9 @@ class LLMCounters:
                 completion_tokens=self.completion_tokens,
                 truncated=self.truncated,
                 wall_seconds=self.wall_seconds,
+                batch_calls=self.batch_calls,
+                batch_prompt_tokens=self.batch_prompt_tokens,
+                batch_completion_tokens=self.batch_completion_tokens,
             )
 
 
@@ -116,6 +135,20 @@ def record_reply(
         counters.prompt_tokens += prompt_tokens
         counters.cached_prompt_tokens += cached_prompt_tokens
         counters.completion_tokens += completion_tokens
+
+
+def record_batch_reply(*, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
+    """One reply arrived from a provider batch rather than a live call."""
+    counters = _active.get()
+    if counters is None:
+        return
+    with counters._lock:
+        counters.calls += 1
+        counters.batch_calls += 1
+        counters.prompt_tokens += prompt_tokens
+        counters.batch_prompt_tokens += prompt_tokens
+        counters.completion_tokens += completion_tokens
+        counters.batch_completion_tokens += completion_tokens
 
 
 def record_truncation() -> None:

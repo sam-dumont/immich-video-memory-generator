@@ -92,3 +92,19 @@ def _first_complete_object(
         if isinstance(value, dict) and (trailing in ("", "```") or plain_commentary):
             return value
     return None
+
+
+def model_text_rows(value: object) -> list[Any] | None:
+    """The rows of a list-of-strings field, reading the bare string a model answers with.
+
+    Measured 2026-09-14 on a local 35B reading the demo month: both period answers
+    wrote `tensions` and `recurring_threads` as one sentence instead of a one-item
+    list, and the repair ask that named the shape got the same shape back. Nothing
+    is ambiguous about one sentence where a list of sentences belongs, so the
+    structure carries the rule the instruction could not: one string is one row, an
+    empty string is no rows. Anything that is not a list or a string keeps its shape
+    and fails where it always did — this widens the container, never the contents.
+    """
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    return value if isinstance(value, list) else None

@@ -18,11 +18,15 @@ overlays/gpu/          adds runtimeClassName nvidia, nvidia.com/gpu, node select
 overlays/inference/    the inference service alone: Deployment, Service on 8092, cache PVC, policy
 overlays/inference-cuda/ the same service on an NVIDIA card (patch + `-cuda` image tag)
 overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
+overlays/captioner/    llama.cpp serving the pinned SmolVLM2-500M under the alias `tier: full` wants
+overlays/captioner-cuda/ the same server with its layers on an NVIDIA card
 ```
 
 ## Prerequisites
 
-1. A storage class for two `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi)
+1. A storage class for three `ReadWriteOnce` PVCs: `immich-memories-cache` 20Gi,
+   `immich-memories-output` 50Gi, `immich-memories-models` 5Gi. A deployment made before the
+   models claim existed has to add it, or the pod stays `Pending` on a volume that is not there.
 2. Immich reachable from the cluster (in-cluster or external, port 2283 by default)
 3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator)
    (RuntimeClass `nvidia`, `nvidia.com/gpu` resources, `nvidia.com/gpu.present` node label)
@@ -50,7 +54,9 @@ kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 prefix — release `vX.Y.Z` is image tag `X.Y.Z` — plus `latest`. The checked-in pin trails the
 current release, so check it against the
 [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
-apply, and bump it when you upgrade.
+apply, and bump it when you upgrade. The entry rewrites the `fetch-models` init container too, so
+both move together. `kubectl apply -f base/job.yaml` skips kustomize entirely and runs the
+`:latest` the file names.
 
 ## How the pod is wired
 
@@ -58,9 +64,16 @@ The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`.
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
-| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache/annotations.sqlite` (every banked fact and reading), `cache.db` (run history, automation state), video cache |
 | `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export, the pinned sensitive-content export and the detector snapshots, written by `immich-memories models fetch` |
 | `/tmp` | emptyDir 4Gi | FFmpeg intermediates (use 8Gi for 4K) |
+
+Every pod in `base/` runs a `fetch-models` init container before the app container: the same
+image, the same `immich-memories models fetch` a Docker user runs after `up`, writing the three
+pinned artifacts onto the `/models` claim. There is nothing to run by hand. It tests for all three
+files first and exits without a download when they are there, so a restart costs nothing.
+`kubectl logs -n immich-memories deploy/immich-memories -c fetch-models` shows what it did.
 
 There is no ConfigMap. `IMMICH_URL` / `IMMICH_API_KEY` come from the Secret; anything else is an
 `IMMICH_MEMORIES_<SECTION>__<KEY>` env var on the Deployment (commented examples for LLM analysis
@@ -81,8 +94,9 @@ kubectl logs -n immich-memories -f job/immich-memories-generate
 kubectl exec -n immich-memories deployment/immich-memories -- ls -la /app/output/
 ```
 
-`--duration` is seconds (`600` = 10 minutes). The jobs mount the same two PVCs as the
-Deployment; with `ReadWriteOnce` storage the job pod has to land on the same node, so use
+`--duration` is seconds (`600` = 10 minutes). The jobs mount the same three PVCs as the
+Deployment, and carry the same `fetch-models` init container; with `ReadWriteOnce` storage the job
+pod has to land on the same node, so use
 `ReadWriteMany` storage or scale the Deployment to 0 first. If you only want scheduled memories,
 `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process without a job.
 
@@ -141,6 +155,31 @@ kubectl -n immich-memories get service inference-lan
 kubectl delete -k overlays/inference-lan
 ```
 
+## Caption server
+
+`overlays/captioner` is llama.cpp serving the pinned SmolVLM2-500M GGUF under the alias
+`smolvlm2-500m-base-public`, which is what `tier: full` needs and nothing else in this repo
+provides. A Deployment, a ClusterIP Service on 8092, a NetworkPolicy and a 2Gi PVC; an init
+container downloads the two pinned files onto the claim and checks both digests before the server
+starts.
+
+```bash
+kubectl create namespace immich-memories   # if you have not already
+kubectl apply -k overlays/captioner
+kubectl apply -k overlays/captioner-cuda   # NVIDIA nodes
+```
+
+`overlays/captioner-cuda` is the same overlay with `--n-gpu-layers 99` appended and the
+`server-cuda` image, which is worth 3.5 s a picture against tenths of a second. It asks for no
+`nvidia.com/gpu` resource on purpose: a time-sliced card has one allocatable slot and the inference
+Deployment holds it. The caption server page says when to put the request back.
+
+Like the inference overlay it does not list `../../base`: it holds no credential and never talks
+to Immich. Point the app at `http://captioner:8092/v1` in the same namespace.
+`caption_concurrency` defaults to 1, which is what a CPU captioner wants; raise it to 4 on a card.
+The recipe, the flags that carry the contract and the measured per-picture cost are on the
+[caption server page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server).
+
 ## Ingress
 
 Not shipped by default because auth is off. Enable auth first (basic auth keys in the Secret, or
@@ -158,9 +197,10 @@ kubectl apply -f base/sealed-secret.yaml
 
 ## Backups
 
-`cache.db` is the expensive part (losing it means re-analyzing the library):
+`cache/annotations.sqlite` on the cache PVC is the expensive part: every caption, head answer,
+detector verdict and reading the editor has banked. Lose it and the next cut re-reads the library.
+Back up the PVC.
 
-```bash
-kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache backup /app/output/cache-backup.db
-```
+`immich-memories cache backup|export|import` are not the tool for it. Those three move the retired
+per-clip scorer's table out of `cache.db`, which nothing writes any more, and leave the banks
+behind.

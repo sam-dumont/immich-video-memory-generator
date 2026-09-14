@@ -289,3 +289,55 @@ def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch
     assert [
         p.read_text() for p in context.artifact_dir.glob("pre-planner-calls/*.request.private.txt")
     ] == ["Read these episodes."]
+
+
+def _billing(finish_reason, completion_tokens, reasoning_tokens):
+    from immich_memories.analysis.llm_wire import LLMTransportAttempt
+
+    return LLMTransportAttempt(
+        1,
+        "response" if finish_reason == "stop" else "incomplete",
+        200,
+        None,
+        finish_reason=finish_reason,
+        completion_tokens=completion_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+
+
+def test_the_outcome_record_names_what_the_provider_billed(tmp_path, monkeypatch):
+    async def query(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](_billing("stop", 2005, 622))
+        return '{"schema_version":"period-insight-text-v1"}'
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    requester(tmp_path)("Read every source.\n")
+
+    [record] = records(tmp_path)
+    assert record["reply"] == {
+        "finish_reason": "stop",
+        "completion_tokens": 2005,
+        "reasoning_tokens": 622,
+    }
+
+
+def test_a_starved_outcome_record_names_the_reasoning_that_took_the_budget(tmp_path, monkeypatch):
+    from immich_memories.analysis.llm_wire import LLMIncompleteResponse
+
+    async def query(_prompt, _config, **kwargs):
+        kwargs["transport_observer"](_billing("length", 8492, 8492))
+        raise LLMIncompleteResponse(
+            "",
+            finish_reason="length",
+            completion_tokens=8492,
+            reasoning_tokens=8492,
+        )
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    with pytest.raises(LLMIncompleteResponse):
+        requester(tmp_path)("Read every source.\n")
+
+    starved = records(tmp_path)[0]
+    assert starved["reply"]["reasoning_tokens"] == 8492
+    assert starved["reply"]["finish_reason"] == "length"
+    assert "reasoning used 8492 of 8492 tokens, no answer" in starved["error"]

@@ -40,11 +40,12 @@ iPhone photos include an HDR gain map stored as an auxiliary image in the HEIF c
 
 - Base image: 8-bit SDR with Display P3 color space
 - Gain map: grayscale map indicating per-pixel brightness boost
-- Headroom is extracted per-photo from EXIF MakerNote metadata (tag 0x0021)
-- Formula: `HDR_linear = SDR_linear * 2^(gain * headroom)`
+- Headroom is extracted per-photo from two EXIF MakerNote tags read together, `0x0021` and `0x0030`
+- Formula: `HDR_linear = SDR_linear * (1 + (headroom - 1) * gain_linear)`, Apple's linear
+  interpolation. Reading only `0x0021` gave 2.01x where the true answer was 5.955x
 - Output: HEVC 10-bit PQ/BT.2020 (HDR10)
 
-The headroom value varies per photo depending on scene brightness (e.g. 0.74 for low-light, 1.69 for direct sunlight). This ensures accurate HDR brightness matching the original HEIC.
+Headroom is a linear ratio of at least 1.0 and varies per photo with scene brightness. The implementation was validated against CoreImage's own `kCIImageExpandToHDR` on 11 photographs across headrooms from 3.50 to 6.91: median error 1 to 2 % on most of them, 10 % on the worst that converged.
 
 :::tip Optional: exiftool fallback
 If the EXIF MakerNote parsing fails, the system falls back to [exiftool](https://exiftool.org/) for headroom extraction. exiftool is not required: it's only used as a safety net. Install it via `brew install exiftool` (macOS) or `apt install libimage-exiftool-perl` (Debian/Ubuntu).
@@ -55,17 +56,19 @@ Android Ultra HDR JPEGs (ISO 21496-1) embed a gain map as an MPF secondary image
 
 ## Configuration
 
-```yaml
-photos:
-  enabled: true           # Include photos in memories
-  duration: 4.0           # Seconds per photo clip
-  burst_window_seconds: 300  # Photos this close and near-identical are one burst
-  burst_hash_threshold: 8    # Hash bits two frames may differ by and still be one burst
-```
+The `photos:` keys and their defaults are in the
+[config reference](../../reference/config-reference.md#photos). Two of them decide what counts as a
+burst: `burst_window_seconds` (300) is how close in time two frames must be, and
+`burst_hash_threshold` (8) is how many hash bits they may differ by.
 
-Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those five were removed in v0.40.3 and are now silently ignored (the zoom amount is randomized per photo, and collages no longer exist).
+Older configs may still carry `collage_duration`, `animation_mode`, `enable_collage`,
+`series_gap_seconds` or `zoom_factor`. Those five are ignored in silence: the zoom amount is
+randomised per photo now, and collages no longer exist.
 
-Four other `photos.*` keys do **not** get ignored: `max_ratio`, `read_moments`, `moment_gap_seconds` and `moment_hash_threshold` went with the clip scorer and are refused outright. A config file that still names one stops the app at startup with a message listing them.
+Four other `photos.*` keys are dropped by name rather than in silence: `max_ratio`, `read_moments`,
+`moment_gap_seconds` and `moment_hash_threshold` went with the clip scorer. A config file that
+still names one starts normally and logs one warning listing every one it dropped, so an old file
+cannot keep a setting that quietly does nothing. Delete them to silence it.
 
 ## One photo per burst
 
@@ -82,19 +85,6 @@ no cached thumbnail is always kept: redundancy is measured, never assumed. Set
 
 ## CLI Flags
 
-```bash
-# Include photos in generation
-immich-memories generate --include-photos --year 2024
-
-# Leave photos out even when photos.enabled is true in config
-immich-memories generate --no-photos --year 2024
-
-# Same for Live Photos
-immich-memories generate --no-live-photos --year 2024
-
-# Override photo duration
-immich-memories generate --include-photos --photo-duration 5.0
-
-# Photos are also enabled via config:
-# photos.enabled: true in config.yaml
-```
+`--include-photos` / `--no-photos` and `--photo-duration` are in the
+[CLI reference](../../reference/cli-reference.md#generate) with their defaults. A flag wins over
+`photos.enabled` for one run and changes nothing on disk.

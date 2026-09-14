@@ -124,12 +124,16 @@ of the video.
 docker compose up -d
 docker compose exec immich-memories immich-memories models fetch     # the encoder and both detectors, once
 docker compose exec immich-memories immich-memories preflight        # Immich, the reader, the model digests
-docker compose exec immich-memories immich-memories generate --type monthly --duration 60
+docker compose exec immich-memories immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 ```
 
 `models fetch` writes the two digest-pinned ONNX exports (the 88 MB DINOv2-small encoder and the
-22.5 MB sensitive-content detector) and warms the document classifier's snapshot into the config
-volume. All three run on the CPU. A producer that cannot load its model says so by name in the
+22.5 MB sensitive-content detector) under `~/.immich-memories/models`, which is the config volume,
+and warms the document classifier's Hugging Face snapshot. That third one goes to
+`/home/immich/.cache/huggingface` unless you say otherwise, which is the container's writable layer
+and is gone on the next `docker compose pull`. Add
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"`
+to `environment:` before you fetch and all three land on the volume. All three run on the CPU. A producer that cannot load its model says so by name in the
 first seconds of the detector stage, and names the command that fixes it.
 
 The run prints one line per cut with the per-producer cost
@@ -150,7 +154,9 @@ Plan an overnight for the first pass over a big month, and seconds for every pas
 
 The setup matrix measured this box again in September 2026, on the 133-picture demo month at
 `no_captions`: 1.4404 s per picture cold, 0.5963 s of it the encoder and its six heads and 0.6930 s
-the two detectors, then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
+the two detectors. That is the same work as the 1.23 s per picture in the tier table above, on a
+different month and a different run: two single observations a fifth apart, not a change in the
+code. Plan on the slower one. Then then 1,483 s to render a 54-second film on the four cores. A 13,552-picture
 month is 19,520 s of preparation at that rate, so about 5 h 25 min before the render starts. The
 second run over the same month prepares in 0 s and selects in 5 s.
 
@@ -162,15 +168,54 @@ beside that service so the NAS stops encoding on its own CPU. The render worker 
 [Running modes](../running-modes.md#what-to-expect-on-a-first-run) has the same month on a Mac and
 on a Kubernetes cluster.
 
+### A reader you do not host
+
+If there is no second machine, the third option is a provider. It is the same `model` reader, over
+the same contract, and it costs the privacy trade on [Network & Privacy](../configuration/network-and-privacy.md):
+800 px tiles of the few dozen candidates the edit asks about, plus their annotation lines with
+people and place names, leave your network.
+
+```yaml
+      IMMICH_MEMORIES_LLM__PROVIDER: "openai"      # ollama | openai-compatible | openai | zai | anthropic
+      IMMICH_MEMORIES_LLM__MODEL: "gpt-4.1-mini"
+      IMMICH_MEMORIES_LLM__API_KEY: "${OPENAI_API_KEY}"
+```
+
+Leave `llm.base_url` unset and the provider name fills in its own URL: `openai` takes
+`https://api.openai.com/v1`, `anthropic` takes `https://api.anthropic.com` and its Messages API,
+`zai` takes `https://api.z.ai/api/anthropic`. Any other host that speaks one of those two dialects
+takes `openai-compatible` (or `anthropic`) plus a `base_url` of your own, which is how a Melious
+endpoint is configured. The model has to take images and hold a 32k context either way.
+
+One monthly selection was measured on a hosted reader at 537.4 s and about $0.256 in tokens,
+against 1,451.9 s for the local 30B. That is one measurement of one month:
+[Running modes](../running-modes.md) says so, and years and trips have not been priced.
+
 ### Adding captions later
 
-Point the container at a caption endpoint and run the same scope again on the `full` tier:
+The shipped `docker-compose.yml` carries a caption server behind a profile, so a NAS with the
+patience for it needs no second machine:
+
+```bash
+docker compose --profile captioner up -d
+curl -s localhost:8092/v1/models
+```
+
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY` already defaults to 1, which is what
+this box wants. On four Celeron cores a caption is 30.9 s at 1, and four at once is slower, not
+faster: four image encodes share the threads of one. At that rate captioning a 13,552-picture month
+is four days, which is the whole reason this page recommends `no_captions`.
+[Caption server](../installation/caption-server.md) has the flags and what each one costs when it is
+missing.
+
+Or point the container at a caption endpoint on another box and run the same scope again on the
+`full` tier:
 
 ```bash
 docker compose exec \
   -e IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER=full \
   -e IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL=http://model-box.lan:8092/v1 \
-  immich-memories immich-memories generate --type monthly --duration 60
+  immich-memories immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 ```
 
 About 2,700 pictures a day on a DS423+. Do it a month at a time, overnight, then set the compose
@@ -220,8 +265,9 @@ slow part. A run that does not fit logs one `WARNING` naming the setting.
 - Hold the 30B reader. Use another machine or `reader: rules`. A configured model reader that
   cannot be reached stops the run; `no_captions` does not turn it off.
 - Generate music: MusicGen and ACE-Step want GPU servers. Upload your own track instead.
-- Animated title screens on the GPU: they fall back to the PIL renderer, without the particle
-  effects and animated gradients. On a CPU with no AVX, the J4125 in the tested DS423+ included,
+- Title screens on the GPU kernels: they fall back to the PIL renderer, which keeps the animated
+  gradient and loses the particle effects and the SDF text. On a CPU with no AVX, the J4125 in the
+  tested DS423+ included,
   the kernel renderer is out entirely: it dies with SIGILL on the first kernel it compiles, a
   child-process probe catches that at startup, and every title is PIL-rendered. See
   [CPUs without AVX](../hardware/cpu-only.md#cpus-without-avx).

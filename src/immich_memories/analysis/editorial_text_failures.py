@@ -27,8 +27,17 @@ class TextCompletionFailure(ValueError):
         return cls(attempts, cache_hit=True)
 
 
+# What the provider said it billed for the reply. Absent from a record written
+# before the reader budgeted for reasoning, and from any transport that reports
+# no usage, so it is read where it is there and never required.
+_BILLING_FIELDS = {"finish_reason", "completion_tokens", "reasoning_tokens"}
+_REQUIRED_FIELDS = {"outcome", "raw", "max_tokens", "error"}
+
+
 def _is_replayable_attempt(row) -> bool:
-    if not isinstance(row, dict) or set(row) != {"outcome", "raw", "max_tokens", "error"}:
+    if not isinstance(row, dict) or not _REQUIRED_FIELDS <= set(row) <= (
+        _REQUIRED_FIELDS | _BILLING_FIELDS
+    ):
         return False
     if row["outcome"] not in ("incomplete", "invalid_json"):
         return False

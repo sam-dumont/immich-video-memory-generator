@@ -11,7 +11,7 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 - **QSV encoding**: h264_qsv, hevc_qsv. Hardware-accelerated encoding on the integrated GPU.
 - **QSV scaling**: `scale_qsv` resizes frames on the GPU.
-- **Face detection**: not a thing this app does. Photo pans use Immich's own face boxes.
+- **Face detection**: falls back to CPU (OpenCV YuNet). Quick Sync exposes no face-detection path, and the face-aware pan on photos and portrait crops runs there.
 
 ## Requirements
 
@@ -21,10 +21,9 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 On Linux, you'll need the `intel-media-va-driver` (or `intel-media-va-driver-non-free` for newer chips) and `libmfx` or `libvpl`.
 
-**The Docker image installs these** (amd64 only), and that fix is not in a release yet. Every
-published image up to and including 0.76.1, the newest tag, ships FFmpeg with QSV compiled in and
-no VA-API driver at all, so `vaInitialize` fails with `-542398533` and every run silently encodes
-in software. Build from `main`, or wait for the next release.
+**The Docker image installs these** (amd64 only), from `0.77.1` on. Images older than that ship
+FFmpeg with QSV compiled in and no VA-API driver at all, so `vaInitialize` fails with
+`-542398533` and every run silently encodes in software. Upgrade if you are on one.
 
 Check availability:
 
@@ -84,11 +83,15 @@ QSV is common in home server setups: Intel NUCs, older desktops repurposed as me
 ## Quality
 
 QSV takes the configured CRF as `-global_quality` on the same 0-51 quantiser scale, in ICQ mode,
-never a bitrate target. Before 0.76.1 it got no rate-control flag at all and the driver's default
-decided quality. See [the overview](./overview.md#quality-one-dial-calibrated-per-encoder) for what
-the dial costs on each backend, and note that a hardware encoder needs more bits than libx264 for
-the same picture.
+never a bitrate target. Before 0.77.1 it got no rate-control flag at all and the driver's default
+decided quality.
+
+QSV is the one family with no sweep of its own: `rate_control.py` carries VAAPI's two anchors over
+(QP 20 at reference CRF 18, QP 22 at CRF 24), because the same iHD driver on the same silicon
+drives both and the pipeline probes VAAPI first. See
+[the overview](./overview.md#quality-one-dial-calibrated-per-encoder) for what the dial costs on
+each backend, and note that a hardware encoder needs more bits than libx264 for the same picture.
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer (static gradient and text, no animated kernels, no SDF text); `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).

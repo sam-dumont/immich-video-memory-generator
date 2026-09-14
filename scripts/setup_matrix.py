@@ -38,8 +38,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from matrix_pinned_config import pinned_config, read_operator_immich  # noqa: E402
 from setup_matrix_capture import (  # noqa: E402
+    CUT_FROM_LOG,
     RunSummary,
     anonymize,
+    downloaded_asset_ids,
+    film_clip_count,
     latest_attempt,
     parse_cache_primed,
     parse_cgroup_cpu_seconds,
@@ -55,13 +58,15 @@ from setup_matrix_capture import (  # noqa: E402
     parse_title_backend,
     prepare_phases,
     probe_video,
+    read_contract_health,
     read_cut,
+    read_images_sent,
     read_losses,
 )
 from setup_matrix_plan import (  # noqa: E402
     CACHE_PRIMED_FILE,
     CAPTIONER_DEPLOYMENT,
-    CAPTIONER_OVERLAY,
+    CAPTIONER_OVERLAYS,
     CAPTIONER_PORT,
     CAPTIONER_ROLLOUT,
     CAPTIONER_ROLLOUT_TIMEOUT,
@@ -72,6 +77,7 @@ from setup_matrix_plan import (  # noqa: E402
     FIXTURE_ENV,
     FIXTURE_PORT,
     FROM_OPERATOR_CONFIG,
+    HOMEBASE_PINS,
     INFERENCE_DEPLOYMENT,
     INFERENCE_ENV,
     INFERENCE_PORT,
@@ -90,11 +96,16 @@ from setup_matrix_plan import (  # noqa: E402
     PlanError,
     Step,
     build_plan,
+    check_homebase,
+    declared_for_device,
+    declared_overlay_steps,
     dry_run_text,
+    expand_cells,
     fetches_models,
     inference_image,
     inference_node_command,
     inference_overlay_steps,
+    job_requests,
     load_manifest,
     needs_lan_address,
     node_product_command,
@@ -102,7 +113,6 @@ from setup_matrix_plan import (  # noqa: E402
     pin_inference_node,
     purge_claims_command,
     read_cells,
-    required_overlay_steps,
     required_overlays,
     retag_inference,
 )
@@ -116,6 +126,7 @@ from setup_matrix_readiness import (  # noqa: E402
     warmup_picture,
 )
 from setup_matrix_summary import (  # noqa: E402
+    CELL_RECORD,
     build_markdown,
     build_summary,
     read_cell_records,
@@ -212,6 +223,20 @@ NO_FETCH_REASON = (
 )
 
 
+def _seeded_reasons(source: str) -> dict[str, str]:
+    """Why a seeded cell has no preparation number, and where the one it would have is.
+
+    Preparation depends on the host, the tier and where the picture facts come
+    from, none of which this cell changed. Running it again would publish one
+    measurement under every name that copied it.
+    """
+    reason = (
+        f"preparation. This cell's bank was seeded from `{source}`, which measures it"
+        " for this host, this tier and this facts source. Only the reader differs."
+    )
+    return {"prepare_cold_s": reason, "prepare_warm_s": reason}
+
+
 def _run_step(
     step: Step, plan: Plan, item: CellPlan, *, measure: bool = False
 ) -> subprocess.CompletedProcess:
@@ -297,7 +322,11 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     # before and its `cold` preparation is a re-read of what it banked then. A
     # run that asked for a fresh cache is cold by construction: the first step
     # takes that directory away before `prepare` is called.
-    record = _new_record(item, primed=False if item.fresh_cache else cache.is_dir())
+    record = _new_record(
+        item,
+        primed=False if item.fresh_cache else cache.is_dir(),
+        model=_reader_model(item, plan),
+    )
     before_cpu = _child_cpu_seconds()
     peaks: list[float] = []
 
@@ -325,7 +354,8 @@ def run_local_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     if not peaks:
         record["measurement_notes"]["peak_rss_mb"] = NO_TIME_REASON
     record["timing"]["cpu_s"] = round(_child_cpu_seconds() - before_cpu, 2)
-    _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id)
+    _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id, cell_dir)
+    _apply_stranded_cut(record, cell_dir)
     return record
 
 
@@ -346,6 +376,21 @@ COPY_OUT_LOST = (
     f"the film. The copy-out failed after {COPY_OUT_ATTEMPTS} attempts, so the file the run"
     " named never reached this machine and nothing here measured its duration, size or codec."
 )
+# A stream that broke on ONE member is not the same failure. tar exits non-zero
+# and stops where the break was, so the film can be here and the attempt behind
+# it gone. One more try for what it skipped, and then the row is kept: on
+# `k8s-gpu-t1000` a truncated `mastered_*.wav` published `error: copy-out exited
+# 1` over a 54.5 s film already sitting in the cell directory.
+TRUNCATED_ATTEMPTS = 2
+_TRUNCATED_MARKERS = ("Truncated tar archive", "unexpected EOF", "Error exit delayed")
+COPY_OUT_TRUNCATED = (
+    "the copy-out. The archive broke on a member tar could not finish, so anything"
+    " behind it on the stream is still on the volume. The film came back; what tar said was:"
+)
+
+
+def _truncated(proc: subprocess.CompletedProcess) -> bool:
+    return any(marker in (proc.stderr or "") for marker in _TRUNCATED_MARKERS)
 
 
 def _film_is_missing(record: dict, cell_dir: Path) -> bool:
@@ -360,18 +405,32 @@ def _film_is_missing(record: dict, cell_dir: Path) -> bool:
     return bool(shown) and not any(path.is_file() for path in _video_candidates(shown, cell_dir))
 
 
+def _copy_settled(
+    proc: subprocess.CompletedProcess, record: dict, cell_dir: Path, tries: int
+) -> bool:
+    """Whether there is anything left to gain from copying again."""
+    if _film_is_missing(record, cell_dir):
+        return False
+    if proc.returncode == 0:
+        return True
+    return _truncated(proc) and tries >= TRUNCATED_ATTEMPTS
+
+
 def _copy_out(
     step: Step, plan: Plan, item: CellPlan, record: dict, cell_dir: Path
 ) -> subprocess.CompletedProcess:
     """The copy, retried until the film it is for is here, and named as lost when it is not."""
     proc = _run_step(step, plan, item)
-    for _ in range(COPY_OUT_ATTEMPTS - 1):
-        if proc.returncode == 0 and not _film_is_missing(record, cell_dir):
-            return proc
+    tries = 1
+    while tries < COPY_OUT_ATTEMPTS and not _copy_settled(proc, record, cell_dir, tries):
         time.sleep(COPY_OUT_PAUSE_S)
         proc = _run_step(step, plan, item)
+        tries += 1
     if _film_is_missing(record, cell_dir):
         record["measurement_notes"]["film"] = COPY_OUT_LOST
+    elif proc.returncode != 0:
+        said = ((proc.stderr or "").strip().splitlines() or [f"exit {proc.returncode}"])[0]
+        record["measurement_notes"]["copy_out"] = f"{COPY_OUT_TRUNCATED} {said}"
     return proc
 
 
@@ -389,16 +448,35 @@ def _run_or_poll(
     return poll(probe) if poll else probe()
 
 
+# Steps whose non-zero exit never costs the row: `logs` is best-effort and
+# `delete` is a tear-down over things that may already be gone.
+_LENIENT_STEPS = frozenset({"logs", "delete"})
+
+
+def _tolerated(step: Step, item: CellPlan, record: dict, cell_dir: Path) -> bool:
+    """Whether this step's non-zero exit is allowed to leave the row standing.
+
+    A copy whose archive broke on one member but still brought the film is a note
+    on the row, not the loss of it. `k8s-gpu-t1000` published `selected_asset_ids:
+    []` and `error: copy-out exited 1` with its 54.5 s film in the directory.
+    """
+    if step.name in _LENIENT_STEPS:
+        return True
+    if step.name != COPY_OUT or item.cell.lane != "k8s":
+        return False
+    return not _film_is_missing(record, cell_dir)
+
+
 def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
     """The NAS and cluster lanes: push, run, pull, then read the same artifacts back."""
     cell_dir = out_dir / item.cell.id
     cell_dir.mkdir(parents=True, exist_ok=True)
-    record = _new_record(item, primed=None)
+    record = _new_record(item, primed=None, model=_reader_model(item, plan))
     for step in item.steps:
         proc = _run_or_poll(step, plan, item, record, cell_dir)
         (cell_dir / f"{step.name}.stdout.log").write_text(proc.stdout or "")
         (cell_dir / f"{step.name}.stderr.log").write_text(proc.stderr or "")
-        if proc.returncode != 0 and step.name not in {"logs", "delete"}:
+        if proc.returncode != 0 and not _tolerated(step, item, record, cell_dir):
             record["error"] = f"{step.name} exited {proc.returncode}"
             for diagnostic in item.diagnostics:
                 record["error"] += "\n" + _diagnose(diagnostic, item, plan, cell_dir)
@@ -408,7 +486,8 @@ def run_remote_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
         _finish_failed_cell(item, plan, cell_dir)
     _read_remote_artifacts(record, cell_dir)
     _apply_stranded_summary(record, cell_dir)
-    _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id)
+    _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id, cell_dir)
+    _apply_stranded_cut(record, cell_dir)
     return record
 
 
@@ -442,12 +521,21 @@ def _diagnose(diagnostic: Step, item: CellPlan, plan: Plan, cell_dir: Path) -> s
     return tail
 
 
-def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
-    """The logs and the cgroup counters the container wrote into its own output volume."""
-    for name, field in (
-        ("prepare-cold.log", "prepare_cold_s"),
-        ("prepare-warm.log", "prepare_warm_s"),
-    ):
+# Where each lane leaves the two preparation phases. A remote container tees them
+# into its output volume under their own names; the Mac lane is two invocations
+# the runner captured itself.
+_REMOTE_PHASE_LOGS = (
+    ("prepare-cold.log", "prepare_cold_s"),
+    ("prepare-warm.log", "prepare_warm_s"),
+)
+_LOCAL_PHASE_LOGS = (
+    ("prepare-cold.stdout.log", "prepare_cold_s"),
+    ("prepare-warm.stdout.log", "prepare_warm_s"),
+)
+
+
+def _apply_phase_logs(record: dict, cell_dir: Path, names: tuple[tuple[str, str], ...]) -> None:
+    for name, field in names:
         path = cell_dir / name
         if not path.is_file():
             continue
@@ -455,6 +543,11 @@ def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
         record["timing"][field] = parse_prepare_seconds(text)
         if field == "prepare_cold_s":
             _apply_prepared(record, text)
+
+
+def _read_remote_artifacts(record: dict, cell_dir: Path) -> None:
+    """The logs and the cgroup counters the container wrote into its own output volume."""
+    _apply_phase_logs(record, cell_dir, _REMOTE_PHASE_LOGS)
     fetched = cell_dir / MODELS_FETCH_SECONDS
     if fetched.is_file():
         record["timing"]["models_fetch_s"] = parse_models_fetch_seconds(fetched.read_text())
@@ -501,7 +594,7 @@ def _apply_prepared(record: dict, text: str) -> None:
     }
 
 
-def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
+def _new_record(item: CellPlan, *, primed: bool | None, model: str | None = None) -> dict:
     cell = item.cell
     return {
         "id": cell.id,
@@ -511,6 +604,11 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "tier": cell.tier,
         "why": cell.why,
         "hosted": cell.hosted,
+        # Which model this cell's reader actually used, with any `$env:` reference
+        # resolved. The price table is keyed by it, and five Mac cells differ in
+        # nothing else, so a row with no model id is a row nothing can price or
+        # tell apart.
+        "reader_model": model,
         # The card this cell rendered on. It is the label the Job selects on, so
         # the pod could not have run anywhere else: a node without it does not
         # match, and the cell would have failed Pending rather than moved.
@@ -523,13 +621,36 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         "title_backend": None,
         "encoder": None,
         "skip_reason": item.skip_reason,
-        "prepare_cache_primed": primed,
+        # The cell this one's bank came from, and what that makes of the
+        # "was the cache already warm" field: a seeded cell is neither cold nor
+        # a re-read of its own last run, so it says which it is in words.
+        "seeded_from": cell.seed_cache_from or None,
+        "prepare_cache_primed": f"seeded from {cell.seed_cache_from}"
+        if cell.seed_cache_from
+        else primed,
         # Whether the run emptied this cell's bank before it prepared, which is
         # the difference between a cold number and a replay of the last run's.
         "fresh_cache": item.fresh_cache,
         # What the container was actually pinned to, which is not the same on
         # every NAS: a kernel with no CFS controller takes a cpuset, not a quota.
         "container_limits": item.container_limits or None,
+        # Whether this cell was handed a home to plan against, and never which
+        # one: coordinates are the operator's and belong in no published file.
+        # It is the field that lets the table say the lanes measured the same
+        # happenings against the same place, which run 1's did not.
+        "homebase": "pinned" if all(pin in item.pins for pin in HOMEBASE_PINS) else "unset",
+        # What a cluster cell's Job asked the scheduler for. Not always the
+        # default: a cell whose work is on a card asks for less so it can be
+        # scheduled beside whatever else that node is already running.
+        "job_requests": dict(zip(("cpu", "memory"), job_requests(cell), strict=True))
+        if cell.lane == "k8s"
+        else None,
+        # Whether the Job asked the device plugin for a card, which is not the
+        # same question as whether it rendered on one: the node's own runtime
+        # exposes the card to every pod on it.
+        "gpu_resource_requested": bool(cell.gpu_product and cell.gpu_resource)
+        if cell.lane == "k8s"
+        else None,
         "timing": {
             "models_fetch_s": None,
             "prepare_cold_s": None,
@@ -542,15 +663,33 @@ def _new_record(item: CellPlan, *, primed: bool | None) -> dict:
         },
         # Why a field the run did not report is missing, where "the run did not
         # report it" is not the whole story. Read by the summary's unmeasured list.
-        "measurement_notes": {} if fetches_models(cell) else {"models_fetch_s": NO_FETCH_REASON},
+        "measurement_notes": ({} if fetches_models(cell) else {"models_fetch_s": NO_FETCH_REASON})
+        | (_seeded_reasons(cell.seed_cache_from) if cell.seed_cache_from else {}),
         "prepared": {},
         "hosted_usage": {},
+        # How often a reading contract refused this cell's reader, and how often
+        # the run asked again. Overlap says which pictures a reader chose; this
+        # says what it took to get an answer in the shape the contract asked for.
+        "contract": {"rejections": None, "repairs": None},
         "selected_asset_ids": [],
+        # Where the ids above came from. None means the editor's own record of
+        # the cut; anything else names the second-best source it fell back to.
+        "cut_source": None,
         "cut": {},
         "losses": {},
         "video": {},
         "error": None,
     }
+
+
+def _reader_model(item: CellPlan, plan: Plan) -> str | None:
+    """The model id a cell's reader will use, with a `$env:` reference resolved.
+
+    None for the cells that pin none: `mac-local` deliberately reads with whatever
+    the operator's own config names resident, and a rules cell reads with nothing.
+    """
+    pinned = item.pins.get("llm.model")
+    return _substitute(pinned, plan.environment) if isinstance(pinned, str) else None
 
 
 def _apply_render_device(record: dict, text: str) -> None:
@@ -664,7 +803,58 @@ def _locate_video(shown: str, cell_dir: Path) -> Path:
     return next((path for path in candidates if path.is_file()), candidates[0])
 
 
-def _apply_attempt(record: dict, runs_dir: Path, memory_key: str) -> None:
+# Wherever a lane left what `generate` printed. The mac lane splits it in two
+# because it captured the streams separately; a remote one has the volume's copy
+# and the session's copy of the same text. Reading every one of them is safe: the
+# episode reader warns once per distinct reason and the count deduplicates on it.
+_GENERATE_OUTPUT = (
+    "generate.log",
+    "generate.stdout.log",
+    "generate.stderr.log",
+    *STDOUT_OF_THE_RUN.values(),
+)
+
+
+def _generate_output(cell_dir: Path) -> str:
+    paths = (cell_dir / name for name in _GENERATE_OUTPUT)
+    return "\n".join(path.read_text() for path in paths if path.is_file())
+
+
+STRANDED_CUT = (
+    "the cut's reasons. The attempt directory stayed on the volume, so the {count} pictures"
+    " below are the ones the run downloaded rather than the editor's own record of them,"
+    " and the order they play in is not among the things a download line says."
+)
+CUT_DISAGREES = (
+    " The film was assembled from {clips} clips, which is not {count}, so even the count is"
+    " the log's and not the cut's."
+)
+
+
+def _apply_stranded_cut(record: dict, cell_dir: Path) -> None:
+    """Which pictures a cell kept, for one whose attempt never reached this machine.
+
+    `k8s-gpu-t1000` published `selected_asset_ids: []` and `#kept 0` beside a
+    54.5 s film, because a truncated tar left the attempt on the volume. The run
+    had named every picture it fetched in its own log, and the film had already
+    counted its own clips.
+    """
+    if record["selected_asset_ids"]:
+        return
+    text = _generate_output(cell_dir)
+    ids = downloaded_asset_ids(text)
+    if not ids:
+        return
+    record["selected_asset_ids"] = ids
+    record["cut_source"] = CUT_FROM_LOG
+    note = STRANDED_CUT.format(count=len(ids))
+    clips = film_clip_count(text)
+    if clips is not None and clips != len(ids):
+        note += CUT_DISAGREES.format(clips=clips, count=len(ids))
+    record["measurement_notes"]["cut"] = note
+
+
+def _apply_attempt(record: dict, runs_dir: Path, memory_key: str, cell_dir: Path) -> None:
     attempt = latest_attempt(runs_dir, memory_key)
     if attempt is None:
         return
@@ -672,6 +862,64 @@ def _apply_attempt(record: dict, runs_dir: Path, memory_key: str) -> None:
     record["cut"] = cut
     record["selected_asset_ids"] = [shot["asset_id"] for shot in cut["selected"]]
     record["losses"] = read_losses(attempt)
+    record["contract"] = read_contract_health(attempt, _generate_output(cell_dir))
+    record.setdefault("hosted_usage", {})["images_sent"] = read_images_sent(attempt)
+
+
+# Two numbers only the process that ran the cell could have counted: the Mac lane
+# times its own children, and no file under the cell directory holds either. A
+# second read of that directory keeps what the run measured rather than
+# publishing it as unmeasured.
+_LIVE_ONLY_TIMINGS = ("peak_rss_mb", "cpu_s")
+# The homebase marker is the same kind of fact, and the trap is sharper: the plan
+# a recapture builds is today's and the directory it reads is the run's.
+# `k8s-gpu-t1000` was cut before anything pinned a home, and publishing today's
+# answer over it would claim the lanes agreed about a row made at Null Island.
+UNKNOWN_HOMEBASE = "unknown"
+
+
+def recapture_cell(item: CellPlan, plan: Plan, out_dir: Path) -> dict:
+    """Read a cell's own directory again and rebuild its record, running nothing.
+
+    The capture is the half of a run that keeps changing: a parser learns to read
+    something the last one could not, and a cluster cell costs hours to run again
+    to apply it. `k8s-gpu-t1000` is the case this was written for -- its film and
+    its logs were on this machine, and only the reading of them was wrong.
+    """
+    cell_dir = out_dir / item.cell.id
+    record = _new_record(item, primed=None, model=_reader_model(item, plan))
+    if item.cell.lane == "mac":
+        _apply_phase_logs(record, cell_dir, _LOCAL_PHASE_LOGS)
+        generate = cell_dir / "generate.stdout.log"
+        if generate.is_file():
+            _apply_run_summary(record, generate.read_text(), cell_dir)
+        cache = Path(_substitute(item.cache_dir, plan.environment)).expanduser()
+        _apply_attempt(record, cache / EDITORIAL_RUNS, item.cell.id, cell_dir)
+    else:
+        _read_remote_artifacts(record, cell_dir)
+        _apply_stranded_summary(record, cell_dir)
+        _apply_attempt(record, cell_dir / REMOTE_ATTEMPTS, item.cell.id, cell_dir)
+    _apply_stranded_cut(record, cell_dir)
+    previous = _previous_record(cell_dir)
+    _carry_live_timings(record, previous)
+    record["homebase"] = previous.get("homebase", UNKNOWN_HOMEBASE)
+    return record
+
+
+def _previous_record(cell_dir: Path) -> dict:
+    path = cell_dir / CELL_RECORD
+    try:
+        return json.loads(path.read_text()) if path.is_file() else {}
+    except ValueError:
+        return {}
+
+
+def _carry_live_timings(record: dict, previous: dict) -> None:
+    timing = previous.get("timing") or {}
+    for field in _LIVE_ONLY_TIMINGS:
+        if record["timing"][field] is None and timing.get(field) is not None:
+            record["timing"][field] = timing[field]
+            record["measurement_notes"].pop(field, None)
 
 
 def _resolve_device(device: str, plan: Plan) -> str:
@@ -810,6 +1058,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="rebuild the summary from the cells already under --out, and run nothing",
     )
     parser.add_argument(
+        "--recapture",
+        action="store_true",
+        help="read the named cells' own directories under --out again and rebuild their"
+        " records from what is in them, running nothing. Needs --cell or --lane, because"
+        " it rewrites the records it touches.",
+    )
+    parser.add_argument(
+        "--probe-readers-only",
+        action="store_true",
+        help="ask each chosen reader the three shapes it will be asked, and run nothing else."
+        " Exits non-zero if any shape comes back unreadable, which is what the same step at"
+        " the head of every reader cell does before that cell spends anything.",
+    )
+    parser.add_argument(
         "--serve-fixture", action="store_true", help="serve the fixture library on the LAN"
     )
     parser.add_argument(
@@ -848,7 +1110,7 @@ def _lanes(requested: list[str]) -> tuple[str, ...]:
     return () if not requested or "all" in requested else tuple(dict.fromkeys(requested))
 
 
-def _chosen_cells(manifest: dict, opts: argparse.Namespace) -> tuple:
+def _chosen_cells(manifest: dict, opts: argparse.Namespace, environment: dict[str, str]) -> tuple:
     """The cells this request covers, before a plan exists.
 
     Needed early: whether the LoadBalancer address has to be derived decides what
@@ -857,7 +1119,7 @@ def _chosen_cells(manifest: dict, opts: argparse.Namespace) -> tuple:
     lanes, ids = _lanes(opts.lane), tuple(opts.cell)
     return tuple(
         cell
-        for cell in read_cells(manifest)
+        for cell in expand_cells(read_cells(manifest), environment)
         if (not lanes or cell.lane in lanes) and (not ids or cell.id in ids)
     )
 
@@ -879,7 +1141,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"fixture library serving at {url} (api key: fake-immich-api-key)")
 
     manifest = load_manifest()
-    chosen = _chosen_cells(manifest, opts)
+    chosen = _chosen_cells(manifest, opts, environment)
     lan = needs_lan_address(chosen)
     if lan and not (environment.get(INFERENCE_ENV) or "").strip():
         # A placeholder, so the cell is runnable rather than skipped for a
@@ -899,6 +1161,10 @@ def main(argv: list[str] | None = None) -> int:
             environment=environment,
             fresh_cache=opts.fresh_cache,
         )
+        # Only for a request that will run something. Rebuilding a table off
+        # records already on disk reads no config and needs no home.
+        if not (opts.summarize_only or opts.recapture):
+            check_homebase(manifest, environment)
     except PlanError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
@@ -921,14 +1187,18 @@ def main(argv: list[str] | None = None) -> int:
     declared = required_overlays(tuple(item.cell for item in plan.runnable))
 
     if opts.dry_run:
-        declared_steps = tuple(
-            step
-            for path in declared
-            for step in required_overlay_steps(path, keep=opts.keep_service)
+        declared_steps = declared_overlay_steps(
+            declared, device=opts.inference_device, keep=opts.keep_service
         )
         print(dry_run_text(plan, overlay=(*overlay, *declared_steps)))
         _report_skips(plan)
         return 0
+
+    if opts.probe_readers_only:
+        from setup_matrix_probe_readers import probe_cells
+
+        _report_skips(plan)
+        return probe_cells(plan, opts.config, manifest.get("pricing") or {})
 
     if plan.anonymize_required and not opts.anonymize:
         print(
@@ -936,6 +1206,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if opts.recapture:
+        return _recapture(plan, opts, out_dir)
 
     if opts.summarize_only:
         return _summarize(plan, opts, out_dir)
@@ -964,6 +1237,10 @@ def _execute(
     served = inference_image(opts.inference_tag or opts.image_tag, device=device) if overlay else ""
     warmup: float | None = None
     served_on: str | None = None
+    # The captioner runs on whatever the probe found for the inference service:
+    # one card in the cluster, and no cell asked for a device of its own.
+    declared = declared_for_device(declared, device)
+    caption_device = device if any(path in CAPTIONER_OVERLAYS for path in declared) else None
     caption_warmup = _bring_up_declared(plan, declared)
     if overlay:
         print(f"inference overlay: {overlay_path(device)} running {served}")
@@ -1017,17 +1294,25 @@ def _execute(
             if lan:
                 _apply_overlay(plan, LAN_OVERLAY, up=False)
             _apply_overlay(plan, overlay_path(device), up=False)
-    if opts.purge_claims and any(item.cell.lane == "k8s" for item in plan.runnable):
-        _run_bare(purge_claims_command(), plan)
+    cluster_cells = tuple(item.cell for item in plan.runnable if item.cell.lane == "k8s")
+    if opts.purge_claims and cluster_cells:
+        _run_bare(purge_claims_command(cluster_cells), plan)
 
     _publish_summary(
-        plan, opts, out_dir, _collect_rows(out_dir, records), warmup, served_on, caption_warmup
+        plan,
+        opts,
+        out_dir,
+        _collect_rows(out_dir, records, plan.environment),
+        warmup,
+        served_on,
+        caption_warmup,
+        caption_device,
     )
     _report_skips(plan)
     return 0 if all(row.get("error") is None for row in records) else 1
 
 
-def _collect_rows(out_dir: Path, fresh: list[dict]) -> list[dict]:
+def _collect_rows(out_dir: Path, fresh: list[dict], environment: dict[str, str]) -> list[dict]:
     """This invocation's cells, merged with every cell an earlier one left behind.
 
     One lane is one invocation into the same `--out`, so a table built from this
@@ -1039,7 +1324,7 @@ def _collect_rows(out_dir: Path, fresh: list[dict]) -> list[dict]:
             write_cell_record(out_dir, row)
     rows = {row["id"]: row for row in fresh if row.get("skip_reason")}
     rows.update({row["id"]: row for row in read_cell_records(out_dir)})
-    order = [cell.id for cell in read_cells(load_manifest())]
+    order = [cell.id for cell in expand_cells(read_cells(load_manifest()), environment)]
     return sorted(rows.values(), key=lambda row: _manifest_rank(order, row["id"]))
 
 
@@ -1055,6 +1340,7 @@ def _publish_summary(
     warmup: float | None = None,
     inference_gpu_product: str | None = None,
     captioner_warmup: float | None = None,
+    captioner_device: str | None = None,
 ) -> None:
     summary = build_summary(
         library=plan.library,
@@ -1063,7 +1349,9 @@ def _publish_summary(
         rows=rows,
         inference_warmup_s=warmup,
         inference_gpu_product=inference_gpu_product,
+        pricing=load_manifest().get("pricing") or {},
         captioner_warmup_s=captioner_warmup,
+        captioner_device=captioner_device,
     )
     if opts.anonymize:
         summary = anonymize(summary)
@@ -1072,9 +1360,28 @@ def _publish_summary(
     print(f"\n{out_dir / 'summary.md'}")
 
 
+def _recapture(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
+    """Read the named cells' directories again, rewrite their records, and republish."""
+    if not (opts.cell or opts.lane):
+        print("error: --recapture rewrites records, so name --cell or --lane", file=sys.stderr)
+        return 2
+    rows = [
+        recapture_cell(item, plan, out_dir)
+        for item in plan.runnable
+        if (out_dir / item.cell.id).is_dir()
+    ]
+    if not rows:
+        print(f"error: no cell of this request has a directory under {out_dir}", file=sys.stderr)
+        return 2
+    for row in rows:
+        print(f"recaptured {row['id']}: {len(row['selected_asset_ids'])} kept")
+    _publish_summary(plan, opts, out_dir, _collect_rows(out_dir, rows, plan.environment))
+    return 0
+
+
 def _summarize(plan: Plan, opts: argparse.Namespace, out_dir: Path) -> int:
     """Rebuild the two published files from the cells already on disk, running nothing."""
-    rows = _collect_rows(out_dir, [])
+    rows = _collect_rows(out_dir, [], plan.environment)
     if not rows:
         print(f"error: no cell has run under {out_dir}", file=sys.stderr)
         return 2
@@ -1124,8 +1431,10 @@ def _bring_up_declared(plan: Plan, declared: tuple[str, ...]) -> float | None:
     """
     for path in declared:
         _apply_overlay(plan, path, up=True)
-    if CAPTIONER_OVERLAY not in declared:
+    captioner = next((path for path in declared if path in CAPTIONER_OVERLAYS), "")
+    if not captioner:
         return None
+    print(f"captioner overlay: {captioner}")
     warmup = bring_up_captioner(plan)
     print(f"captioner answered a caption request after {warmup:.0f}s")
     return warmup

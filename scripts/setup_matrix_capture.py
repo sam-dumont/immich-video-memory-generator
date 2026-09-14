@@ -38,11 +38,22 @@ _SAVED = re.compile(r"Video saved to:(?:[ \t]+(\S.*?))?[ \t]*$", re.MULTILINE)
 # `prepare` prints a rate table whose `total` row ends in `human_duration`:
 # "total  133  0.4812  100%  64 s" / "... 12 min" / "... 1 h 4 min".
 _ELAPSED = r"(?:(\d+) h )?(?:([\d.]+) min|([\d.]+) s)"
-_PREPARE_TOTAL = re.compile(rf"^total\s+[\d,]+\s+[\d.]+\s+100%\s+{_ELAPSED}\s*$", re.MULTILINE)
+# ...unless something else did the work, in which case `elapsed` is not the last
+# column. `preparation_report.rate_report` adds `service s/pic` to the right of
+# it as soon as any producer reports what another machine charged itself: a rate
+# for the rows that ran there, an em dash for the rows that ran here. A pattern
+# anchored to the end of `elapsed` stops matching the day that column appears,
+# and `k8s-gpu-t1000` published a null `prepare_cold_s` and no producers at all
+# over a table that was sitting in its log, complete, the whole time.
+_SERVICE_RATE = r"(?:\s+(?:[\d.]+|—))?"
+_PREPARE_TOTAL = re.compile(
+    rf"^total\s+[\d,]+\s+[\d.]+\s+100%\s+{_ELAPSED}{_SERVICE_RATE}\s*$", re.MULTILINE
+)
 # One producer's row of the same table. `share` is an em dash when the pass cost
 # no measurable time at all, and `total` is excluded because it is not a producer.
 _PREPARE_ROW = re.compile(
-    rf"^(?!total\b)([a-z][\w-]*)\s+([\d,]+)\s+([\d.]+)\s+(?:([\d.]+)%|\S)\s+{_ELAPSED}\s*$",
+    rf"^(?!total\b)([a-z][\w-]*)\s+([\d,]+)\s+([\d.]+)\s+(?:([\d.]+)%|\S)\s+"
+    rf"{_ELAPSED}{_SERVICE_RATE}\s*$",
     re.MULTILINE,
 )
 # Not anchored: `print_success` prints a tick in front of this line, and under
@@ -79,9 +90,14 @@ class HostedUsage:
     tokens_out: int | None = None
     counted_exactly: bool | None = None
     wall_seconds: float | None = None
-    # No provider in this tree returns a price with its completion, so this is
-    # None everywhere and the summary says so out loud.
-    est_cost_eur: float | None = None
+    # Tiles the run actually sent a model. Not on the LLM line: the end-of-run
+    # block counts calls and tokens, and this is read off the attempt's own plan.
+    images_sent: int | None = None
+    # No provider in this tree returns a price with its completion, so the capture
+    # leaves this empty and the summary fills it from the manifest's price list,
+    # in whatever currency that shop publishes in.
+    est_cost: float | None = None
+    cost_currency: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -91,7 +107,9 @@ class HostedUsage:
             "tokens_out": self.tokens_out,
             "counted_exactly": self.counted_exactly,
             "wall_seconds": self.wall_seconds,
-            "est_cost_eur": self.est_cost_eur,
+            "images_sent": self.images_sent,
+            "est_cost": self.est_cost,
+            "cost_currency": self.cost_currency,
         }
 
 
@@ -415,6 +433,105 @@ def read_losses(attempt_dir: Path) -> dict:
         "dropped": dropped,
         "lost_favourites": None if trace.lost_favourites is None else len(trace.lost_favourites),
     }
+
+
+# The reading contracts leave two kinds of trace. A repair is a second question
+# with the rejection spelled out, and the judge writes one request transcript per
+# question, so the `-repair` stages ARE the repairs. An answer nothing recovered
+# leaves a failure transcript instead. The episode reader has neither: it warns,
+# once per distinct reason (#913), and only into the run log.
+CALLS = "calls"
+_REPAIR_ASKED = "*-repair*.request.private.txt"
+_ANSWER_REFUSED = "*.failure.private.json"
+_ANSWER_UNREADABLE = "*json-failure*.private.json"
+_EPISODE_REFUSED = re.compile(r"(text episode provider failed \([^)]*\): .+?)\s*$", re.MULTILINE)
+
+
+PLAN_FILE = "plan.private.json"
+
+
+def read_images_sent(attempt_dir: Path) -> int | None:
+    """Tiles this run sent a model, summed over the metrics blocks the plan keeps.
+
+    The story-first reader is mostly text and mostly is not never: the structure
+    pass demands 800 px tiles for the pictures it cannot settle on paper, a few
+    dozen in a month, and the pair confirmer and the story-motion check ask for
+    more. Those are image tokens somebody is billed for, so the cost line says how
+    many there were rather than implying the bill was all prose.
+    """
+    plan = attempt_dir / PLAN_FILE
+    if not plan.is_file():
+        return None
+    try:
+        record = json.loads(plan.read_text())
+    except ValueError:
+        return None
+    counted = [
+        block["images_sent"]
+        for block in record.values()
+        if isinstance(block, dict) and isinstance(block.get("images_sent"), int)
+    ]
+    return sum(counted) if counted else None
+
+
+def read_contract_health(attempt_dir: Path | None, log_text: str) -> dict:
+    """How often a reading contract refused this cell's reader, and how often it asked again.
+
+    Overlap says which pictures a reader chose. This says what it took to get an
+    answer out of it in the shape the contract asked for, which is the other half
+    of whether a model is any good: a hosted qwen3-30b once answered a pick with
+    the whole offered row, twice, and killed a run with nothing in the table to
+    show for it.
+
+    A cell that never called a model leaves no transcripts at all, and reports
+    null rather than a zero that would read as a clean reader.
+    """
+    calls = attempt_dir / CALLS if attempt_dir else None
+    if calls is None or not calls.is_dir():
+        return {"rejections": None, "repairs": None}
+    repairs = len(list(calls.glob(_REPAIR_ASKED)))
+    unrecovered = len(list(calls.glob(_ANSWER_REFUSED))) + len(list(calls.glob(_ANSWER_UNREADABLE)))
+    # Deduplicated on the reason, the way the reader itself reports it: a remote
+    # lane carries the same stdout in more than one file and both are read.
+    reasons = {match.group(1) for match in _EPISODE_REFUSED.finditer(log_text)}
+    return {"rejections": repairs + unrecovered + len(reasons), "repairs": repairs}
+
+
+# What a run fetched to cut with, and how many clips the film was made of. Both
+# are read off the run's own log, and both are only ever asked for when the
+# attempt directory did not come back: `k8s-gpu-t1000` published an empty cut
+# beside a 54.5 s film because a truncated tar left the attempt on the volume.
+#
+# `asset_service` builds the original's URL, and a preview is `/thumbnail`, so
+# `/original` is exactly the set of pictures the cut downloaded. The order is the
+# order they were FETCHED, which is not the order they play: the videos go first
+# and concurrently. Nothing here claims otherwise.
+# What a record says when its cut came out of a log rather than out of the
+# editor's own attempt. Read by the summary, which will not publish a running
+# order for one: a fetch order is not a play order.
+CUT_FROM_LOG = "generate log"
+_DOWNLOADED = re.compile(r"/api/assets/([^/\s\"']+)/original")
+_DOWNLOAD_START = "Downloading clips"
+# `generate._log_pipeline_timing` counts the clips the film is made of, which is
+# the cut without the title and ending screens the assembler adds.
+_FILM_CLIPS = re.compile(r"ipeline timing \((\d+) clips,")
+
+
+def downloaded_asset_ids(text: str) -> list[str]:
+    """Every picture the run downloaded to cut with, first fetch first.
+
+    Only the lines after the download phase begins, so the thumbnails preparation
+    pulled for the whole month are not mistaken for the cut.
+    """
+    start = text.find(_DOWNLOAD_START)
+    body = text[start:] if start >= 0 else text
+    return list(dict.fromkeys(_DOWNLOADED.findall(body)))
+
+
+def film_clip_count(text: str) -> int | None:
+    """How many clips the film was assembled from, as the run counted them."""
+    matches = _FILM_CLIPS.findall(text)
+    return int(matches[-1]) if matches else None
 
 
 def latest_attempt(runs_dir: Path, memory_key: str) -> Path | None:

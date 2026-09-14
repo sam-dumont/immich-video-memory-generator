@@ -283,6 +283,16 @@ class AutoRunner:
             details.append(f"stderr:\n{stderr_tail}")
         return _BoundedProcessDetails("\n".join(details) or "no subprocess output")
 
+    def _retain_child_output(self, attempt_id: str, stdout: Any, stderr: Any) -> None:
+        """Keep one complete transcript per attempt, whatever ended the child."""
+        retain_output(
+            self.config.cache.cache_path,
+            attempt_id,
+            _coerce_process_output(stdout),
+            _coerce_process_output(stderr),
+            self._secrets(),
+        )
+
     def _finish(
         self,
         attempt: AutomationAttempt,
@@ -421,16 +431,33 @@ class AutoRunner:
         attempt: AutomationAttempt,
         *,
         dry_run: bool,
-        candidate_key: str | None = None,
     ) -> AutoRunResult | None:
-        """Retry queued delivery only when no explicit generation was chosen."""
-        if candidate_key is not None:
-            return None
+        """Retry the oldest deliverable auto artifact, if one exists."""
         return self._pending_delivery_retry().run(
             attempt,
             dry_run=dry_run,
             pending=self._prepared_pending_delivery,
         )
+
+    def _pending_delivery_leg(
+        self,
+        attempt: AutomationAttempt,
+        *,
+        dry_run: bool,
+        candidate_key: str | None,
+    ) -> AutoRunResult | None:
+        """Run the queued-delivery leg, unless an explicit choice asked to generate.
+
+        An explicit choice must not reach delivery telemetry: phase updates are
+        forward-only, so a delivery phase written here would drop every phase the
+        generation child later reports.
+        """
+        if candidate_key is not None:
+            return None
+        preflight_result = self._prepare_pending_delivery_retry(attempt)
+        if preflight_result is not None:
+            return preflight_result
+        return self.retry_pending_delivery(attempt, dry_run=dry_run)
 
     def _pending_delivery_retry(self) -> PendingDeliveryRetry:
         """Bind this runner's durable collaborators to one retry state machine."""
@@ -550,15 +577,11 @@ class AutoRunner:
 
         try:
             self.state.record_discovery(attempt.id)
-            preflight_result = self._prepare_pending_delivery_retry(attempt)
-            if preflight_result is not None:
-                return preflight_result
-
-            retry_result = self.retry_pending_delivery(
+            delivery_result = self._pending_delivery_leg(
                 attempt, dry_run=dry_run, candidate_key=candidate_key
             )
-            if retry_result is not None:
-                return retry_result
+            if delivery_result is not None:
+                return delivery_result
 
             effective_cooldown = resolve_cooldown_hours(
                 cooldown_hours,
@@ -594,6 +617,7 @@ class AutoRunner:
             try:
                 process = self.execute(cmd)
             except subprocess.TimeoutExpired as exc:
+                self._retain_child_output(attempt.id, exc.stdout, exc.stderr)
                 details = self._process_details(exc.stdout, exc.stderr)
                 timeout_error = _BoundedProcessDetails(
                     f"{_GENERATION_TIMEOUT_REASON}\n{details.text}"
@@ -616,13 +640,7 @@ class AutoRunner:
                     error=launch_error,
                 )
 
-            retain_output(
-                self.config.cache.cache_path,
-                attempt.id,
-                process.stdout,
-                process.stderr,
-                self._secrets(),
-            )
+            self._retain_child_output(attempt.id, process.stdout, process.stderr)
 
             if process.returncode != 0:
                 reason = f"generation subprocess exited with code {process.returncode}"

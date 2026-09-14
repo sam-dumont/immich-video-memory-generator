@@ -314,6 +314,19 @@ class TestGetDividerMode:
 
 
 class TestBuildTitlePersonName:
+    def test_boolean_selection_titles_name_people_without_query_syntax(self):
+        from immich_memories.api.person_expression import PersonExpression
+
+        expression = PersonExpression.parse(
+            '("Alex Morgan" AND "Maya Chen") OR ("Alex Morgan" AND "Jules Robin")'
+        )
+        assert (
+            build_title_person_name(
+                "multi_person", {"person_expression": expression.to_dict()}, None
+            )
+            == "Alex · Maya · Jules"
+        )
+
     def test_multi_person_two_names(self):
         result = build_title_person_name(
             "multi_person", {"person_names": ["Riley Dumont", "Bob Smith"]}, None

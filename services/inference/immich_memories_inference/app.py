@@ -27,7 +27,6 @@ from immich_memories_inference.producers import (
     DOC_DOCLING,
     HEADS,
     NSFW_MARQO,
-    HeadsProducer,
     Producer,
     ProducerFacts,
     detector_loader,
@@ -69,12 +68,14 @@ def default_loaders(settings: InferenceSettings) -> dict[str, Callable[[], Produ
         ),
         NSFW_MARQO: detector_loader(
             NSFW_MARQO,
+            provider=settings.provider,
             allow_downloads=settings.allow_model_downloads,
             cache_dir=settings.detector_cache,
             marqo_onnx=settings.marqo_onnx_path,
         ),
         DOC_DOCLING: detector_loader(
             DOC_DOCLING,
+            provider=settings.provider,
             allow_downloads=settings.allow_model_downloads,
             cache_dir=settings.detector_cache,
             marqo_onnx=settings.marqo_onnx_path,
@@ -220,18 +221,26 @@ def _unavailable(app: FastAPI, detail: str) -> HTTPException:
 def _health(settings: InferenceSettings, runtime: ProducerRuntime) -> dict[str, Any]:
     available = available_providers()
     status = runtime.status()
-    heads = runtime.loaded(HEADS) if HEADS in status else None
-    session_providers = heads.session_providers if isinstance(heads, HeadsProducer) else ()
+    running = {
+        name: tuple(getattr(runtime.loaded(name), "session_providers", ())) for name in status
+    }
+    heads = running.get(HEADS, ())
     return {
         "status": "ok",
         # What a session is on while one is open, and what one would open on when
         # none is. The first is the authority; the second is a promise.
-        "provider": session_providers[0]
-        if session_providers
-        else would_use_provider(settings.provider, available),
+        "provider": heads[0] if heads else would_use_provider(settings.provider, available),
         "available_providers": list(available),
         "encoder_key": status[HEADS].encoder_key if HEADS in status else None,
-        "producers": {name: asdict(entry) for name, entry in status.items()},
+        # Per producer, because they are separate sessions and used to be
+        # separate answers: the heads on the card and the two detector seats on
+        # the CPU read as a working GPU deployment from the top-level provider
+        # alone. Empty until a producer is loaded -- nothing is running yet, and
+        # a promise per seat would be the same promise three times.
+        "producers": {
+            name: {**asdict(entry), "providers": list(running[name])}
+            for name, entry in status.items()
+        },
     }
 
 

@@ -75,3 +75,13 @@ def test_an_attempt_that_cannot_be_verified_voids_the_whole_replay(row) -> None:
     record = {"schema_version": FAILURE_SCHEMA, "attempts": [attempt(), row]}
 
     assert TextCompletionFailure.from_record(record) is None
+
+
+def test_a_row_carrying_what_the_provider_billed_still_replays() -> None:
+    """The token split is evidence about the same failure, not a different contract."""
+    billed = attempt(finish_reason="length", completion_tokens=8492, reasoning_tokens=8492)
+    original = TextCompletionFailure([billed, attempt(max_tokens=5000)])
+
+    replayed = TextCompletionFailure.from_record(original.as_record())
+
+    assert replayed is not None and replayed.attempts[0]["reasoning_tokens"] == 8492

@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from immich_memories.processing.clip_caption import ClipCaption, timeline_captions
+from immich_memories.processing.clip_caption import (
+    ClipCaption,
+    caption_frame_windows,
+    timeline_captions,
+)
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
 from immich_memories.processing.encoding_plan import (
     EncodingPlan,
@@ -369,6 +373,7 @@ def _encode_clip_sequence(
     clip_captions: list[ClipCaption | None] = (
         list(captions) if captions is not None else [None] * len(clips)
     )
+    caption_windows = caption_frame_windows(clips, transitions, fps, fade_frames)
 
     def decoder_for(clip_idx: int) -> Iterator[np.ndarray]:
         return iter(
@@ -385,6 +390,7 @@ def _encode_clip_sequence(
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
+                caption_window=caption_windows[clip_idx],
             )
         )
 

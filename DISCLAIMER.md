@@ -10,7 +10,7 @@ The human half is architecture decisions, code review, and spotting when the AI 
 
 The AI writes code. I make sure it's good. Every line goes through:
 
-- 7,461 tests (6,838 unit, 623 integration/E2E); `uv run pytest tests/ --collect-only -q` prints the split
+- A unit suite and an integration suite; `uv run pytest tests/ --collect-only -q` prints the current split. No count is written down here, because it moves every week and a written one is wrong within days
 - Ruff linting and formatting on every PR
 - mypy static type checking
 - Cyclomatic complexity gates (Xenon grade C max, cognitive complexity checks)
@@ -25,7 +25,7 @@ The AI writes code. I make sure it's good. Every line goes through:
 - Architecture layer enforcement
 - Conventional commit enforcement
 - OpenSSF Scorecard monitoring
-- 20 gates on every PR: 15 static checks in the quality job, 5 security scans in the security job. They are tiered, so the cheap ones fail first and the tests, Docker builds and launch check only run after
+- 21 gates on every PR: 16 static checks in the quality job, 5 security scans in the security job. They are tiered, so the cheap ones fail first and the tests, Docker builds and launch check only run after
 - Pre-commit hooks running all of the above locally
 
 That list is the claim, and you can check it yourself: the gates live in the `Makefile`, the pipeline in `.github/workflows/ci.yml`. The build stays red until they pass.
@@ -52,7 +52,7 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMA
 - Accesses your Immich server via API: keep your API key secure
 - Downloads videos temporarily: make sure you have disk space
 - Uses significant CPU/GPU resources during processing
-- Needs two model endpoints to cut at all (a vision reader and a caption server). Both speak the OpenAI-compatible API and both are meant to be yours; point them at a third party and your pictures go there
+- Cuts with no model at all on `reader: rules` and `tier: metadata_only`. Two optional endpoints, a vision reader and a caption server, make it a better cut; both speak the OpenAI-compatible API, both are meant to be yours, and pointing either at a third party sends your pictures there
 - Music generation/fetching may involve external sources: check licensing for your use case
 
 ### Questions?

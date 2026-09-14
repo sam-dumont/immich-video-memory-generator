@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +94,27 @@ OUTPUT_SUBPATH = "setup-matrix"
 # at all in a namespace that predates deploy/kubernetes/base/pvc.yaml.
 DATA_CLAIM = "setup-matrix-data"
 OUTPUT_CLAIM = "setup-matrix-output"
+# A cell may take the pair away from the shared names. The cluster's default
+# class provisions volumes with a node affinity of its own — region and zone —
+# and a node outside that zone cannot mount one however much CPU it has free:
+# `k8s-gpu-1070` sat in FailedScheduling for "1 node(s) didn't match
+# PersistentVolume's node affinity" because the card is on a node the zoned
+# class does not reach. `claim_mode: own` gives that cell a data and an output
+# claim of its own so the shared pair, warm with models and bank, is untouched.
+SHARED_CLAIMS = "shared"
+OWN_CLAIMS = "own"
+CLAIM_MODES = frozenset({SHARED_CLAIMS, OWN_CLAIMS})
+
+# The two pins every lane has to agree on before a single cell is comparable.
+# `analysis/editorial_structure_planner._near_home_test` measures each happening
+# against `trips.homebase_*` and `analysis/editorial_rule_reader.worthiness`
+# grades anything further than 10 km "away"; the schema's default for both is
+# 0.0. Mac and NAS cells copy the operator's config and inherit a real home, and
+# a cluster cell's ConfigMap is built from the pins alone and inherited Null
+# Island: run 1's cluster cells read every Brussels happening as 5,500 km from
+# home and wrote not one of the 22 "No occasion indicator" rows every Mac and
+# NAS rules cell wrote over the same month.
+HOMEBASE_PINS = ("trips.homebase_latitude", "trips.homebase_longitude")
 
 # What the GPU operator labels a node with, and what a render cell selects on. A
 # hostname would name the same machine today and the wrong card the day a GPU
@@ -154,6 +175,11 @@ MAKE_REMOTE_DIR = "make-remote-dir"
 FRESH_CACHE = "fresh-cache"
 # The step the runner retries and then judges on the film being here.
 COPY_OUT = "copy-out"
+# What the copy-out leaves behind. The mastered track is a render intermediate,
+# already muxed into the film by the time it is written, and it is the biggest
+# file in a cell's directory: on `k8s-gpu-t1000` it was the member the stream
+# broke on, and everything archived behind it went with it.
+MASTER_EXCLUDE = "--exclude=*.wav"
 
 # The env var `config_loader` maps to `immich.api_key`, which is how a cluster
 # cell is handed the operator's key without a ConfigMap ever holding one.
@@ -187,6 +213,37 @@ class Cell:
     # A directory in this repo the cell cannot run without. Absent, the cell is
     # skipped with a reason rather than dropped from the table.
     requires_overlay: str = ""
+    # What the Job asks the scheduler for. Blank takes the default, which is the
+    # NAS cell's cap so the two rows read against each other. A cell that offloads
+    # the work it is measuring can ask for less and actually get scheduled.
+    cpu_request: str = ""
+    memory_request: str = ""
+    # Whether the Job asks the device plugin for a card as a countable resource.
+    # False still lands the pod on the named node with the nvidia runtime and the
+    # video capability, which is all a render needs: the plugin advertises one
+    # allocatable GPU per node whatever the label says about time-slicing, and the
+    # inference Deployment is already holding it.
+    gpu_resource: bool = True
+    # The cell whose bank this one starts from, minus every model answer in it.
+    # Preparation is a fact about the host, the tier and where the facts come
+    # from, so cells that vary only the reader measure it once and copy.
+    seed_cache_from: str = ""
+    # A template: one cell per comma-separated model id in the variable this
+    # names. The ids are whatever the operator's own server has resident, so they
+    # belong in their environment and not in this repo.
+    for_each_env: str = ""
+    # The StorageClass this cell's claims are made under. Blank takes the
+    # cluster's default, which is what every cell but the odd-zone one wants.
+    storage_class: str = ""
+    # `shared` takes the matrix's one pair of claims; `own` makes a pair named
+    # after the cell. A cell naming a class of its own is always `own` in effect:
+    # the shared claims are already bound under the default class, and applying
+    # a different class over a bound claim changes nothing.
+    claim_mode: str = SHARED_CLAIMS
+
+    @property
+    def owns_claims(self) -> bool:
+        return self.claim_mode == OWN_CLAIMS or bool(self.storage_class)
 
     @property
     def hosted(self) -> bool:
@@ -288,10 +345,75 @@ def read_cells(manifest: dict) -> tuple[Cell, ...]:
             config=dict(row.get("config") or {}),
             inference_overlay=bool(row.get("inference_overlay", False)),
             gpu_product=str((row.get("k8s") or {}).get("gpu_product", "")),
+            gpu_resource=bool((row.get("k8s") or {}).get("gpu_resource", True)),
+            cpu_request=str((row.get("k8s") or {}).get("cpu_request", "")),
+            memory_request=str((row.get("k8s") or {}).get("memory_request", "")),
             requires_overlay=str(row.get("requires_overlay") or ""),
+            seed_cache_from=str(row.get("seed_cache_from") or ""),
+            for_each_env=str(row.get("for_each_env") or ""),
+            storage_class=str((row.get("k8s") or {}).get("storage_class", "")),
+            claim_mode=_claim_mode(row),
         )
         for row in manifest["cells"]
     )
+
+
+def _claim_mode(row: dict) -> str:
+    mode = str((row.get("k8s") or {}).get("claim_mode", SHARED_CLAIMS))
+    if mode not in CLAIM_MODES:
+        raise PlanError(f"{row['id']}: claim_mode {mode!r} is not one of {sorted(CLAIM_MODES)}")
+    return mode
+
+
+def cell_claims(cell: Cell) -> tuple[str, str]:
+    """The data and output claim this cell mounts, shared or its own.
+
+    Named after the cell as soon as it wants either a class or a pair of its own,
+    because the shared names are already bound under the default class and a
+    class is not something `apply` can change on a bound claim.
+    """
+    if not cell.owns_claims:
+        return DATA_CLAIM, OUTPUT_CLAIM
+    return f"setup-matrix-{cell.id}-data", f"setup-matrix-{cell.id}-output"
+
+
+# The config key a reader's model id is pinned under.
+MODEL_PIN = "llm.model"
+_SLUG_LIMIT = 40
+
+
+def cell_slug(model: str) -> str:
+    """A model id as a piece of a cell id: lowercase, nothing but letters, digits and dashes."""
+    return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")[:_SLUG_LIMIT].strip("-")
+
+
+def expand_cells(cells: tuple[Cell, ...], environment: dict[str, str]) -> tuple[Cell, ...]:
+    """One cell per model id a template's variable names, or the template when it is unset.
+
+    An unset variable leaves the template in place rather than dropping it: it
+    then skips for the variable it requires, and a lane nobody could run is a
+    result the table has to carry.
+    """
+    expanded: list[Cell] = []
+    for cell in cells:
+        models = _named_models(cell, environment)
+        if models is None:
+            expanded.append(cell)
+            continue
+        expanded.extend(
+            replace(
+                cell, id=f"{cell.id}-{cell_slug(model)}", config={**cell.config, MODEL_PIN: model}
+            )
+            for model in models
+        )
+    return tuple(expanded)
+
+
+def _named_models(cell: Cell, environment: dict[str, str]) -> list[str] | None:
+    if not cell.for_each_env:
+        return None
+    named = [one.strip() for one in (environment.get(cell.for_each_env) or "").split(",")]
+    return [one for one in named if one] or None
 
 
 def env_reference(value: Any) -> str | None:
@@ -388,9 +510,14 @@ def _scope(month: str) -> list[str]:
 
 
 def _mac_steps(
-    cell: Cell, memory: dict, month: str, out_dir: Path, *, fresh: bool
+    cell: Cell, memory: dict, month: str, out_dir: Path, *, fresh: bool, seed: Path | None = None
 ) -> tuple[Step, ...]:
-    """Three local invocations. Cold, warm, then the cut, each timed by the runner."""
+    """Three local invocations. Cold, warm, then the cut, each timed by the runner.
+
+    A seeded cell runs two: preparation is a fact about the host, the tier and
+    where the picture facts come from, so a cell that varies only the reader takes
+    the reference cell's bank instead of paying for the same captions again.
+    """
     cell_dir = out_dir / cell.id
     root = ["uv", "run", "immich-memories", "--config", str(cell_dir / "config.yaml")]
     generate = [
@@ -413,11 +540,82 @@ def _mac_steps(
     # The whole directory, because the Mac's cache is the runner's own to make:
     # nothing is mounted on it and `prepare` creates it again on its way past.
     wipe = (Step(FRESH_CACHE, ("rm", "-rf", str(cell_dir / CELL_CACHE_DIR))),) if fresh else ()
+    if cell.seed_cache_from:
+        source = seed or seed_source(cell, out_dir, prepared_here=False)
+        return (*wipe, _seed_step(cell, out_dir, source), Step("generate", tuple(generate)))
     return (
         *wipe,
         Step("prepare-cold", tuple(prepare)),
         Step("prepare-warm", tuple(prepare)),
         Step("generate", tuple(generate)),
+    )
+
+
+SEED_CACHE = "seed-cache"
+SEED_SCRIPT = "scripts/setup_matrix_seed.py"
+
+PROBE_READERS = "probe-readers"
+PROBE_READERS_SCRIPT = "scripts/setup_matrix_probe_readers.py"
+# The readers. A `rules` cell calls no model, so it has nothing to probe and
+# nothing to lose by starting.
+MODEL_READERS = ("hosted_", "local_model")
+
+
+def reads_with_a_model(cell: Cell) -> bool:
+    return cell.reader.startswith(MODEL_READERS)
+
+
+def probe_readers_step(cell: Cell, library: str, month: str) -> Step:
+    """Ask this cell's reader the three shapes it will be asked, before it spends anything.
+
+    It runs on this machine rather than on the host the cell runs on: a reader is
+    a URL and this machine can reach it, and three calls now are cheaper than the
+    hour of pictures run 1 spent on four models that answered every read with
+    HTTP 200 and nothing in it.
+    """
+    return Step(
+        PROBE_READERS,
+        (
+            "uv",
+            "run",
+            "python",
+            PROBE_READERS_SCRIPT,
+            "--cell",
+            cell.id,
+            "--library",
+            library,
+            "--month",
+            month,
+        ),
+    )
+
+
+def seed_source(cell: Cell, out_dir: Path, *, prepared_here: bool) -> Path:
+    """Where the bank this cell copies actually is, for the library this run is over.
+
+    `out_dir` is one run of one library, so its parent holds that library's other
+    runs and nothing else: a February cell seeds from a February bank by
+    construction, and no variable has to name a path per library. A run that
+    prepares the source cell itself takes this run's copy; one that does not takes
+    the newest run that has it, which is how the reader cells go against thirteen
+    thousand pictures somebody already captioned.
+    """
+    own = out_dir / cell.seed_cache_from / CELL_CACHE_DIR
+    if prepared_here:
+        return own
+    banked = sorted(
+        path
+        for path in out_dir.parent.glob(f"*/{cell.seed_cache_from}/{CELL_CACHE_DIR}")
+        if path.is_dir()
+    )
+    return banked[-1] if banked else own
+
+
+def _seed_step(cell: Cell, out_dir: Path, source: Path) -> Step:
+    """Copy the named cell's bank in, and take every model answer back out of it."""
+    return Step(
+        SEED_CACHE,
+        ("uv", "run", "python", SEED_SCRIPT, str(source), str(out_dir / cell.id / CELL_CACHE_DIR)),
     )
 
 
@@ -833,9 +1031,27 @@ def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Ste
         # tees and nothing has to agree about a working directory. The image's
         # WORKDIR is /app, and a relative source resolved against it was
         # `tar: setup-matrix/<cell>: Cannot stat` on the second real run.
+        # WHY the exclude: the mastered track is the largest file in the
+        # directory and nothing downstream opens it -- the film is muxed by the
+        # time it is written. `k8s-gpu-t1000` lost its attempt, its cut and every
+        # per-phase log to "Truncated tar archive ...
+        # mastered_calm_acoustic_s522.wav": tar stops where the stream broke, and
+        # everything behind that member never arrives.
         Step(
             COPY_OUT,
-            (*context, "exec", collector, "--", "tar", "-C", REMOTE_OUT, "-cf", "-", "."),
+            (
+                *context,
+                "exec",
+                collector,
+                "--",
+                "tar",
+                "-C",
+                REMOTE_OUT,
+                MASTER_EXCLUDE,
+                "-cf",
+                "-",
+                ".",
+            ),
             pipe_to=("tar", "-C", str(local), "-xf", "-"),
         ),
         Step("delete-collector", (*context, "delete", "pod", collector, "--ignore-not-found")),
@@ -845,7 +1061,7 @@ def _k8s_steps(cell: Cell, out_dir: Path, *, operator_immich: bool) -> tuple[Ste
         # the models and the annotation bank, warm across cells and across runs.
         Step(
             "delete-output-claim",
-            (*context, "delete", "pvc", OUTPUT_CLAIM, "--ignore-not-found"),
+            (*context, "delete", "pvc", cell_claims(cell)[1], "--ignore-not-found"),
         ),
     )
 
@@ -864,9 +1080,17 @@ def k8s_diagnostics(cell: Cell) -> tuple[Step, ...]:
     )
 
 
-def purge_claims_command() -> tuple[str, ...]:
-    """Both claims, for a run that asked to leave the cluster with nothing of its own."""
-    return (*KUBECTL, "delete", "pvc", DATA_CLAIM, OUTPUT_CLAIM, "--ignore-not-found")
+def purge_claims_command(cells: tuple[Cell, ...] = ()) -> tuple[str, ...]:
+    """Every claim the run made, for one that asked to leave the cluster with nothing.
+
+    The shared pair plus whatever a cell on another zone made for itself: those
+    carry a copy of the same models, and a purge that left them would leave the
+    biggest thing the matrix put on the cluster behind.
+    """
+    names = dict.fromkeys(
+        (DATA_CLAIM, OUTPUT_CLAIM, *(name for cell in cells for name in cell_claims(cell)))
+    )
+    return (*KUBECTL, "delete", "pvc", *names, "--ignore-not-found")
 
 
 CPU_OVERLAY = "deploy/kubernetes/overlays/inference"
@@ -929,6 +1153,9 @@ INFERENCE_ROLLOUT = (
 )
 
 CAPTIONER_OVERLAY = "deploy/kubernetes/overlays/captioner"
+# Same Deployment, same alias, same claim, with the layers offloaded to a card.
+CAPTIONER_CUDA_OVERLAY = "deploy/kubernetes/overlays/captioner-cuda"
+CAPTIONER_OVERLAYS = (CAPTIONER_OVERLAY, CAPTIONER_CUDA_OVERLAY)
 CAPTIONER_DEPLOYMENT = "deployment/immich-memories-captioner"
 CAPTIONER_SERVICE = "captioner"
 CAPTIONER_PORT = 8092
@@ -959,6 +1186,25 @@ def overlay_path(device: str) -> str:
     if device not in {"cpu", "cuda"}:
         raise PlanError(f"inference device must be cpu or cuda by now, got {device!r}")
     return CPU_OVERLAY if device == "cpu" else CUDA_OVERLAY
+
+
+def captioner_overlay_path(device: str) -> str:
+    """Which captioner overlay a device choice applies. `auto` is resolved before this."""
+    if device not in {"cpu", "cuda"}:
+        raise PlanError(f"captioner device must be cpu or cuda by now, got {device!r}")
+    return CAPTIONER_OVERLAY if device == "cpu" else CAPTIONER_CUDA_OVERLAY
+
+
+def declared_for_device(paths: tuple[str, ...], device: str) -> tuple[str, ...]:
+    """The overlays the cells declared, with the captioner pointed at the card.
+
+    A cell declares a caption server, never a device: which one it gets is the
+    answer `probe-gpu` already gave the inference service. One probe, one device,
+    one run, and no second row in the manifest saying the same thing twice.
+    """
+    return tuple(
+        captioner_overlay_path(device) if path == CAPTIONER_OVERLAY else path for path in paths
+    )
 
 
 def inference_image(tag: str, *, device: str) -> str:
@@ -1013,7 +1259,7 @@ def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
     """
     name = Path(path).name
     steps = [Step(f"apply-{name}", (*KUBECTL, "apply", "-k", path))]
-    if path == CAPTIONER_OVERLAY:
+    if path in CAPTIONER_OVERLAYS:
         steps += [
             Step(f"wait-{name}", CAPTIONER_ROLLOUT),
             Step(f"warm-{name}", CAPTIONER_FORWARD),
@@ -1021,6 +1267,28 @@ def required_overlay_steps(path: str, *, keep: bool) -> tuple[Step, ...]:
     if not keep:
         steps.append(Step(f"delete-{name}", (*KUBECTL, "delete", "-k", path, "--ignore-not-found")))
     return tuple(steps)
+
+
+CAPTIONER_AUTO = (
+    f"captioner overlay: {CAPTIONER_OVERLAY}, "
+    f"or {CAPTIONER_CUDA_OVERLAY} when probe-gpu finds a card"
+)
+
+
+def declared_overlay_steps(paths: tuple[str, ...], *, device: str, keep: bool) -> tuple[Step, ...]:
+    """Every declared overlay as steps, with the captioner's device named up front.
+
+    `auto` is not resolved here. A dry run asks no cluster anything, so it prints
+    the rule and the cpu answer under it, the way the inference overlay prints
+    its probe rather than the probe's answer.
+    """
+    resolved = paths if device == "auto" else declared_for_device(paths, device)
+    note = (
+        (Step("captioner-device", ("echo", CAPTIONER_AUTO)),)
+        if device == "auto" and CAPTIONER_OVERLAY in paths
+        else ()
+    )
+    return (*note, *(step for path in resolved for step in required_overlay_steps(path, keep=keep)))
 
 
 def pin_inference_node(rendered: str, product: str) -> str:
@@ -1127,6 +1395,32 @@ def inference_overlay_steps(
     return tuple(steps)
 
 
+def _storage_class_block(cell: Cell) -> str:
+    """The class line a claim carries, or nothing at all for the cluster's default."""
+    return f"  storageClassName: {_render_pin(cell.storage_class)}\n" if cell.storage_class else ""
+
+
+def collector_pod_block(product: str) -> str:
+    """Where the collector may land, which is wherever the Job's volume can follow it.
+
+    A zoned or node-local class binds the output volume to one node's zone, and a
+    collector the scheduler put elsewhere either cannot start or would copy back
+    an empty directory. It takes the Job's own node selector, and the GPU taint's
+    toleration with it, because a GPU node is tainted against everything that
+    does not tolerate it. No runtime class: the collector runs `sleep`.
+    """
+    if not product:
+        return ""
+    return (
+        "  nodeSelector:\n"
+        f"    {GPU_PRODUCT_LABEL}: {product}\n"
+        "  tolerations:\n"
+        f"    - key: {GPU_RESOURCE}\n"
+        "      operator: Exists\n"
+        "      effect: NoSchedule\n"
+    )
+
+
 def gpu_pod_block(product: str) -> str:
     """Where a render cell's pod may land, and what hands it the card once it does.
 
@@ -1147,9 +1441,35 @@ def gpu_pod_block(product: str) -> str:
     )
 
 
-def _gpu_limit_block(product: str) -> str:
-    """The device request. A GPU is only ever a limit: the plugin has no fractions to give."""
-    return f'              {GPU_RESOURCE}: "1"\n' if product else ""
+# What a cell asks for when it says nothing: the NAS cell's docker cap, so the two
+# rows in the table are comparable.
+DEFAULT_CPU_REQUEST = "2000m"
+DEFAULT_MEMORY_REQUEST = "4Gi"
+
+
+def job_requests(cell: Cell) -> tuple[str, str]:
+    """CPU and memory this cell's Job asks the scheduler for.
+
+    `k8s-gpu-1070` sat in FailedScheduling for `1 Insufficient cpu`: the node
+    holding that card also runs the live web Deployment, and there was no spare
+    2 CPU on it. The encode is on the card and the pod only feeds it, so asking
+    for what it needs is the fix. The limit is unchanged, so a cell that turns out
+    to want more still gets it.
+    """
+    return (cell.cpu_request or DEFAULT_CPU_REQUEST, cell.memory_request or DEFAULT_MEMORY_REQUEST)
+
+
+def _gpu_limit_block(cell: Cell) -> str:
+    """The device request. A GPU is only ever a limit: the plugin has no fractions to give.
+
+    Asking for one is not free and is not always needed. `k8s-gpu-t1000` sat in
+    FailedScheduling for `Insufficient nvidia.com/gpu` because the inference
+    Deployment already held that node's single allocatable card, while the plain
+    demo Jobs on the same node drew their titles on CUDA having asked for nothing:
+    the node's default runtime exposes the card to every pod on it. So a render
+    cell can take the node and the runtime and leave the countable resource alone.
+    """
+    return f'              {GPU_RESOURCE}: "1"\n' if cell.gpu_product and cell.gpu_resource else ""
 
 
 def _job_env(cell: Cell, *, fresh: bool) -> tuple[tuple[str, str], ...]:
@@ -1184,6 +1504,7 @@ def _k8s_manifests(
     cluster cell reports peak memory the way a NAS cell does.
     """
     name = f"setup-matrix-{cell.id}"
+    cpu_request, memory_request = job_requests(cell)
     config_block = "\n".join(f"    {line}" for line in config_yaml.splitlines())
     script = "\n".join(
         f"                {part}"
@@ -1195,8 +1516,11 @@ def _k8s_manifests(
         if credentials or operator_immich
         else ""
     )
+    data_claim, output_claim = cell_claims(cell)
     return {
-        "claims.yaml": _CLAIMS.format(data=DATA_CLAIM, output=OUTPUT_CLAIM),
+        "claims.yaml": _CLAIMS.format(
+            data=data_claim, output=output_claim, storage_class=_storage_class_block(cell)
+        ),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
         "job.yaml": _JOB.format(
             name=name,
@@ -1207,20 +1531,23 @@ def _k8s_manifests(
             cache=REMOTE_CACHE,
             env=_env_block(_job_env(cell, fresh=fresh)),
             gpu_pod=gpu_pod_block(cell.gpu_product),
-            gpu_limit=_gpu_limit_block(cell.gpu_product),
+            gpu_limit=_gpu_limit_block(cell),
+            cpu_request=cpu_request,
+            memory_request=memory_request,
             secrets=secret_block,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
             models_subpath=MODELS_SUBPATH,
             cache_subpath=f"{CACHE_SUBPATH}/{cell.id}",
-            output_claim=OUTPUT_CLAIM,
-            data_claim=DATA_CLAIM,
+            output_claim=output_claim,
+            data_claim=data_claim,
         ),
         "collector.yaml": _COLLECTOR.format(
             name=f"{name}-collect",
             image=image,
             out=REMOTE_OUT,
-            output_claim=OUTPUT_CLAIM,
+            output_claim=output_claim,
             subpath=f"{OUTPUT_SUBPATH}/{cell.id}",
+            placement=collector_pod_block(cell.gpu_product),
         ),
     }
 
@@ -1239,7 +1566,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  resources:
+{storage_class}  resources:
     requests:
       storage: 10Gi
 ---
@@ -1255,7 +1582,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  resources:
+{storage_class}  resources:
     requests:
       storage: 10Gi
 """
@@ -1323,14 +1650,15 @@ spec:
             - name: data
               mountPath: {cache}
               subPath: {cache_subpath}
-          # The request is what the scheduler has to find: a 1-CPU app pod was
-          # already answered with Insufficient cpu here, and a cell that runs on
-          # scraps is not a measurement. The limit is the NAS cell's docker cap,
-          # 4 CPU and 4 GB, so the two rows in the table are comparable.
+          # The request is what the scheduler has to find, and finding it is not
+          # free: a cell that runs on scraps is not a measurement, and a cell that
+          # asks for a whole node it does not use never runs at all. The limit is
+          # the NAS cell's docker cap, 4 CPU and 4 GB, so the two rows in the table
+          # are comparable however little the pod asked for.
           resources:
             requests:
-              memory: "4Gi"
-              cpu: "2000m"
+              memory: "{memory_request}"
+              cpu: "{cpu_request}"
             limits:
               memory: "4Gi"
               cpu: "4000m"
@@ -1359,7 +1687,7 @@ metadata:
     app.kubernetes.io/component: setup-matrix-collector
 spec:
   restartPolicy: Never
-  securityContext:
+{placement}  securityContext:
     runAsNonRoot: true
     runAsUser: 1000
     runAsGroup: 1000
@@ -1399,17 +1727,34 @@ def build_cell_plan(
     *,
     manifest: dict,
     library: dict,
+    library_name: str,
     month: str,
     out_dir: Path,
     image: str,
     environment: dict[str, str],
     fresh_cache: bool = False,
+    seed_source: Path | None = None,
 ) -> CellPlan:
     """One cell's commands, manifests and pins, with no value from `environment` inside."""
     pins = _pins_for(cell, manifest, library)
     source = {**(library.get("config") or {}), **cell.config}
     references, credentials = _variables(source)
-    required = tuple(dict.fromkeys((*cell.requires_env, *references, *credentials)))
+    # The storage class is not a config pin, so `_variables` never sees it. It is
+    # required all the same: a cell that names a class and is handed none would
+    # fall back to the cluster's default, which is the class whose volumes that
+    # node cannot mount, and the cell would sit Pending for the same reason it
+    # was given a knob for.
+    named_class = env_reference(cell.storage_class)
+    required = tuple(
+        dict.fromkeys(
+            (
+                *cell.requires_env,
+                *references,
+                *credentials,
+                *((named_class,) if named_class else ()),
+            )
+        )
+    )
     missing = [name for name in required if not (environment.get(name) or "").strip()]
     skip = overlay_skip_reason(cell) or (
         f"needs {', '.join(missing)}, absent from the loaded environment" if missing else None
@@ -1430,7 +1775,7 @@ def build_cell_plan(
     diagnostics: tuple[Step, ...] = ()
     container_limits = ""
     if cell.lane == "mac":
-        steps = _mac_steps(cell, memory, month, out_dir, fresh=fresh_cache)
+        steps = _mac_steps(cell, memory, month, out_dir, fresh=fresh_cache, seed=seed_source)
     elif cell.lane == "nas":
         limits = nas_docker_limits(environment)
         steps = _nas_steps(cell, memory, month, out_dir, image, limits, fresh=fresh_cache)
@@ -1449,6 +1794,8 @@ def build_cell_plan(
         diagnostics = k8s_diagnostics(cell)
     else:
         raise PlanError(f"{cell.id}: unknown lane {cell.lane!r}")
+    if reads_with_a_model(cell):
+        steps = (probe_readers_step(cell, library_name, month), *steps)
 
     return CellPlan(
         cell=cell,
@@ -1502,6 +1849,61 @@ def _check_ssh_destination(environment: dict[str, str]) -> None:
         )
 
 
+def check_homebase(manifest: dict, environment: dict[str, str]) -> None:
+    """Refuse to start a run whose lanes would not agree about where home is.
+
+    A skip_reason would be the wrong answer here. Every cell reads these, so a
+    missing variable is not a lane that cannot run: it is a whole matrix that
+    would publish a cut shaped by an accident, with no column saying so. Asked
+    for by the runner rather than by `build_plan`, because rebuilding a table off
+    records already on disk needs no home and should not want one.
+    """
+    baseline = manifest.get("baseline_config") or {}
+    unreferenced = [pin for pin in HOMEBASE_PINS if not env_reference(baseline.get(pin))]
+    if unreferenced:
+        raise PlanError(
+            f"baseline_config wants {' and '.join(unreferenced)} as a $env: reference. Coordinates"
+            " are the operator's home: they belong in an environment file, and a cell handed"
+            " none plans against Null Island and reads every happening as away."
+        )
+    missing = [
+        name
+        for pin in HOMEBASE_PINS
+        if (name := env_reference(baseline[pin])) and not (environment.get(name) or "").strip()
+    ]
+    if missing:
+        raise PlanError(
+            f"needs {', '.join(missing)}, absent from the loaded environment. Every lane plans"
+            " against the same home or nothing in the table compares: without one the cut is"
+            " made at Null Island, every happening is thousands of km away, and the reader"
+            " grades the whole month as a trip. Put them in ~/.immich-memories-matrix/.env."
+        )
+
+
+def _check_seed_sources(cells: tuple[Cell, ...]) -> None:
+    """A seeded cell has to name a cell in front of it, on its own lane and its own tier.
+
+    All three or the bank it copies is not the bank it needed: a later source has
+    not run yet, another lane's cache is inside a container, and another tier's
+    holds a different set of annotations.
+    """
+    seen: dict[str, Cell] = {}
+    for cell in cells:
+        source = seen.get(cell.seed_cache_from)
+        if cell.seed_cache_from and source is None:
+            raise PlanError(f"{cell.id}: seed_cache_from names no cell running before it")
+        if source and (source.lane, source.tier, source.facts) != (
+            cell.lane,
+            cell.tier,
+            cell.facts,
+        ):
+            raise PlanError(
+                f"{cell.id}: seeds from {source.id}, which prepares on another lane, tier or"
+                " facts source, so its bank is not the one this cell would have derived"
+            )
+        seen[cell.id] = cell
+
+
 def build_plan(
     *,
     manifest: dict,
@@ -1525,10 +1927,11 @@ def build_plan(
         raise PlanError(f"--month is required for library {library!r}")
     month_parts(resolved)
 
-    known = read_cells(manifest)
+    known = expand_cells(read_cells(manifest), environment)
     unknown = set(cell_ids) - {cell.id for cell in known}
     if unknown:
         raise PlanError(f"unknown cell(s): {', '.join(sorted(unknown))}")
+    _check_seed_sources(known)
     chosen = [
         cell
         for cell in known
@@ -1547,11 +1950,21 @@ def build_plan(
                 cell,
                 manifest=manifest,
                 library=settings,
+                library_name=library,
                 month=resolved,
                 out_dir=out_dir,
                 image=image,
                 environment=environment,
                 fresh_cache=fresh_cache,
+                seed_source=(
+                    seed_source(
+                        cell,
+                        out_dir,
+                        prepared_here=cell.seed_cache_from in {one.id for one in chosen},
+                    )
+                    if cell.seed_cache_from
+                    else None
+                ),
             )
             for cell in chosen
         ),

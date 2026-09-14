@@ -110,6 +110,20 @@ class TestTitleFallbackIntegration:
     """Template fallback is applied before LLM, LLM overwrites on success."""
 
     @pytest.mark.asyncio
+    async def test_trip_fallback_keeps_the_configured_language(self):
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.config = _make_config(locale="fr")
+        state.date_ranges = [_make_date_range()]
+        state.memory_type = "trip"
+        state.selected_person = None
+        state.memory_preset_params = {}
+        state.album_name = None
+        await generate_title_after_pipeline(state)
+        assert state.title_suggestion_title == "Juillet 2024"
+
+    @pytest.mark.asyncio
     async def test_template_applied_before_llm(self):
         """Template title is set even when LLM is not configured."""
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline

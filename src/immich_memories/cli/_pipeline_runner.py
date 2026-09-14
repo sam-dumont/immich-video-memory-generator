@@ -236,8 +236,7 @@ class _SourceProgressReporter:
     def __init__(self, progress: ProgressDisplay, task: TaskID) -> None:
         self._progress = progress
         self._task = task
-        # None before the first source stage; then "unbounded" or the counted total.
-        self._mode: str | int | None = None
+        self._mode: str | tuple | None = None
 
     def __call__(self, status: dict) -> None:
         if status.get("indeterminate"):
@@ -263,13 +262,17 @@ class _SourceProgressReporter:
             self._progress.reset(self._task, total=100)
 
     def _counted_stage(self, status: dict) -> None:
-        """Give the task the stage's own total, so the estimate the display owns can run."""
+        """Reset on a new stage even when it has the same number of items."""
         total = int(status["total_items"])
-        if self._mode != total:
+        identity = status.get("stage_identity", (status.get("current_phase"), total))
+        if self._mode != identity:
             self._progress.reset(self._task, total=total)
-            self._mode = total
+            self._mode = identity
+        description = status["phase_label"]
+        if remaining := status.get("remaining_label"):
+            description += f" · {remaining}"
         self._progress.update(
-            self._task, completed=int(status["current_index"]), description=status["phase_label"]
+            self._task, completed=int(status["current_index"]), description=description
         )
 
 

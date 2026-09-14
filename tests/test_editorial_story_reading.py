@@ -528,3 +528,23 @@ def test_gaps_are_kept_for_a_subject_memory_and_split_elsewhere():
         ScriptedJudge(reply), evidence=evidence, contract="c", prior={}, enrich=lambda _e: hints
     )
     assert sorted(len(s["episodes"]) for s in month.stories) == [1, 1, 1, 1]
+
+
+def test_one_uncertainty_where_a_list_belongs_is_one_row_not_its_letters():
+    """A bare string is iterable, so the old shape check turned one sentence into 44 rows."""
+    from immich_memories.analysis.editorial_story_replies import _read_synthesis
+
+    reply = json.dumps(
+        {
+            "thesis": "What this period was about.",
+            "about": [],
+            "connections": [],
+            "priorities": [],
+            "stories": [],
+            "uncertainties": "The cafe visit may belong to the coast week.",
+        }
+    )
+
+    read = _read_synthesis(reply, {"S0001": "Arrival at the coast"})
+
+    assert read["uncertainties"] == ["The cafe visit may belong to the coast week."]

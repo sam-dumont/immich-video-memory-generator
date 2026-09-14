@@ -336,9 +336,25 @@ _HOLIDAY_LABELS = {
 }
 
 
-def holiday_label(holiday: str, year: int) -> str:
+_HOLIDAY_LABELS_FR = {
+    "new_year": "Nouvel An",
+    "valentines": "Saint-Valentin",
+    "easter": "Pâques",
+    "mothers_day": "Fête des mères",
+    "fathers_day": "Fête des pères",
+    "halloween": "Halloween",
+    "thanksgiving": "Thanksgiving",
+    "christmas_eve": "Réveillon de Noël",
+    "christmas": "Noël",
+    "new_years_eve": "Réveillon du Nouvel An",
+}
+
+
+def holiday_label(holiday: str, year: int, locale: str = "en") -> str:
     """A printable name, falling back to the date for a household's own occasion."""
     key = holiday.strip().lower().replace("-", "_").replace(" ", "_")
+    if locale == "fr" and key in _HOLIDAY_LABELS_FR:
+        return _HOLIDAY_LABELS_FR[key]
     if key in _HOLIDAY_LABELS:
         return _HOLIDAY_LABELS[key]
     resolved = resolve_holiday(holiday, year)

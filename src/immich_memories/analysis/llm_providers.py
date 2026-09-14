@@ -37,7 +37,12 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "thinking_params": {"reasoning_effort": "medium"},
-        "no_thinking_params": {},
+        # The gpt-5 family reasons on every call and cannot be told not to, so
+        # "do not think" means the cheapest effort it sells -- one level below
+        # the "low" the generic compatible hosts stop at. Two story-pick calls
+        # at 300 and 600 tokens came back raw "" on gpt-5.6-luna for want of it.
+        "no_thinking_params": {"reasoning_effort": "minimal"},
+        "always_reasons": True,
     },
     "anthropic": {
         "base_url": "https://api.anthropic.com",
@@ -140,6 +145,21 @@ def _preset_updates(config: LLMConfig) -> dict:
             updates[name] = {**value, **getattr(config, name)}
     updates["provider"] = _dialect_for(config.provider, updates.get("base_url", config.base_url))
     return updates
+
+
+# The batch route each dialect's hosts declare, where the dialect has one at
+# all. Declared per dialect rather than per vendor because the batch shapes were
+# copied wholesale alongside the realtime ones: Melious answers OpenAI's
+# /v1/batches on a base URL configured as `openai-compatible`. A host that never
+# copied it answers 404, which is what the probe in `llm_batch` is for -- z.ai's
+# Anthropic route does exactly that (measured 2026-09-14). Ollama has no batch
+# shape of any kind, so it declares nothing.
+_BATCH_ROUTES = {"openai-compatible": "openai", "anthropic": "anthropic"}
+
+
+def batch_route_for(config: LLMConfig) -> str | None:
+    """The batch route this provider declares, before any host has been asked."""
+    return _BATCH_ROUTES.get(resolved_llm_config(config).provider)
 
 
 def resolved_llm_config(config: LLMConfig) -> LLMConfig:

@@ -15,6 +15,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 **Memory type** offers exactly what `generate --memory-type` accepts, in the same order (Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Album, Trip, Holiday, Surprise me), plus **Custom date range**, which the CLI spells as `--start`/`--end`. Picking a type shows only that type's parameters.
 
+**Trip** finds trips from GPS-tagged photos, videos and Live Photos, using the same discovery as the CLI. The year picker includes years with only photos. Discovery includes a month on either side of the selected year, so a trip across New Year keeps its full dates; only trips overlapping the selected year are offered. The dropdown counts assets, including photos.
+
 **Duration** is one line. With **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the number comes from; Trip and Album measure theirs from the media once it is loaded. Turn the switch off to type an exact **Target duration (min)**; fractional minutes keep their seconds. The target is the complete video, titles and transition overlap included.
 
 The brief appears once Immich has answered. With credentials in `config.yaml` or the environment the page connects on its own; otherwise only the connection panel shows until **Test Connection** succeeds.
@@ -71,7 +73,7 @@ This is the page's own **Advanced**, at the bottom of the brief, not the **Advan
 
 The pool is everything the brief found: videos, Live Photos and, with the switch on, photos, in one chronological grid with an **Include** checkbox each, twenty to a page with **Previous page** and **Next page** under the grid (only the page you are on is in the browser, so a pool of two thousand pictures costs no more than one of twenty). One line above the grid carries every number the page has: how many are in the pool (videos and photos), how many are ticked and, once a cut exists, how many it kept and for how long, the same figures the storyboard shows. Under it one sentence says what a tick means right now. In the compact grid a click on a picture flips its tick in place. Everything starts checked. Checked media is what the editor cuts from, so untick what may never be used: the accidental pocket recording, the screenshot you forwarded. Twins and bursts are the editor's to judge; nothing here pre-deselects them.
 
-After a cut the same checkboxes show the cut: ticked means in it. Two moves are yours from there. Untick a picture the editor kept and **Cut again** leaves it out. Tick a picture the editor dropped and **Cut again** keeps it in, in its own story, at its capture time. The editor reads the period exactly as before and adds your picture afterwards; it is not argued about a second time. The one thing that still outranks your tick is the family-viewing gate: a picture it refuses stays out, and the run's `owner-required-after-audience` record names it. **Start Over** forgets the cut, so the checkboxes go back to meaning only "may be used".
+After a cut the same checkboxes show the cut: ticked means in it. Two moves are yours from there. Untick a picture the editor kept and **Cut again** leaves it out. Tick a picture the editor dropped and **Cut again** keeps it in, in its own story, at its capture time. The editor reads the period exactly as before and adds your picture afterwards; it is not argued about a second time. The one thing that still outranks your tick is the family-viewing gate: a picture it refuses stays out, and the run's `owner-required-after-audience` record names it. **Start over** forgets the cut, so the checkboxes go back to meaning only "may be used".
 
 The page has one primary button: **Cut** before a cut exists, **Cut again** after one. Both use the duration from the brief. After a cut, **Trim the video clips** opens the excerpt editor: one expansion per video in the cut (stills have no seconds to pick, so they are not listed), ten to a page, with an **Include in compilation** checkbox, a **Select range** slider for the excerpt (plus **First 5s**, **Middle 5s**, **Last 5s**, **Full clip**, **Preview**) and a **Rotation** select. A row loads its video preview when you open it and lets it go when you close it; only the first row starts open. Your edits are projected back onto the cut; the final duration updates as you trim.
 
@@ -80,6 +82,13 @@ The page has one primary button: **Cut** before a cut exists, **Cut again** afte
 **Cut** loads the pool for the brief, then runs the story-first selection over it. There is no review step in between: everything the brief found is eligible, and the editor decides. To keep something out first, open the media pool from Advanced, untick it, and start the run from that page.
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress: one row per phase, the editor's current stage under the active one" />
+
+Counted stages also show an estimate such as **~36s left in this stage**, measured from that
+stage's completed work. It appears after the count advances beyond the first update. A new
+stage starts with no estimate; previews and captions have different costs. The CLI shows the
+same saved value, and reloading the page keeps it. Slow items can change the estimate.
+
+<ThemedScreenshot name="memory-cutting-estimate" alt="A preparation pass showing its count and estimated time left in this stage" />
 
 While it runs the page shows one row per phase (**Finding media**, **Loading thumbnails**, **Reading the pictures**, **Editing**, **Done**) with the run's own stage beside the active row, the elapsed time, and **Cancel**, which stops after the current stage. The stages a run reports, in order: *Reading dates, places and people* (annotation preparation; on a library that has never been read this is the slow one), then *Reading event evidence: 3/12* (one count per request to the reader), *Reading the period account: page 2*, *Building editorial cards*, *Editing the memory: 22 pictures into the audience gate* (then the count into the picture review and after the duplicate review) and *Validating selected source timing*. What each does is in [Pipeline Overview](../pipeline/pipeline-overview.md).
 
@@ -116,6 +125,26 @@ A cut that left no plan behind shows its counts instead. Below both tabs, four b
 - **Cut again**: the editor runs again over the same pool, with your ticks: unticked pictures stay out, pictures you ticked back in are kept.
 - **Change the brief**: back to an empty brief.
 
+### Each picture's outcome
+
+<ThemedScreenshot name="memory-pool-outcomes" alt="The pool shows the last cut’s outcome and reason below each picture" />
+
+After a cut, **Review the pool** shows a saved outcome below every photo and video,
+in both list and grid views: **In the cut** with its timecode and reason, or
+**Left out at** the named pass with the editor's reason. An unfinished decision
+says **Undecided**; missing evidence says **Outcome not recorded for this cut**.
+The label describes the last cut. Changing an **Include** checkbox changes the
+next cut's input, so the label stays put until you cut again.
+
+The compact grid carries the same label under each thumbnail:
+
+<ThemedScreenshot name="memory-pool-outcomes-grid" alt="The compact grid: the same outcome line under every thumbnail" />
+
+Before your first cut there is no outcome to show, and the pool renders none.
+
+The terminal reads the same saved evidence with `immich-memories runs story`
+and `immich-memories runs why ASSET_ID --run RUN_ID`.
+
 ## Export
 
 <ThemedScreenshot name="memory-export" alt="Export: summary, output filename, upload switch" />
@@ -123,6 +152,9 @@ A cut that left no plan behind shows its counts instead. Below both tabs, four b
 **Preview & Export** opens with stat cards (Clips, Photo Pool, Duration, Format) and the **Output** card: the **Output filename** (built from the type, the people and the range, as in `everyone_jan-apr_2025_memories.mp4`), the "Will be saved to" line (`output.directory`, `~/Videos/Memories` by default; the file lands in a per-run subfolder there, `<name>_<YYYYMMDD_HHMMSS_xxxx>/`), and **Upload after generation** with an **Album name** (off by default); nothing in your library is modified either way.
 
 **Generate Video** starts the render. A progress bar and status line follow the run (downloading and trimming the chosen segments, rendering photos, assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", "Complete"), and during assembly a preview frame updates as the video takes shape. **Cancel** stops after the current phase. When it finishes: "Your memory video is ready!", **Saved to: path (size)**, an **Immich delivery** line and an inline player. There is no download button: open the path shown, or find the video in the album you chose.
+
+The export bar moves forward across extraction, assembly, music and upload. Finishing
+extraction cannot fill it: 100% is reserved for the completed export.
 
 The render keeps going on the server if the tab is reloaded or its connection drops. Reload the page and you get either "A generation started at HH:MM is still running (run …)", which re-checks every few seconds and switches to the result on its own; the **Result** header with the finished video; or a warning that the last run failed, with a pointer to the server log. Generating again is always allowed. **Start New Project** clears the session and returns to the brief.
 

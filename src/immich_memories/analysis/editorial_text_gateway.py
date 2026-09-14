@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextvars import copy_context
 from dataclasses import dataclass, replace
 
@@ -19,9 +19,11 @@ from immich_memories.analysis.editorial_json_completion import (
 )
 from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPrompt, batch_prompt_key
 from immich_memories.analysis.llm_providers import resolved_llm_config
-from immich_memories.analysis.llm_query import LLMIncompleteResponse, query_llm
+from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_text_identity import text_model_identity
+from immich_memories.analysis.llm_wire import LLMIncompleteResponse, LLMTransportAttempt
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cache.judgment_cache import JudgmentCache
 from immich_memories.config_models_llm import LLMConfig
@@ -32,6 +34,37 @@ __all__ = [
     "SyncTextPromptRequester",
     "semantic_text_model_identity",
 ]
+
+
+class BilledReply:
+    """The last completed POST's own account of what it billed, kept for the record.
+
+    A reasoning host charges its private thinking to the same budget as the
+    answer, so "the reply was empty" and "the reply had no room left to be
+    written" look identical on disk without the split.
+    """
+
+    def __init__(self) -> None:
+        self._attempt: LLMTransportAttempt | None = None
+
+    def watching(
+        self, downstream: Callable[[LLMTransportAttempt], None]
+    ) -> Callable[[LLMTransportAttempt], None]:
+        def observe(attempt: LLMTransportAttempt) -> None:
+            if attempt.finish_reason is not None:
+                self._attempt = attempt
+            downstream(attempt)
+
+        return observe
+
+    def as_record(self) -> dict:
+        if self._attempt is None:
+            return {}
+        return {
+            "finish_reason": self._attempt.finish_reason,
+            "completion_tokens": self._attempt.completion_tokens,
+            "reasoning_tokens": self._attempt.reasoning_tokens,
+        }
 
 
 class QueryTextRequester:
@@ -103,8 +136,9 @@ class QueryTextRequester:
         current = request
         for attempt in range(2):
             budget = request.max_tokens * (attempt + 1)
+            billed = BilledReply()
             try:
-                return await self._query(current, max_tokens=budget)
+                return await self._query(current, max_tokens=budget, billed=billed)
             except (KeyError, ValueError) as exc:
                 bounded = isinstance(exc, (LLMIncompleteResponse, JSONDecisionError))
                 failures.append(
@@ -117,6 +151,7 @@ class QueryTextRequester:
                         else "",
                         "error": str(exc),
                         "max_tokens": budget,
+                        **billed.as_record(),
                         "bounded": bounded,
                     }
                 )
@@ -132,7 +167,8 @@ class QueryTextRequester:
                     current = replace(request, prompt=json_format_repair_prompt(request.prompt))
         raise AssertionError("bounded completion must return or raise")
 
-    async def _query(self, request: TextRequest, *, max_tokens: int) -> str:
+    async def _query(self, request: TextRequest, *, max_tokens: int, billed: BilledReply) -> str:
+        watch = watch_provider("reader", request.llm_config)
         raw = await query_llm(
             request.prompt,
             request.llm_config,
@@ -141,7 +177,7 @@ class QueryTextRequester:
             timeout_seconds=request.timeout_seconds,
             thinking=request.thinking,
             cache_path=None,  # The gateway banks the complete bounded-recovery request.
-            transport_observer=watch_provider("reader", request.llm_config),
+            transport_observer=billed.watching(watch),
             require_complete=not request.json_object,
         )
         if request.json_object:
@@ -193,6 +229,7 @@ class SyncTextPromptRequester:
     timeout_seconds: int
     thinking: bool = False
     artifacts: TextPromptArtifacts | None = None
+    batch: BatchCoordinator | None = None
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0 or self.timeout_seconds <= 0:
@@ -212,6 +249,31 @@ class SyncTextPromptRequester:
             raise ValueError("text completion budget exceeds the configured ceiling")
         return _run_sync(self._request(prompt, max_tokens=max_tokens, ceiling=self.max_tokens))
 
+    def prefetch(self, asked: Sequence[tuple[str, int]]) -> None:
+        """Offer a stage's independent prompts to the provider's batch route at once.
+
+        Only prompts whose answers are not each other's input belong here: a
+        batch is submitted whole, so a prompt written from another's answer
+        cannot be in it. What the batch does not answer is asked live below,
+        which is why nothing downstream has to know which arrived how.
+        """
+        if self.batch is None:
+            return
+        self.batch.prefill(
+            [
+                BatchPrompt(
+                    batch_prompt_key(self.llm_config, prompt, max_tokens=budget), prompt, budget
+                )
+                for prompt, budget in asked
+            ]
+        )
+
+    def _batched(self, prompt: str, max_tokens: int) -> str | None:
+        if self.batch is None:
+            return None
+        key = batch_prompt_key(self.llm_config, prompt, max_tokens=max_tokens)
+        return self.batch.answer_for(key)
+
     async def _request(self, prompt: str, *, max_tokens: int, ceiling: int | None) -> str:
         try:
             return await self._query(prompt, max_tokens=max_tokens)
@@ -224,6 +286,7 @@ class SyncTextPromptRequester:
             return await self._query(prompt, max_tokens=retry_tokens)
 
     async def _query(self, prompt: str, *, max_tokens: int) -> str:
+        batched = self._batched(prompt, max_tokens)
         call = (
             self.artifacts.start(
                 prompt,
@@ -231,10 +294,16 @@ class SyncTextPromptRequester:
                 max_tokens=max_tokens,
                 timeout_seconds=self.timeout_seconds,
                 thinking=self.thinking,
+                transport="batch" if batched is not None else "realtime",
             )
             if self.artifacts
             else None
         )
+        if batched is not None:
+            if self.artifacts:
+                self.artifacts.finish(call, raw=batched)
+            return batched
+        billed = BilledReply()
         try:
             raw = await query_llm(
                 prompt,
@@ -244,15 +313,15 @@ class SyncTextPromptRequester:
                 timeout_seconds=self.timeout_seconds,
                 thinking=self.thinking,
                 cache_path=None,
-                transport_observer=watch_provider("reader", self.llm_config),
+                transport_observer=billed.watching(watch_provider("reader", self.llm_config)),
                 require_complete=True,
             )
         except BaseException as exc:
             if self.artifacts:
-                self.artifacts.finish(call, error=exc)
+                self.artifacts.finish(call, error=exc, billed=billed.as_record())
             raise
         if self.artifacts:
-            self.artifacts.finish(call, raw=raw)
+            self.artifacts.finish(call, raw=raw, billed=billed.as_record())
         return raw
 
 
