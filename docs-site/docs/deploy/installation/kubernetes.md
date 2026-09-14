@@ -23,7 +23,9 @@ deploy/kubernetes/
 
 ## Prerequisites
 
-1. A storage class for three `ReadWriteOnce` PVCs: cache and state 20Gi, output 50Gi, models 5Gi.
+1. A storage class for three `ReadWriteOnce` PVCs: `immich-memories-cache` 20Gi,
+   `immich-memories-output` 50Gi, `immich-memories-models` 5Gi. A deployment made before the
+   models claim existed has to add it.
 2. Immich reachable from the cluster, in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
    or external.
 3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) for the
@@ -68,8 +70,12 @@ filesystem read-only. Four writable paths:
 |---|---|---|
 | `/home/immich/.immich-memories` | PVC `immich-memories-cache` | `config.yaml`, `cache/annotations.sqlite` (every banked fact and reading), `cache.db` (run history, automation state), the video cache |
 | `/app/output` | PVC `immich-memories-output` | generated videos |
-| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`) and the detector cache, both written by `immich-memories models fetch` |
+| `/models` | PVC `immich-memories-models` | the pinned DINOv2 export (`IMMICH_MEMORIES_TRIAGE__ENCODER`), the pinned sensitive-content export (`..._MARQO_ONNX`) and the detector cache (`..._DETECTOR_CACHE_DIR`), all written by `immich-memories models fetch` |
 | `/tmp` | emptyDir 4Gi | FFmpeg intermediates; 8Gi for 4K |
+
+Three claims, then: `immich-memories-cache`, `immich-memories-output` and `immich-memories-models`.
+A deployment that predates the models claim has to add it before the next apply, or the pod stays
+in `Pending` waiting for a volume that does not exist.
 
 There is no ConfigMap. `IMMICH_URL` and `IMMICH_API_KEY` come from the Secret (`envFrom`), so any
 secret setting (`IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECRET`,
@@ -79,9 +85,21 @@ for the reader and the in-pod daily automation. Settings saved from the UI go to
 the PVC; env vars override them.
 
 The NetworkPolicy allows egress to DNS, 80 and 443, Immich on 2283, a reader on 11434 (Ollama's
-port; oMLX serves on 8000) and the caption server on 8092. Edit the ports if yours differ. Run
-`immich-memories models fetch` once (a one-off Job, or `kubectl exec` into the pod) before the
-first cut; the root filesystem is read-only, so the models live on the `/models` volume.
+port; oMLX serves on 8000) and the caption server on 8092. Edit the ports if yours differ.
+
+## The models the first cut needs
+
+Every pod in `base/` runs a `fetch-models` init container first: the same image, the same
+`immich-memories models fetch` a Docker user runs after `up`, writing the three pinned artifacts
+onto the `/models` claim. There is nothing to run by hand. A fresh claim without it gave a pod
+that came up fine and a first cut that stopped at prepare with `public heads need the pinned
+DINOv2 ONNX export at /models/triage/dinov2-small.onnx`, `nsfw_marqo has no model` and
+`doc_docling ... is not in /models/huggingface`.
+
+The init step tests for all three files and exits without a download when they are there, so a
+restart costs nothing and a nightly CronJob never goes back to the network. The root filesystem is
+read-only, which is why the models live on the claim rather than in the image. `kubectl logs -n
+immich-memories deploy/immich-memories -c fetch-models` shows what it did.
 
 ## GPU
 

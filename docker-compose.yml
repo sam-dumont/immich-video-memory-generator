@@ -75,11 +75,20 @@ services:
       # IMMICH_MEMORIES_AUTOMATION__DAILY_AT: "09:00"
       # TZ: "Europe/Brussels"
     restart: unless-stopped
+    # No CPU cap here on purpose. `cpus:` is a CFS quota, and a kernel built
+    # without the CFS bandwidth controller refuses the container outright:
+    # a Synology DS423+ on cgroup v1 answered `docker compose up` with
+    # `NanoCPUs can not be set, as your kernel does not support CPU CFS
+    # scheduler or the cgroup is not mounted`, so the NAS this file is aimed at
+    # never started. Memory limits work everywhere, so those stay.
+    # To cap the cores anyway, pick the form your kernel has:
+    #   cpuset: "0-3"      # pin to four cores; works on cgroup v1 without CFS
+    # or, under deploy.resources.limits, the quota form:
+    #   cpus: "4"          # needs the CFS bandwidth controller
     deploy:
       resources:
         limits:
           memory: 4G
-          cpus: "4"
 
     # ── Intel Quick Sync / VAAPI hardware encoding (uncomment on Linux) ──
     # The image ships the VA-API drivers; what it cannot ship is access to your
@@ -150,11 +159,12 @@ services:
       # Drop the weights after five idle minutes. The process stays up.
       IMMICH_MEMORIES_INFERENCE_IDLE_UNLOAD_SECONDS: "300"
     restart: unless-stopped
+    # No CPU quota, for the same reason as the app service above: `cpuset: "0-3"`
+    # is the form that starts on a kernel with no CFS bandwidth controller.
     deploy:
       resources:
         limits:
           memory: 4G
-          cpus: "4"
         # ── For a GPU: uncomment, and set INFERENCE_TAG=latest-cuda ────────
         # Both halves or neither. The cpu image has no CUDA provider in it and
         # will not grow one because a device was reserved, so the tag matters

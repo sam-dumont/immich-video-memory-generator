@@ -65,6 +65,39 @@ scorer (`content_analysis`, `audio_content`, `speech`, `transcription`, `descrip
 startup by name, so an old file cannot keep loading while its settings do nothing. Unknown
 top-level keys and invalid values (`codec: av1`) fail with a validation error.
 
+## Paths in the config are host paths
+
+Everything else in this file travels. These eleven keys do not: they name directories and files on
+the machine that wrote them, and a config copied to a second host still points at the first one.
+The way it shows up is a worker dying hours into a run, so `immich-memories preflight` checks them
+up front and prints one `Config paths` row naming every path that is not here. It is a WARNING,
+not an error: an unmounted music share should not stop a cut. The two digest-pinned exports have
+their own preflight rows, which name the digest and the command that fixes them.
+
+| Key | What it points at | In the container |
+|---|---|---|
+| `output.directory` | where finished videos are written | `/app/output`, set in the image |
+| `cache.directory` | previews, thumbnails, downloaded clips | `~/.immich-memories/cache` |
+| `cache.database` | run history and automation state | `~/.immich-memories/cache.db` |
+| `advanced.editorial.annotation_database` | every banked fact and reading | `cache/annotations.sqlite` |
+| `advanced.triage.encoder` | the pinned DINOv2 ONNX export | `/models/triage/dinov2-small.onnx` on Kubernetes |
+| `advanced.triage.bundle` | a head bundle of your own | blank, which uses the one in the wheel |
+| `advanced.editorial.preparation.head_bundle` | the same, for the six context heads | blank |
+| `advanced.editorial.preparation.marqo_onnx` | the pinned sensitive-content export | `/models/detectors/nsfw-marqo-384.onnx` on Kubernetes |
+| `advanced.editorial.preparation.detector_cache_dir` | the Hugging Face cache the detectors read | `/models/huggingface` on Kubernetes |
+| `advanced.editorial.preparation.detector_python` | an interpreter for the detector worker | blank, which uses the running one |
+| `audio.local_music_dir` | your own music library, read by `immich-memories music` | `~/Music/Memories` |
+
+Blank is a real value for four of them, and the portable one: it means work it out here. The
+detector worker takes the interpreter that is running, the bundles come from the wheel, and the
+Hugging Face cache goes where `huggingface_hub` puts it. A venv path under `/Users` carried into a
+NAS container is what `detector_python` was set to when a run came back with
+`detectors: FileNotFoundError` and no video at all.
+
+The Docker image pins `output.directory` itself, so that one is already right in a container. The
+Kubernetes manifests pin the three model paths onto the `/models` claim; see
+[Kubernetes](../installation/kubernetes.md).
+
 ## Footage the camera roll did not shoot
 
 Doorbells, screen recorders and messaging apps upload into the same timeline as your phone.

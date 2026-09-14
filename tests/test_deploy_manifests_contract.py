@@ -28,6 +28,13 @@ IMMICH_PORT = 2283
 # The caption server default (editorial.preparation.caption_base_url).
 CAPTION_PORT = 8092
 MODELS_DIR = "/models"
+# Every path-valued setting a pinned artifact lands on: the encoder, the
+# sensitive-content export and the Hugging Face cache the detectors read.
+MODEL_PATH_ENV = (
+    "IMMICH_MEMORIES_TRIAGE__ENCODER",
+    "IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX",
+    "IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR",
+)
 
 
 def _yaml_docs(path: Path) -> list[dict]:
@@ -385,15 +392,38 @@ def test_the_lan_overlay_adds_a_service_and_changes_nothing_else() -> None:
 def test_every_pod_can_reach_the_pinned_encoder_and_the_detector_cache() -> None:
     """A first cut stops without the encoder, and the root filesystem is read-only."""
     for label, pod in _pod_specs():
-        container = pod["containers"][0]
-        mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
-        env = {entry["name"]: entry.get("value") for entry in container["env"]}
+        for container in pod.get("initContainers", []) + pod["containers"]:
+            where = f"{label}:{container['name']}"
+            mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
+            env = {entry["name"]: entry.get("value") for entry in container["env"]}
 
-        assert mounts.get("models") == MODELS_DIR, label
-        assert env["IMMICH_MEMORIES_TRIAGE__ENCODER"].startswith(f"{MODELS_DIR}/"), label
-        assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR"].startswith(
-            f"{MODELS_DIR}/"
-        ), label
+            assert mounts.get("models") == MODELS_DIR, where
+            for key in MODEL_PATH_ENV:
+                assert env[key].startswith(f"{MODELS_DIR}/"), f"{where}: {key}"
+
+
+def test_every_pod_fetches_the_pinned_models_before_its_first_cut() -> None:
+    """A fresh models claim holds nothing, and prepare is where that surfaces.
+
+    The pod came up, the cut ran, and it stopped naming three files nobody had
+    told the operator to fetch. The init step is the same image running the same
+    `models fetch` the docs give a Docker user, so an empty claim fills itself
+    and a warm one costs a `test`.
+    """
+    for label, pod in _pod_specs():
+        fetch = next(
+            (item for item in pod.get("initContainers", []) if item["name"] == "fetch-models"),
+            None,
+        )
+        assert fetch, label
+        assert fetch["image"] == pod["containers"][0]["image"], label
+        script = " ".join(fetch["command"])
+        assert "immich-memories models fetch" in script, label
+        # Idempotent: a claim that already carries all three is left alone, so a
+        # restart and a nightly CronJob do not go back to the network.
+        assert script.count("test -") == len(MODEL_PATH_ENV), label
+        mounts = {mount["mountPath"] for mount in fetch["volumeMounts"]}
+        assert {MODELS_DIR, CONFIG_DIR} <= mounts, label
 
 
 def test_network_policy_allows_the_caption_endpoint() -> None:

@@ -8,6 +8,7 @@ import json
 import platform
 import sys
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis import editorial_preparation_detectors as detectors
@@ -20,6 +21,7 @@ from immich_memories.preflight import (
     check_caption_endpoint,
     check_detector_export,
     check_encoder,
+    check_host_paths,
     check_immich,
     check_llm,
     check_notifications,
@@ -360,3 +362,28 @@ def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
 
     assert result.status is CheckStatus.ERROR
     assert "caption_api_key" in (result.details or "")
+
+
+def test_a_path_carried_from_another_host_is_one_warning(tmp_path: Path) -> None:
+    """The same config on a second machine: the paths came with it, the volumes did not."""
+    elsewhere = tmp_path / "Users" / "someone"
+    config = Config(
+        output={"directory": str(elsewhere / "Videos" / "Memories")},
+        editorial={"preparation": {"detector_python": str(elsewhere / "venv" / "bin" / "python")}},
+    )
+
+    result = check_host_paths(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert "2 configured paths" in result.message
+    assert "output.directory" in (result.details or "")
+    assert "editorial.preparation.detector_python" in (result.details or "")
+
+
+def test_a_path_the_app_will_create_itself_is_not_a_missing_host_path(tmp_path: Path) -> None:
+    """`output.directory` is made on first write; its parent is what has to be here."""
+    config = Config(output={"directory": str(tmp_path / "Memories")})
+
+    result = check_host_paths(config)
+
+    assert result.status is CheckStatus.OK
