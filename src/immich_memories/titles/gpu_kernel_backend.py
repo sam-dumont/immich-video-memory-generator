@@ -13,15 +13,21 @@ Every title kernel compiles against Quadrants, and this module is the single
   is what sets the variables that silence it, so it has to be the first thing
   any kernel-touching module pulls in.
 
+Importing this module runs the library's native runtime, which is not something
+every machine survives: a processor without AVX dies here with SIGILL and takes
+the interpreter with it (#910). So nothing may import it — or anything that
+imports it — until `kernel_backend_probe.kernel_dispatch_failure()` has come
+back None. The probe module is the gate, and it is the one that owns the
+library's name, because it has to be able to say it without loading it.
 """
 
 import logging
 import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from .kernel_backend_probe import KERNEL_LIBRARY
 
-KERNEL_LIBRARY = "quadrants"
+logger = logging.getLogger(__name__)
 
 _SILENT_BANNERS = {
     "ENABLE_QUADRANTS_HEADER_PRINT": "0",

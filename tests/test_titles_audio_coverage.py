@@ -641,7 +641,11 @@ class TestRenderingServiceInit:
         from immich_memories.titles.rendering_service import RenderingService
 
         config = TitleScreenConfig(use_gpu_rendering=True)
-        with patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", False):
+        # WHY: the kernel library is the boundary — here it is a machine that has none.
+        with patch(
+            "immich_memories.titles.rendering_service.load_kernel_renderer",
+            return_value=None,
+        ):
             svc = RenderingService(config)
             assert not svc.use_gpu
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,23 +23,38 @@ from .video_encoding import create_title_video
 
 if TYPE_CHECKING:
     from .generator import TitleScreenConfig
-
-# Try to import GPU-accelerated renderer
-try:
-    from .kernel_video import create_title_video_gpu
-    from .renderer_kernels import (
-        KernelTitleConfig,
-        init_kernels,
-    )
-
-    KERNELS_AVAILABLE = True
-except ImportError:
-    KERNELS_AVAILABLE = False
-    create_title_video_gpu = None
-    KernelTitleConfig = None
-    init_kernels = None
+    from .renderer_kernels import KernelTitleConfig
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class KernelRenderer:
+    """The three entry points the kernel renderer is used through."""
+
+    create_video: Callable[..., Path]
+    config_type: type[KernelTitleConfig]
+    init_kernels: Callable[[], str | None]
+
+
+def load_kernel_renderer() -> KernelRenderer | None:
+    """Import the kernel renderer, or None when this machine has to use PIL.
+
+    WHY this is a function and not the import block that used to sit here: the
+    import loads the kernel library's native runtime, and a processor without
+    AVX dies inside that load with SIGILL, taking the whole interpreter with it
+    (#910). A module-level import put that death between the CLI and its first
+    line of output. The probe spends a child interpreter to find out first, and
+    nothing is imported until the child has come back alive.
+    """
+    from .kernel_backend_probe import kernel_dispatch_failure
+
+    if kernel_dispatch_failure() is not None:
+        return None
+    from .kernel_video import create_title_video_gpu
+    from .renderer_kernels import KernelTitleConfig, init_kernels
+
+    return KernelRenderer(create_title_video_gpu, KernelTitleConfig, init_kernels)
 
 
 # Kernel backends that are actually a GPU. "CPU" is a legitimate return from
@@ -54,9 +70,12 @@ class RenderingService:
         self.config = config
         self._use_gpu = False
         self.backend: str | None = None
-        if config.use_gpu_rendering and KERNELS_AVAILABLE:
-            self.backend = init_kernels()
-            self._use_gpu = self.backend is not None
+        self._kernels: KernelRenderer | None = None
+        if config.use_gpu_rendering:
+            self._kernels = load_kernel_renderer()
+            if self._kernels is not None:
+                self.backend = self._kernels.init_kernels()
+                self._use_gpu = self.backend is not None
             self._log_backend()
 
     def _log_backend(self) -> None:
@@ -125,8 +144,9 @@ class RenderingService:
         The immutable encoding plan is read from the title config.
         """
         encoding_plan = self.config.encoding_plan
-        if self._use_gpu and create_title_video_gpu is not None:
+        if self._use_gpu and (kernels := self._kernels) is not None:
             return self._create_gpu_title(
+                kernels,
                 title,
                 subtitle,
                 style,
@@ -173,6 +193,7 @@ class RenderingService:
 
     def _create_gpu_title(
         self,
+        kernels: KernelRenderer,
         title: str,
         subtitle: str | None,
         style: TitleStyle,
@@ -212,7 +233,7 @@ class RenderingService:
                 slowmo_reader = None
                 logger.info("Slowmo pipe failed, falling back to static frame")
 
-        config = KernelTitleConfig(
+        config = kernels.config_type(
             width=width,
             height=height,
             fps=fps,
@@ -249,7 +270,7 @@ class RenderingService:
             reverse_blur=is_ending,
         )
         try:
-            return create_title_video_gpu(
+            return kernels.create_video(
                 title,
                 subtitle,
                 output_path,
@@ -339,13 +360,13 @@ class RenderingService:
         No bokeh/particles -- clean map aesthetic.
         """
         encoding_plan = self.config.encoding_plan
-        if self._use_gpu and create_title_video_gpu is not None:
+        if self._use_gpu and (kernels := self._kernels) is not None:
             # Dim the map so white text pops
             dimmed = background_array * 0.55
             # Target same absolute font size regardless of orientation
             # 0.09 of min(w,h), converted to height-relative ratio
             map_title_ratio = 0.135 * min(width, height) / height
-            config = KernelTitleConfig(
+            config = kernels.config_type(
                 width=width,
                 height=height,
                 fps=fps,
@@ -371,7 +392,7 @@ class RenderingService:
                 vignette_strength=0.15,
                 vignette_pulse=0.0,
             )
-            return create_title_video_gpu(
+            return kernels.create_video(
                 title,
                 subtitle,
                 output_path,

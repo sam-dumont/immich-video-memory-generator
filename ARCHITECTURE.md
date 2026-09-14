@@ -247,9 +247,9 @@ src/immich_memories/
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
-│   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree
+│   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)
-│   ├── kernel_backend_probe.py # Which arch can dispatch here (isolated child probe)
+│   ├── kernel_backend_probe.py # The gate: which arch can dispatch here, asked without loading
 │   ├── kernel_video.py         # GPU title video creation
 │   ├── ffmpeg_pipe.py          # Feed raw frames to FFmpeg without deadlocking on an unread stderr
 │   ├── safe_zones.py           # Keep vertical titles clear of the Reels/Shorts/TikTok button rail

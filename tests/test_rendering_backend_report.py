@@ -9,11 +9,12 @@ and titles are the most expensive stage in the pipeline.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from immich_memories.titles.rendering_service import RenderingService
+from immich_memories.titles.rendering_service import KernelRenderer, RenderingService
 
 
 @pytest.fixture
@@ -23,12 +24,24 @@ def config() -> MagicMock:
     return cfg
 
 
+def _renderer_reporting(backend: str | None) -> KernelRenderer:
+    """A loaded kernel renderer whose init_kernels() answers with `backend`."""
+    return KernelRenderer(
+        create_video=lambda *args, **kwargs: Path("unused"),  # noqa: ARG005
+        config_type=MagicMock,
+        init_kernels=lambda: backend,
+    )
+
+
 @pytest.mark.parametrize("backend", ["Metal", "CUDA", "Vulkan"])
 def test_a_real_gpu_is_reported_as_one(backend: str, config, caplog) -> None:
-    # WHY: the kernel library and the GPU it finds are the boundary; this asserts the log line.
+    # WHY: loading the kernel renderer is the boundary — it claims a GPU and, on
+    # a processor without AVX, kills the interpreter. This asserts the log line.
     with (
-        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
-        patch("immich_memories.titles.rendering_service.init_kernels", return_value=backend),
+        patch(
+            "immich_memories.titles.rendering_service.load_kernel_renderer",
+            return_value=_renderer_reporting(backend),
+        ),
         caplog.at_level(logging.INFO),
     ):
         service = RenderingService(config)
@@ -41,8 +54,10 @@ def test_a_real_gpu_is_reported_as_one(backend: str, config, caplog) -> None:
 def test_the_cpu_fallback_says_so_and_warns(config, caplog) -> None:
     # WHY: same boundary; a machine with working Metal can never reach this case.
     with (
-        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
-        patch("immich_memories.titles.rendering_service.init_kernels", return_value="CPU"),
+        patch(
+            "immich_memories.titles.rendering_service.load_kernel_renderer",
+            return_value=_renderer_reporting("CPU"),
+        ),
         caplog.at_level(logging.INFO),
     ):
         service = RenderingService(config)
@@ -56,19 +71,19 @@ def test_the_cpu_fallback_says_so_and_warns(config, caplog) -> None:
 
 
 def test_a_cpu_that_cannot_run_a_kernel_falls_to_pil_with_its_reason(config, caplog) -> None:
-    """The no-AVX case (#910): no backend at all, and the log has to say why.
+    """The no-AVX case (#910): no renderer is loaded at all, and the log says why.
 
     "Kernel library unavailable" on its own sent a NAS user looking for a missing
-    package that was installed and imported fine.
+    package that was installed and imported fine. Nothing is patched at the
+    rendering-service boundary here: the real `load_kernel_renderer` has to
+    answer None off the probe alone, without reaching the import behind it.
     """
     crash = (
         "kernel backend crashed on this CPU: illegal instruction; "
         "titles fall back to the PIL renderer"
     )
-    # WHY: the kernel library boundary again, answering as a Celeron J4125 does.
+    # WHY: the probe spawns a child interpreter; this is the answer a Celeron J4125 gives.
     with (
-        patch("immich_memories.titles.rendering_service.KERNELS_AVAILABLE", True),
-        patch("immich_memories.titles.rendering_service.init_kernels", return_value=None),
         patch(
             "immich_memories.titles.kernel_backend_probe.kernel_dispatch_failure",
             return_value=crash,
