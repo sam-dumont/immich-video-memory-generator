@@ -190,6 +190,31 @@ class TestRunsStory:
 
 
 class TestRunsWhy:
+    def test_caption_origin_comes_from_the_run_snapshot(self, cut):
+        config, attempt = cut
+        (attempt / "preparation.private.json").write_text(
+            json.dumps(
+                {
+                    "caption_provenance": {
+                        "garden-2": {
+                            "model_id": "public-captioner",
+                            "endpoint": "http://original.invalid/v1",
+                            "artifact_id": "gguf-q8@one",
+                            "reported_build": {"revision": "build-one"},
+                        }
+                    },
+                }
+            )
+        )
+        config.editorial.preparation.caption_base_url = "http://replacement.invalid/v1"
+        result = _invoke(config, ["runs", "why", "garden-2"])
+        assert result.exit_code == 0, result.output
+        assert "public-captioner" in result.output
+        assert "gguf-q8@one" in result.output
+        assert "build-one" in result.output
+        assert "original.invalid" in result.output
+        assert "replacement.invalid" not in result.output
+
     def test_a_dropped_picture_names_the_pass_and_the_reason(self, cut):
         config, _ = cut
         result = _invoke(config, ["runs", "why", "woods-9", "--run", RUN_ID])

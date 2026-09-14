@@ -501,6 +501,7 @@ editorial:
   preparation:
     tier: full                   # full | no_captions | metadata_only
     caption_base_url: http://localhost:8092/v1
+    caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
     caption_concurrency: 1                # raise it for a captioner on a GPU

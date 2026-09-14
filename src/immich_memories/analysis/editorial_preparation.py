@@ -62,6 +62,7 @@ class PreparationResult:
     # minus this is the wire and the waiting, which is what a remote pass is
     # usually spending, and the only number that says which to go and fix.
     service_seconds_by_stage: Mapping[str, float] = field(default_factory=dict)
+    caption_provenance: Mapping[str, dict] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -307,6 +308,7 @@ class _Acquisition:
                     preview_for=self.preview_for,
                     base_url=self.preparation_config.caption_base_url,
                     api_key=self.preparation_config.caption_api_key,
+                    artifact_id=self.preparation_config.caption_artifact_id,
                     timeout=self.preparation_config.caption_timeout_seconds,
                     concurrency=self.preparation_config.caption_concurrency,
                     check_cancelled=self.check,
@@ -413,6 +415,8 @@ def prepare_editorial_annotations(
             after["preview"] = tuple(preview_missing)
         produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
         demanded = _demanded_producers(preparation_config)
+        from immich_memories.store.caption_provenance import origins_for
+
         return PreparationResult(
             len(ids),
             {key: value for key, value in after.items() if demanded(key)},
@@ -422,6 +426,9 @@ def prepare_editorial_annotations(
             stage.seconds.copy(),
             stage.pictures.copy(),
             stage.service_seconds.copy(),
+            caption_provenance=origins_for(connection, ids, description_model)
+            if preparation_config.demands_captions
+            else {},
         )
 
 

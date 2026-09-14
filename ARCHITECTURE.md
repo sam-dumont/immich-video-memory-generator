@@ -372,6 +372,7 @@ src/immich_memories/
 │   └── models.py               # Scheduling data models
 │
 ├── store/                      # The annotation store: every banked fact and reading
+│   ├── caption_provenance.py    # Per-caption server/build origin; separate from description identity
 │                               # (annotations.sqlite; see docs/research for the design)
 │
 ├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads
@@ -406,6 +407,7 @@ src/immich_memories/
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports
+│   ├── caption_origins.py       # Read caption origins from the attempt's preparation snapshot
 │   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)

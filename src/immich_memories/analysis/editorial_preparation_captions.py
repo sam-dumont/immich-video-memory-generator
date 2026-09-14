@@ -32,6 +32,7 @@ from immich_memories.analysis.editorial_description_wire import (
 from immich_memories.analysis.editorial_description_wire import (
     tile_preview,
 )
+from immich_memories.store.caption_provenance import CaptionOrigin, remember_origin
 from immich_memories.store.editorial_preparation import now
 
 REFUSED_CODES = frozenset({401, 403})
@@ -69,7 +70,7 @@ def bearer_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
-def _model_ids(base_url: str, *, timeout: float, api_key: str) -> tuple[str, ...]:
+def _model_inventory(base_url: str, *, timeout: float, api_key: str) -> list[dict]:
     request = urllib.request.Request(f"{base_url}/models", headers=bearer_headers(api_key))  # noqa: S310
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
@@ -84,9 +85,7 @@ def _model_ids(base_url: str, *, timeout: float, api_key: str) -> tuple[str, ...
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         raise ValueError("public description endpoint returned no model inventory")
-    return tuple(
-        str(row["id"]) for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)
-    )
+    return [row for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
 
 
 def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> CallOutcome:
@@ -162,9 +161,11 @@ def _optional_int(value: object) -> int | None:
 
 def check_provider(
     base_url: str, timeout: float, check_cancelled: Callable[[], None], *, api_key: str = ""
-) -> None:
+) -> CaptionOrigin:
     check_cancelled()
-    if API_MODEL not in _model_ids(base_url, timeout=timeout, api_key=api_key):
+    inventory = _model_inventory(base_url, timeout=timeout, api_key=api_key)
+    served = next((row for row in inventory if row["id"] == API_MODEL), None)
+    if served is None:
         raise ValueError(f"caption endpoint must advertise {API_MODEL}")
     # Preserve the accepted three schema controls before sending library previews.
     for rgb in ((200, 20, 20), (20, 40, 200), (128, 128, 128)):
@@ -179,6 +180,12 @@ def check_provider(
             if control.error and control.error.startswith(_REFUSED_ERRORS):
                 raise PermissionError(f"caption endpoint {base_url}: {control.error}")
             raise ValueError("caption endpoint failed the compact-v3 schema control")
+    build = {
+        key: str(served[key])[:512]
+        for key in ("revision", "version", "build", "commit", "sha256", "quantization", "root")
+        if isinstance(served.get(key), str | int | float)
+    }
+    return CaptionOrigin(model_id=API_MODEL, endpoint=base_url, reported_build=build)
 
 
 def _describe(
@@ -214,11 +221,18 @@ def prepare_captions(
     check_cancelled: Callable[[], None],
     progress: Callable[[str, int, int], None],
     api_key: str = "",
+    artifact_id: str = "",
 ) -> dict[str, str]:
     """Bank successes and only verified two-completion failures, with bounded concurrency."""
     if not asset_ids:
         return {}
-    check_provider(base_url, timeout, check_cancelled, api_key=api_key)
+    checked = check_provider(base_url, timeout, check_cancelled, api_key=api_key)
+    origin = CaptionOrigin(
+        model_id=API_MODEL,
+        endpoint=base_url,
+        artifact_id=artifact_id,
+        reported_build=checked.reported_build if checked else {},
+    )
     failures = {}
     # Bound submitted work too: cancellation must not drain a whole library queue.
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -244,7 +258,7 @@ def prepare_captions(
                     _asset_id, preview, outcomes = future.result()
                     outcome = outcomes[-1]
                     if outcome.envelope is not None:
-                        _remember_caption(connection, asset_id, outcome.envelope)
+                        _remember_caption(connection, asset_id, outcome.envelope, origin)
                     elif caption_outcomes.bounded_invalid_attempts([asdict(o) for o in outcomes]):
                         row = caption_outcomes.make_unavailable(
                             asset_id, preview, [asdict(o) for o in outcomes], written_at=now()
@@ -261,7 +275,10 @@ def prepare_captions(
 
 
 def _remember_caption(
-    connection: sqlite3.Connection, asset_id: str, envelope: DescriptionEnvelope
+    connection: sqlite3.Connection,
+    asset_id: str,
+    envelope: DescriptionEnvelope,
+    origin: CaptionOrigin | None = None,
 ) -> None:
     # Partial/conflicting rows are an integrity failure, never silently overwritten.
     timestamp = now()
@@ -274,3 +291,5 @@ def _remember_caption(
             "INSERT INTO description_fields (asset_id,model,field,value,written_at) VALUES (?,?,?,?,?)",
             (asset_id, DESCRIPTION_MODEL, "setting", envelope.setting, timestamp),
         )
+        if origin is not None:
+            remember_origin(connection, asset_id, DESCRIPTION_MODEL, origin)

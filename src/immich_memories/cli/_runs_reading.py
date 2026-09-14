@@ -162,3 +162,8 @@ def register_reading_commands(runs: click.Group) -> None:
         console.print(
             why_text(asset_id, trace.story_of(asset_id), read_storyboard(attempt)), highlight=False
         )
+        from immich_memories.operations.caption_origins import caption_origin_note
+
+        note = caption_origin_note(attempt, asset_id)
+        if note:
+            console.print(note, highlight=False, markup=False)

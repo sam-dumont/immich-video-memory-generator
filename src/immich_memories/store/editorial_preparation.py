@@ -37,6 +37,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS assets (asset_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS descriptions (
  asset_id TEXT, model TEXT, text TEXT, source TEXT, written_at TEXT, PRIMARY KEY(asset_id,model));
+CREATE TABLE IF NOT EXISTS caption_provenance (
+ asset_id TEXT, model TEXT, origin TEXT NOT NULL, PRIMARY KEY(asset_id,model));
 CREATE TABLE IF NOT EXISTS description_fields (
  asset_id TEXT, model TEXT, field TEXT, value TEXT, written_at TEXT, PRIMARY KEY(asset_id,model,field));
 CREATE TABLE IF NOT EXISTS asset_people (

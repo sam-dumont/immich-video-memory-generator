@@ -140,6 +140,58 @@ def test_cold_full_source_then_warm_has_zero_provider_calls(tmp_path):
     assert stat.S_IMODE((tmp_path / "annotations.sqlite").stat().st_mode) == 0o600
 
 
+def test_changing_caption_server_preserves_rows_and_marks_legacy_origins_unknown(tmp_path):
+    calls = []
+    assert run(tmp_path, ports=successful_ports(calls), fetch_preview=lambda _: preview()).complete
+    calls.clear()
+    result = run(
+        tmp_path,
+        ports=successful_ports(calls),
+        preparation_config=EditorialPreparationConfig(
+            caption_base_url="http://replacement.invalid/v1",
+            caption_artifact_id="new-build",
+        ),
+    )
+    assert result.complete
+    assert calls == []
+    assert result.caption_provenance == {"aa1": {"status": "unknown"}, "bb2": {"status": "unknown"}}
+
+
+def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_preparation_captions import prepare_captions
+    from tests.test_editorial_preparation_captions import _CaptionServer
+
+    server = _CaptionServer(None)
+    ports = replace(successful_ports([]), captions=prepare_captions)
+    try:
+        first = run(
+            tmp_path,
+            ports=ports,
+            fetch_preview=lambda _: preview(),
+            preparation_config=EditorialPreparationConfig(
+                caption_base_url=server.base_url, caption_artifact_id="original-build"
+            ),
+        )
+        assert first.complete
+    finally:
+        server.close()
+    # The original server is stopped. A warm run must neither probe it nor invent a new origin.
+    second = run(
+        tmp_path,
+        ports=ports,
+        preparation_config=EditorialPreparationConfig(
+            caption_base_url="http://replacement.invalid/v1",
+            caption_artifact_id="replacement-build",
+        ),
+    )
+    assert second.complete
+    assert second.caption_provenance == first.caption_provenance
+    assert second.caption_provenance["aa1"]["artifact_id"] == "original-build"
+    assert second.caption_provenance["aa1"]["reported_build"] == {"revision": "served-revision"}
+
+
 def test_old_docling_facts_are_replaced_without_repeating_other_producers(tmp_path):
     calls = []
     assert run(tmp_path, ports=successful_ports(calls), fetch_preview=lambda _: preview()).complete

@@ -144,7 +144,9 @@ class _CaptionServer:
 
     def __init__(self, token: str | None, *, open_probe: bool = False) -> None:
         self.seen_authorization: list[str | None] = []
-        inventory = json.dumps({"data": [{"id": API_MODEL}]}).encode()
+        inventory = json.dumps(
+            {"data": [{"id": API_MODEL, "revision": "served-revision"}]}
+        ).encode()
         completion = json.dumps(
             {
                 "choices": [
@@ -249,6 +251,28 @@ def test_no_configured_key_leaves_the_request_headers_untouched(open_endpoint):
         assert failures == {}
         assert connection.execute("SELECT count(*) FROM descriptions").fetchone() == (1,)
     assert set(open_endpoint.seen_authorization) == {None}
+
+
+def test_each_caption_keeps_the_served_model_and_declared_artifact(open_endpoint):
+    from immich_memories.store.caption_provenance import origins_for
+
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        assert (
+            run(
+                connection,
+                base_url=open_endpoint.base_url,
+                artifact_id="SmolVLM2-Q8_0@revision-one",
+            )
+            == {}
+        )
+        origin = origins_for(connection, ("a",), DESCRIPTION_MODEL)["a"]
+
+    assert origin["model_id"] == API_MODEL
+    assert origin["endpoint"] == open_endpoint.base_url
+    assert origin["artifact_id"] == "SmolVLM2-Q8_0@revision-one"
+    assert origin["reported_build"] == {"revision": "served-revision"}
+    assert "caption-token" not in json.dumps(origin)
 
 
 def test_a_refused_probe_names_the_setting_that_carries_the_token(token_gated_endpoint):

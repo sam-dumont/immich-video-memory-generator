@@ -85,7 +85,9 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 #   not scan. The last block is different in kind: symbols reported to the owner
 #   rather than deleted, where the missing caller is the defect and removing the
 #   callee would cement it.
-MAX_WHITELISTED_SYMBOLS = 50
+# 51: PreparationResult.caption_provenance is read by dataclasses.asdict when
+# the attempt snapshot is written; historical origins must survive config changes.
+MAX_WHITELISTED_SYMBOLS = 51
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

@@ -279,6 +279,28 @@ captioner holds no credential and never talks to Immich. What it does receive is
 every picture in the library, so the Service stays ClusterIP and the NetworkPolicy allows ingress
 on 8092 only.
 
+### Knowing which build wrote a caption
+
+The public model alias is a contract, not a build identifier. New caption rows now keep the
+endpoint, the advertised `/models` ID and any reported revision, build, version, commit, hash,
+quantization or root. If your server does not report its weights precisely, declare them:
+
+```yaml
+advanced:
+  editorial:
+    preparation:
+      caption_artifact_id: "SmolVLM2-Q8_0@your-weight-revision"
+```
+
+This is a label for new rows. Changing the endpoint or artifact label does **not** re-caption
+existing pictures. A bank may contain captions from several builds; each row keeps its own origin.
+Rows written before provenance was recorded remain **unknown**, even after you configure a label.
+
+`immich-memories runs why <asset-id> --run <run-id>` shows the origin saved with that run. It does
+not substitute the server configured today. Reader prompt text and bank identities are unchanged.
+For a deliberately fresh bank, choose a separate `editorial.annotation_database`; preparing it
+recomputes all the required facts, not only captions.
+
 ### On a GPU node
 
 ```bash

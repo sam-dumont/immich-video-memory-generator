@@ -109,6 +109,7 @@ get_active_display  # unused function (src/immich_memories/cli/_helpers.py:38)
 _.render_final  # unused method (src/immich_memories/cli/_live_display.py:343)
 validate_image_path  # unused function (src/immich_memories/security.py:178)
 _.complete_run  # unused method (src/immich_memories/tracking/run_tracker.py:212)
+_.caption_provenance  # PreparationResult is serialized by dataclasses.asdict into the attempt snapshot.
 _.cancel_run  # unused method (src/immich_memories/tracking/run_tracker.py:378)
 PACK_DIM  # unused variable (src/immich_memories/triage/encoder.py:23)
 reset_rate_limiter  # unused function (src/immich_memories/ui/auth.py:63)
