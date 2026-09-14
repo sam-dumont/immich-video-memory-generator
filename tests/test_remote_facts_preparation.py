@@ -1,18 +1,25 @@
 """Offloaded preparation keeps the bank contract and never loads local models."""
 
 import base64
+import io
 import json
+import logging
 import re
 import sqlite3
+import threading
+import time
 
 import httpx
 import pytest
+from PIL import Image
 
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS
+from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
 from immich_memories.analysis.remote_facts import RemoteFactsClient, RemoteFactsError
 from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_inference import InferenceConfig
+from immich_memories.operations.cancellation import PipelineCancelled
 from tests.test_editorial_preparation import preview, refusing_ports, run, successful_ports
 
 ENDPOINT = "http://inference.test:8092"
@@ -195,3 +202,166 @@ def test_an_answer_with_no_detail_still_points_at_the_service():
         pytest.raises(RemoteFactsError, match="HTTP 500: check service logs"),
     ):
         client.facts(preview(), EditorialConfig().head_versions)
+
+
+def coloured_preview(index: int) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (80, 60), (7 * index % 256, 83, 66)).save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+def fake_server(handler, **settings) -> RemoteFactsClient:
+    # WHY: the HTTP boundary only. The pool, the ordering and SQLite are all real.
+    return RemoteFactsClient(
+        InferenceConfig(facts_base_url=ENDPOINT, **settings),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+
+def bank_pass(tmp_path, client, ids, *, concurrency, previews, banked):
+    prepare_remote_facts(
+        pending={asset_id: dict(EditorialConfig().head_versions) for asset_id in ids},
+        store_path=tmp_path / "annotations.sqlite",
+        client=client,
+        concurrency=concurrency,
+        preview_for=lambda asset_id: previews[asset_id],
+        check_cancelled=lambda: None,
+        progress=lambda *_: None,
+        on_asset=banked.append,
+    )
+
+
+def test_the_pass_keeps_the_configured_number_of_requests_in_flight(tmp_path):
+    """One POST at a time is the whole defect: 0.69 s a picture on a GPU service."""
+    ids = tuple(f"id{index:02d}" for index in range(12))
+    previews = {asset_id: coloured_preview(index) for index, asset_id in enumerate(ids)}
+    lock = threading.Lock()
+    live = peak = 0
+
+    def handle(request):
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.02)
+        with lock:
+            live -= 1
+        return httpx.Response(200, json=answer(json.loads(request.content)["producers"]))
+
+    banked = []
+    with fake_server(handle) as client:
+        bank_pass(tmp_path, client, ids, concurrency=4, previews=previews, banked=banked)
+
+    assert 2 <= peak <= 4
+    assert tuple(banked) == ids
+
+
+def test_answers_that_come_back_out_of_order_are_banked_in_the_pending_order(tmp_path):
+    """Byte-identical replay depends on the bank seeing one order, not the wire's."""
+    ids = tuple(f"id{index:02d}" for index in range(8))
+    previews = {asset_id: coloured_preview(index) for index, asset_id in enumerate(ids)}
+    delay = {previews[asset_id]: 0.05 - 0.005 * index for index, asset_id in enumerate(ids)}
+
+    def handle(request):
+        payload = json.loads(request.content)
+        time.sleep(delay[base64.b64decode(payload["image"])])
+        return httpx.Response(200, json=answer(payload["producers"]))
+
+    banked = []
+    with fake_server(handle) as client:
+        bank_pass(tmp_path, client, ids, concurrency=8, previews=previews, banked=banked)
+
+    assert tuple(banked) == ids
+    assert {row[0] for row in banked_rows(tmp_path)} == set(EditorialConfig().head_versions)
+
+
+def test_the_pass_says_how_many_requests_it_is_about_to_keep_in_flight(tmp_path, caplog):
+    """An operator reading a slow pass has to be able to see the number it ran at."""
+    ids = ("id00", "id01")
+    previews = {asset_id: coloured_preview(index) for index, asset_id in enumerate(ids)}
+
+    def handle(request):
+        return httpx.Response(200, json=answer(json.loads(request.content)["producers"]))
+
+    with caplog.at_level(logging.INFO), fake_server(handle) as client:
+        bank_pass(tmp_path, client, ids, concurrency=6, previews=previews, banked=[])
+
+    assert "remote facts: 2 pictures, 6 requests in flight" in caplog.text
+
+
+def test_preparation_reports_what_the_service_charged_itself_apart_from_the_wait(
+    monkeypatch, tmp_path
+):
+    def handle(request):
+        return httpx.Response(
+            200,
+            json=answer(json.loads(request.content)["producers"]),
+            headers={"X-Facts-Seconds": "0.0300"},
+        )
+
+    transport(monkeypatch, handle)
+    result = remote_run(tmp_path)
+
+    assert result.complete
+    assert result.service_rates()["remote_facts"] == 0.03
+
+
+def test_a_service_too_old_to_say_leaves_the_column_out_rather_than_reporting_zero(
+    monkeypatch, tmp_path
+):
+    def handle(request):
+        return httpx.Response(200, json=answer(json.loads(request.content)["producers"]))
+
+    transport(monkeypatch, handle)
+    result = remote_run(tmp_path)
+
+    assert result.complete
+    assert result.service_rates() == {}
+
+
+def test_the_configured_concurrency_is_the_one_preparation_runs_at(monkeypatch, tmp_path, caplog):
+    def handle(request):
+        return httpx.Response(200, json=answer(json.loads(request.content)["producers"]))
+
+    transport(monkeypatch, handle)
+    with caplog.at_level(logging.INFO):
+        result = remote_run(
+            tmp_path, inference=InferenceConfig(facts_base_url=ENDPOINT, facts_concurrency=3)
+        )
+
+    assert result.complete
+    assert "2 pictures, 3 requests in flight" in caplog.text
+
+
+def test_a_stop_mid_pass_keeps_what_was_banked_and_asks_for_nothing_more(tmp_path):
+    ids = tuple(f"id{index:02d}" for index in range(12))
+    previews = {asset_id: coloured_preview(index) for index, asset_id in enumerate(ids)}
+    asked = []
+    lock = threading.Lock()
+
+    def handle(request):
+        with lock:
+            asked.append(request)
+        return httpx.Response(200, json=answer(json.loads(request.content)["producers"]))
+
+    banked = []
+
+    def stop_after_two():
+        if len(banked) >= 2:
+            raise PipelineCancelled
+
+    with fake_server(handle) as client, pytest.raises(PipelineCancelled):
+        prepare_remote_facts(
+            pending={asset_id: dict(EditorialConfig().head_versions) for asset_id in ids},
+            store_path=tmp_path / "annotations.sqlite",
+            client=client,
+            concurrency=4,
+            preview_for=lambda asset_id: previews[asset_id],
+            check_cancelled=stop_after_two,
+            progress=lambda *_: None,
+            on_asset=banked.append,
+        )
+
+    assert tuple(banked) == ids[:2]
+    # The window already in the air is paid for; the ones behind it never left.
+    assert len(asked) <= 4

@@ -14,15 +14,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
 
 import httpx
 
 from immich_memories.analysis import llm_metrics
+from immich_memories.analysis.llm_providers import (
+    ANTHROPIC_VERSION,
+    LOWEST_THINKING_LEVEL,
+    resolved_llm_config,
+)
 from immich_memories.analysis.llm_text_identity import text_judgment_key
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cancellation import check_cancelled
@@ -80,13 +83,10 @@ THINKING_MIN_TIMEOUT_SECONDS = 180
 _PARAM_ADAPTATIONS: dict[tuple[str, str], set[str]] = {}
 
 
-# z.ai's reasoning switch is a level, not a boolean: disabled, low, high, max.
-# Measured 2026-09-14 on /api/paas/v4, glm-5.3-flash answers a request carrying
-# {"type": "disabled"} with HTTP 400 code 1210, "This model always engages in
-# thinking and cannot be disabled; please use low, high, or max", which names
-# the levels it will take instead.
+# z.ai's OpenAI-compatible route refuses "off" outright on the models that
+# always reason: HTTP 400 code 1210, "This model always engages in thinking and
+# cannot be disabled; please use low, high, or max".
 THINKING_REQUIRED_CODE = "1210"
-LOWEST_THINKING_LEVEL = "low"
 _LOWEST_LEVEL_ADAPTATION = "lowest_thinking_level"
 
 
@@ -130,10 +130,6 @@ def _announce_adaptation(adaptation: str, before: object, after: object) -> None
         logger.info("LLM server dialect: adapting request (%s)", adaptation)
 
 
-# The Anthropic dialect asks for an explicit reasoning budget; it must sit
-# below max_tokens, which thinking floors to THINKING_MIN_MAX_TOKENS.
-ANTHROPIC_THINKING_BUDGET_TOKENS = 2048
-
 # Measured 2026-09-14 against z.ai's /api/anthropic route with glm-5.3-flash.
 # Where /api/paas/v4 refuses `{"type": "disabled"}` outright with code 1210,
 # this route accepts every level, answers HTTP 200, and then reasons anyway
@@ -141,81 +137,9 @@ ANTHROPIC_THINKING_BUDGET_TOKENS = 2048
 # spent all 140 tokens inside the thinking block and returned no text block at
 # all. The reasoning those small asks produced ran 300 to 930 characters, so a
 # thousand tokens of headroom carries it and the caller's cap keeps meaning
-# what it says about the answer.
+# what it says about the answer. A host told `disabled` outright is taken at
+# its word and keeps the cap exact.
 ANTHROPIC_REASONING_HEADROOM_TOKENS = 1024
-
-# Named providers = the generic adapter plus the provider's URL and reasoning
-# dialect, applied only where the user left the field at its default.
-_PROVIDER_PRESETS: dict[str, dict] = {
-    "openai": {
-        "base_url": "https://api.openai.com/v1",
-        "thinking_params": {"reasoning_effort": "medium"},
-        "no_thinking_params": {},
-    },
-    "zai": {
-        "base_url": "https://api.z.ai/api/paas/v4",
-        "thinking_params": {"thinking": {"type": "enabled"}},
-        "send_image_detail": False,
-    },
-}
-
-# The whole GLM-5 line reasons unconditionally, so the cheapest level it
-# accepts is what "do not reason" has to mean there; older lines take
-# "disabled".
-_ALWAYS_REASONING_MODELS = re.compile(r"^glm-5(\.\d+)?(-|$)")
-
-
-def _zai_off_level(model: str) -> str:
-    """The thinking level that stands in for "off" on one z.ai model."""
-    return (
-        LOWEST_THINKING_LEVEL
-        if _ALWAYS_REASONING_MODELS.match(model.strip().lower())
-        else "disabled"
-    )
-
-
-def _preset_for(config: LLMConfig) -> dict | None:
-    """The named provider's preset, with the model-dependent parts filled in."""
-    preset = _PROVIDER_PRESETS.get(config.provider)
-    if preset is None or config.provider != "zai":
-        return preset
-    return {**preset, "no_thinking_params": {"thinking": {"type": _zai_off_level(config.model)}}}
-
-
-def _preset_dialect(base_url: str) -> str:
-    """z.ai serves both dialects on one host, so the base URL's path picks the adapter.
-
-    `.../api/anthropic` wants `/v1/messages`; `.../api/paas/v4` wants
-    `/chat/completions`. Posting the OpenAI path to the Anthropic base gets a
-    200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`.
-    """
-    path = urlsplit(base_url).path.rstrip("/")
-    return "anthropic" if path.endswith("/anthropic") else "openai-compatible"
-
-
-def _resolved(config: LLMConfig) -> LLMConfig:
-    preset = _preset_for(config)
-    if preset is None:
-        return config
-    fields = type(config).model_fields
-    updates: dict = {}
-    for name, value in preset.items():
-        default = fields[name].get_default(call_default_factory=True)
-        if getattr(config, name) == default:
-            updates[name] = value
-        elif name in ("thinking_params", "no_thinking_params"):
-            # The provider's own reasoning switch is not interchangeable with the
-            # generic one it was replaced by, so both are sent. A key the user
-            # named themselves still wins, which is how a z.ai thinking level
-            # other than the preset's is chosen.
-            updates[name] = {**value, **getattr(config, name)}
-    updates["provider"] = _preset_dialect(updates.get("base_url", config.base_url))
-    return config.model_copy(update=updates)
-
-
-def resolved_llm_config(config: LLMConfig) -> LLMConfig:
-    """Return the provider configuration that will actually reach the wire."""
-    return _resolved(config)
 
 
 def _shape_for_provider(payload: dict, config: LLMConfig) -> None:
@@ -323,7 +247,7 @@ async def query_llm(
     for judgement calls: measured cost is 5-10x latency and 10-20x tokens.
     """
     check_cancelled()
-    llm_config = _resolved(llm_config)
+    llm_config = resolved_llm_config(llm_config)
     # A prompt hash cannot see the pictures, so an image-bearing call with a
     # fixed prompt template — "one line per picture, in order" — would key
     # identically for two entirely different days and serve one the other's
@@ -360,7 +284,7 @@ async def query_llm(
             )
 
     started = time.monotonic()
-    effective_thinking = bool(thinking and llm_config.thinking and not images)
+    effective_thinking = bool(thinking and llm_config.reasons and not images)
     total_timeout = float(timeout_seconds)
     if effective_thinking:
         total_timeout = max(total_timeout, float(THINKING_MIN_TIMEOUT_SECONDS))
@@ -436,7 +360,7 @@ async def _dispatch(
             transport_observer,
             require_complete,
         )
-    think = thinking and llm_config.thinking and not images
+    think = thinking and llm_config.reasons and not images
     if llm_config.provider == "anthropic":
         return await _query_anthropic(
             prompt,
@@ -523,10 +447,17 @@ async def _query_ollama(
 
 
 def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]:
-    """The message body: a bare string without pictures, blocks with them."""
+    """The message body: a bare string without pictures, blocks with them.
+
+    Same arrangement as the OpenAI path, prompt first and the tiles behind it
+    in order. The reading contracts were written and graded against that one,
+    and several of them are answered per picture in the order the pictures
+    arrived, so the two adapters have to hand the model the same thing.
+    """
     if not images:
         return prompt
     return [
+        {"type": "text", "text": prompt},
         *(
             {
                 "type": "image",
@@ -538,8 +469,22 @@ def _anthropic_content(prompt: str, images: Sequence[bytes]) -> str | list[dict]
             }
             for image in images
         ),
-        {"type": "text", "text": prompt},
     ]
+
+
+# A reasoning block is written for the dialect its server speaks, so only the
+# fields the Messages API itself defines are carried onto this wire: the generic
+# default is Qwen's `chat_template_kwargs`, which no Messages host understands.
+# Anything else a host needs belongs in `extra_params`.
+_MESSAGES_REASONING_FIELDS = ("thinking", "output_config")
+
+# The one setting that means the host will not reason at all. Every other value
+# is a request it may answer in its own way, which is what the headroom pays for.
+_REASONING_OFF = "disabled"
+
+
+def _messages_reasoning(params: dict) -> dict:
+    return {name: params[name] for name in _MESSAGES_REASONING_FIELDS if name in params}
 
 
 def _apply_anthropic_reasoning(
@@ -547,19 +492,19 @@ def _apply_anthropic_reasoning(
 ) -> int:
     """Put the reasoning switch and the tokens it will cost on one payload."""
     if thinking:
-        # The dialect wants an explicit budget, and the default temperature.
+        # The dialect refuses any temperature but the default while reasoning.
+        payload.pop("temperature", None)
+        payload.update(_messages_reasoning(config.thinking_params))
         payload["max_tokens"] = max(max_tokens, THINKING_MIN_MAX_TOKENS)
-        payload["thinking"] = {"type": "enabled", "budget_tokens": ANTHROPIC_THINKING_BUDGET_TOKENS}
-        payload.pop("temperature")
         return max(timeout, THINKING_MIN_TIMEOUT_SECONDS)
-    if "thinking" not in config.no_thinking_params:
-        return timeout
-    # Only the native field: LLMConfig's generic default carries Qwen's
-    # chat_template_kwargs, which no /v1/messages server understands.
-    payload["thinking"] = config.no_thinking_params["thinking"]
-    # On this route the switch is a request, not a guarantee, so the answer
-    # gets the cap the caller asked for and the reasoning gets its own room.
-    payload["max_tokens"] = max_tokens + ANTHROPIC_REASONING_HEADROOM_TOKENS
+    bulk = _messages_reasoning(config.no_thinking_params)
+    payload.update(bulk)
+    switch = bulk.get("thinking")
+    if isinstance(switch, dict) and switch.get("type") != _REASONING_OFF:
+        # A setting short of off is a request rather than a guarantee, so the
+        # answer keeps the cap the caller asked for and the reasoning the host
+        # does anyway gets its own room.
+        payload["max_tokens"] = max_tokens + ANTHROPIC_REASONING_HEADROOM_TOKENS
     return timeout
 
 
@@ -576,7 +521,7 @@ async def _query_anthropic(
 ) -> str:
     """Native /v1/messages dialect: Claude, or z.ai's Anthropic endpoint."""
     base_url = config.base_url.rstrip("/")
-    headers = {"anthropic-version": "2023-06-01"}
+    headers = {"anthropic-version": ANTHROPIC_VERSION}
     if config.api_key:
         headers["x-api-key"] = config.api_key
     payload: dict = {
@@ -586,6 +531,7 @@ async def _query_anthropic(
         "temperature": temperature,
     }
     timeout = _apply_anthropic_reasoning(payload, config, thinking, max_tokens, timeout)
+    _shape_for_provider(payload, config)
     async with httpx.AsyncClient(
         timeout=build_llm_timeout(float(timeout)), headers=headers
     ) as client:

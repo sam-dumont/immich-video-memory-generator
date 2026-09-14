@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -236,6 +238,68 @@ class TestEncoderProbe:
         assert "64x64" not in source
 
 
+class TestNvencProbeAdvice:
+    """`Device creation failed: -22` comes out of a failed NVENC probe as readily
+    as a failed VAAPI one, so matching on the message alone sent NVENC users to
+    /dev/dri and the render group, which is somebody else's problem (#936).
+    """
+
+    NVENC_MINUS_22 = (
+        "[AVHWDeviceContext @ 0x5561] Cannot load libnvcuvid.so.1\n"
+        "Device creation failed: -22.\n"
+        "[vost#0:0/h264_nvenc @ 0x5561] Error while opening encoder\n"
+        "Terminating thread with return code -22 (Invalid argument)\n"
+    )
+
+    def test_nvenc_failure_with_a_visible_gpu_names_the_video_capability(self, caplog):
+        from immich_memories.processing import hardware
+
+        with (
+            # WHY: the ffmpeg process boundary; the probe output is what is under test
+            patch.object(hardware, "_run_ffmpeg_check", return_value=(False, self.NVENC_MINUS_22)),
+            # WHY: the container runtime's own marker that a card was handed to this pod
+            patch.dict(os.environ, {"NVIDIA_VISIBLE_DEVICES": "all"}),
+            caplog.at_level(logging.WARNING),
+        ):
+            assert hardware._probe_ffmpeg_encode(["-c:v", "h264_nvenc"]) is False
+
+        warning = "\n".join(record.getMessage() for record in caplog.records)
+        assert "NVIDIA_DRIVER_CAPABILITIES=compute,video,utility" in warning
+        assert "/dev/dri" not in warning
+        assert "render group" not in warning
+
+    def test_vaapi_failure_still_gets_the_render_node_advice(self, caplog):
+        from immich_memories.processing import hardware
+
+        with (
+            # WHY: the ffmpeg process boundary; libva prints the same -22 NVENC does
+            patch.object(
+                hardware, "_run_ffmpeg_check", return_value=(False, "Device creation failed: -22.")
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            assert hardware._probe_ffmpeg_encode(["-c:v", "h264_vaapi"], upload="vaapi") is False
+
+        warning = "\n".join(record.getMessage() for record in caplog.records)
+        assert "/dev/dri" in warning
+        assert "NVIDIA_DRIVER_CAPABILITIES" not in warning
+
+    def test_nvenc_failure_with_no_card_anywhere_stays_quiet(self, caplog, monkeypatch):
+        """On a GPU-less host NVENC failing is the expected answer, not a misconfiguration."""
+        from immich_memories.processing import hardware
+
+        monkeypatch.delenv("NVIDIA_VISIBLE_DEVICES", raising=False)
+        with (
+            patch.object(hardware, "_run_ffmpeg_check", return_value=(False, self.NVENC_MINUS_22)),
+            # WHY: nvidia-smi is the second witness; a GPU-less host has no such binary
+            patch.object(hardware.subprocess, "run", side_effect=FileNotFoundError),
+            caplog.at_level(logging.WARNING),
+        ):
+            assert hardware._probe_ffmpeg_encode(["-c:v", "h264_nvenc"]) is False
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
 # ---------------------------------------------------------------------------
 # _detect_vaapi
 # ---------------------------------------------------------------------------
@@ -355,6 +419,30 @@ class TestDetectHardwareAcceleration:
         ):
             caps = detect_hardware_acceleration()
         assert caps.backend == HWAccelBackend.NVIDIA
+        detect_hardware_acceleration.cache_clear()
+
+    def test_a_named_backend_probes_that_one_and_no_other(self):
+        """`hardware.backend` exists so a measurement can say which chip it ran on.
+
+        On a box with two encode paths, first-hit-wins would quietly hand the run
+        the other one, and the row would carry a number about the wrong hardware.
+        """
+        detect_hardware_acceleration.cache_clear()
+        apple = HWAccelCapabilities(backend=HWAccelBackend.APPLE, supports_h264_encode=True)
+        # WHY: a detector talks to ffmpeg, and no unit test may reach real hardware.
+        with (
+            patch(
+                "immich_memories.processing.hardware_detection._detect_apple", return_value=apple
+            ) as apple_probe,
+            patch(
+                "immich_memories.processing.hardware_detection._detect_nvidia", return_value=None
+            ) as nvidia_probe,
+        ):
+            caps = detect_hardware_acceleration("nvidia")
+
+        assert caps.backend == HWAccelBackend.NONE, "software, rather than the other chip"
+        assert nvidia_probe.called
+        assert not apple_probe.called
         detect_hardware_acceleration.cache_clear()
 
 

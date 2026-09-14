@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_contract import Moment, MomentCard
-from immich_memories.analysis.llm_query import resolved_llm_config
+from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_text_identity import COMPLETE_RETRY_POLICY, text_judgment_key
 from immich_memories.analysis.moment_cards import MomentCard as ProductionMomentCard
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission

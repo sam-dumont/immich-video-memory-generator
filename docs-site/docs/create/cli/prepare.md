@@ -40,7 +40,9 @@ At this rate 10,000 pictures would take 2 h 38 min.
 `pending` is what the producer still had to do: the whole scope on a cold run, a handful on a
 rerun. `share` says which producer to move to a faster machine (with
 [the inference service](../../deploy/installation/inference-service.md) the heads and detectors
-can run elsewhere; the table then shows a `remote_facts` row). On a four-core Celeron the
+can run elsewhere; the table then shows a `remote_facts` row, and a `service s/pic` column beside
+the wall clock saying how much of the wait was the classifiers deciding rather than the wire).
+On a four-core Celeron the
 producers cost about 1.2 s a picture; captions cost about 31 s a picture on the same box, which is
 why the `no_captions` tier exists.
 

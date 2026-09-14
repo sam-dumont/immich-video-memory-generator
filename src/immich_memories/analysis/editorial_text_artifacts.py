@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from immich_memories.analysis.llm_query import resolved_llm_config
+from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.security import write_secret_file
