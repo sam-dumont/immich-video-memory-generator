@@ -142,6 +142,21 @@ def _preset_updates(config: LLMConfig) -> dict:
     return updates
 
 
+# The batch route each dialect's hosts declare, where the dialect has one at
+# all. Declared per dialect rather than per vendor because the batch shapes were
+# copied wholesale alongside the realtime ones: Melious answers OpenAI's
+# /v1/batches on a base URL configured as `openai-compatible`. A host that never
+# copied it answers 404, which is what the probe in `llm_batch` is for -- z.ai's
+# Anthropic route does exactly that (measured 2026-09-14). Ollama has no batch
+# shape of any kind, so it declares nothing.
+_BATCH_ROUTES = {"openai-compatible": "openai", "anthropic": "anthropic"}
+
+
+def batch_route_for(config: LLMConfig) -> str | None:
+    """The batch route this provider declares, before any host has been asked."""
+    return _BATCH_ROUTES.get(resolved_llm_config(config).provider)
+
+
 def resolved_llm_config(config: LLMConfig) -> LLMConfig:
     """Return the provider configuration that will actually reach the wire."""
     updates = _preset_updates(config)

@@ -140,7 +140,8 @@ def build_title_person_name(
         expression = PersonExpression.from_dict(preset_params["person_expression"])
         if use_first_name_only:
             expression = expression.map_leaves(lambda name: name.split()[0])
-        return expression.display_label
+        # The opening names the cast; the search UI explains who must co-occur.
+        return " · ".join(expression.leaf_values)
     # Multi-person: join names from preset params
     preset_names = preset_params.get("person_names", [])
     if memory_type == "multi_person" and len(preset_names) >= 2:

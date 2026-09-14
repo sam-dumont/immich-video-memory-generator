@@ -84,6 +84,8 @@ _EVERYDAY_CAPITALS = {
 
 def title_the_day_can_keep(written: str, assets: list, *, evidence: str) -> str:
     """The model's title, or nothing if the day cannot support it."""
+    if len(written.split()) > 8 or len(written) > 60 or _A_CLOCK.search(written):
+        return ""
     return _only_if_grounded(_a_title_at_all(written, _named_people(assets)), assets, evidence)
 
 

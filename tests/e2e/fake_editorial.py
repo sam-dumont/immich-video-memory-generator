@@ -382,7 +382,7 @@ class _FakeEditorialPipeline:
                     update = StageUpdate(
                         label, ANALYSIS_PHASE if label.startswith("Preparing") else "selection"
                     )
-                    attempt.stage(update)
+                    update = attempt.stage(update)
                     report_stage(update)
                     time.sleep(self._stage_seconds)
                     check_cancelled()
@@ -420,7 +420,7 @@ class _FakeEditorialPipeline:
         for index, source in enumerate(sources, 1):
             live.note_asset(_asset_of(source).id)
             update = live.publish(PREVIEW_STAGE, index, total)
-            attempt.stage(update)
+            update = attempt.stage(update)
             report_stage(update)
             time.sleep(pause)
             check_cancelled()
@@ -504,6 +504,11 @@ def install_fake_editorial_route(stage_seconds: float = DEFAULT_STAGE_SECONDS) -
     the UI and the CLI import at call time.
     """
     import immich_memories.analysis.editorial_runtime as editorial_runtime
+    import immich_memories.analysis.trip_detection as trip_detection
+
+    # WHY: fixture trips already have public place names in EXIF. A hermetic
+    # browser or CLI run must not ask Nominatim to name them over the internet.
+    trip_detection.reverse_geocode = lambda *_args, **_kwargs: None
 
     def build_smart_pipeline(
         client: Any,

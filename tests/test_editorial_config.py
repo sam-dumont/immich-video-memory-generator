@@ -176,3 +176,15 @@ def test_an_unset_template_leaves_no_key_rather_than_the_literal(
     config = Config.from_yaml(source)
 
     assert config.editorial.preparation.caption_api_key == ""
+
+
+def test_captions_are_asked_for_one_at_a_time_by_default() -> None:
+    """Measured in #932 on 136 pictures, same llama.cpp server on CPU: 36 s at one
+    request in flight, 461 s at four. Four image encodes share the threads of one
+    and none of them finishes sooner, and `--parallel 4` server-side does not
+    recover it. A GPU captioner is the setup that wants more, and the caption
+    server page says to raise it there.
+    """
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+
+    assert EditorialPreparationConfig().caption_concurrency == 1

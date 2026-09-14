@@ -492,3 +492,52 @@ def test_the_captioner_init_container_pins_the_weights_it_downloads() -> None:
     assert next(m for m in pod["containers"][0]["volumeMounts"] if m["name"] == "models")[
         "readOnly"
     ]
+
+
+def _captioner_pod(target: str) -> dict:
+    deployment = next(doc for doc in _kustomize(K8S_ROOT / target) if doc["kind"] == "Deployment")
+    return deployment["spec"]["template"]["spec"]
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_cuda_captioner_is_the_cpu_recipe_with_the_layers_offloaded() -> None:
+    """Same weights, same alias, same port. What changes is where the layers run.
+
+    Restating the args in the patch is how the two recipes drift apart, so the
+    overlay appends to them and this is what it must come out as: the CPU list,
+    in its own order, with the offload flag on the end.
+    """
+    cpu, cuda = _captioner_pod("overlays/captioner"), _captioner_pod("overlays/captioner-cuda")
+    on_cpu, on_gpu = cpu["containers"][0], cuda["containers"][0]
+
+    assert on_gpu["args"] == [*on_cpu["args"], "--n-gpu-layers", "99"]
+    assert on_gpu["image"] == f"{on_cpu['image'].split(':')[0]}:server-cuda"
+    # One image on the node, not two: the init container only curls and hashes,
+    # so it has no reason to pull the CPU build beside a CUDA one.
+    assert cuda["initContainers"][0]["image"] == on_gpu["image"]
+
+
+@pytest.mark.skipif(shutil.which("kubectl") is None, reason="kubectl not installed")
+def test_the_cuda_captioner_takes_a_card_without_holding_an_allocatable_slot() -> None:
+    """No `nvidia.com/gpu` request, deliberately, and the overlay says why.
+
+    A time-sliced card has one allocatable slot per node and the inference
+    Deployment holds it. Requesting a second one leaves the captioner Pending
+    forever on the cluster this was measured on, so it takes the device through
+    the runtime class instead and shares.
+    """
+    pod = _captioner_pod("overlays/captioner-cuda")
+    container = pod["containers"][0]
+    env = {entry["name"]: entry["value"] for entry in container["env"]}
+
+    assert pod["runtimeClassName"] == "nvidia"
+    assert pod["nodeSelector"]["nvidia.com/gpu.present"] == "true"
+    assert {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"} in pod[
+        "tolerations"
+    ]
+    assert env["NVIDIA_VISIBLE_DEVICES"] == "all"
+    # No `video`: the captioner decodes no stream and encodes nothing.
+    assert env["NVIDIA_DRIVER_CAPABILITIES"] == "compute,utility"
+    resources = container["resources"]
+    assert "nvidia.com/gpu" not in resources["limits"]
+    assert "nvidia.com/gpu" not in resources["requests"]

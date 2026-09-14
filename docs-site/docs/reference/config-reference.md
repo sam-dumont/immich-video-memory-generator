@@ -288,6 +288,9 @@ llm:
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   thinking: "disabled"             # disabled | low | high | max | auto
+  batch: "off"                     # off | auto: queue a stage's independent prompts, half price
+  batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
+  batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
   # thinking_params:               # what the switch looks like on your server
   #   chat_template_kwargs:        # (default: the Qwen dialect, vLLM/mlx)
   #     enable_thinking: true
@@ -478,7 +481,7 @@ editorial:
     caption_base_url: http://localhost:8092/v1
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
-    caption_concurrency: 4
+    caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
     head_bundle: ""              # packaged public six-head bundle
     detector_python: ""          # current Python interpreter
@@ -572,7 +575,8 @@ producers and the key is computed over the model artifact, never over where it r
 provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
-to the service and keeps the two detectors on the app's CPU; the detectors are the cheap half.
+to the service and keeps the two detectors in the app, on whatever provider the app's ONNX Runtime
+has; the detectors are the cheap half.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
 cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of

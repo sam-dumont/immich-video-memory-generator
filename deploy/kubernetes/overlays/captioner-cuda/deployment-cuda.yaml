@@ -1,0 +1,44 @@
+# Strategic-merge patch: the card, and nothing about what the server serves.
+#
+# No `nvidia.com/gpu` in requests or limits, on purpose. This cluster time-slices
+# one card per node and the inference Deployment holds the single allocatable
+# slot, so a captioner asking for one stays Pending forever next to a GPU that is
+# idle between facts requests. Sharing works because a 500M model at Q8_0 is
+# 546 MB of weights: it fits beside the inference service on any card that exists.
+#
+# On a cluster that does not time-slice, or one with a card to spare, add the
+# request back and the scheduler will keep the two apart:
+#
+#   resources:
+#     limits:
+#       nvidia.com/gpu: "1"
+#     requests:
+#       nvidia.com/gpu: "1"
+#
+# Without the request, `nvidia.com/gpu.present` plus the toleration is all that
+# puts the pod on a GPU node, and NVIDIA_VISIBLE_DEVICES is what hands it the
+# device once it is there.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories-captioner
+  namespace: immich-memories
+spec:
+  template:
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: captioner
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            # No `video`: the captioner decodes no stream and encodes nothing.
+            # It runs compute kernels and reads the device's properties.
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"

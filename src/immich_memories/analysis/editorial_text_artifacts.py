@@ -32,6 +32,7 @@ class TextPromptArtifacts:
         max_tokens: int,
         timeout_seconds: int,
         thinking: bool,
+        transport: str = "realtime",
     ) -> tuple[Path, dict] | None:
         """Write before querying; resolving the directory here follows the active attempt."""
         try:
@@ -55,6 +56,10 @@ class TextPromptArtifacts:
                     "temperature": 0.0,
                     "require_complete": True,
                     "application_cache": False,
+                    # Which wire carried this answer. A run that read half its
+                    # episodes from a batch and half live has both words here,
+                    # and the summary's counts have to agree with them.
+                    "transport": transport,
                 },
             }
             write_secret_file(Path(f"{stem}.request.private.txt"), prompt)

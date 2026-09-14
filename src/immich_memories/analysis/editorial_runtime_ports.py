@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.editorial_text_gateway import SyncTextPromptRequester
+from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPolicy
 from immich_memories.analysis.selection_source import SourceScope
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
@@ -57,12 +58,16 @@ class EditorialRuntimePorts:
     fetch_full_source: Callable[
         [FullEditorialSource, SourceScope], Sequence[Asset | VideoClipInfo]
     ] = fetch_full_window_source
+    # The episode reads are the one stage with a fan-out worth queueing, so the
+    # batch coordinator is built here and nowhere else. The period account is a
+    # single prompt and the story picks read the stages before them.
     episode_requester_factory: Callable[[Config], Callable[[str], str]] = lambda config: (
         SyncTextPromptRequester(
             config.llm,
             max_tokens=TEXT_EPISODE_MAX_OUTPUT_TOKENS,
             timeout_seconds=config.llm.timeout_seconds,
             thinking=False,
+            batch=BatchCoordinator(config.llm, BatchPolicy.from_config(config.llm)),
         )
     )
     period_requester_factory: Callable[[Config], Callable[[str], str]] = lambda config: (

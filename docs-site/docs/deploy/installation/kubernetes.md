@@ -18,7 +18,10 @@ deploy/kubernetes/
 │   └── ingress.yaml.example optional Ingress, only after enabling authentication
 ├── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
 ├── overlays/inference/      the inference service alone: Deployment, Service on 8092, cache PVC
-└── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/inference-cuda/ the same service on an NVIDIA card
+├── overlays/inference-lan/  a second Service, type LoadBalancer, for callers outside the cluster
+├── overlays/captioner/      llama.cpp under the alias `tier: full` wants, on its own PVC
+└── overlays/captioner-cuda/ the same caption server on an NVIDIA card
 ```
 
 ## Prerequisites
@@ -41,10 +44,24 @@ kubectl apply -k base              # CPU only
 kubectl apply -k overlays/gpu      # or, on NVIDIA nodes
 ```
 
-`kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image tag;
-published tags carry no `v` (release `vX.Y.Z` is tag `X.Y.Z`, plus `latest`). Check the pin against
-the [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before
-you apply.
+`kubectl kustomize base` shows what will be applied.
+
+:::caution Set the tag before you apply
+`base/kustomization.yaml` and the two inference overlays each pin an image tag, and the checked-in
+pins trail the current release by a long way: nothing bumps them on a release. Published tags carry
+no `v` (release `vX.Y.Z` is image tag `X.Y.Z`, plus `latest`). Read the current one off the
+[releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) and set it:
+
+```bash
+cd deploy/kubernetes/base && kustomize edit set image \
+  ghcr.io/sam-dumont/immich-video-memory-generator=:X.Y.Z
+```
+
+or edit `images: newTag` by hand. The entry rewrites the init container as well as the app
+container, so both move together. `kubectl apply -f base/job.yaml` does not go through kustomize
+at all and runs whatever the file names, which is `:latest`: uncomment `- job.yaml` in the
+kustomization instead if you want the jobs on the same tag as the Deployment.
+:::
 
 ```bash
 kubectl port-forward -n immich-memories svc/immich-memories 8080:80
@@ -101,6 +118,43 @@ restart costs nothing and a nightly CronJob never goes back to the network. The 
 read-only, which is why the models live on the claim rather than in the image. `kubectl logs -n
 immich-memories deploy/immich-memories -c fetch-models` shows what it did.
 
+## Set the preparation tier
+
+:::caution No manifest here pins a tier
+`docker-compose.yml` pins `no_captions` so a first `up` finishes with one container. Nothing under
+`deploy/kubernetes/` does, so a pod takes the code default, which is `full`, and `full` wants a
+caption server. Without one the first cut stops at prepare: the description producer stays
+outstanding and the failure names `caption_base_url`.
+
+Pick one before you apply, on the Deployment (and on the Job and CronJobs if you use them):
+
+```yaml
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
+              value: "no_captions"       # full | no_captions | metadata_only
+            # On full, with overlays/captioner applied:
+            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
+            #   value: "http://captioner:8092/v1"
+            # Concurrency defaults to 1, which is what a CPU captioner wants.
+            # On overlays/captioner-cuda, raise it:
+            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY
+            #   value: "4"
+```
+
+What each tier runs and gives up is on [Running modes](../running-modes.md).
+:::
+
+## Check it from outside the pod
+
+The `docker compose exec` lines elsewhere in these docs are `kubectl exec` here:
+
+```bash
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories config test
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories preflight
+```
+
+Preflight follows the reader and tier the Deployment sets, so run it after the change above and
+not before.
+
 ## GPU
 
 `overlays/gpu/deployment-gpu.yaml` patches the Deployment with `runtimeClassName: nvidia`, one
@@ -129,6 +183,33 @@ Point the app at it with `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two unders
 `http://inference.immich-memories.svc.cluster.local:8092` from another. The base NetworkPolicy
 already allows egress on 8092. `curl /health` through a port-forward names the execution provider
 the service opened.
+
+`overlays/inference-lan` adds a second Service of type LoadBalancer on the same pods, for callers
+that are not in the cluster. It needs a load-balancer controller, and nothing behind that port
+checks a credential.
+
+## Caption server
+
+`tier: full` wants an endpoint advertising `smolvlm2-500m-base-public`, and `overlays/captioner`
+is one: llama.cpp serving the pinned SmolVLM2-500M GGUF, a ClusterIP Service on 8092, a
+NetworkPolicy and a 2Gi PVC that an init container fills and digest-checks before the server
+starts.
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/captioner        # CPU
+kubectl apply -k deploy/kubernetes/overlays/captioner-cuda   # NVIDIA nodes
+```
+
+`captioner-cuda` is the same Deployment with the `server-cuda` image and `--n-gpu-layers 99`
+appended, plus the `nvidia` RuntimeClass, the node selector and the toleration. It requests no
+`nvidia.com/gpu` on purpose: a time-sliced card has one allocatable slot and the inference
+Deployment holds it, and the 546 MB of weights share happily. A CPU pod with two cores costs 3.5 s
+a picture, so one month of the fixture library is 8 minutes before anything is cut.
+
+It does not include `base/` either, so it applies with no Immich secret. Point the app at
+`http://captioner:8092/v1`. `caption_concurrency` defaults to 1, which is what a CPU captioner
+wants; raise it to 4 on a card. The whole recipe is on
+[Caption server](./caption-server.md).
 
 ## Batch jobs
 

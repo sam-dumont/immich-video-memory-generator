@@ -437,6 +437,14 @@ parity:  ## Replay reference editorial routes warm; fail on provider calls or ch
 # Private terms gate: the denylist itself lives outside the repo (see
 # scripts/private_terms_gate.py), so this only ever scans -- it never commits
 # or prints the terms it matches against.
+.PHONY: research-data-check privacy-range
+research-data-check:  ## Validate tracked research aggregates without a private denylist
+	uv run python scripts/private_terms_gate.py --research-data
+
+privacy-range:  ## Check PR research history and optional private terms (PRIVATE_TERMS_RANGE)
+	@test -n "$$PRIVATE_TERMS_RANGE"
+	uv run python scripts/private_terms_gate.py --terms-env PRIVATE_TERMS --range "$$PRIVATE_TERMS_RANGE"
+
 privacy-gate:  ## Scan the staged diff for private terms (denylist lives outside the repo)
 	uv run python scripts/private_terms_gate.py --staged
 
@@ -616,7 +624,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
+ci: ensure-dev research-data-check lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells

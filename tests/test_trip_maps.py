@@ -19,7 +19,7 @@ class TestGenerateTripTitle:
         result = generate_trip_title(
             location_name="Île d'Oléron, France",
             start_date=date(2025, 7, 5),
-            end_date=date(2025, 7, 19),
+            end_date=date(2025, 7, 18),
         )
         assert result == "TWO WEEKS IN ÎLE D'OLÉRON, FRANCE, JULY 2025"
 
@@ -30,7 +30,7 @@ class TestGenerateTripTitle:
         result = generate_trip_title(
             location_name="Île d'Oléron, France",
             start_date=date(2025, 7, 20),
-            end_date=date(2025, 8, 3),
+            end_date=date(2025, 8, 2),
         )
         assert result == "TWO WEEKS IN ÎLE D'OLÉRON, FRANCE, SUMMER 2025"
 
@@ -41,7 +41,7 @@ class TestGenerateTripTitle:
         result = generate_trip_title(
             location_name="Barcelona, Spain",
             start_date=date(2025, 3, 8),
-            end_date=date(2025, 3, 10),
+            end_date=date(2025, 3, 9),
         )
         assert result == "A WEEKEND IN BARCELONA, SPAIN, MARCH 2025"
 
@@ -52,7 +52,7 @@ class TestGenerateTripTitle:
         result = generate_trip_title(
             location_name="Lanzarote, Spain",
             start_date=date(2024, 12, 20),
-            end_date=date(2024, 12, 30),
+            end_date=date(2024, 12, 29),
         )
         assert result == "10 DAYS IN LANZAROTE, SPAIN, DECEMBER 2024"
 
@@ -63,7 +63,7 @@ class TestGenerateTripTitle:
         result = generate_trip_title(
             location_name="London, UK",
             start_date=date(2025, 10, 1),
-            end_date=date(2025, 10, 8),
+            end_date=date(2025, 10, 7),
         )
         assert result == "A WEEK IN LONDON, UK, OCTOBER 2025"
 

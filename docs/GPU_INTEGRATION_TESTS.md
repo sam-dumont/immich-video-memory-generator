@@ -74,5 +74,10 @@ The runner gets `~/.immich-memories/config.yaml` from the `IMMICH_MEMORIES_CONFI
 
 When your local config changes:
 ```bash
-cat ~/.immich-memories/config.yaml | base64 | gh secret set IMMICH_MEMORIES_CONFIG -R sam-dumont/immich-memories-ci
+base64 < ~/.immich-memories/runner-config.yaml | gh secret set IMMICH_MEMORIES_CONFIG -R sam-dumont/immich-memories-ci
 ```
+
+Point that at a config written for the runner, not at your own. base64 is an encoding, not
+encryption, and your working `config.yaml` holds your Immich API key, any provider keys, and host
+paths under your home directory. Keep a separate file with the runner's Immich URL and key and
+nothing else.

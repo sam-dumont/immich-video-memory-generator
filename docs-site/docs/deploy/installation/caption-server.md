@@ -66,6 +66,7 @@ This is the setup the project is developed against, and the numbers below came o
 
 ```bash
 brew install lablup/tap/mlxcel
+pip install huggingface-hub          # for the `hf` command, if you do not have it
 hf download mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
   --revision fa57db46815177fbdfd65cc85a2b3416a8332268
 ```
@@ -106,6 +107,10 @@ docker compose --profile captioner up -d
 curl -s localhost:8092/v1/models
 ```
 
+The `inference` profile publishes the same host port, so running both means changing one of the two
+left-hand sides in `docker-compose.yml`. Inside the compose network they are two service names on
+one port number and nothing collides; only a `curl` from the host cares.
+
 The first `up` pulls 546 MB and checks both digests before the server starts. Re-running it is
 cheap: the digest check short-circuits and nothing downloads twice.
 
@@ -114,7 +119,51 @@ Then raise the tier and point the app at the service by name, both in `docker-co
 ```yaml
 IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "full"
 IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://immich-memories-captioner:8092/v1"
-IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "1"
+```
+
+`caption_concurrency` defaults to 1, which is what this container wants. The section below says
+when to raise it.
+
+### On an NVIDIA host
+
+Two halves, and neither works without the other. The tag, which carries CUDA:
+
+```bash
+export CAPTIONER_TAG=server-cuda
+```
+
+And the device. From a checkout, the overlay beside the inference service's:
+
+```bash
+docker compose -f docker-compose.yml -f docker/hwaccel.captioner.yml --profile captioner up -d
+```
+
+From a downloaded `docker-compose.yml`, which reads no file beside itself, the same two blocks are
+in the captioner service commented out. Uncomment both:
+
+```yaml
+    environment:
+      LLAMA_ARG_N_GPU_LAYERS: "99"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
+```
+
+99 is "all of them", and a 500M model has 32. The layer count is an environment variable rather
+than a `--n-gpu-layers` flag because the flag would go in the service's `command:`, which is also
+where the alias, the projector path and the context size live: llama-server reads
+`LLAMA_ARG_N_GPU_LAYERS` for the same setting and that list stays written once.
+
+On a GPU, raise the concurrency too. Four requests in flight is what the default was sized for
+before the CPU measurement below moved it to one:
+
+```yaml
+IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "4"
 ```
 
 To run it without compose, the same container by hand:
@@ -127,6 +176,18 @@ docker run -d --name captioner -p 127.0.0.1:8092:8092 \
   --mmproj /models/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf \
   --alias smolvlm2-500m-base-public \
   --host 0.0.0.0 --port 8092 --jinja --ctx-size 8192 --threads 4
+```
+
+With a card, that is `--gpus all`, the `server-cuda` image and one more flag:
+
+```bash
+docker run -d --name captioner --gpus all -p 127.0.0.1:8092:8092 \
+  -v "$PWD/caption-models:/models" \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
+  --model /models/SmolVLM2-500M-Video-Instruct-Q8_0.gguf \
+  --mmproj /models/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf \
+  --alias smolvlm2-500m-base-public \
+  --host 0.0.0.0 --port 8092 --jinja --ctx-size 8192 --n-gpu-layers 99
 ```
 
 Three flags carry the contract, and each one fails as something else:
@@ -158,14 +219,20 @@ Measured on the same 136 pictures, same server, warm:
 
 | Server | `caption_concurrency` | Per picture |
 |---|---|---|
-| llama.cpp Q8_0, CPU, 4 threads (Apple Silicon in Docker) | 1 | 0.27 s |
-| llama.cpp Q8_0, CPU, 4 threads (Apple Silicon in Docker) | 4, the default | 3.39 s |
-| mlxcel, MLX, same Mac, on the GPU | 1 | 0.16 s |
+| llama.cpp Q8_0, CPU, 4 threads (Apple Silicon in Docker) | 1, the default | 0.27 s |
+| llama.cpp Q8_0, CPU, 4 threads (Apple Silicon in Docker) | 4 | 3.39 s |
+| mlxcel, MLX, same Mac, on the GPU | 1 | 0.08 to 0.23 s |
+| llama.cpp Q8_0, CPU, 2-CPU Kubernetes pod | 1 | 3.5 s |
 | llama.cpp Q8_0, CPU, Celeron J4125 NAS | 1 | 30.9 s |
 
-Set `caption_concurrency: 1` for any CPU captioner. Twelve times faster on the box above, and
-`--parallel 4` on the server side does not recover it: four image encodes share the threads of one
-and none of them finishes sooner. The default of 4 is sized for a GPU endpoint.
+`caption_concurrency` defaults to 1 because of the second row. Four concurrent requests are twelve
+times slower on a CPU captioner, and `--parallel 4` on the server side does not recover it: four
+image encodes share the threads of one and none of them finishes sooner. Raise it to 4 when the
+captioner is on a GPU, where it is worth about 1.5x.
+
+The cluster row is the one that pays for a card. One month of the fixture library is 133 pictures,
+which is 8 minutes on two cores and under 30 seconds on a GPU. Same weights either way, so it costs
+a tag and a device: the `server-cuda` compose recipe above, or the `captioner-cuda` overlay below.
 
 The NAS row is why the Synology and Celeron pages recommend `no_captions`. Thirteen thousand
 pictures at 30 s each is four days. The same month on an Apple Silicon Mac with the MLX server is
@@ -203,7 +270,6 @@ editorial:
   preparation:
     tier: full
     caption_base_url: http://captioner:8092/v1
-    caption_concurrency: 1
 ```
 
 Across namespaces that is `captioner.immich-memories.svc.cluster.local:8092`.
@@ -213,9 +279,35 @@ captioner holds no credential and never talks to Immich. What it does receive is
 every picture in the library, so the Service stays ClusterIP and the NetworkPolicy allows ingress
 on 8092 only.
 
-For an NVIDIA node: change the image to `ghcr.io/ggml-org/llama.cpp:server-cuda`, add
-`--n-gpu-layers 99` to the args, and put `nvidia.com/gpu: 1` in limits. The alias, the flags and the
-weights are unchanged. A 500M model fits in any GPU that exists.
+### On a GPU node
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/captioner-cuda
+```
+
+The same Deployment with the `server-cuda` image, `--n-gpu-layers 99` appended to the args, and the
+three things the GPU Operator wants: `runtimeClassName: nvidia`, the `nvidia.com/gpu.present` node
+selector and the matching toleration. The alias, the weights, the claim and the Service do not
+change, so pointing the app at it is the same block as above with `caption_concurrency: 4`.
+
+What it deliberately does not do is request `nvidia.com/gpu: 1`. On a cluster that time-slices one
+card per node, that resource has a single allocatable slot and the inference Deployment holds it, so
+a captioner asking for a second one stays Pending next to a card that is idle between facts
+requests. Without the request it shares, which works because the weights are 546 MB. If your cluster
+has a card to spare, or does not time-slice, put the request back and let the scheduler keep the two
+apart:
+
+```yaml
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+  requests:
+    nvidia.com/gpu: "1"
+```
+
+The tag floats on `server-cuda` because the CPU overlay floats on `server`, and the two have to be
+one llama.cpp build. ggml-org publishes them as a pair per build, so pinning means
+`server-bNNNNN` there and `server-cuda-bNNNNN` here: both or neither.
 
 ## How preflight reports it
 

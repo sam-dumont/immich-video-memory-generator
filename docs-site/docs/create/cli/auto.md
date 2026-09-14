@@ -33,9 +33,10 @@ top one is generated.
 
 Then the scorer applies, in this order: rotation, a 1.2× boost for a memory that does not exist
 yet, recency (linear decay over 365 days from when the memory is timely, floor 0.5), content
-richness (up to 30 % of the score, on a log scale), a same-type cooldown (0.3× for 7 days, 0.7×
-for 30 days after the same type ran), per-type caps (3 per type; 1 for on-this-day and special
-day; 2 for multi-person), and dedup by memory key.
+richness (up to 30 % of the score, on a log scale) and a same-type cooldown (0.3× for 7 days, 0.7×
+for 30 days after the same type ran). Duplicates are collapsed by memory key first, before the
+sort, and the per-type caps apply after it: 3 per type, 1 for on-this-day and special day, 2 for
+multi-person.
 
 The rotation rules are hard. If every candidate is rejected the run is skipped, and nothing
 relaxes a rule to get another video out:
@@ -134,32 +135,10 @@ sends one message through the configured Apprise URLs, bypassing the notificatio
 
 ## Configuration
 
-Under `advanced:` in `config.yaml`:
-
-```yaml
-advanced:
-  automation:
-    cooldown_hours: 24
-    max_delivery_attempts: 5
-    upload_to_immich: false
-    album_name: null
-    detect_monthly: true
-    detect_yearly: true
-    detect_trips: true
-    detect_person_spotlight: true
-    detect_activity_burst: true
-    burst_threshold: 2.0
-  notifications:
-    enabled: false
-    urls: []                 # ntfy://ntfy.sh/my-topic, discord:///id/token, ...
-    on_success: true
-    on_failure: true
-    attach_thumbnail: false
-    cooldown_hours: 24       # pause after any notification failure
-```
-
-A notification failure pauses notifications for the cooldown; it never stops generation. The
-full key list is in the [config reference](../../reference/config-reference.md).
+The `automation:` and `notifications:` keys, with their defaults, are in the
+[config reference](../../reference/config-reference.md#automation). `automation.enabled` and
+`automation.daily_at` are the two a first setup needs; everything else tunes the rotation rules
+described above.
 
 ## Run a specific suggestion
 

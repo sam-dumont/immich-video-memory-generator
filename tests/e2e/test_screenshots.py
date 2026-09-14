@@ -85,6 +85,31 @@ def _open_brief(page: Page, launch_app_url: str) -> None:
 
 
 @pytest.mark.parametrize("theme", _THEMES)
+def test_trip_walkthrough(
+    page: Page, launch_app_url: str, screenshot_dir: Path, theme: str
+) -> None:
+    _open_brief(page, launch_app_url)
+    set_theme(page, theme)
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Trip")
+    trip = page.get_by_role("combobox", name="Select a trip")
+    expect(trip).to_be_visible(timeout=30_000)
+    trip.click()
+    page.get_by_role("option", name=re.compile(r"2024-06-21 to 2024-06-27")).click()
+    _save(page, screenshot_dir, _name("memory-trip-brief", theme))
+    page.get_by_role("button", name="Cut", exact=True).click()
+    export = page.get_by_role("button", name="Export", exact=True)
+    expect(export).to_be_visible(timeout=120_000)
+    _save(page, screenshot_dir, _name("memory-trip-story", theme))
+    page.get_by_role("tab", name="Story", exact=True).click()
+    expect(page.get_by_text("A week by the lake", exact=True)).to_be_visible()
+    export.click()
+    page.wait_for_url("**/step4", timeout=30_000)
+    expect(page.get_by_role("button", name="Generate Video")).to_be_visible(timeout=30_000)
+    _save(page, screenshot_dir, _name("memory-trip-export", theme))
+
+
+@pytest.mark.parametrize("theme", _THEMES)
 def test_capture_memory_walkthrough(
     page: Page, launch_app_url: str, screenshot_dir: Path, theme: str
 ) -> None:
@@ -113,6 +138,8 @@ def test_capture_memory_walkthrough(
     page.evaluate("window.scrollTo(0, 0)")
 
     page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(re.compile("left in this stage$"))).to_be_visible(timeout=60_000)
+    _save(page, d, _name("memory-cutting-estimate", theme))
     # WHY .cut-phase-rows: the detail panel echoes the same stage string, and an
     # unscoped match is two elements the moment that panel has caught up.
     active_stage = page.locator(".cut-phase-rows").get_by_text(_EDITING_STAGE)
@@ -139,3 +166,20 @@ def test_capture_memory_walkthrough(
     page.wait_for_url("**/step3", timeout=30_000)
     expect(page.get_by_role("button", name="Next: Preview & Export")).to_be_visible(timeout=30_000)
     _save(page, d, _name("memory-options", theme))
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_pool_outcomes(page: Page, launch_app_url: str, screenshot_dir: Path, theme: str):
+    _open_brief(page, launch_app_url)
+    set_theme(page, theme)
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Monthly Highlights")
+    _choose(page, "Month", "June")
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.get_by_text(_THESIS)).to_be_visible(timeout=120_000)
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    expect(page.locator(".pool-outcome").first).to_contain_text("In the cut")
+    _save(page, screenshot_dir, _name("memory-pool-outcomes", theme))
+    page.locator("button").filter(has=page.locator("i:has-text('grid_view')")).click()
+    expect(page.locator(".pool-outcome").first).to_contain_text("In the cut")
+    _save(page, screenshot_dir, _name("memory-pool-outcomes-grid", theme))

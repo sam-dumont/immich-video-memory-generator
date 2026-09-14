@@ -1,7 +1,9 @@
 """Portable detector producers, isolated in a cancellable configured Python worker.
 
 The worker needs huggingface-hub, onnxruntime, numpy and Pillow. Both producers
-are ONNX graphs on the CPU provider; neither needs the torch family. Model
+are ONNX graphs; neither needs the torch family. They open on whichever
+execution provider they are handed, so on a host with a card they run on it and
+not beside it, and they say so when the card turns the graph down. Model
 acquisition is opt-in: the pinned local export and the cached pinned snapshot
 are sufficient by default.
 """
@@ -30,6 +32,13 @@ import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+CPU_PROVIDER = "CPUExecutionProvider"
+# The accelerated providers a choice can name. `auto` only ever reaches for the
+# first of them; see `provider_chain`.
+_ACCELERATORS = {"cuda": "CUDAExecutionProvider", "coreml": "CoreMLExecutionProvider"}
+# Which producers have already said what they are running on.
+_ANNOUNCED: set[str] = set()
 
 MARQO_REPO = "Marqo/nsfw-image-detection-384"
 MARQO_REVISION = "0c26ec22111b83f106d72a55f611ec35962bcb65"
@@ -101,9 +110,9 @@ class Marqo:
     encoder_key = MARQO_ONNX_ID
     classes = MARQO_CLASSES
 
-    def __init__(self, *, model_path: Path) -> None:
+    def __init__(self, *, model_path: Path, provider: str = "auto") -> None:
         _refuse_unpinned_marqo(model_path)
-        self.session, self.input_name = _cpu_session(model_path)
+        self.session, self.input_name = _open_session(self.head, model_path, provider=provider)
 
     def batch(self, images: list[Image.Image]) -> np.ndarray:
         return _softmax(self.session.run(None, {self.input_name: marqo_pixels(images)})[0])
@@ -115,9 +124,13 @@ class Docling:
     encoder_key = DOCLING_REPO
     classes = DOCLING_LABELS
 
-    def __init__(self, *, allow_downloads: bool, cache_dir: str | None) -> None:
-        self.session, self.input_name = _cpu_session(
+    def __init__(
+        self, *, allow_downloads: bool, cache_dir: str | None, provider: str = "auto"
+    ) -> None:
+        self.session, self.input_name = _open_session(
+            self.head,
             _docling_snapshot(allow_downloads=allow_downloads, cache_dir=cache_dir),
+            provider=provider,
             disable_layout_optimizer=True,
         )
 
@@ -125,17 +138,83 @@ class Docling:
         return _softmax(self.session.run(None, {self.input_name: docling_pixels(images)})[0])
 
 
-def _cpu_session(model_path: Path, *, disable_layout_optimizer: bool = False) -> tuple[Any, str]:
+def provider_chain(choice: str, available: Sequence[str]) -> tuple[str, ...]:
+    """The execution providers to offer ONNX Runtime for this choice, best first.
+
+    The same ladder the encoder climbs in `triage/encoder.py`, stated again
+    rather than imported: the detector worker runs this file as a script, under
+    an interpreter that need not have the application package installed at all.
+    `auto` takes CUDA where the provider is present and the CPU everywhere else,
+    never CoreML -- measured on the encoder export, that provider splits the
+    graph into dozens of partitions and runs 6-8x slower than the CPU one.
+    Naming a provider that the runtime was not built with is an error rather
+    than a quiet demotion: an image asked for a card it has no provider for is
+    the wrong image, and one line of 4-CPU inference is worth more than none.
+    """
+    if choice == "auto":
+        choice = "cuda" if _ACCELERATORS["cuda"] in available else "cpu"
+    if choice == "cpu":
+        return (CPU_PROVIDER,)
+    accelerator = _ACCELERATORS.get(choice)
+    if accelerator is None:
+        raise ValueError(f"unknown provider: {choice}")
+    if accelerator not in available:
+        raise RuntimeError(f"{accelerator} is unavailable")
+    return (accelerator, CPU_PROVIDER)
+
+
+def _open_session(
+    head: str, model_path: Path, *, provider: str, disable_layout_optimizer: bool = False
+) -> tuple[Any, str]:
     import onnxruntime as ort
 
+    wanted = provider_chain(provider, ort.get_available_providers())
     options = ort.SessionOptions()
     options.intra_op_num_threads = 6
     if disable_layout_optimizer:
         # Docling collapses to near-constant table predictions with the NCHWc
         # layout fusion on J4125. Extended matches the unfused graph on x86/arm64.
+        # The fusion is a CPU-provider transform, so this costs an accelerated
+        # session nothing.
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-    session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
+    session = _session_on(ort, head, model_path, options, wanted)
     return session, session.get_inputs()[0].name
+
+
+def _session_on(
+    ort: Any, head: str, model_path: Path, options: Any, wanted: tuple[str, ...]
+) -> Any:
+    """Open on the best provider offered, and say which one actually took the graph.
+
+    ONNX Runtime has two ways of declining an accelerator: it raises while the
+    session is being built, or it builds one the provider never joined. Both mean
+    a host that was asked for a card is deciding pictures on its CPU, which is
+    worth exactly one line -- and which used to be indistinguishable from a
+    working GPU deployment from outside the pod.
+    """
+    try:
+        session = ort.InferenceSession(str(model_path), options, providers=list(wanted))
+    except Exception as exc:
+        if wanted[0] == CPU_PROVIDER:
+            raise
+        _announce_once(
+            head,
+            f"{head}: {wanted[0]} refused {model_path.name} "
+            f"({type(exc).__name__}: {exc}); deciding on {CPU_PROVIDER}",
+        )
+        return ort.InferenceSession(str(model_path), options, providers=[CPU_PROVIDER])
+    running = tuple(session.get_providers())
+    if running and running[0] != wanted[0]:
+        _announce_once(head, f"{head}: asked for {wanted[0]}, running on {running[0]}")
+    return session
+
+
+def _announce_once(head: str, message: str) -> None:
+    """One line per producer per process: a session is opened once, so is this."""
+    if head in _ANNOUNCED:
+        return
+    _ANNOUNCED.add(head)
+    logger.warning("%s", message)
 
 
 def _refuse_unpinned_marqo(model_path: Path) -> None:

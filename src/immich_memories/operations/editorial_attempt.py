@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from immich_memories.operations.cancellation import PipelineCancelled
-from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate
+from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageClock, StageUpdate
 from immich_memories.security import write_secret_file
 
 _FIRST_STAGE = StageUpdate("Preparing editorial evidence", ANALYSIS_PHASE)
@@ -43,6 +43,7 @@ class EditorialAttempt:
             "restart": "Run the same request; completed exact judgments remain reusable.",
         }
         self._lease: int | None = None
+        self._stage_clock = StageClock()
 
     def __enter__(self) -> EditorialAttempt:
         self.directory.mkdir(parents=True, mode=0o700)
@@ -60,15 +61,18 @@ class EditorialAttempt:
             raise
         return self
 
-    def stage(self, update: StageUpdate | str) -> None:
+    def stage(self, update: StageUpdate | str) -> StageUpdate:
         """Record where the run is: the sentence for a row, the numbers for a bar."""
         if isinstance(update, str):
             update = StageUpdate(update)
-        if self.record["stage"] == update.stage_label:
-            return  # The lease proves liveness; repeated labels need no disk heartbeat.
+        previous = StageUpdate.from_record(self.record["progress"])
+        if previous and previous.identity == update.identity and previous.done == update.done:
+            return previous  # The lease proves liveness; no disk heartbeat needed.
+        update = self._stage_clock.measure(update)
         self.record["stage"] = update.stage_label
         self.record["progress"] = update.as_record()
         self._save()
+        return update
 
     def complete(
         self, *, selected: int, outcome: str = "complete", duration_realization: dict | None = None
