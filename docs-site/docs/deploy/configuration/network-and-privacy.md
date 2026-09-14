@@ -43,6 +43,16 @@ with HTTP 400 code 1210, so the preset sends `low` there and `disabled` on the l
 A model neither list has heard of that refuses the same way is retried once at `low`, and the log
 says what changed.
 
+That refusal only ever comes from `/api/paas/v4`. The `.../api/anthropic` route answers HTTP 200
+to every setting, including `disabled` and levels it has never heard of, and then reasons or does
+not on its own terms. Measured on 2026-09-14 with `glm-5.3-flash`, a caption-shaped ask at the
+140-token cap the readers use spent all 140 tokens inside a `thinking` block and came back with no
+answer in it at all. So on that route the reader reads the first `text` block and skips the
+reasoning in front of it, asks for 1024 tokens on top of the cap the caller set so the cap keeps
+meaning the length of the answer, and turns a reply with no `text` block into an error naming the
+`stop_reason` rather than an empty string. The level still goes out with the request, and `low`
+measured clean where `disabled` did not.
+
 Every refusal an LLM provider sends now carries that provider's own `code` and `message`, bounded
 to 300 characters, into the line the reader logs. Before, a 400 or a 429 reached the operator as
 the bare status and a link to MDN, so `1210` and `1113 Insufficient balance` both read as "Client
