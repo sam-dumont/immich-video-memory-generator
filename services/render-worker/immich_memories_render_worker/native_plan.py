@@ -3,8 +3,8 @@
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.config import Config
+from immich_memories.config_models_render import TitleScreenConfig
 from immich_memories.generate import GenerationParams
-from immich_memories.processing.encoding_plan import HdrMode
 
 
 def worker_config(request) -> Config:
@@ -15,19 +15,15 @@ def worker_config(request) -> Config:
     """
     config = Config()
     config.output.codec = request.output.codec
-    config.output.codec_policy = "strict"
-    config.output.hdr_mode = HdrMode.SDR
+    config.output.codec_policy = request.output.codec_policy
+    config.output.hdr_mode = request.output.hdr_mode
+    config.output.quality = request.output.quality
     config.hardware.enabled = True
     config.hardware.backend = "nvidia"
-    titles = request.titles
-    config.title_screens.enabled = titles.enabled
-    config.title_screens.locale = titles.locale
-    config.title_screens.style_mode = titles.style_mode
-    config.title_screens.title_duration = titles.title_duration
-    config.title_screens.ending_duration = titles.ending_duration
-    config.title_screens.month_divider_duration = titles.month_divider_duration
-    config.title_screens.month_divider_threshold = titles.month_divider_threshold
-    config.title_screens.show_month_dividers = titles.show_month_dividers
+    config.title_screens = TitleScreenConfig.model_validate(
+        request.titles.model_dump(exclude={"title", "subtitle"})
+    )
+    config.photos.duration = request.options.photo_duration
     return config
 
 
@@ -43,16 +39,19 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
     clips = []
     for chosen in request.plan.clips:
         asset = client.get_asset(str(chosen.asset_id))
-        if asset.type == AssetType.IMAGE and chosen.render_mode == "motion":
-            raise ValueError("Moving Live Photos require the selected video asset in S1")
-        clips.append(
-            VideoClipInfo(
-                asset=asset,
-                duration_seconds=asset.duration_seconds or chosen.end,
-                width=asset.width,
-                height=asset.height,
-            )
+        clip = VideoClipInfo(
+            asset=asset,
+            duration_seconds=asset.duration_seconds or chosen.end,
+            width=asset.width,
+            height=asset.height,
+            audio_categories=chosen.audio_categories,
+            llm_emotion=chosen.llm_emotion,
         )
+        if chosen.live is not None:
+            _restore_live(clip, chosen.live)
+        elif asset.type == AssetType.IMAGE and chosen.render_mode == "motion":
+            raise ValueError("Moving Live Photos require their certified source material")
+        clips.append(clip)
     return GenerationParams(
         clips=clips,
         output_path=directory / "render.mp4",
@@ -69,6 +68,8 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
         title=request.titles.title or None,
         subtitle=request.titles.subtitle or None,
         memory_type=request.memory.memory_type,
+        person_name=request.memory.person_name,
+        memory_preset_params=request.memory.preset_params,
         date_start=request.memory.date_start,
         date_end=request.memory.date_end,
         target_duration_seconds=request.memory.target_duration_seconds,
@@ -76,6 +77,15 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
         memory_key_override=request.memory_key,
         progress_callback=progress,
         clip_segments={str(c.asset_id): (c.start, c.end) for c in request.plan.clips},
+        clip_rotations={
+            str(c.asset_id): c.rotation_override
+            for c in request.plan.clips
+            if c.rotation_override is not None
+        },
+        scale_mode=request.options.scale_mode,
+        add_date_overlay=request.options.add_date_overlay,
+        add_place_overlay=request.options.add_place_overlay,
+        privacy_mode=request.options.privacy_mode,
         editorial_selections=tuple(
             EditorialSelection(
                 str(c.asset_id), c.start, c.end, c.render_mode, c.render_frame_seconds
@@ -83,3 +93,18 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
             for c in request.plan.clips
         ),
     )
+
+
+def _restore_live(clip, certificate) -> None:
+    from immich_memories.processing.editorial_live_render import validate_editorial_live_clip
+    from immich_memories.processing.live_material import LiveRenderMaterial
+
+    material = LiveRenderMaterial.from_dict(certificate.material)
+    clip.duration_seconds = material.duration_seconds
+    clip.live_burst_still_ids = list(material.still_ids)
+    clip.live_burst_video_ids = list(material.video_ids)
+    clip.live_burst_trim_points = list(material.trim_points)
+    clip.live_burst_shutter_timestamps = list(material.shutter_timestamps)
+    clip.live_burst_material = material.as_dict()
+    clip.editorial_live_manifest = certificate.model_dump(mode="json")
+    validate_editorial_live_clip(clip)

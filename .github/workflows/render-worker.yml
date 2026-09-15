@@ -1,0 +1,37 @@
+name: Render Worker
+
+on:
+  pull_request:
+    paths:
+      - 'services/render-worker/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/render-worker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: services/render-worker
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv python install 3.13
+      - run: make dev-ci
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: >-
+          make lint format-check typecheck security-lint
+          SERVICE_TREES=services/render-worker
+          SERVICE_PACKAGES=services/render-worker/immich_memories_render_worker
+      - run: make -C services/render-worker coverage

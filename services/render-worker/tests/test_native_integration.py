@@ -39,7 +39,7 @@ def _source_clip(path, seconds=3):
     return path.read_bytes()
 
 
-def _serve(bodies_by_id, calls):
+def _serve(bodies_by_id, calls, metadata=None):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             calls.append((self.path, self.headers.get("x-api-key")))
@@ -49,7 +49,10 @@ def _serve(bodies_by_id, calls):
             elif self.path.endswith("/version"):
                 body, kind = json.dumps({"major": 2, "minor": 6, "patch": 0}).encode(), "app/json"
             else:
-                body, kind = _asset_json(asset_id), "application/json"
+                body = (
+                    json.dumps(metadata[asset_id]).encode() if metadata else _asset_json(asset_id)
+                )
+                kind = "application/json"
             self.send_response(200)
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(body)))

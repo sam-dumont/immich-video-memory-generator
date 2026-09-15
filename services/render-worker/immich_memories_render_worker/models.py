@@ -14,6 +14,9 @@ from pydantic import (
     model_validator,
 )
 
+from immich_memories.config_models_render import TitleScreenConfig
+from immich_memories.processing.encoding_plan import HdrMode
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -31,12 +34,33 @@ class ImmichAccess(Contract):
         return value
 
 
+class LiveCertificate(Contract):
+    version: Literal["editorial-live-render-v1"]
+    material: dict
+    selected_interval: tuple[float, float]
+
+    @model_validator(mode="after")
+    def valid_material(self):
+        from immich_memories.processing.live_material import LiveRenderMaterial
+
+        material = LiveRenderMaterial.from_dict(self.material)
+        material.displayed_interval(*self.selected_interval)
+        for entry in material.source_entries:
+            UUID(entry.still_id)
+            UUID(entry.video_id)
+        return self
+
+
 class Clip(Contract):
     asset_id: UUID
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     render_mode: Literal["motion", "still"]
     render_frame_seconds: float | None = Field(default=None, ge=0)
+    live: LiveCertificate | None = None
+    rotation_override: Literal[0, 90, 180, 270] | None = None
+    audio_categories: list[str] | None = Field(default=None, max_length=20)
+    llm_emotion: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def forward_interval(self):
@@ -49,7 +73,7 @@ class Clip(Contract):
 
 class RenderPlan(Contract):
     clips: list[Clip] = Field(min_length=1, max_length=500)
-    transition: Literal["cut", "crossfade", "none"] = "crossfade"
+    transition: Literal["cut", "crossfade", "smart", "none"] = "crossfade"
     transition_duration: float = Field(default=0.5, ge=0, le=3)
 
     @model_validator(mode="after")
@@ -62,21 +86,12 @@ class RenderPlan(Contract):
         return self
 
 
-class TitleSettings(Contract):
+class TitleSettings(TitleScreenConfig, Contract):
     """The title inputs the app resolved, so the worker re-derives none of them."""
 
     enabled: bool = False
     title: str = Field(default="", max_length=300)
     subtitle: str = Field(default="", max_length=300)
-    # Every bound below mirrors TitleScreenConfig, so an accepted envelope is
-    # always assignable onto the worker's own config.
-    locale: Literal["en", "fr", "auto"] = "auto"
-    style_mode: Literal["auto", "random"] = "auto"
-    title_duration: float = Field(default=3.5, ge=1.0, le=10.0)
-    ending_duration: float = Field(default=7.0, ge=2.0, le=15.0)
-    month_divider_duration: float = Field(default=2.0, ge=1.0, le=5.0)
-    month_divider_threshold: int = Field(default=2, ge=1, le=10)
-    show_month_dividers: bool = True
 
 
 class MemorySettings(Contract):
@@ -86,6 +101,8 @@ class MemorySettings(Contract):
     target_duration_seconds: float = Field(gt=0, le=3600)
     date_start: date | None = None
     date_end: date | None = None
+    person_name: str | None = Field(default=None, max_length=300)
+    preset_params: dict = Field(default_factory=dict)
 
 
 class TimingBinding(Contract):
@@ -100,8 +117,19 @@ class TimingBinding(Contract):
 class OutputSettings(Contract):
     codec: Literal["h264", "h265"] = "h264"
     resolution: Literal["720p", "1080p", "4k"] = "1080p"
-    orientation: Literal["landscape", "portrait"] = "landscape"
+    orientation: Literal["landscape", "portrait", "square"] = "landscape"
     crf: int = Field(default=23, ge=0, le=51)
+    hdr_mode: HdrMode = HdrMode.SDR
+    codec_policy: Literal["strict", "prefer_hardware"] = "strict"
+    quality: Literal["high", "balanced", "fast"] = "balanced"
+
+
+class RenderOptions(Contract):
+    scale_mode: Literal["fit", "blur"] = "blur"
+    add_date_overlay: bool = False
+    add_place_overlay: bool = False
+    privacy_mode: bool = False
+    photo_duration: float = Field(default=4.0, ge=1.0, le=10.0)
 
 
 class RenderRequest(Contract):
@@ -116,6 +144,7 @@ class RenderRequest(Contract):
     # wrong, so its absence has to be a refusal rather than an empty map.
     certified_content_intervals: dict[UUID, tuple[float, float]]
     output: OutputSettings = Field(default_factory=OutputSettings)
+    options: RenderOptions = Field(default_factory=RenderOptions)
 
 
 class JobStatus(Contract):

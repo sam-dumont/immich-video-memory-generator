@@ -28,6 +28,8 @@ def envelope_policy(request: RenderRequest):
         memory_type=request.memory.memory_type,
         date_start=request.memory.date_start,
         date_end=request.memory.date_end,
+        person_name=request.memory.person_name,
+        memory_preset_params=request.memory.preset_params,
         transition=request.plan.transition,
         transition_duration=request.plan.transition_duration,
     )
@@ -46,7 +48,14 @@ def certify_envelope(request: RenderRequest) -> None:
         raise EnvelopeDrift("Editorial timing selection changed; replan before rendering")
     if binding["policy"] != envelope_policy(request).as_dict():
         raise EnvelopeDrift("Editorial timing settings changed; replan before rendering")
-    if request.certified_content_intervals:
-        # The gate's trims only exist for merged Live carriers, which this slice
-        # refuses outright. Renders the gate cut are loudly refused, not shipped.
-        raise EnvelopeDrift("Certified Live intervals need a later contract version")
+    certified = {}
+    for clip in request.plan.clips:
+        if clip.live is not None:
+            if clip.render_mode != "motion" or clip.live.selected_interval != (
+                clip.start,
+                clip.end,
+            ):
+                raise EnvelopeDrift("Live directive changed its certified interval")
+            certified[clip.asset_id] = clip.live.selected_interval
+    if request.certified_content_intervals != certified:
+        raise EnvelopeDrift("Certified Live intervals require their matching carrier certificates")
