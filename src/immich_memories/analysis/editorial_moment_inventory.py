@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from operator import itemgetter
 from typing import Any
 
+from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_story_replies import _lenient_object
 
 INVENTORY_VERSION = "depicted-moments-v1"
@@ -175,17 +177,10 @@ def inventory_event(
             }
             for m in moments.values()
         ]
+        # Every source block is last and the instructions above them are byte-identical for
+        # the run, so a server that reuses a prefix reads them once (#981).
         prompt = f"""Inventory distinct depicted moments in a personal library. {INVENTORY_VERSION}.
 This is source reading, before any film duration or picture allocation.
-
-EPISODE CONTEXT (inferred; the source facts can correct it)
-{context}
-
-MOMENTS ALREADY READ
-{json.dumps(existing, ensure_ascii=False)}
-
-NEW SOURCES
-{json.dumps(page, ensure_ascii=False)}
 
 Account for EVERY new source exactly once. Group interchangeable pictures of the same
 depicted content together. Choose the strongest representative; the others remain alternatives.
@@ -202,18 +197,28 @@ sources (NEW source IDs belonging to it), primary (the best source in the group,
 primary), and content (at most 60 words describing the shared observable content).
 An existing moment may be updated once per response. Prefer a favourite among equivalent views.
 JSON only: {{"moments":[{{"same_as":null,"sources":["U0001"],"primary":"U0001","content":"Observed content"}}]}}
+
+EPISODE CONTEXT (inferred; the source facts can correct it)
+{context}
+
+MOMENTS ALREADY READ
+{json.dumps(existing, ensure_ascii=False)}
+
+NEW SOURCES
+{json.dumps(page, ensure_ascii=False)}
 """
-        raw = judge.ask(
-            f"moment-inventory-{event}-{number}",
-            prompt,
-            max_tokens=400 + 140 * len(page),
-        )
         try:
-            groups = read_inventory_page(
-                raw,
-                new_ids={r["source"] for r in page},
-                existing=moments,
-                units=by_alias,
+            groups = read_page_answer(
+                judge,
+                stage=f"moment-inventory-{event}-{number}",
+                prompt=prompt,
+                max_tokens=400 + 140 * len(page),
+                read=partial(
+                    read_inventory_page,
+                    new_ids={r["source"] for r in page},
+                    existing=moments,
+                    units=by_alias,
+                ),
             )
         except ValueError as exc:
             audit.update(status="incomplete", failure=str(exc))

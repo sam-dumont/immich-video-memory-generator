@@ -289,6 +289,7 @@ llm:
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
   always_reasons: false            # true: the endpoint thinks on every call, asked or not
   thinking: "disabled"             # disabled | low | high | max | auto
+  reader_concurrency:              # independent reader jobs; unset reads it from base_url
   batch: "off"                     # off | auto: queue a stage's independent prompts, half price
   batch_min_requests: 8            # fewest independent prompts in a stage worth queueing
   batch_max_wait_minutes: 60       # then ask whatever the batch has not answered in real time
@@ -400,10 +401,51 @@ is retried once with more room, and the error then names the split:
 second try is usually also worth a longer `timeout_seconds`: the retry spends
 what is left of the first call's read budget, not a fresh one.
 
+On Ollama the same ledger applies, through Ollama's own switch rather than a
+chat dialect. `thinking` at any level other than `disabled` puts a top-level
+`think: true` on a load-bearing call; a bulk call is sent no switch at all,
+because a model with no thinking mode answers `think` with a 400. An Ollama
+server that reasons anyway is learned from the first reply that carries a
+thinking block, and every later call gets the same 16,384 tokens of room, added
+to `num_predict` instead of `max_tokens`. An explicit
+`extra_params.options.num_predict` now wins over that computed budget rather
+than being silently overwritten, so a ceiling you set yourself is the one that
+is sent.
+
+`reader_concurrency` limits independent story-reader jobs in flight (range 1 to
+16). Different event inventories and worthiness/standing blocks can overlap.
+Pages within an event, story-episode pages and later dependent picks remain
+sequential. Left unset it is read from `base_url`: 1 for a loopback or private
+address, or a bare service name, all of which mean a model sharing one machine
+or one network with this run and serving one request at a time; 4 for a public
+host, which is a fleet. Set it yourself for a local server that does take
+concurrent requests, or for a hosted provider that needs a lower request rate.
+This changes scheduling only: prompts, judgment keys and source ordering stay
+the same. Batch delivery is configured separately.
+
+A provider that answers 429 pauses every reader in the run, not just the call it
+refused, and each waits a slightly different span so they do not all come back in
+the same millisecond.
+
 `send_image_detail` covers one more dialect gap: OpenAI's optional
 `image_url.detail` field is sent by default, and some strict vision schemas
 accept only `image_url.url` and reject requests carrying anything more. Set it
 to `false` for those servers: the `zai` preset already does.
+
+Queued OpenAI-compatible requests use the same reasoning headroom as live
+calls: the answer budget plus 16,384 tokens for a host declared or learned to
+reason, or its larger learned allowance. This is room to finish, not a fixed
+charge. Non-reasoning hosts keep the answer budget alone.
+
+Batch result records retain each reply's finish reason, completion tokens and
+reasoning tokens, including empty replies. A queued line the provider cut short,
+or one that stopped with nothing in the answer channel, is not handed back as an
+answer: it is recorded as it arrived, counted under `llm_truncated`, and asked
+again in real time, where the ceiling can still grow. Run metrics count a
+batch's reasoning inside `llm_reasoning_tokens`, and `llm_batch_reasoning_tokens`
+names the batched share of it; both are subsets of `llm_completion_tokens` and
+neither is added to it a second time. Reasoning reported by a batch also teaches
+the live caller that this server and model need reasoning headroom.
 
 Parameter dialects are otherwise handled automatically: OpenAI's reasoning
 models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
@@ -501,6 +543,7 @@ editorial:
   preparation:
     tier: full                   # full | no_captions | metadata_only
     caption_base_url: http://localhost:8092/v1
+    caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
     caption_concurrency: 1                # raise it for a captioner on a GPU

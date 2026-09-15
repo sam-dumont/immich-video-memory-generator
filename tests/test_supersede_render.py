@@ -22,10 +22,36 @@ class _Recorder:
 
 
 @pytest.mark.asyncio
+async def test_a_matching_filename_does_not_authorize_trashing_an_original() -> None:
+    """A custom output name can collide with a video the user shot themselves."""
+    # WHY: records the trash call without touching a real photo library.
+    client = _Recorder(
+        [
+            {"id": "original", "originalFileName": "holiday.mp4", "deviceId": "phone"},
+            # A V3 upload: no device identity, so authorship cannot be proven.
+            {"id": "unknown-origin", "originalFileName": "holiday.mp4"},
+            {"id": "new", "originalFileName": "holiday.mp4"},
+        ]
+    )
+
+    superseded = await supersede_previous_renders(
+        client, album_id="alb", filename="holiday.mp4", keep_asset_id="new"
+    )
+
+    assert superseded == []
+    assert client.trashed == []
+
+
+@pytest.mark.asyncio
 async def test_an_older_render_of_the_same_recipe_is_trashed() -> None:
     client = _Recorder(
         [
-            {"id": "old", "originalFileName": "june_a1b2c3d4.mp4"},
+            {
+                "id": "old",
+                "originalFileName": "june_a1b2c3d4.mp4",
+                "deviceId": "immich-memories",
+                "deviceAssetId": "immich-memories-a1b2c3d4",
+            },
             {"id": "new", "originalFileName": "june_a1b2c3d4.mp4"},
             {"id": "other-recipe", "originalFileName": "june_9f8e7d6c.mp4"},
             {"id": "unrelated", "originalFileName": "holiday.mp4"},

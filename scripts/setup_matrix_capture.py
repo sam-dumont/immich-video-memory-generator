@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from setup_matrix_plan import COLD, PRIMED
@@ -62,6 +63,14 @@ _PREPARE_PICTURES = re.compile(r"([\d,]+) pictures prepared at ([\d.]+) s/pictur
 # The same line, as the end of one `prepare` invocation rather than as numbers.
 _PREPARE_END = re.compile(r"[\d,]+ pictures prepared at [\d.]+ s/picture\.")
 
+# What captioned this cell's pictures. A matrix row compares readers on the
+# assumption that both were handed the same facts, and a bank filled by two
+# captioners breaks that assumption silently — so the count travels with the
+# producers rather than staying in the log nobody diffs.
+_CAPTION_ORIGINS = re.compile(
+    r"caption origins: (\d+) distinct over (\d+) captions( MIXED)? \[(.*)\]"
+)
+
 # What drew the title screens. `titles/kernels.init_kernels` prints one of these
 # two lines once per process, and the titles are the phase a GPU helps most.
 _TITLE_BACKEND = re.compile(r"Title kernels: \S+ \S+ on the (\S+) backend")
@@ -90,6 +99,19 @@ class HostedUsage:
     tokens_out: int | None = None
     counted_exactly: bool | None = None
     wall_seconds: float | None = None
+    # A subset of tokens_out that a reasoning model added on its own account. One
+    # measured reply put 13,469 of them against a 5,400-token prompt, billed at
+    # the completion rate, so a cost line that does not name them explains nothing.
+    reasoning_tokens: int | None = None
+    # Prompt tokens nobody counted, worked out from the size of the request the
+    # run kept. Never folded into `tokens_in`: a reconstructed row has a measured
+    # half and a guessed half, and the report has to be able to tell them apart.
+    estimated_prompt_tokens: int | None = None
+    # Where these numbers came from: "record" is the run's own llm-usage.json,
+    # "reconstructed" is the planner block plus the pre-planner outcomes added up
+    # after the fact, and "log" is the rounded end-of-run line. None means the
+    # cell never asked a model.
+    usage_source: str | None = None
     # Tiles the run actually sent a model. Not on the LLM line: the end-of-run
     # block counts calls and tokens, and this is read off the attempt's own plan.
     images_sent: int | None = None
@@ -107,6 +129,9 @@ class HostedUsage:
             "tokens_out": self.tokens_out,
             "counted_exactly": self.counted_exactly,
             "wall_seconds": self.wall_seconds,
+            "reasoning_tokens": self.reasoning_tokens,
+            "estimated_prompt_tokens": self.estimated_prompt_tokens,
+            "usage_source": self.usage_source,
             "images_sent": self.images_sent,
             "est_cost": self.est_cost,
             "cost_currency": self.cost_currency,
@@ -197,6 +222,7 @@ def parse_llm_line(text: str) -> HostedUsage:
         tokens_out=tokens_out,
         counted_exactly=exact,
         wall_seconds=clock_seconds(tail),
+        usage_source="log",
     )
 
 
@@ -281,6 +307,24 @@ def parse_prepared_producers(text: str) -> list[dict]:
         }
         for producer, pending, rate, share, hours, minutes, seconds in _PREPARE_ROW.findall(text)
     ]
+
+
+def parse_caption_origins(text: str) -> dict | None:
+    """How many distinct captioners stand behind this cell's captions, and which.
+
+    `prepare` prints one line per run, so a cell that ran it twice reports the
+    last word on the bank rather than the cold pass's view of it.
+    """
+    matches = _CAPTION_ORIGINS.findall(text)
+    if not matches:
+        return None
+    distinct, captions, mixed, labels = matches[-1]
+    return {
+        "distinct": int(distinct),
+        "captions": int(captions),
+        "mixed": bool(mixed),
+        "labels": [label.strip() for label in labels.split("; ") if label.strip()],
+    }
 
 
 def parse_prepared_pictures(text: str) -> tuple[int | None, float | None]:
@@ -472,6 +516,172 @@ def read_images_sent(attempt_dir: Path) -> int | None:
         if isinstance(block, dict) and isinstance(block.get("images_sent"), int)
     ]
     return sum(counted) if counted else None
+
+
+# `analysis/llm_usage_record.USAGE_FILE`. Named here rather than imported so the
+# capture keeps running with nothing but the standard library on a remote host.
+LLM_USAGE_FILE = "llm-usage.json"
+
+# What the record calls a number, and what this table calls it.
+_FROM_RECORD = {
+    "calls": "calls",
+    "cache_hits": "cache_hits",
+    "prompt_tokens": "tokens_in",
+    "completion_tokens": "tokens_out",
+    "reasoning_tokens": "reasoning_tokens",
+    "wall_seconds": "wall_seconds",
+}
+
+
+def apply_exact_usage(usage: dict, attempt_dir: Path) -> None:
+    """Put the run's own counts over the rounded ones the end-of-run line printed.
+
+    `_run_summary` renders `115.6k prompt` for a person at a terminal, and this
+    table multiplies tokens by a price per million. Eight tokens of rounding is
+    not much; a hundred cells of it is a number nobody can check.
+
+    A cell whose run left no record -- an older run, or a remote one whose
+    copy-out missed the file -- keeps what the line said and goes on reporting
+    `usage_source: log`, which is the field to read before trusting a cost to
+    four digits.
+    """
+    source = attempt_dir / LLM_USAGE_FILE
+    if not source.is_file():
+        _apply_reconstruction(usage, attempt_dir)
+        return
+    try:
+        counted = json.loads(source.read_text())
+    except ValueError:
+        return
+    if not isinstance(counted, dict):
+        return
+    for name, field_name in _FROM_RECORD.items():
+        if isinstance(counted.get(name), int | float):
+            usage[field_name] = counted[name]
+    usage["counted_exactly"] = True
+    usage["usage_source"] = "record"
+
+
+def _apply_reconstruction(usage: dict, attempt_dir: Path) -> None:
+    """Second choice, ahead of the log line: what the attempt's own artifacts add up to."""
+    rebuilt = reconstruct_usage(attempt_dir)
+    if rebuilt is None:
+        return
+    for name, value in rebuilt.as_dict().items():
+        if value is not None:
+            usage[name] = value
+
+
+# Bytes of a kept request per prompt token. Measured, not assumed: across the
+# five hosted cells that finished before the usage record existed, the planner's
+# own request files divided by its own text prompt tokens gave 3.54, 3.55, 3.81,
+# 3.91 and 4.01. One divisor for all of them is worth about +/-7%, which is why
+# what it produces is kept out of the counted total and the row says it is not exact.
+BYTES_PER_PROMPT_TOKEN = 3.8
+
+_PRE_PLANNER_DIR = "pre-planner-calls"
+_OUTCOME = "*.outcome.private.json"
+
+
+def _reply_seconds(outcome: dict) -> float:
+    """How long one pre-planner read took, or zero when it did not say."""
+    try:
+        started = datetime.fromisoformat(outcome["started_at"])
+        finished = datetime.fromisoformat(outcome["finished_at"])
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    return max(0.0, (finished - started).total_seconds())
+
+
+@dataclass
+class _PrePlannerSpend:
+    """What the reads before the planner cost, as far as their outcomes recorded it."""
+
+    calls: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    request_bytes: int = 0
+    wall_seconds: float = 0.0
+
+
+def _pre_planner_spend(attempt_dir: Path) -> _PrePlannerSpend:
+    """Calls, completion, reasoning, request bytes and wall of the reads before the planner.
+
+    Episode reads and the period account run before `plan_structure` opens the
+    scope that wrote `llm_metrics`, so nothing else in the attempt has them. An
+    outcome whose transport never came back carries no reply and is not counted:
+    the deepseek cell raised on one episode read, and its log shows 105 replies
+    against 9 outcome files.
+    """
+    spend = _PrePlannerSpend()
+    for path in sorted((attempt_dir / _PRE_PLANNER_DIR).glob(_OUTCOME)):
+        try:
+            outcome = json.loads(path.read_text()) or {}
+        except ValueError:
+            continue
+        reply = outcome.get("reply")
+        if not isinstance(reply, dict) or reply.get("completion_tokens") is None:
+            continue
+        spend.calls += 1
+        spend.completion_tokens += int(reply.get("completion_tokens") or 0)
+        spend.reasoning_tokens += int(reply.get("reasoning_tokens") or 0)
+        spend.wall_seconds += _reply_seconds(outcome)
+        request = path.with_name(path.name.replace(".outcome.private.json", ".request.private.txt"))
+        if request.is_file():
+            spend.request_bytes += request.stat().st_size
+    return spend
+
+
+def reconstruct_usage(attempt_dir: Path) -> HostedUsage | None:
+    """What a run cost, added up after the fact from what it left behind.
+
+    For the cells that finished before a run wrote its own usage record and are
+    too expensive to run again. `plan.private.json` holds the planner scope
+    exactly, and the pre-planner outcomes hold the reads that happened before
+    that scope opened. On the five hosted cells this was written against, the two
+    together came to 93, 105, 111, 217 and 198 calls, matching every HTTP 200
+    their logs recorded, to the call.
+
+    `picture_facts_metrics` is deliberately not added. The facts are read inside
+    the scope that wrote `llm_metrics`, so it is a view of part of that block
+    rather than a second bill: adding it would charge the glm demo cell for 125
+    calls against the 93 it made. The one number it contributes is `images_sent`,
+    which `read_images_sent` already carries.
+
+    None when the run wrote its own record -- that one is exact and wins -- or
+    when there is no plan to read.
+    """
+    if (attempt_dir / LLM_USAGE_FILE).is_file():
+        return None
+    plan = attempt_dir / PLAN_FILE
+    if not plan.is_file():
+        return None
+    try:
+        planner = (json.loads(plan.read_text()) or {}).get("llm_metrics")
+    except ValueError:
+        return None
+    if not isinstance(planner, dict):
+        return None
+    pre = _pre_planner_spend(attempt_dir)
+    total_calls = int(planner.get("llm_calls") or 0) + pre.calls
+    cache_hits = int(planner.get("llm_cache_hits") or 0)
+    if not (total_calls or cache_hits):
+        # `provider_metrics` persists measured zeroes, so a rules cell has a full
+        # block of them. "Never asked a model" must not become a bill of nothing.
+        return None
+    return HostedUsage(
+        calls=total_calls,
+        cache_hits=cache_hits,
+        tokens_in=int(planner.get("llm_prompt_tokens") or 0),
+        tokens_out=int(planner.get("llm_completion_tokens") or 0) + pre.completion_tokens,
+        # Only the pre-planner share: these runs never recorded a reasoning count
+        # inside the planner scope, so this is a floor and `usage_source` says so.
+        reasoning_tokens=pre.reasoning_tokens,
+        estimated_prompt_tokens=round(pre.request_bytes / BYTES_PER_PROMPT_TOKEN),
+        counted_exactly=False,
+        wall_seconds=round(float(planner.get("llm_wall_seconds") or 0) + pre.wall_seconds, 3),
+        usage_source="reconstructed",
+    )
 
 
 def read_contract_health(attempt_dir: Path | None, log_text: str) -> dict:

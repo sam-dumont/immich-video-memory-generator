@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
 from contextvars import copy_context
 from dataclasses import dataclass
 from functools import partial
@@ -16,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from immich_memories.analysis.contact_sheets import ContactSheetPage, build_contact_sheets
 from immich_memories.analysis.editorial_contracts import DecisionProvenance, EditorialCandidate
 from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
+from immich_memories.analysis.provider_failure import ProviderCredentialRejected
 from immich_memories.analysis.selection_source import PreparedEditorialSource
 from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
 from immich_memories.analysis.visual_atlas import build_visual_atlas
@@ -400,10 +400,16 @@ def _describe_packed(
     parsed_by_alias: dict[str, dict[str, Any]] = {}
     provenance: DecisionProvenance | None = None
     # A broken packed call leaves both empty and every member falls back per asset below.
-    with suppress(Exception):
+    # A rejected credential is the one failure that is not this call's business: it would
+    # blank every caption in the run without saying so.
+    try:
         answer = requester.ask(_packed_request(items, aliases, motion=motion, limits=limits))
         parsed_by_alias = _read_packed_descriptions(answer.raw_text, aliases=aliases, motion=motion)
         provenance = answer.provenance
+    except ProviderCredentialRejected:
+        raise
+    except Exception:  # noqa: BLE001 - every member falls back per asset below
+        parsed_by_alias, provenance = {}, None
     outcomes: list[tuple[str, AssetDescription | str]] = []
     for alias, rendered in zip(aliases, items, strict=True):
         parsed = parsed_by_alias.get(alias)
@@ -620,6 +626,8 @@ def _describe_one(
                 image_detail="high",
             )
         )
+    except ProviderCredentialRejected:
+        raise  # a rejected key blanks every caption; it must not read as missing evidence
     except Exception:  # noqa: BLE001 - missing evidence cannot change membership
         return f"!! asset description failed: {asset_id}"
     if motion_expected:

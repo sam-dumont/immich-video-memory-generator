@@ -10,6 +10,7 @@ transport in `llm_query` only has to speak the two dialects.
 from __future__ import annotations
 
 import re
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 from immich_memories.config_models_llm import LLMConfig
@@ -171,3 +172,54 @@ def resolved_llm_config(config: LLMConfig) -> LLMConfig:
         updates["thinking_params"] = {}
         updates["no_thinking_params"] = {}
     return config.model_copy(update=updates) if updates else config
+
+
+# What the reader may overlap when the config names no number. A hosted endpoint
+# is a fleet and answers four as easily as one; a model on this machine or this
+# private network is one process in front of one accelerator, and four sockets
+# there buy nothing but three requests queued inside a 300-second timeout, which
+# fails quietly rather than loudly. Four is deliberately modest: it is the
+# smallest number that overlaps at all on the stages that can overlap, and small
+# enough that a provider's per-key rate window absorbs it.
+HOSTED_READER_CONCURRENCY = 4
+LOCAL_READER_CONCURRENCY = 1
+
+# The host names that mean "this very machine", including Docker's name for the
+# engine's host, which is how a containerised run reaches a model server on the
+# Mac it is running on.
+_SAME_MACHINE = frozenset(
+    {
+        "localhost",
+        "0.0.0.0",  # noqa: S104 - read from a URL, never bound to
+        "host.docker.internal",
+        "host.containers.internal",
+    }
+)
+
+
+def _reachable_only_from_here(host: str) -> bool:
+    """Whether this endpoint is a model we share a machine or a private network with.
+
+    A bare name with no dot is a container or service name, which cannot be a public
+    endpoint; a literal address is judged by its range. Anything that resolves off this
+    network is somebody's fleet. Deciding from the URL is the only fact available without
+    a DNS lookup, and it errs toward serial, which is the direction that cannot cost a run.
+    """
+    name = host.strip("[]").lower()
+    if not name or name in _SAME_MACHINE or "." not in name.replace(":", ""):
+        return True
+    try:
+        address = ip_address(name)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
+def reader_concurrency(config: LLMConfig) -> int:
+    """How many independent reader jobs this endpoint is worth asking at once."""
+    if config.reader_concurrency is not None:
+        return config.reader_concurrency
+    host = urlsplit(resolved_llm_config(config).base_url).hostname or ""
+    return (
+        LOCAL_READER_CONCURRENCY if _reachable_only_from_here(host) else HOSTED_READER_CONCURRENCY
+    )

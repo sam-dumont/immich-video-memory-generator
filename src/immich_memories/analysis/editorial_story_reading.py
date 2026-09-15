@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import pages
+from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_story_grouping import _synthesize
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
@@ -173,23 +175,26 @@ def _still_open(key, *, first_seen, last_seen, page_start, page_day) -> bool:
 
 
 def _episode_page_prompt(page, known, next_id, contract) -> str:
+    # The two evidence blocks and the numbered example are last; everything above them is
+    # byte-identical for the whole run, so a server that reuses a prefix reads the contract
+    # and the placement rules once instead of once per page (#981).
     return f"""Read a personal photo library, chronologically, to understand what happened. {STORY_VERSION}.
 {contract}
 No film duration, no picture choice here. Every fragment is a group of photo descriptions
 taken close together (capture group, time, known people, places).
-
-OPEN EPISODES (today's; ids, titles, first facts)
-{json.dumps(known, ensure_ascii=False)}
 Earlier days are closed: a new day is a new episode even when the activity repeats. A different occasion on the same day is also a new episode.
-
-NEW FRAGMENTS TO PLACE
-{json.dumps(page, ensure_ascii=False)}
 
 Place EACH new fragment into one lived episode: a known episode id when the fragment develops
 the same occasion, visit, journey or ongoing situation, otherwise a new episode. A trip or a
 hospital stay can span days; unrelated occasions stay separate even when the activity repeats.
 Titles name the occasion, not the activity: "market day in Lisbon", not "walking".
 No invented emotions, firsts or milestones. Roles: central, supporting, texture, incidental.
+
+OPEN EPISODES (today's; ids, titles, first facts)
+{json.dumps(known, ensure_ascii=False)}
+
+NEW FRAGMENTS TO PLACE
+{json.dumps(page, ensure_ascii=False)}
 
 Number new episodes S{next_id:04d}, S{next_id + 1:04d}, ... in order of first appearance.
 JSON only, always both keys (new_episodes may be []): {{"fragments":[{{"reading":"{page[0]["reading"]}","episode":"S{next_id:04d}"}}],
@@ -333,10 +338,18 @@ def read_period_story(
         prompt, open_episodes, closed = _page_request(
             page, episodes, first_seen, last_seen, contract
         )
-        raw = judge.ask(f"story-episodes-{number}", prompt, max_tokens=1400 + 220 * len(page))
         try:
-            updates = read_episode_page(
-                raw, offered={r["reading"] for r in page}, existing=open_episodes, closed=closed
+            updates = read_page_answer(
+                judge,
+                stage=f"story-episodes-{number}",
+                prompt=prompt,
+                max_tokens=1400 + 220 * len(page),
+                read=partial(
+                    read_episode_page,
+                    offered={r["reading"] for r in page},
+                    existing=open_episodes,
+                    closed=closed,
+                ),
             )
         except ValueError as exc:
             audit.update(status="incomplete", failure=str(exc))

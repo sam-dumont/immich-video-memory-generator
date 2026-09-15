@@ -37,6 +37,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS assets (asset_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS descriptions (
  asset_id TEXT, model TEXT, text TEXT, source TEXT, written_at TEXT, PRIMARY KEY(asset_id,model));
+CREATE TABLE IF NOT EXISTS caption_provenance (
+ asset_id TEXT, model TEXT, origin TEXT NOT NULL, PRIMARY KEY(asset_id,model));
 CREATE TABLE IF NOT EXISTS description_fields (
  asset_id TEXT, model TEXT, field TEXT, value TEXT, written_at TEXT, PRIMARY KEY(asset_id,model,field));
 CREATE TABLE IF NOT EXISTS asset_people (
@@ -147,7 +149,7 @@ def missing_facts(
 ) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
     """Report all missing or malformed producers, plus proven terminal caption failures."""
     wanted = tuple(dict.fromkeys(asset_ids))
-    _stage_wanted(connection, wanted)
+    stage_wanted(connection, wanted)
     complete = _complete_captions(connection, description_model)
     unavailable: set[str] = set()
     if description_model == DESCRIPTION_MODEL:
@@ -168,7 +170,8 @@ def missing_facts(
     )
 
 
-def _stage_wanted(connection: sqlite3.Connection, wanted: Sequence[str]) -> None:
+def stage_wanted(connection: sqlite3.Connection, wanted: Sequence[str]) -> None:
+    """Put the ids this pass is about in one temp table, so every lookup can join it."""
     connection.execute(
         "CREATE TEMP TABLE IF NOT EXISTS preparation_wanted (asset_id TEXT PRIMARY KEY)"
     )

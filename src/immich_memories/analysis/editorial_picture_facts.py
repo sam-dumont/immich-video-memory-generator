@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import time
 from collections.abc import Callable
-from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+import httpx
 from PIL import Image
 
 from immich_memories.analysis import llm_metrics
@@ -32,10 +33,22 @@ from immich_memories.analysis.editorial_model_attestation import (
 from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_text_identity import text_model_identity
 from immich_memories.analysis.llm_wire import LLMIncompleteResponse
+from immich_memories.analysis.provider_failure import (
+    RATE_LIMITED,
+    UNAVAILABLE,
+    ProviderFailure,
+    provider_failure,
+)
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.strict_json import final_json_object
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 from immich_memories.config_models_llm import LLMConfig
+
+logger = logging.getLogger(__name__)
+
+# One counter per meaning: a run that lost pictures to a downed host and one that
+# lost them to a model refusing images are different findings about that cell.
+_COUNTER_OF_KIND = {RATE_LIMITED: "rate_limited", UNAVAILABLE: "provider_unavailable"}
 
 STAGE_NAME = "selected-picture-facts"
 TILE_VERSION = "selected-picture-facts-tile-800px-jpeg-q90-v1"
@@ -133,6 +146,25 @@ def _producer(config: LLMConfig) -> dict[str, Any]:
     }
 
 
+def _read_facts(raw: str) -> dict[str, Any]:
+    """The five observed fields, or an explicit invalid record; never a partial reading."""
+    fields = final_json_object(raw)
+    if (
+        not isinstance(fields, dict)
+        or set(fields) != set(FIELDS)
+        or any(not isinstance(value, str) or not value.strip() for value in fields.values())
+        or fields["uncovered_person"] not in BODY_STATES
+    ):
+        return {"status": "invalid", "reason": "invalid_factual_fields", "raw_response": raw}
+    facts = {field: fields[field].strip() for field in FIELDS}
+    return {
+        "status": "available",
+        "facts": facts,
+        "description": " ".join(f"{field}: {facts[field]}" for field in FIELDS),
+        "raw_response": raw,
+    }
+
+
 def picture_observation_request(
     *,
     config: LLMConfig,
@@ -212,6 +244,9 @@ class PictureFactsProvider:
             "images_sent": 0,
             "wall_seconds": 0.0,
             "unavailable_members": 0,
+            "provider_refusals": 0,
+            "rate_limited": 0,
+            "provider_unavailable": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
         }
@@ -246,10 +281,11 @@ class PictureFactsProvider:
             return deepcopy(self._memo[memo_key])
         self._increment("unique_members")
         started, trace_start = time.monotonic(), len(self._trace.requests)
-        active = llm_metrics.active()
-        with nullcontext(active) if active is not None else llm_metrics.collecting() as counters:
-            assert counters is not None
-            mark = counters.snapshot()
+        # A scope of its own rather than a delta on the run's: members are
+        # observed from a thread pool, and two deltas taken against a shared
+        # counter interleave into each other's numbers. Nesting no longer hides
+        # the spend from the run, so this costs the total nothing.
+        with llm_metrics.collecting() as counters:
             try:
                 result = observe()
                 self._memo[memo_key] = result
@@ -257,7 +293,7 @@ class PictureFactsProvider:
                     self._increment("unavailable_members")
                 return deepcopy(result)
             finally:
-                self._record_cost(counters.since(mark), trace_start)
+                self._record_cost(counters, trace_start)
                 self._metrics["wall_seconds"] = float(self._metrics["wall_seconds"] or 0) + (
                     time.monotonic() - started
                 )
@@ -291,8 +327,19 @@ class PictureFactsProvider:
                 raise ValueError("banked picture completion failure has invalid evidence identity")
             self._cache_hit()
             return failure
+        return self._asked(request, key, base)
+
+    def _asked(
+        self, request: VisualEditorialRequest, key: str, base: dict[str, Any]
+    ) -> dict[str, Any]:
+        """This picture's answer as a record: read, refused, or a banked completion failure."""
         try:
             answer = self._gateway.ask(request)
+        except httpx.HTTPStatusError as exc:
+            refused = provider_failure(exc, images_attached=bool(request.pages))
+            if refused is None:
+                raise
+            return base | {"status": "unavailable"} | self._refused(refused)
         except (LLMIncompleteResponse, EmptyVisualAnswer) as exc:
             failure = base | {
                 "status": "completion_failure",
@@ -305,26 +352,7 @@ class PictureFactsProvider:
             return failure
         if answer.provenance.cache_hit:
             self._cache_hit()
-        raw = answer.raw_text
-        fields = final_json_object(raw)
-        if (
-            not isinstance(fields, dict)
-            or set(fields) != set(FIELDS)
-            or any(not isinstance(value, str) or not value.strip() for value in fields.values())
-            or fields["uncovered_person"] not in BODY_STATES
-        ):
-            return base | {
-                "status": "invalid",
-                "reason": "invalid_factual_fields",
-                "raw_response": raw,
-            }
-        facts = {field: fields[field].strip() for field in FIELDS}
-        return base | {
-            "status": "available",
-            "facts": facts,
-            "description": " ".join(f"{field}: {facts[field]}" for field in FIELDS),
-            "raw_response": raw,
-        }
+        return base | _read_facts(answer.raw_text)
 
     def _request(
         self, asset_id: str, tile: bytes, input_sha: str, *, sample: BoundVideoSample | None = None
@@ -351,6 +379,28 @@ class PictureFactsProvider:
     def _cache_hit(self) -> None:
         self._increment("cache_hits")
         llm_metrics.record_cache_hit()
+
+    def _refused(self, refused: ProviderFailure) -> dict[str, Any]:
+        """Lose this one picture's facts, loudly, and never bank a call that had no answer.
+
+        A refusal describes the payload the provider will not take, not this model's
+        reading of this photograph, so banking it would freeze one provider's
+        configuration into the library. The selection goes on without the fact: the
+        audience gate already treats a missing observation as evidence it does not have.
+        A rate limit only reaches here once the gateway has waited it out, and is counted
+        apart from a refusal because the two mean opposite things to whoever reads this.
+        """
+        counter = _COUNTER_OF_KIND.get(refused.kind, "provider_refusals")
+        if not self._metrics[counter]:
+            logger.warning(
+                "The reader's provider answered %s for a picture payload (HTTP %s): %s. "
+                "Those pictures carry no observed facts in this run.",
+                refused.kind,
+                refused.status_code,
+                refused.message,
+            )
+        self._increment(counter)
+        return refused.as_record()
 
     def _increment(self, name: str, amount: int = 1) -> None:
         self._metrics[name] = int(self._metrics[name] or 0) + amount

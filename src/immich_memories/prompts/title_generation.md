@@ -2,11 +2,6 @@
 
 Generate a title for a personal memory video. Language: {lang}.
 
-## Context
-Memory type: {memory_type}
-Dates: {start_date} to {end_date} ({duration_days} days)
-{context_lines}
-
 ## Rules
 - Write title and subtitle in {lang}. Be creative, varied, and specific to THIS trip.
 - NEVER start with generic formulas like 'Échos de', 'Voyage en', 'Découverte de'.
@@ -39,3 +34,8 @@ Analyze the daily location clusters to determine the pattern:
 ## Output Format
 Return ONLY valid JSON (no explanation, no markdown, no thinking):
 {"title": "...", "subtitle": "..." or null, "trip_type": "..." or null, "map_mode": "..." or null, "map_mode_reason": "..." or null}
+
+## Context
+Memory type: {memory_type}
+Dates: {start_date} to {end_date} ({duration_days} days)
+{context_lines}

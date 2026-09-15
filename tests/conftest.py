@@ -292,6 +292,40 @@ def sample_config() -> Config:
 
 
 @pytest.fixture(autouse=True)
+def _forget_learned_endpoints():
+    """Clear what one test taught the transport about a server, before the next runs.
+
+    The reasoning headroom and the parameter dialect are learned per (server, model)
+    and kept for the life of the process, which is right in a run and wrong across
+    tests: with pytest-randomly the order changes every time, so one test teaching
+    "api.anthropic.com/claude reasons anyway" silently rewrites another's expected
+    token budget.
+    """
+    from immich_memories.analysis import llm_wire
+
+    llm_wire._REASONING_HEADROOM.clear()
+    llm_wire.PARAM_ADAPTATIONS.clear()
+    yield
+    llm_wire._REASONING_HEADROOM.clear()
+    llm_wire.PARAM_ADAPTATIONS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _open_the_throttle_gate():
+    """Clear the shared provider pause one test shut, before the next one runs.
+
+    A rate limit holds every caller in the process until the window the provider
+    named has passed, which is right in a run. Tests fake the clock by replacing
+    sleep, so the window never passes on its own and the next test inherits it.
+    """
+    from immich_memories.analysis import provider_failure
+
+    provider_failure.THROTTLE._until = 0.0
+    yield
+    provider_failure.THROTTLE._until = 0.0
+
+
+@pytest.fixture(autouse=True)
 def _no_leaked_drain_threads():
     """Fail any test that leaves a stderr drain thread spinning.
 

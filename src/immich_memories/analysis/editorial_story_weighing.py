@@ -90,17 +90,12 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
 
 
 def _weighing_prompt(rows, *, thesis, contract, candidates) -> str:
+    # The thesis and the table are last; everything above them is byte-identical for the run,
+    # so the two orders of the same table share their whole preamble (#981).
     return f"""Weigh the stories of this requested memory. {STORY_VERSION}. {WEIGHING_CONTRACT_VERSION}.
 {contract}
 
-THESIS (from the reading)
-{thesis}
-THE READING SAYS THIS MEMORY IS ABOUT: {", ".join(candidates) if candidates else "nothing in particular"}
-
-STORIES (key | first day -> last day | days | episodes | moments | pictures | favourites | memory-worthy reading | title | purpose | people present, by their relation to the owner | three facts)
-{chr(10).join(rows)}
-
-Confirm which of those stories (one, rarely two) this memory is ABOUT in the "about" list. It takes up to half the film. Only a story the reading named can be chosen; leave the list empty if none deserves half.
+Confirm which of the stories below (one, rarely two) this memory is ABOUT in the "about" list. It takes up to half the film. Only a story the reading named can be chosen; leave the list empty if none deserves half.
 Then weigh every other story for THIS memory (month, year, journey, person, anniversary, album or subject):
 "major" = an occasion that must be there, with several moments;
 "minor" = one or two moments;
@@ -117,6 +112,14 @@ first picture rather than the occasion the facts show may be retitled.
 Return one complete JSON object with "about" (a list of story keys), "weights" (a mapping from
 every remaining story key to major, minor, glimpse or none), "join" (a list of key pairs, usually empty),
 and "retitle" (a mapping from a story key to a better title, usually empty).
+
+THESIS (from the reading)
+{thesis}
+THE READING SAYS THIS MEMORY IS ABOUT: {", ".join(candidates) if candidates else "nothing in particular"}
+
+STORIES (key | first day -> last day | days | episodes | moments | pictures | favourites | memory-worthy reading | title | purpose | people present, by their relation to the owner | three facts)
+{chr(10).join(rows)}
+
 Assess all {len(rows)} stories. Use only the actual keys in the table. Do not return a sample answer.
 "retitle" is only for a current title that names a detail of the first picture.
 """

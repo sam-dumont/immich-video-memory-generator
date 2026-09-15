@@ -34,6 +34,7 @@ from immich_memories.config_models_editorial_preparation import EditorialPrepara
 from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import check_cancelled as current_check_cancelled
+from immich_memories.store.caption_provenance import origins_for
 from immich_memories.store.editorial_preparation import (
     initialize,
     missing_facts,
@@ -62,6 +63,9 @@ class PreparationResult:
     # minus this is the wire and the waiting, which is what a remote pass is
     # usually spending, and the only number that says which to go and fix.
     service_seconds_by_stage: Mapping[str, float] = field(default_factory=dict)
+    # The distinct caption origins behind this run's captions, largest group
+    # first, with only the assets outside that group named one by one.
+    caption_provenance: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -307,6 +311,7 @@ class _Acquisition:
                     preview_for=self.preview_for,
                     base_url=self.preparation_config.caption_base_url,
                     api_key=self.preparation_config.caption_api_key,
+                    artifact_id=self.preparation_config.caption_artifact_id,
                     timeout=self.preparation_config.caption_timeout_seconds,
                     concurrency=self.preparation_config.caption_concurrency,
                     check_cancelled=self.check,
@@ -422,6 +427,9 @@ def prepare_editorial_annotations(
             stage.seconds.copy(),
             stage.pictures.copy(),
             stage.service_seconds.copy(),
+            caption_provenance=origins_for(connection, ids, description_model)
+            if preparation_config.demands_captions
+            else {},
         )
 
 

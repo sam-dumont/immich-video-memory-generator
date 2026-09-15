@@ -20,6 +20,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import inventory_event
+from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_story_carriers import CarrierAdmission, StandingGate
 from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
 from immich_memories.analysis.editorial_story_reading import (
@@ -207,12 +208,19 @@ class _DayInventory:
         self._life = life
         self._calls = calls
 
-    def of_day(self, s, e, units) -> list[DepictedChoice] | None:
+    def read_days(self, jobs):
+        results = reader_map(self._judge, self.of_day, jobs)
+        for _choices, count in results:
+            self._calls["inventory_pages"] += count
+        return [choices for choices, _count in results]
+
+    def of_day(self, judge, job):
+        s, e, units = job
         if len(units) <= 1:
-            return None
+            return None, 0
         try:
             depicted, audit = inventory_event(
-                self._judge,
+                judge,
                 event=e.key,
                 units=units,
                 context=f"{s['title']}: {e.title}. {e.account}",
@@ -221,11 +229,10 @@ class _DayInventory:
             )
         except ValueError as exc:
             self._record(f"moment-inventory-{e.key}", {"status": "failed", "error": str(exc)})
-            return None
-        self._calls["inventory_pages"] += len(audit.get("pages") or [])
+            return None, 0
         taken_of = {u["asset_id"]: u["taken"] for u in units}
         choices = [self._choice(d, s, taken_of) for d in depicted if d.primary in taken_of]
-        return choices or None
+        return choices or None, len(audit.get("pages") or [])
 
     def _choice(self, d, s, taken_of) -> DepictedChoice:
         members = [d.primary, *d.alternatives]
@@ -248,35 +255,23 @@ class _DayInventory:
         )
 
 
-def _story_moments(
-    inventory: _DayInventory,
-    s: Mapping[str, Any],
-    *,
-    partition_grants: Mapping[str, Mapping[str | None, int]],
-    episode_of: Mapping[str, Any],
-    units: _MomentUnits,
-    parts: PartitionedSlots,
-    capture_groups: Callable[[list[dict]], list[DepictedChoice]],
-) -> list[DepictedChoice]:
-    merged: list[DepictedChoice] = []
-    for key in s["episodes"]:
-        e = episode_of[key]
-        day_units = units.of(e.moments)
-        if parts.limit is not None:
-            day_units = [
-                u
-                for u in day_units
-                if partition_grants[s["key"]].get(parts.of_asset(u["asset_id"]), 0)
-            ]
-        if not day_units:
+def _inventory_jobs(stories, granted, *, partition_grants, episode_of, units, parts):
+    jobs = []
+    for s in stories:
+        if granted[s["key"]] == 0:
             continue
-        day_choices = inventory.of_day(s, e, day_units)
-        if day_choices is None:
-            day_choices = capture_groups(day_units)
-            for c in day_choices:
-                c.episode = s["key"]
-        merged.extend(day_choices)
-    return merged
+        for key in s["episodes"]:
+            e = episode_of[key]
+            day_units = units.of(e.moments)
+            if parts.limit is not None:
+                day_units = [
+                    u
+                    for u in day_units
+                    if partition_grants[s["key"]].get(parts.of_asset(u["asset_id"]), 0)
+                ]
+            if day_units:
+                jobs.append((s, e, day_units))
+    return jobs
 
 
 def _inventory_funded_stories(
@@ -285,14 +280,20 @@ def _inventory_funded_stories(
     stories: Sequence[Mapping[str, Any]],
     granted: Mapping[str, int],
     choices_of: dict[str, list[DepictedChoice]],
+    capture_groups: Callable[[list[dict]], list[DepictedChoice]],
     **per_story,
 ) -> None:
-    for s in stories:
-        if granted[s["key"]] == 0:
-            continue
-        merged = _story_moments(inventory, s, **per_story)
-        if merged:
-            choices_of[s["key"]] = sorted(merged, key=lambda c: c.taken)
+    jobs = _inventory_jobs(stories, granted, **per_story)
+    merged: dict[str, list[DepictedChoice]] = {}
+    for (s, _episode, day_units), choices in zip(jobs, inventory.read_days(jobs), strict=True):
+        if choices is None:
+            choices = capture_groups(day_units)
+            for c in choices:
+                c.episode = s["key"]
+        merged.setdefault(s["key"], []).extend(choices)
+    for key, choices in merged.items():
+        if choices:
+            choices_of[key] = sorted(choices, key=lambda c: c.taken)
 
 
 def _check_partition_request(partition_limit, partition_of) -> None:

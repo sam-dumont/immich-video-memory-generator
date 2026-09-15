@@ -23,6 +23,8 @@ from immich_memories.operations.cancellation import (
     cancellation_scope,
     check_cancelled,
 )
+from immich_memories.operations.caption_origins import caption_origin_summary
+from immich_memories.store.caption_provenance import CaptionOrigin, origins_for
 from immich_memories.store.editorial_preparation import initialize
 
 
@@ -48,22 +50,26 @@ def outcome(image, *, error="invalid:bad JSON", finish_reason="stop", envelope=N
     )
 
 
+def _probed():
+    """What an accepted probe hands back, for tests that replace the probe itself."""
+    return CaptionOrigin(model_id=API_MODEL, endpoint="http://localhost:8092/v1")
+
+
 def run(connection, **kwargs):
     return captions.prepare_captions(
         connection=connection,
-        asset_ids=("a",),
         preview_for=lambda _: preview(),
         timeout=5,
         concurrency=2,
         check_cancelled=check_cancelled,
         progress=lambda *_: None,
-        **{"base_url": "http://localhost:8092/v1", **kwargs},
+        **{"base_url": "http://localhost:8092/v1", "asset_ids": ("a",), **kwargs},
     )
 
 
 def test_two_actual_invalid_completions_become_bound_unavailable(monkeypatch):
     calls = []
-    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: None)
+    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: _probed())
 
     def ask(_url, image, **_kwargs):
         calls.append(image)
@@ -80,7 +86,7 @@ def test_two_actual_invalid_completions_become_bound_unavailable(monkeypatch):
 
 
 def test_transport_failures_never_fabricate_terminal_unavailable(monkeypatch):
-    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: None)
+    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: _probed())
     monkeypatch.setattr(
         captions,
         "_ask_one",
@@ -93,7 +99,7 @@ def test_transport_failures_never_fabricate_terminal_unavailable(monkeypatch):
 
 
 def test_success_uses_exact_wire_and_writes_only_description_and_setting(monkeypatch):
-    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: None)
+    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: _probed())
     envelope = validate_envelope({"description": "People sit together.", "setting": "a room"})
 
     def ask(_url, image, **_):
@@ -114,7 +120,7 @@ def test_success_uses_exact_wire_and_writes_only_description_and_setting(monkeyp
 
 
 def test_thread_worker_inherits_cancellation_context_and_does_not_retry(monkeypatch):
-    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: None)
+    monkeypatch.setattr(captions, "check_provider", lambda *_, **__: _probed())
     requested = []
 
     def ask(_url, image, **_):
@@ -142,9 +148,18 @@ def test_actual_call_outcome_keys_match_durable_failure_contract():
 class _CaptionServer:
     """A caption endpoint, optionally gated on a bearer token, that records what it was sent."""
 
-    def __init__(self, token: str | None, *, open_probe: bool = False) -> None:
+    def __init__(
+        self,
+        token: str | None,
+        *,
+        open_probe: bool = False,
+        served: dict | None = None,
+        answer: dict | None = None,
+    ) -> None:
         self.seen_authorization: list[str | None] = []
-        inventory = json.dumps({"data": [{"id": API_MODEL}]}).encode()
+        inventory = json.dumps(
+            {"data": [{"id": API_MODEL} | (served or {"owned_by": "served-revision"})]}
+        ).encode()
         completion = json.dumps(
             {
                 "choices": [
@@ -152,7 +167,8 @@ class _CaptionServer:
                         "finish_reason": "stop",
                         "message": {
                             "content": json.dumps(
-                                {"description": "Two people walk a dog.", "setting": "a park"}
+                                answer
+                                or {"description": "Two people walk a dog.", "setting": "a park"}
                             )
                         },
                     }
@@ -249,6 +265,110 @@ def test_no_configured_key_leaves_the_request_headers_untouched(open_endpoint):
         assert failures == {}
         assert connection.execute("SELECT count(*) FROM descriptions").fetchone() == (1,)
     assert set(open_endpoint.seen_authorization) == {None}
+
+
+def test_each_caption_keeps_what_the_endpoint_said_about_its_weights(open_endpoint):
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        assert (
+            run(
+                connection,
+                base_url=open_endpoint.base_url,
+                artifact_id="SmolVLM2-Q8_0@revision-one",
+            )
+            == {}
+        )
+        origin = origins_for(connection, ("a",), DESCRIPTION_MODEL)["origins"][0]
+
+    assert origin["model_id"] == API_MODEL
+    assert origin["endpoint"] == open_endpoint.base_url
+    assert origin["artifact_id"] == "SmolVLM2-Q8_0@revision-one"
+    assert origin["served"] == {"owned_by": "served-revision"}
+    assert len(origin["control_digest"]) == 16
+    assert "caption-token" not in json.dumps(origin)
+
+
+def test_two_captioners_behind_one_alias_leave_two_origins_in_the_bank():
+    """The failure #933 names: one bank, two builds, nothing marking the seam.
+
+    Both servers advertise the required alias, so neither the model id nor the
+    URL can separate them; what separates them is what they answered.
+    """
+    mlx = _CaptionServer(
+        None,
+        served={"owned_by": "user"},
+        answer={"description": "Two people walk a dog.", "setting": "a park"},
+    )
+    gguf = _CaptionServer(
+        None,
+        served={
+            "aliases": [API_MODEL],
+            "owned_by": "llamacpp",
+            "meta": {"ftype": "Q8_0", "n_params": 409252800},
+        },
+        answer={"description": "A dog crosses grass.", "setting": "an open field"},
+    )
+    try:
+        with sqlite3.connect(":memory:") as connection:
+            initialize(connection)
+            assert run(connection, asset_ids=("a",), base_url=mlx.base_url) == {}
+            assert run(connection, asset_ids=("b",), base_url=gguf.base_url) == {}
+            grouped = origins_for(connection, ("a", "b"), DESCRIPTION_MODEL)
+    finally:
+        mlx.close()
+        gguf.close()
+
+    first, second = grouped["origins"]
+    assert [first["assets"], second["assets"]] == [1, 1]
+    assert first["served"] != second["served"]
+    assert first["control_digest"] != second["control_digest"]
+    # One asset is on the leading origin and goes unnamed; the other must be named.
+    ((named, index),) = grouped["by_asset"].items()
+    assert index == 1
+    assert named in {"a", "b"}
+    summary = caption_origin_summary(grouped)
+    assert "2 distinct over 2 captions MIXED" in summary
+    assert f"aliases={API_MODEL}, meta.ftype=Q8_0" in summary
+    assert "meta.n_params=409252800, owned_by=llamacpp" in summary
+    assert "owned_by=user" in summary
+
+
+def test_the_same_server_probed_twice_is_the_same_origin(open_endpoint):
+    """Origins are only a mixed-bank signal while one server keeps answering as one."""
+    probe = (open_endpoint.base_url, 5, check_cancelled)
+    first, second = captions.check_provider(*probe), captions.check_provider(*probe)
+
+    assert first == second
+    assert len({first, second}) == 1
+
+
+def test_an_endpoint_advertising_another_model_is_refused():
+    server = _CaptionServer(None, served={"id": "some-other-captioner"})
+    try:
+        with sqlite3.connect(":memory:") as connection, pytest.raises(ValueError) as refused:
+            initialize(connection)
+            run(connection, base_url=server.base_url)
+    finally:
+        server.close()
+
+    assert API_MODEL in str(refused.value)
+
+
+def test_a_run_with_no_pictures_at_all_groups_nothing():
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        assert origins_for(connection, (), DESCRIPTION_MODEL) == {}
+
+
+def test_one_captioner_over_two_pictures_is_one_origin_and_names_no_asset(open_endpoint):
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        assert run(connection, asset_ids=("a", "b"), base_url=open_endpoint.base_url) == {}
+        grouped = origins_for(connection, ("a", "b"), DESCRIPTION_MODEL)
+
+    assert grouped["by_asset"] == {}
+    assert [origin["assets"] for origin in grouped["origins"]] == [2]
+    assert "1 distinct over 2 captions [" in caption_origin_summary(grouped)
 
 
 def test_a_refused_probe_names_the_setting_that_carries_the_token(token_gated_endpoint):

@@ -20,6 +20,10 @@ _UPLOAD_MEDIA_TYPES = {
     ".mp4": "video/mp4",
 }
 
+# The device identity the V2 upload stamps on its own assets. Read back by the
+# cleanup below, so the two must stay the same string.
+_UPLOAD_DEVICE_ID = "immich-memories"
+
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +70,8 @@ def build_upload_fields(
 
     file_hash = hashlib.sha256(file_path.name.encode() + str(file_path.stat().st_size).encode())
     identity_fields = {
-        "deviceAssetId": f"immich-memories-{file_hash.hexdigest()[:16]}",
-        "deviceId": "immich-memories",
+        "deviceAssetId": f"{_UPLOAD_DEVICE_ID}-{file_hash.hexdigest()[:16]}",
+        "deviceId": _UPLOAD_DEVICE_ID,
     }
     return identity_fields | common_fields
 
@@ -240,6 +244,13 @@ class AlbumService:
         return {"asset_id": asset_id, "album_id": album_id}
 
 
+def _is_our_upload(asset: dict) -> bool:
+    """Whether this app uploaded the asset, by the identity it stamps at upload."""
+    return asset.get("deviceId") == _UPLOAD_DEVICE_ID and str(
+        asset.get("deviceAssetId", "")
+    ).startswith(f"{_UPLOAD_DEVICE_ID}-")
+
+
 async def supersede_previous_renders(
     client,
     *,
@@ -256,9 +267,12 @@ async def supersede_previous_renders(
     prompted this.
 
     Deliberately narrow. Only assets inside the album we just uploaded to, with
-    exactly this filename, and never the asset we just created. An identically
-    named file the user filed elsewhere is not ours to touch. Immich's trash is
-    recoverable, so this is reversible by the user.
+    exactly this filename, never the asset we just created, and only ones
+    carrying this app's own upload identity. A matching name is not proof of
+    authorship -- a custom `output.filename` can name a video the user shot
+    themselves, and trashing that is not ours to do. V3 uploads carry no device
+    identity, so their older renders are kept until there is durable provenance
+    for them. Immich's trash is recoverable, so this is reversible by the user.
     """
     if not album_id:
         return []
@@ -267,7 +281,9 @@ async def supersede_previous_renders(
     superseded = [
         asset["id"]
         for asset in assets
-        if asset.get("originalFileName") == filename and asset.get("id") != keep_asset_id
+        if asset.get("originalFileName") == filename
+        and asset.get("id") != keep_asset_id
+        and _is_our_upload(asset)
     ]
     if superseded:
         await client.trash_assets(superseded)

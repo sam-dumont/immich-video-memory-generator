@@ -31,46 +31,48 @@ class TestAllowedEmails:
     def test_a_listed_address_is_admitted(self):
         config = _config(allowed_emails=["me@example.com", "you@example.com"])
 
-        assert is_user_allowed("you@example.com", config)
+        assert is_user_allowed("you@example.com", config, email_verified=True)
 
     def test_an_unlisted_address_is_refused(self):
         config = _config(allowed_emails=["me@example.com"])
 
-        assert not is_user_allowed("stranger@example.com", config)
+        assert not is_user_allowed("stranger@example.com", config, email_verified=True)
 
     def test_the_comparison_ignores_case(self):
         """IdPs are inconsistent about case in the email claim."""
         config = _config(allowed_emails=["Me@Example.COM"])
 
-        assert is_user_allowed("me@example.com", config)
+        assert is_user_allowed("me@example.com", config, email_verified=True)
 
 
 class TestAllowedDomains:
     def test_an_address_in_a_listed_domain_is_admitted(self):
         config = _config(allowed_domains=["example.com"])
 
-        assert is_user_allowed("anyone@example.com", config)
+        assert is_user_allowed("anyone@example.com", config, email_verified=True)
 
     def test_another_domain_is_refused(self):
         config = _config(allowed_domains=["example.com"])
 
-        assert not is_user_allowed("anyone@evil.example", config)
+        assert not is_user_allowed("anyone@evil.example", config, email_verified=True)
 
     def test_a_lookalike_suffix_is_refused(self):
         """`endswith("example.com")` would admit this; it must not."""
         config = _config(allowed_domains=["example.com"])
 
-        assert not is_user_allowed("anyone@notexample.com", config)
+        assert not is_user_allowed("anyone@notexample.com", config, email_verified=True)
 
     def test_a_subdomain_is_refused_unless_listed(self):
         config = _config(allowed_domains=["example.com"])
 
-        assert not is_user_allowed("anyone@sub.example.com", config)
+        assert not is_user_allowed("anyone@sub.example.com", config, email_verified=True)
 
     def test_a_leading_at_or_dot_in_the_config_is_tolerated(self):
         """People write it all three ways; none of them should silently fail."""
         for written in ("example.com", "@example.com", ".example.com"):
-            assert is_user_allowed("a@example.com", _config(allowed_domains=[written]))
+            assert is_user_allowed(
+                "a@example.com", _config(allowed_domains=[written]), email_verified=True
+            )
 
 
 class TestEitherListAdmits:
@@ -79,8 +81,8 @@ class TestEitherListAdmits:
             allowed_emails=["contractor@other.example"], allowed_domains=["example.com"]
         )
 
-        assert is_user_allowed("contractor@other.example", config)
-        assert is_user_allowed("staff@example.com", config)
+        assert is_user_allowed("contractor@other.example", config, email_verified=True)
+        assert is_user_allowed("staff@example.com", config, email_verified=True)
 
 
 class TestNoEmailClaim:
@@ -88,10 +90,34 @@ class TestNoEmailClaim:
         """An IdP that omits the claim must not become a way past the list."""
         config = _config(allowed_domains=["example.com"])
 
-        assert not is_user_allowed("", config)
+        assert not is_user_allowed("", config, email_verified=True)
 
     def test_it_is_still_admitted_when_no_list_is_configured(self):
         assert is_user_allowed("", _config())
+
+
+class TestUnverifiedAddress:
+    """The list matches on an address, so the IdP has to vouch for it."""
+
+    def test_a_listed_address_the_idp_has_not_verified_is_refused(self):
+        config = _config(allowed_emails=["owner@example.com"])
+
+        assert not is_user_allowed("owner@example.com", config, email_verified=False)
+
+    def test_a_missing_verification_claim_is_refused(self):
+        config = _config(allowed_domains=["example.com"])
+
+        assert not is_user_allowed("anyone@example.com", config, email_verified=None)
+
+    def test_a_claim_that_is_not_the_standard_boolean_is_refused(self):
+        """`"true"` and `1` are truthy in Python and not what the standard defines."""
+        config = _config(allowed_domains=["example.com"])
+
+        assert not is_user_allowed("anyone@example.com", config, email_verified="true")
+        assert not is_user_allowed("anyone@example.com", config, email_verified=1)
+
+    def test_verification_is_not_required_when_no_list_is_configured(self):
+        assert is_user_allowed("anyone@anywhere.example", _config(), email_verified=False)
 
 
 class TestConfigValidation:

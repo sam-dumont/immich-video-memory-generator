@@ -40,6 +40,9 @@ class StructureJudge(Protocol):
         accepts: Callable[[str], bool] | None = None,
     ) -> str: ...
 
+    def record_failure(self, stage: str, record: Mapping[str, Any]) -> None:
+        """Keep a stage's exhausted recovery beside that stage's recorded calls."""
+
 
 def _check_render_timing(render_timing: EditorialTimingPolicy | None, case: Case) -> None:
     if render_timing is not None and (

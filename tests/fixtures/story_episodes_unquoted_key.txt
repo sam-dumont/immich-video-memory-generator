@@ -1,0 +1,58 @@
+{
+"fragments": [
+{"reading": "M033/1", "episode": "S0017"},
+{"reading": "M034/1", "episode": "S0018"},
+{"reading": "M035/1", "episode": "S0018"},
+{"reading": "M036/1", "episode": "S0018"},
+{"reading": "M037/1", "episode": "S0019"},
+{"reading": "M038/1", "episode": "S0019"},
+{"reading": "M039/1", "episode": "S0019"},
+{"reading": "M040/1", "episode": "S0020"},
+{"reading": "M041/1", "episode": "S0020"},
+{"reading": "M042/1", "episode": "S0020"},
+{"reading": "M043/1", "episode": "S0020"},
+{"reading": "M044/1", "episode": "S0020"},
+{"reading": "M045/1", "episode": "S0021"},
+{"reading": "M046/1", "episode": "S0021"},
+{"reading": "M047/1", "episode": "S0022"},
+{"reading": "M048/1", "episode": "S0022"}
+],
+"new_episodes": [
+{
+"id": "S0017",
+"title": "Evening in Brussels",
+"account": "A dimly lit room with hanging lights and framed pictures suggests a quiet evening indoors in Brussels.",
+"role": "texture"
+},
+{
+"id": "S0018",
+"title": "Road trip from Brussels to Dijon",
+"account": "Starting with a vintage suitcase marked 'OPEN SUNDAY' on a sidewalk, the journey winds through forests and along straight roads toward Dijon, pausing by a stream where a silver SUV rests.",
+"role": "central"
+},
+{
+"id": "S0019",
+"title": "Arrival at Annecy Lake",
+"account": "Reaching Annecy, the view opens to a serene lake with distant mountains and a small island. Evening brings a bright fire burning against the dark sky, marking the start of the stay.",
+"role": "central"
+},
+{
+"id": "S0020",
+title": "Lake activities in Annecy",
+"account": "Morning mist clears to reveal a wooden dock and calm waters. The day includes swimming in the lake, enjoying ice cream among ferns, and watching the sunset paint the sky orange and pink.",
+"role": "central"
+},
+{
+"id": "S0021",
+title": "Hiking Semnoz",
+"account": "A day spent exploring the rugged landscapes of Semnoz, featuring lush green valleys, mist-shrouded peaks, and unexpected grazing buffalo on the hillside.",
+"role": "central"
+},
+{
+"id": "S0022",
+title": "Cheese and solitude in Annecy",
+"account": "Back in Annecy, the focus shifts to local produce with displays of stacked cheese blocks. A lone figure stands on the wooden dock, reflecting the peaceful rhythm of the final days.",
+"role": "supporting"
+}
+]
+}

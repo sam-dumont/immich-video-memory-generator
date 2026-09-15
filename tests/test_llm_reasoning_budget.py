@@ -17,6 +17,7 @@ from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_wire import (
     GROWN_REASONING_HEADROOM_TOKENS,
     REASONING_HEADROOM_TOKENS,
+    THINKING_MIN_MAX_TOKENS,
     LLMIncompleteResponse,
 )
 from immich_memories.config_models_llm import LLMConfig
@@ -250,3 +251,82 @@ async def test_an_unfunded_first_call_that_thought_is_asked_again_with_room():
 
     assert answer == '{"read": true}'
     assert post.call_args_list[1][1]["json"]["max_tokens"] == 4000 + REASONING_HEADROOM_TOKENS
+
+
+def _ollama(**overrides) -> LLMConfig:
+    fields = {
+        "provider": "ollama",
+        "base_url": "http://localhost:11434",
+        "model": "qwen3",
+        "thinking": "disabled",
+    }
+    fields.update(overrides)
+    return LLMConfig(**fields)
+
+
+def _ollama_reply(*, thinking: str = "", done_reason: str = "stop"):
+    # WHY: the Ollama server is the external boundary; what reaches it and how
+    # its answer is read is the whole subject.
+    reply = AsyncMock()
+    reply.status_code = 200
+    body: dict = {"response": '{"ok": true}', "done_reason": done_reason, "eval_count": 120}
+    if thinking:
+        body["thinking"] = thinking
+    reply.json = MagicMock(return_value=body)
+    reply.raise_for_status = lambda: None
+    return reply
+
+
+@pytest.mark.asyncio
+async def test_a_thinking_call_asks_ollama_to_think_and_floors_its_budget():
+    # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
+    with patch("httpx.AsyncClient.post", return_value=_ollama_reply()) as post:
+        await query_llm("judge this cut", _ollama(thinking="high"), max_tokens=120, thinking=True)
+
+    payload = post.call_args[1]["json"]
+    assert payload["think"] is True
+    assert payload["options"]["num_predict"] == THINKING_MIN_MAX_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_a_bulk_ollama_call_is_sent_no_reasoning_switch_at_all():
+    """A model with no thinking mode answers `think` with a 400, so it is never sent."""
+    # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
+    with patch("httpx.AsyncClient.post", return_value=_ollama_reply()) as post:
+        await query_llm("read this sheet", _ollama(), max_tokens=120)
+
+    assert "think" not in post.call_args[1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_an_ollama_reply_that_thought_budgets_for_the_thinking_next_time():
+    # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
+    with patch(
+        "httpx.AsyncClient.post", side_effect=[_ollama_reply(thinking="hmm"), _ollama_reply()]
+    ) as post:
+        await query_llm("first", _ollama(), max_tokens=120)
+        await query_llm("second", _ollama(), max_tokens=120)
+
+    first, second = (call[1]["json"] for call in post.call_args_list)
+    assert first["options"]["num_predict"] == 120
+    assert second["options"]["num_predict"] == 120 + REASONING_HEADROOM_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_a_declared_ollama_endpoint_pays_no_first_starved_call():
+    # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
+    with patch("httpx.AsyncClient.post", return_value=_ollama_reply()) as post:
+        await query_llm("only", _ollama(always_reasons=True), max_tokens=120)
+
+    assert post.call_args[1]["json"]["options"]["num_predict"] == 120 + REASONING_HEADROOM_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_num_predict_wins_over_the_computed_one():
+    """The one lever a user has over an Ollama budget is not silently dropped."""
+    config = _ollama(always_reasons=True, extra_params={"options": {"num_predict": 8000}})
+    # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
+    with patch("httpx.AsyncClient.post", return_value=_ollama_reply()) as post:
+        await query_llm("read this sheet", config, max_tokens=120)
+
+    assert post.call_args[1]["json"]["options"]["num_predict"] == 8000

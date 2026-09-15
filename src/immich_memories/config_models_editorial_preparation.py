@@ -25,6 +25,11 @@ class EditorialPreparationConfig(BaseModel):
 
     tier: PreparationTier = "full"
     caption_base_url: str = "http://localhost:8092/v1"
+    caption_artifact_id: str = Field(
+        default="",
+        max_length=512,
+        description="Declared caption model artifact/revision, recorded for new rows; does not re-caption existing rows",
+    )
     caption_api_key: str = Field(
         default="",
         description="Bearer token for a caption server that wants one; never taken from llm",

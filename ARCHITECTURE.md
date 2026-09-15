@@ -146,6 +146,9 @@ src/immich_memories/
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
+│   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
+│   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
+│   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
 │   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
@@ -169,6 +172,7 @@ src/immich_memories/
 │   ├── llm_wire.py             # The two request dialects, what a reply says, and the reasoning budget
 │   ├── llm_batch.py            # A stage's independent prompts as one provider batch (half price, async): the two wire dialects and their transports
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
+│   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
 │
@@ -374,6 +378,7 @@ src/immich_memories/
 │   └── models.py               # Scheduling data models
 │
 ├── store/                      # The annotation store: every banked fact and reading
+│   ├── caption_provenance.py   # What served each caption (served /models row + control digest), grouped
 │                               # (annotations.sqlite; see docs/research for the design)
 │
 ├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads
@@ -410,6 +415,7 @@ src/immich_memories/
 ├── operations/                 # Public lifecycle contract + read-only ops reports
 │   ├── auto_output.py           # Private complete child transcripts, addressed by automation attempt
 │   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
+│   ├── caption_origins.py      # One picture's caption origin, and the run's distinct-origin line
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
 │
@@ -448,6 +454,24 @@ src/immich_memories/
 ```
 
 ## Key Classes & Their Relationships
+
+### Independent reader work
+
+`editorial_reader_concurrency.py` bounds model-reader jobs and copies the run's
+cancellation and metrics context into each worker. Each job owns a text judge
+and audit directory; completed call records are merged in source order.
+`editorial_block_votes.py` commits vote-bank updates on the caller thread.
+`editorial_story_planner.py` overlaps event inventories, retaining sequential
+pages within each event. Prompts and judgment identities do not include the
+concurrency setting.
+
+How many jobs overlap comes from `llm_providers.reader_concurrency`, which reads
+the endpoint when `llm.reader_concurrency` is unset: one job for a model on this
+machine or this private network, four for a hosted one. `llm_single_flight.py`
+keeps the bank's deduplication under concurrency, so two jobs carrying the same
+judgment key cannot both pay for it. `provider_failure.THROTTLE` is the shared
+pause a 429 puts on every reader at once, and `retry_wait` spreads each caller's
+own wait so they do not retry in lockstep.
 
 ### Pipeline Flow (story-first)
 
@@ -514,6 +538,20 @@ domain across the `config_models*.py` modules (resources, analysis, render,
 soundtrack, automation, llm, auth, server), and `Config` in `config_loader.py`
 assembles them into one flat settings object. A file naming a key of the removed
 clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it.
+
+## Render worker (S1)
+
+`services/render-worker/immich_memories_render_worker/` owns the authenticated
+versioned job API. `admission.py` names a job after its cut (`memory_key` plus
+the binding digest) and refuses an envelope that drifted from the binding it
+carries, before any byte is fetched. `jobs.py` serializes GPU work, validates
+artifacts, enforces the job deadline and sweeps scratch at boot; `store.py`
+keeps atomic job transitions behind a repository contract ready for a future
+PostgreSQL implementation, with a per-job JSON record so a restart can say a
+render died with its process. `native.py` and `native_plan.py` adapt selected
+cuts to the existing generator: a missing NVENC is a recorded degradation, a
+changed selection is a refusal. The app does not call this service yet;
+orchestration and deployment belong to later slices of #931.
 
 ## Conventions
 

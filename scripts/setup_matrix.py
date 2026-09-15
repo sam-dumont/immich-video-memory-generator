@@ -41,10 +41,12 @@ from setup_matrix_capture import (  # noqa: E402
     CUT_FROM_LOG,
     RunSummary,
     anonymize,
+    apply_exact_usage,
     downloaded_asset_ids,
     film_clip_count,
     latest_attempt,
     parse_cache_primed,
+    parse_caption_origins,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_encoder,
@@ -591,6 +593,7 @@ def _apply_prepared(record: dict, text: str) -> None:
         "pictures": pictures,
         "seconds_per_picture": per_picture,
         "producers": parse_prepared_producers(text),
+        "caption_origins": parse_caption_origins(text),
     }
 
 
@@ -864,6 +867,7 @@ def _apply_attempt(record: dict, runs_dir: Path, memory_key: str, cell_dir: Path
     record["losses"] = read_losses(attempt)
     record["contract"] = read_contract_health(attempt, _generate_output(cell_dir))
     record.setdefault("hosted_usage", {})["images_sent"] = read_images_sent(attempt)
+    apply_exact_usage(record["hosted_usage"], attempt)
 
 
 # Two numbers only the process that ran the cell could have counted: the Mac lane

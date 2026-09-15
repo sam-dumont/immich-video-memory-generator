@@ -11,14 +11,20 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from setup_matrix_capture import (  # noqa: E402
+    BYTES_PER_PROMPT_TOKEN,
+    HostedUsage,
     anonymize,
+    apply_exact_usage,
     clock_seconds,
     downloaded_asset_ids,
     film_clip_count,
     parse_cache_primed,
+    parse_caption_origins,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_encoder,
@@ -33,9 +39,14 @@ from setup_matrix_capture import (  # noqa: E402
     prepare_phases,
     read_contract_health,
     read_images_sent,
+    reconstruct_usage,
 )
 
 from immich_memories.analysis.llm_metrics import LLMCounters  # noqa: E402
+from immich_memories.analysis.llm_usage_record import (  # noqa: E402
+    USAGE_FILE,
+    write_llm_usage,
+)
 from immich_memories.cli._generate_display import saved_path_line  # noqa: E402
 from immich_memories.cli._run_summary import render_run_summary  # noqa: E402
 
@@ -113,6 +124,277 @@ def test_small_token_counts_are_reported_exactly() -> None:
     usage = parse_run_summary(text).usage
     assert (usage.tokens_in, usage.tokens_out) == (880, 120)
     assert usage.counted_exactly is True
+
+
+def test_the_runs_own_usage_record_replaces_the_rounded_line(tmp_path: Path) -> None:
+    """`115.6k` is eight tokens away from the truth, and the table publishes money."""
+    counters = LLMCounters(
+        calls=93,
+        cache_hits=1,
+        prompt_tokens=115_592,
+        completion_tokens=15_788,
+        reasoning_tokens=13_469,
+        wall_seconds=325.649,
+    )
+    text = render_run_summary(
+        total_seconds=537.0,
+        analysis_seconds=369.0,
+        generation_seconds=168.0,
+        eligible=130,
+        planned=15,
+        counters=counters,
+    )
+    usage = parse_run_summary(text).usage.as_dict()
+    assert usage["tokens_in"] == 115_600  # what the line said, rounded
+    write_llm_usage(tmp_path, counters)
+
+    apply_exact_usage(usage, tmp_path)
+
+    assert usage["tokens_in"] == 115_592
+    assert usage["tokens_out"] == 15_788
+    assert usage["reasoning_tokens"] == 13_469
+    assert usage["calls"] == 93
+    assert usage["cache_hits"] == 1
+    assert usage["wall_seconds"] == 325.649
+    assert usage["counted_exactly"] is True
+    assert usage["usage_source"] == "record"
+
+
+def test_a_cell_whose_run_left_no_record_keeps_what_the_line_said(tmp_path: Path) -> None:
+    """Older runs and remote cells whose copy-out missed the file still report."""
+    text = render_run_summary(
+        total_seconds=600.0,
+        analysis_seconds=560.0,
+        generation_seconds=40.0,
+        eligible=200,
+        planned=20,
+        counters=LLMCounters(calls=42, prompt_tokens=125_400, completion_tokens=8_300),
+    )
+    usage = parse_run_summary(text).usage.as_dict()
+    assert not (tmp_path / USAGE_FILE).exists()
+
+    apply_exact_usage(usage, tmp_path)
+
+    assert usage["tokens_in"] == 125_400
+    assert usage["counted_exactly"] is False
+    assert usage["usage_source"] == "log"
+
+
+def test_a_cell_that_never_asked_a_model_reports_no_source_at_all(tmp_path: Path) -> None:
+    usage = HostedUsage().as_dict()
+
+    apply_exact_usage(usage, tmp_path)
+
+    assert usage["usage_source"] is None
+    assert usage["calls"] is None
+
+
+def _finished_attempt(
+    attempt: Path, *, planner: dict, pre: list[tuple[str, int, int, int]]
+) -> None:
+    """An attempt directory shaped like one a run under the old counting left behind.
+
+    `planner` is the `llm_metrics` block `plan_structure` wrote, `pre` is one
+    tuple per pre-planner call: stage, request bytes, completion, reasoning.
+    """
+    attempt.mkdir(parents=True, exist_ok=True)
+    (attempt / "plan.private.json").write_text(
+        json.dumps(
+            {
+                "llm_metrics": planner,
+                # A subset of the planner block, not an addition to it: the facts
+                # are read inside the scope that wrote llm_metrics.
+                "picture_facts_metrics": {
+                    "inference_calls": 32,
+                    "images_sent": 32,
+                    "prompt_tokens": 29_284,
+                    "completion_tokens": 3_084,
+                },
+            }
+        )
+    )
+    calls = attempt / "pre-planner-calls"
+    calls.mkdir(exist_ok=True)
+    for index, (stage, request_bytes, completion, reasoning) in enumerate(pre):
+        name = f"{stage}-{index:032x}"
+        (calls / f"{name}.request.private.txt").write_text("x" * request_bytes)
+        reply = (
+            None
+            if completion is None
+            else {
+                "finish_reason": "stop",
+                "completion_tokens": completion,
+                "reasoning_tokens": reasoning,
+            }
+        )
+        (calls / f"{name}.outcome.private.json").write_text(
+            json.dumps(
+                {
+                    "stage": stage,
+                    "status": "complete_transport",
+                    "reply": reply,
+                    "started_at": f"2026-09-14T15:{index:02d}:00+00:00",
+                    "finished_at": f"2026-09-14T15:{index:02d}:10+00:00",
+                }
+            )
+        )
+
+
+_GLM_PLANNER = {
+    "llm_calls": 90,
+    "llm_cache_hits": 1,
+    "llm_prompt_tokens": 115_592,
+    "llm_cached_prompt_tokens": 11_904,
+    "llm_completion_tokens": 15_788,
+    "llm_truncated": 0,
+    "llm_wall_seconds": 325.649,
+}
+# The three pre-planner calls of the glm demo cell: two episode reads and the
+# period account, with the request sizes and reply tokens they recorded.
+_GLM_PRE = [
+    ("episodes", 17_428, 1_814, 279),
+    ("episodes", 13_601, 1_371, 233),
+    ("period", 4_624, 331, 1),
+]
+
+
+def test_a_run_from_before_the_usage_record_is_reconstructed_from_its_artifacts(
+    tmp_path: Path,
+) -> None:
+    """Five expensive cells finished under the broken counting. Nobody is re-paying.
+
+    The planner block held the 90 calls selection made and the pre-planner
+    outcomes hold the 3 that preparation made, which is every one of the 93
+    POSTs that cell's log recorded.
+    """
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+
+    usage = reconstruct_usage(attempt)
+
+    assert usage is not None
+    assert usage.calls == 93
+    assert usage.cache_hits == 1
+    assert usage.tokens_in == 115_592  # the planner's own, exactly as recorded
+    assert usage.tokens_out == 15_788 + 1_814 + 1_371 + 331
+    assert usage.reasoning_tokens == 279 + 233 + 1
+    assert usage.usage_source == "reconstructed"
+    assert usage.counted_exactly is False
+
+
+def test_the_guessed_half_is_kept_out_of_the_counted_half(tmp_path: Path) -> None:
+    """A pre-planner outcome records no prompt tokens, so that part is arithmetic.
+
+    It goes in a field of its own. Folding an estimate into `tokens_in` would
+    make a number the report prints with a footnote look like a measured one.
+    """
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+
+    usage = reconstruct_usage(attempt)
+
+    assert usage is not None
+    assert usage.tokens_in == 115_592
+    assert usage.estimated_prompt_tokens == round(
+        (17_428 + 13_601 + 4_624) / BYTES_PER_PROMPT_TOKEN
+    )
+
+
+def test_a_call_that_never_came_back_is_not_billed(tmp_path: Path) -> None:
+    """The deepseek cell raised on one episode read; its log shows 105 POSTs, not 106."""
+    attempt = tmp_path / "attempt"
+    _finished_attempt(
+        attempt,
+        planner=_GLM_PLANNER | {"llm_calls": 97},
+        pre=[*_GLM_PRE, ("episodes", 13_601, None, None)],
+    )
+
+    usage = reconstruct_usage(attempt)
+
+    assert usage is not None
+    assert usage.calls == 100  # 97 planned + the 3 that answered, not the 4th
+
+
+def test_picture_facts_are_not_added_to_the_planner_block(tmp_path: Path) -> None:
+    """They are inside it. Adding them bills the glm demo cell for 125 calls, not 93.
+
+    `PictureFactsProvider` reads inside the scope `plan_structure` opens, so
+    `picture_facts_metrics` is a view of part of `llm_metrics`, not a second
+    bill. `images_sent` is the one number it adds, and `read_images_sent`
+    already carries that.
+    """
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+
+    usage = reconstruct_usage(attempt)
+
+    assert usage is not None
+    assert usage.calls == 93
+    assert usage.tokens_in == 115_592
+
+
+def test_a_run_that_left_its_own_record_is_never_reconstructed(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+    write_llm_usage(attempt, LLMCounters(calls=93, prompt_tokens=1))
+
+    assert reconstruct_usage(attempt) is None
+
+
+def test_the_reconstruction_is_preferred_to_the_rounded_line(tmp_path: Path) -> None:
+    """Precedence: the run's own record, then the reconstruction, then the log."""
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+    text = render_run_summary(
+        total_seconds=537.0,
+        analysis_seconds=369.0,
+        generation_seconds=168.0,
+        eligible=130,
+        planned=15,
+        counters=LLMCounters(calls=42, prompt_tokens=125_400, completion_tokens=8_300),
+    )
+    usage = parse_run_summary(text).usage.as_dict()
+
+    apply_exact_usage(usage, attempt)
+
+    assert usage["calls"] == 93
+    assert usage["usage_source"] == "reconstructed"
+    assert usage["counted_exactly"] is False
+
+
+def test_the_clock_covers_the_preparation_reads_as_well(tmp_path: Path) -> None:
+    """The planner block times the planner. The episode reads took 40 s on top of it.
+
+    Leaving them out reports the glm demo cell at 5m 26s against the 6m 08s its
+    own summary printed for selection.
+    """
+    attempt = tmp_path / "attempt"
+    _finished_attempt(attempt, planner=_GLM_PLANNER, pre=_GLM_PRE)
+
+    usage = reconstruct_usage(attempt)
+
+    assert usage is not None
+    assert usage.wall_seconds == pytest.approx(325.649 + 30.0)
+
+
+def test_a_rules_cell_reconstructs_nothing_rather_than_a_bill_of_zero(tmp_path: Path) -> None:
+    """`provider_metrics` persists measured zeroes, and a rules cell has all of them.
+
+    "Never asked a model" has to keep reading differently from "asked and it was
+    free", or every rules row joins the cost table with a price of nothing.
+    """
+    attempt = tmp_path / "attempt"
+    _finished_attempt(
+        attempt,
+        planner={"llm_calls": 0, "llm_cache_hits": 0, "llm_prompt_tokens": 0},
+        pre=[],
+    )
+
+    assert reconstruct_usage(attempt) is None
+
+
+def test_an_attempt_with_no_plan_at_all_reconstructs_nothing(tmp_path: Path) -> None:
+    assert reconstruct_usage(tmp_path) is None
 
 
 def test_the_saved_line_is_the_only_place_a_run_names_its_file(tmp_path: Path) -> None:
@@ -490,3 +772,33 @@ def test_the_film_says_how_many_clips_it_was_made_of() -> None:
     """The count is the film's own; the decoder lines name photos by id and videos by a hash."""
     assert film_clip_count(_download_log(["garden-cake"], clips=14)) == 14
     assert film_clip_count("a log from a run that never assembled anything") is None
+
+
+def test_the_captioners_behind_a_cell_are_read_off_the_line_prepare_prints() -> None:
+    """A matrix row compares readers given the same facts; two captioners break that."""
+    from immich_memories.operations.caption_origins import caption_origin_summary
+
+    provenance = {
+        "origins": [
+            {
+                "model_id": "smolvlm2-500m-base-public",
+                "endpoint": "http://localhost:8092/v1",
+                "served": {"owned_by": "llamacpp", "meta.ftype": "Q8_0"},
+                "control_digest": "61df0a0c11b612f4",
+                "assets": 120,
+            },
+            {"status": "unknown", "assets": 13},
+        ],
+        "by_asset": {},
+    }
+    log = f"some other line\n{caption_origin_summary(provenance)}\nand another\n"
+
+    read = parse_caption_origins(log)
+    assert read["distinct"] == 2
+    assert read["captions"] == 133
+    assert read["mixed"] is True
+    assert read["labels"][-1] == "unknown x13"
+
+
+def test_a_cell_that_captioned_nothing_reports_no_captioners() -> None:
+    assert parse_caption_origins("2 pictures prepared at 0.1 s/picture.") is None

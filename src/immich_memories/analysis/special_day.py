@@ -58,10 +58,10 @@ logger = logging.getLogger(__name__)
 MIN_ACTIVE_HOURS = 6
 MIN_PHOTOS = 20
 
+# The lines are last so every day asked this way shares the whole preamble byte for
+# byte, which is what any prefix-reusing server needs to skip re-reading it (#981).
 _PROMPT = """One day from someone's photo library, sampled across the day, with the
-pictures that go with these lines.
-
-{lines}
+pictures that go with the lines at the end of this message.
 
 What was this day? Take your time with it: the hours it ran, where it was,
 who was there, what the pictures show. Coordinates are worth reading — a small
@@ -85,7 +85,9 @@ Answer with STRICT JSON only, no prose:
   "title": "<a few words, or empty>",
   "subtitle": "<one line, or empty>",
   "what": "<a few words, or empty>",
-  "window": ["HH:MM", "HH:MM"] or null}}"""
+  "window": ["HH:MM", "HH:MM"] or null}}
+
+{lines}"""
 
 
 def candidate_days(
