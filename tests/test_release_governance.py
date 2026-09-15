@@ -1,6 +1,7 @@
 """Release publication requires deliberate dispatch and a passing image smoke test."""
 
 import os
+import shutil
 import subprocess
 from graphlib import TopologicalSorter
 from pathlib import Path
@@ -124,6 +125,17 @@ def test_breaking_squash_messages_produce_a_major_release(tmp_path, message):
         ("commit", "--allow-empty", "-qm", message),
     ):
         subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
+    # WHY: v1.2.3 stands for a published release here; the fake gh answers the
+    # release-existence question the analyze step asks GitHub in production.
+    (tmp_path / "gh").write_text("#!/bin/sh\nexit 0\n")
+    (tmp_path / "gh").chmod(0o755)
+    env = {**env, "PATH": f"{tmp_path}:{env['PATH']}"}
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(
+        Path(__file__).parents[1] / "scripts" / "release_analyze.py",
+        scripts / "release_analyze.py",
+    )
     analyze = next(
         step
         for step in release_workflow()["jobs"]["analyze"]["steps"]
@@ -144,3 +156,51 @@ def test_breaking_squash_messages_produce_a_major_release(tmp_path, message):
         text=True,
     )
     assert "next_version=2.0.0" in output.read_text().splitlines()
+
+
+def test_an_interrupted_release_is_resumed_with_the_same_version(tmp_path):
+    """Tag pushed, GitHub Release never created: the next run republishes it (#1010)."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    for args in (
+        ("init", "-q"),
+        ("config", "user.name", "Release test"),
+        ("config", "user.email", "release@example.test"),
+        ("commit", "--allow-empty", "-qm", "fix: released"),
+        ("tag", "v1.2.3"),
+        ("commit", "--allow-empty", "-qm", "fix: released"),
+        ("tag", "-a", "v1.2.4", "-m", "Release v1.2.4"),
+    ):
+        subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
+    # WHY: v1.2.4 exists as a tag but its publication failed before the GitHub
+    # Release was created, so the fake gh reports no release for it.
+    (tmp_path / "gh").write_text("#!/bin/sh\nexit 1\n")
+    (tmp_path / "gh").chmod(0o755)
+    env = {**env, "PATH": f"{tmp_path}:{env['PATH']}"}
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(
+        Path(__file__).parents[1] / "scripts" / "release_analyze.py",
+        scripts / "release_analyze.py",
+    )
+    analyze = next(
+        step
+        for step in release_workflow()["jobs"]["analyze"]["steps"]
+        if step.get("id") == "analyze"
+    )
+    output = tmp_path / "outputs"
+    subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", analyze["run"]],
+        cwd=tmp_path,
+        env={
+            **env,
+            "GITHUB_OUTPUT": str(output),
+            "FORCE_VERSION": "auto",
+            "INFERENCE_ONLY": "false",
+        },
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = output.read_text().splitlines()
+    assert "should_release=true" in lines
+    assert "next_version=1.2.4" in lines, "the stranded version, not an advance past it"

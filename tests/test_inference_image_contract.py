@@ -249,6 +249,7 @@ def test_compose_pulls_the_inference_image_the_release_actually_publishes() -> N
 
 def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
     import os
+    import shutil
     import subprocess
 
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/release.yml").read_text())
@@ -256,6 +257,10 @@ def test_inference_only_analysis_cannot_create_a_release(tmp_path, monkeypatch):
     fake_git = tmp_path / "git"
     fake_git.write_text("#!/bin/sh\nexit 0\n")
     fake_git.chmod(0o755)
+    # The analyze step runs the tracked script; the temp checkout gets a copy.
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(REPO_ROOT / "scripts" / "release_analyze.py", scripts / "release_analyze.py")
     output = tmp_path / "outputs"
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("INFERENCE_ONLY", "true")
