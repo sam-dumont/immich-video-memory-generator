@@ -30,6 +30,8 @@ def check_render_worker(config: Config) -> CheckResult:
         f"Titles: {health.get('titles', 'unknown')}; "
         f"encoders: {', '.join(health.get('encoders') or []) or 'software only'}"
     )
+    if settings.worker_base_url.startswith("http://"):
+        details = f"Cleartext HTTP transport (allow_insecure_http); {details}"
     return CheckResult(
         "Render worker",
         CheckStatus.OK if health.get("accelerated") else CheckStatus.WARNING,

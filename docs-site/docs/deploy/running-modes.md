@@ -354,7 +354,9 @@ The experimental [render worker](https://github.com/sam-dumont/immich-video-memo
 can render certified stitched Live clips through its authenticated job API. A real NVIDIA T1000
 check passed with CUDA titles, NVENC, the selected Live duration and retained source audio.
 Set [`render.worker_base_url`](../reference/config-reference.md#render-worker) and the shared
-worker token to use it from the CLI or web UI. Selection stays on the app; the worker downloads
+worker token to use it from the CLI or web UI. The handoff request carries the Immich API key, so
+a non-loopback `http://` worker URL is refused until `render.allow_insecure_http: true` says the
+network is trusted; HTTPS needs no opt-in. Selection stays on the app; the worker downloads
 the selected sources and returns the base film. Music and upload finish on the app. The setup
 timings above continue to describe rendering on the app's own host; NAS worker timings are separate.
 
