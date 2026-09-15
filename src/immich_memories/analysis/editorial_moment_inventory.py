@@ -177,17 +177,10 @@ def inventory_event(
             }
             for m in moments.values()
         ]
+        # Every source block is last and the instructions above them are byte-identical for
+        # the run, so a server that reuses a prefix reads them once (#981).
         prompt = f"""Inventory distinct depicted moments in a personal library. {INVENTORY_VERSION}.
 This is source reading, before any film duration or picture allocation.
-
-EPISODE CONTEXT (inferred; the source facts can correct it)
-{context}
-
-MOMENTS ALREADY READ
-{json.dumps(existing, ensure_ascii=False)}
-
-NEW SOURCES
-{json.dumps(page, ensure_ascii=False)}
 
 Account for EVERY new source exactly once. Group interchangeable pictures of the same
 depicted content together. Choose the strongest representative; the others remain alternatives.
@@ -204,6 +197,15 @@ sources (NEW source IDs belonging to it), primary (the best source in the group,
 primary), and content (at most 60 words describing the shared observable content).
 An existing moment may be updated once per response. Prefer a favourite among equivalent views.
 JSON only: {{"moments":[{{"same_as":null,"sources":["U0001"],"primary":"U0001","content":"Observed content"}}]}}
+
+EPISODE CONTEXT (inferred; the source facts can correct it)
+{context}
+
+MOMENTS ALREADY READ
+{json.dumps(existing, ensure_ascii=False)}
+
+NEW SOURCES
+{json.dumps(page, ensure_ascii=False)}
 """
         try:
             groups = read_page_answer(

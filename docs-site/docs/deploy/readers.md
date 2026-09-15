@@ -102,6 +102,13 @@ The provider's own switch is merged in even when you set your own `thinking_para
 `no_thinking_params`, because the two are not the same request field. A `thinking` key you write
 yourself wins over the preset's.
 
+Ollama has neither chat dialect: its switch is a bare top-level `think`, and it bills the thinking
+inside `num_predict` the way the OpenAI dialects bill it inside `max_tokens`. So a load-bearing call
+gets `think: true`, a bulk call is sent no switch at all (a model with no thinking mode answers
+`think` with a 400), and a server that reasons unasked is learned from the first reply carrying a
+thinking block: every later call then gets the same 16,384 tokens of room, added to `num_predict`.
+An `extra_params.options.num_predict` you set yourself wins over that computed budget.
+
 A level is a request, not a promise. z.ai's `.../api/anthropic` route answers HTTP 200 to every
 setting, `disabled` and levels it has never heard of included, and then reasons on its own terms.
 Measured on 2026-09-14 with `glm-5.3-flash`, a caption-shaped ask at the readers' 140-token cap spent

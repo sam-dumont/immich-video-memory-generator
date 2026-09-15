@@ -46,6 +46,7 @@ from setup_matrix_capture import (  # noqa: E402
     film_clip_count,
     latest_attempt,
     parse_cache_primed,
+    parse_caption_origins,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_encoder,
@@ -592,6 +593,7 @@ def _apply_prepared(record: dict, text: str) -> None:
         "pictures": pictures,
         "seconds_per_picture": per_picture,
         "producers": parse_prepared_producers(text),
+        "caption_origins": parse_caption_origins(text),
     }
 
 

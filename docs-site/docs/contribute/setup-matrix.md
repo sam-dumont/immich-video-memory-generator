@@ -51,8 +51,8 @@ overlap column is a straight comparison against the reference cut.
 
 | Cell | Reader | API model id | Context | Per 1M in | Per 1M out | Weights |
 |---|---|---|---|---|---|---|
-| `mac-local` | oMLX, resident | what the operator's config names | | | | on the desk |
-| `mac-local-alt-<model>` | oMLX, resident | each id in `MATRIX_MAC_ALT_MODELS` | | | | on the desk |
+| `mac-local` | oMLX, resident | what the operator's config names | whatever the local server is started with | nothing: not sold by the token | nothing: not sold by the token | on the desk |
+| `mac-local-alt-<model>` | oMLX, resident | each id in `MATRIX_MAC_ALT_MODELS` | whatever the local server is started with | nothing: not sold by the token | nothing: not sold by the token | on the desk |
 | `mac-hosted-melious-gemma-4-31b` | Melious | `gemma-4-31b` | 256K | EUR 0.10 | EUR 0.30 | Apache 2.0 |
 | `mac-hosted-melious-glm-5.3-flash` | Melious | `glm-5.3-flash` | 1M | EUR 0.10 | EUR 0.40 | MIT |
 | `mac-hosted-melious-deepseek-v4.1-flash` | Melious | `deepseek-v4.1-flash` | 1M | EUR 0.20 | EUR 1.00 | MIT |

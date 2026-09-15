@@ -63,6 +63,14 @@ _PREPARE_PICTURES = re.compile(r"([\d,]+) pictures prepared at ([\d.]+) s/pictur
 # The same line, as the end of one `prepare` invocation rather than as numbers.
 _PREPARE_END = re.compile(r"[\d,]+ pictures prepared at [\d.]+ s/picture\.")
 
+# What captioned this cell's pictures. A matrix row compares readers on the
+# assumption that both were handed the same facts, and a bank filled by two
+# captioners breaks that assumption silently — so the count travels with the
+# producers rather than staying in the log nobody diffs.
+_CAPTION_ORIGINS = re.compile(
+    r"caption origins: (\d+) distinct over (\d+) captions( MIXED)? \[(.*)\]"
+)
+
 # What drew the title screens. `titles/kernels.init_kernels` prints one of these
 # two lines once per process, and the titles are the phase a GPU helps most.
 _TITLE_BACKEND = re.compile(r"Title kernels: \S+ \S+ on the (\S+) backend")
@@ -299,6 +307,24 @@ def parse_prepared_producers(text: str) -> list[dict]:
         }
         for producer, pending, rate, share, hours, minutes, seconds in _PREPARE_ROW.findall(text)
     ]
+
+
+def parse_caption_origins(text: str) -> dict | None:
+    """How many distinct captioners stand behind this cell's captions, and which.
+
+    `prepare` prints one line per run, so a cell that ran it twice reports the
+    last word on the bank rather than the cold pass's view of it.
+    """
+    matches = _CAPTION_ORIGINS.findall(text)
+    if not matches:
+        return None
+    distinct, captions, mixed, labels = matches[-1]
+    return {
+        "distinct": int(distinct),
+        "captions": int(captions),
+        "mixed": bool(mixed),
+        "labels": [label.strip() for label in labels.split("; ") if label.strip()],
+    }
 
 
 def parse_prepared_pictures(text: str) -> tuple[int | None, float | None]:

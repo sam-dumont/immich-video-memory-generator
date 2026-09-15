@@ -218,7 +218,7 @@ class TestThinkingMode:
         assert "chat_template_kwargs" not in mock_post.call_args[1]["json"]
 
     @pytest.mark.asyncio
-    async def test_ollama_path_ignores_thinking(self):
+    async def test_ollama_gets_its_own_thinking_switch_not_a_chat_dialect(self):
         from immich_memories.analysis.llm_query import query_llm
 
         config = LLMConfig(
@@ -233,7 +233,9 @@ class TestThinkingMode:
         with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
             await query_llm("Judge this cut", config, thinking=True)
 
-        assert "chat_template_kwargs" not in mock_post.call_args[1]["json"]
+        payload = mock_post.call_args[1]["json"]
+        assert payload["think"] is True
+        assert "chat_template_kwargs" not in payload
 
     @pytest.mark.asyncio
     async def test_thinking_floors_the_token_budget(self):

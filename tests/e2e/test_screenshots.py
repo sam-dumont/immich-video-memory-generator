@@ -22,7 +22,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.conftest import set_theme
 from tests.e2e.fake_editorial import STAGES
 from tests.e2e.fake_library import THESIS, summary_line
-from tests.e2e.redaction import assert_no_address, redact_page
+from tests.e2e.redaction import assert_no_real_address, redact_page
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = [pytest.mark.e2e, pytest.mark.visual]
@@ -49,7 +49,7 @@ def _save(page: Page, directory: Path, name: str) -> None:
     # WHY: the hermetic launch writes under a pytest temp root that carries the
     # developer's user name in its path; the redaction rewrites those lines.
     redact_page(page)
-    assert_no_address(page)
+    assert_no_real_address(page)
     page.wait_for_timeout(300)
     page.screenshot(path=str(directory / f"{name}.png"))
 

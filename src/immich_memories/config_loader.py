@@ -422,19 +422,15 @@ def _arm_log_redaction(config: Config) -> None:
 
 
 def _llm_key_from_env(provider: str) -> str | None:
-    """The LLM key the environment holds, the configured host's own name first.
+    """Read the configured provider's own alias, never another host's key.
 
-    Both names feed one field, so which wins has to be decided rather than
-    left to whichever is read last: a box with keys for two providers in its
-    environment sends the one belonging to the provider it is pointed at.
+    Falling back to the other name put an unrelated credential in the request
+    headers of whichever endpoint was selected, overriding a key the operator
+    had configured explicitly.
     """
     messages_api = provider in ("anthropic", "zai")
-    names = (
-        ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
-        if messages_api
-        else ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
-    )
-    return next((value for name in names if (value := os.environ.get(name))), None)
+    name = "ANTHROPIC_API_KEY" if messages_api else "OPENAI_API_KEY"
+    return os.environ.get(name) or None
 
 
 def _apply_env_overrides(config: Config) -> None:

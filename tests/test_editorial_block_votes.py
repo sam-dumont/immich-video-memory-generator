@@ -164,9 +164,10 @@ def test_worthiness_answer_instructions_do_not_nominate_real_or_foreign_choices(
     )
     assert len(judge.calls) == 2
     for _, prompt in judge.calls:
-        instructions = prompt.rsplit("\n\n", 1)[1]
+        # The answer shape now sits above the happenings, so find it by its own words
+        # rather than by its position in the prompt.
+        instructions = next(block for block in prompt.split("\n\n") if "empty mapping" in block)
         assert not re.search(r"F\d+", instructions), (
             "A format example must not suggest any candidates"
         )
         assert set(re.findall(r"^(F\d+):", prompt, re.MULTILINE)) == set(labels)
-        assert "empty mapping" in instructions

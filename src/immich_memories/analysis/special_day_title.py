@@ -132,19 +132,21 @@ def retitle_prompt(lines: str, *, rejected: str, assets: list) -> str:
     return _RETITLE_PROMPT.format(lines=lines, rejected=rejected, unplaced=unplaced)
 
 
+# The day's lines and the rejected title are last, so the instruction above them is one
+# byte-identical prefix across every retitle (#981).
 _RETITLE_PROMPT = """The same day again, one line per picture, in the order they were taken.
 
-{lines}
+Write another title for it. A first one was written and put aside because it claims
+something the lines do not show. Every specific in the new one — a place, a distance, a
+count, a name — comes from those lines: write what they show, as concretely as they show
+it, and nothing more. Not the date and not a name on its own; both are already on the card.
 
-A title was written for it and put aside: "{rejected}" claims something the
-lines above do not show.
-
-Write another one. Every specific in it — a place, a distance, a count, a name —
-comes from those lines: write what they show, as concretely as they show it, and
-nothing more. Not the date and not a name on its own; both are already on the card.
-{unplaced}
 Answer with STRICT JSON only, no prose:
-{{"title": "<a few words>"}}"""
+{{"title": "<a few words>"}}
+{unplaced}
+PUT ASIDE: "{rejected}"
+
+{lines}"""
 
 
 # A title is a few words; the day's description is a sentence. The model writes

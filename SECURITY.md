@@ -34,8 +34,11 @@ the vulnerability.
 - Authentication is **off by default**; the container listens on `0.0.0.0:8080`. Enable
   [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
   before exposing the port beyond localhost, and put a TLS reverse proxy in front.
-- The Immich API key only needs read access plus, optionally, upload/album scopes; the app
-  never deletes or edits existing assets.
+- Read access is enough to generate a local video. Upload-back needs upload/album scopes.
+  Cleanup can also move an older generated copy to Immich's trash when the album, filename
+  and this app's own upload identity all match; it requires delete permission and never
+  hard-deletes. Anything without that upload identity is left alone, unmarked Immich v3
+  uploads included.
 - What leaves your network (geocoding, map tiles, LLM, music, notifications) is listed on the
   [network & privacy page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/network-and-privacy).
 - CI runs five security scans on every change: Bandit, Semgrep, pip-audit, Gitleaks and Hadolint.

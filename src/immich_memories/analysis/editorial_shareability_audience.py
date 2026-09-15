@@ -1,5 +1,9 @@
 """What the audience reader is asked, and how its answers are read.
 
+The captions are the last thing on the wire in both prompts: everything above them is
+byte-identical per variant, so a server that reuses a prefix reads the vocabulary and the
+policy once rather than once per carrier (#981).
+
 The vocabulary below is owner-defined depicted content, not an audience decision: the reader
 only names content and per-person coverage, and :mod:`editorial_shareability` maps those
 answers onto ``share`` / ``family_only`` / ``do_not_show``. Detector activation decides which
@@ -59,10 +63,10 @@ Graphic medical content means the procedure or open wound itself is depicted. Or
 
 Any matching picture makes its finding apply to this group. If several match, choose the strongest supported category: sexual_content, adult_changing, graphic_medical_procedure, or identifying_record before any other category. Ordinary newborn care, breastfeeding, a baby's bath or diaper change, and a shirtless baby remain ordinary family content; they do not establish sexual content or adult changing. Use what the captions describe; do not invent a possible activity to explain the scene.
 
-Captions:
-{captions}
+Return one JSON object only: {{"finding":"one category above","why":"brief described content supporting it, at most 12 words"}}. Do not make an audience/export verdict.
 
-Return one JSON object only: {{"finding":"one category above","why":"brief described content supporting it, at most 12 words"}}. Do not make an audience/export verdict."""
+Captions:
+{captions}"""
 
 ACTIVITY_CONTENT_FINDINGS = frozenset(
     {
@@ -159,11 +163,11 @@ Use exactly one observation per row:
 
 Record stated attributes, not typical or implied clothing. Clothing described for one person is that person's attribute. Holding, contact, age, relation and location are not clothing descriptions. If the caption mentions no humans, return an empty row list for that picture. Do not make a privacy, safety or export decision.
 
-Captions:
-{captions}
-
 Return one JSON object only. observations maps every picture to rows of [human mention, observation]. Keep human mentions short. Use this shape:
-{{"observations":{{"p1":[["a human mention","clothing|body_cover|unstated"]]}}}}"""
+{{"observations":{{"p1":[["a human mention","clothing|body_cover|unstated"]]}}}}
+
+Captions:
+{captions}"""
 
 
 def audience_exposure_prompt(

@@ -322,7 +322,8 @@ llm:
 `max_tokens_param` and `drop_params` are read only on the OpenAI dialect, where the query layer
 otherwise learns them from the provider's 400s and remembers the answer per server and model.
 `extra_params` also applies on Ollama, where anything under `options` (`num_ctx`, `num_predict`) is
-merged into Ollama's own options block rather than replacing it.
+merged into Ollama's own options block rather than replacing it, and a `num_predict` you set there
+wins over the reasoning room the run would otherwise compute.
 
 A separate `title_llm` section can point title generation at a different model, for the CLI and the
 web UI alike:
@@ -386,6 +387,7 @@ editorial:
   preparation:
     tier: full                   # full | no_captions | metadata_only
     caption_base_url: http://localhost:8092/v1
+    caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
     caption_timeout_seconds: 90
     caption_concurrency: 1                # raise it for a captioner on a GPU

@@ -61,6 +61,7 @@ from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+from immich_memories.operations.caption_origins import caption_origin_summary
 from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate, announcing_stages
 from immich_memories.people.context import PersonPromptContext
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
@@ -480,6 +481,8 @@ def _log_preparation(result: Any) -> None:
         result.requested,
         f"; {rates}" if rates else "; nothing to produce",
     )
+    if origins := caption_origin_summary(result.caption_provenance):
+        logger.info("%s", origins)
 
 
 @dataclass(frozen=True, slots=True)
