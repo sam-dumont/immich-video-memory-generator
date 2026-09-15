@@ -17,6 +17,7 @@ import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 import { CONTENT_X, CONTENT_Y } from "../components/PageHeader";
+import { FILM_SIZE } from "../fixture";
 
 type Props = { bassIntensity?: number; playAt: number };
 
@@ -102,7 +103,18 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
                   marginTop: 4,
                 }}
               >
-                Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 (42 MB)
+                Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 ({FILM_SIZE})
+              </div>
+              {/* The page prints this whether or not an upload was asked for. */}
+              <div
+                style={{
+                  fontSize: 13,
+                  color: COLORS.textSecondary,
+                  fontFamily,
+                  marginTop: 2,
+                }}
+              >
+                Immich delivery: Not Requested
               </div>
             </div>
           </div>

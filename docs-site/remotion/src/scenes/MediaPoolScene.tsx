@@ -37,12 +37,12 @@ export const UNTICKED = 0;
 const UNTICK_AT = 52;
 const CLICK_CUT_AGAIN = 92;
 
-const CARD_W = 108;
-const CARD_GAP = 18;
+// Five cards across, the way the real page lays its first page out.
+const CARD_W = 214;
+const CARD_GAP = 14;
 // Measured against a 1920x1080 still render: the Include box of the first
-// card, and the middle of the Cut again button. The box sits under the outcome
-// line, so it moves whenever that block's height does.
-const CHECKBOX_XY = { x: CONTENT_X + 20, y: CONTENT_Y + 427 };
+// card, and the middle of the Cut again button.
+const CHECKBOX_XY = { x: CONTENT_X + 22, y: CONTENT_Y + 486 };
 const CUT_AGAIN_XY = { x: CONTENT_X + 71, y: CONTENT_Y + 134 };
 
 const cursorSteps = [
@@ -85,32 +85,34 @@ const PoolCard: React.FC<{
       transform: `translateY(${(1 - reveal) * 10}px)`,
     }}
   >
-    <div style={{ width: "100%", height: 52, borderRadius: 6, overflow: "hidden" }}>
+    <div style={{ width: "100%", height: 112, borderRadius: 6, overflow: "hidden" }}>
       <Img
         src={staticFile(card.picture)}
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
     </div>
-    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, height: 18 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, height: 20 }}>
+      {/* Only a photo carries this badge; a video card is badgeless and shows its length. */}
       {!card.motion && <ImBadge text="Photo" variant="analysis" />}
       {card.favourite && <MaterialIcon name="star" size={14} color={COLORS.warning} />}
     </div>
-    <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text, marginTop: 6 }}>
+    <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.text, marginTop: 8 }}>
       {card.taken}
     </div>
     {card.motion && (
       <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 4 }}>
-        ⏱ 0:0{card.seconds}
+        &#9201; 0:0{card.seconds}
       </div>
     )}
-    <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 4 }}>{card.file}</div>
+    <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 6 }}>{card.file}</div>
+    {/* What the saved cut did with this picture, from the same evidence as `runs why` */}
     <div
       style={{
-        fontSize: 10,
-        lineHeight: 1.3,
+        fontSize: 11,
+        lineHeight: 1.35,
         color: COLORS.textSecondary,
-        marginTop: 4,
-        height: 52,
+        marginTop: 8,
+        height: 46,
         overflow: "hidden",
       }}
     >
@@ -176,6 +178,40 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
             <ImSectionHeader icon="video_library" title="The pool: Jun 01, 2024 - Jun 30, 2024" />
           </div>
 
+          {/* Compact grid / detailed list, the list selected */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 4,
+              opacity: reveal(12),
+            }}
+          >
+            {[
+              { icon: "grid_view", selected: false },
+              { icon: "view_list", selected: true },
+            ].map((view) => (
+              <div
+                key={view.icon}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: view.selected ? COLORS.primary : "transparent",
+                }}
+              >
+                <MaterialIcon
+                  name={view.icon}
+                  size={18}
+                  color={view.selected ? "white" : COLORS.primary}
+                />
+              </div>
+            ))}
+          </div>
+
           <div style={{ display: "flex", gap: CARD_GAP, marginTop: 12, flexWrap: "wrap" }}>
             {CARDS.map((card, i) => (
               <PoolCard
@@ -187,19 +223,9 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
             ))}
           </div>
 
-          <div
-            style={{
-              position: "absolute",
-              left: 32,
-              bottom: 20,
-              display: "flex",
-              gap: 16,
-              opacity: reveal(24),
-            }}
-          >
-            <ImButton text="Back to the brief" variant="secondary" icon="arrow_back" />
-            <ImButton text="Back to the cut" variant="ghost" icon="view_timeline" />
-          </div>
+          {/* Back to the brief and Back to the cut are below the fold on the real
+              page, under twenty cards. Pinning them to the window bottom put them
+              on top of the second row. */}
         </div>
       </WindowFrame>
       <AnimatedCursor steps={cursorSteps} />
