@@ -633,6 +633,7 @@ def build_editorial_planner(
         excluded_filename_patterns=tuple(config.analysis.exclude_filename_patterns),
         stills_need_a_camera=config.analysis.exclude_stills_without_camera_exif,
         min_source_short_side=config.analysis.min_source_short_side,
+        max_source_video_seconds=config.analysis.max_source_video_seconds,
         accept_any_provenance=context.accept_any_provenance,
         include_off_timeline=False,
     )
