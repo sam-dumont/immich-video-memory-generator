@@ -9,7 +9,6 @@ const sidebars: SidebarsConfig = {
       items: [
         'welcome/overview',
         'welcome/why-immich-memories',
-        'welcome/quick-start',
         'welcome/built-with-ai',
       ],
     },

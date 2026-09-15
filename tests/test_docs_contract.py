@@ -21,8 +21,8 @@ PRIMARY_MANUAL_CONTRACTS = [
         "that contract, so don't use them as upgrade flags.",
         id="readme",
     ),
-    # docs/USER_GUIDE.md is an index into the docs site, not a manual: the
-    # api_version policy it used to duplicate stays pinned three times below.
+    # The repo keeps no second manual: the api_version policy is pinned three
+    # times below, on the docs-site pages that actually state it.
     pytest.param(
         "docs-site/docs/reference/config-reference.md",
         "## Immich connection",

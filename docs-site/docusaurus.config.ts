@@ -87,8 +87,8 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Quick Start',
-              to: '/docs/welcome/quick-start',
+              label: 'Self-hosting',
+              to: '/docs/deploy/self-hosting',
             },
             {
               label: 'Installation',

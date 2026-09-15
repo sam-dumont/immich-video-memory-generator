@@ -2,17 +2,20 @@
 
 The manual is on the [docs site](https://sam-dumont.github.io/immich-video-memory-generator/),
 versioned with the code:
-[install](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/uv-pip),
-[config file](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/config-file),
+[self-hosting](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting),
+[your first memory](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory),
+[config reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/config-reference),
 [CLI reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/cli-reference),
-[hardware acceleration](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/hardware/overview),
-[Docker](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/docker).
+[troubleshooting](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/troubleshooting).
+
+Authentication is off by default. If the UI binds beyond loopback, anyone who can reach the port can
+use it, so turn auth on before exposing it. The UI is single-user and single-replica: run one
+instance.
 
 What lives in the repo:
 
 | Document | What it is |
 |----------|------------|
-| [User guide](USER_GUIDE.md) | Where to find the UI walkthrough, CLI reference and troubleshooting |
 | [Main README](../README.md) | Installation, quick start, configuration |
 | [Architecture](../ARCHITECTURE.md) | Package map, key classes, data flow, composition pattern |
 | [Contributing](../CONTRIBUTING.md) | How to contribute |
