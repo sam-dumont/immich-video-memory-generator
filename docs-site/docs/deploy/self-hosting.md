@@ -79,9 +79,7 @@ other ONNX conversion passes, because ONNX exports are not byte-reproducible acr
 Skip with `reader: rules`.
 
 Any OpenAI-compatible `/chat/completions` endpoint that takes images, honours
-`response_format: json_schema` and has at least a 32k-token context. Requests are bounded before
-they are sent: episode reads at 24,000 characters and 90 assets a page, story synthesis at 32,000,
-the period account at 96,000 characters split into pages. The graded configuration is
+`response_format: json_schema` and has at least a 32k-token context. The graded configuration is
 `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on [oMLX](https://github.com/jundot/omlx), Apple
 Silicon:
 
@@ -92,16 +90,17 @@ omlx start        # serves on port 8000
 ```
 
 Pull the model from the dashboard at `http://localhost:8000/admin/chat`. Anything else is expected
-to work and ungraded (see [what has been tested](#what-has-been-tested)).
+to work and ungraded (see [what has been tested](#what-has-been-tested)). Ten cells were timed and
+priced on one real month, three of which stopped before producing a cut: [Readers](./readers.md).
 
 ## 4. Serve the captions
 
 `full` tier only. The endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`;
 the client checks the inventory and three synthetic schema controls before it sends a single
-preview. Two artifacts are accepted: `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
-`fa57db46` on Apple Silicon, and the GGUF build of the same model under llama.cpp everywhere else.
-The app enforces the alias and the schema controls, not the revision. Copy-paste recipes for both,
-a compose profile and a Kubernetes overlay are on
+preview. Two artifacts are accepted, the MLX build of SmolVLM2-500M on Apple Silicon and the GGUF
+build of the same model under llama.cpp everywhere else; the app enforces the alias and the schema
+controls, not the revision. Copy-paste recipes for both, a compose profile and a Kubernetes
+overlay are on
 [Caption server](./installation/caption-server.md); the full contract is on
 [Editorial annotation setup](./configuration/editorial-preparation.md).
 
@@ -154,8 +153,10 @@ immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 
 The cold pass runs every producer the tier asks for over every eligible picture and banks the
 answers by producer and exact input; the second cut of that month is mostly the render. Measured
-on a four-core Celeron NAS: 1.23 s per picture for every producer except the caption, 30.9 s for
-the caption. That is the whole reason `editorial.preparation.tier` exists.
+on a four-core Celeron NAS: 1.23 s per picture for every producer except the caption (1.44 s on a
+second run a fifth later), 30.9 s for the caption. That is the whole reason
+`editorial.preparation.tier` exists. What a first run costs on each host, end to end, is on
+[Running modes](./running-modes.md#what-a-first-run-costs-end-to-end).
 
 ## One machine, or two
 
@@ -177,7 +178,8 @@ scale and encode; none of them runs inference.
 | Seat | Configuration | Status |
 |---|---|---|
 | Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, Apple Silicon | **Graded**: the matrix ran on this |
-| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown |
+| Reader | Six others, local and hosted | **Measured** for time, tokens and list price on one real month, not for quality: [Readers](./readers.md) |
+| Reader | Any other OpenAI-compatible vision model, 32k context, strict JSON | **Expected to work.** Quality unknown. Three cells stopped on that month; [Readers](./readers.md#the-three-that-stopped) says what stopped them |
 | Reader | Text-only models | **Unsupported.** The picture pass posts images |
 | Captions | `SmolVLM2-500M-Video-Instruct-mlx@fa57db46` | **Accepted**: the digest the banked descriptions came from |
 | Captions | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` Q8_0 under llama.cpp | **Accepted**: passes the alias and all three schema controls, wording differs |
@@ -200,5 +202,3 @@ scale and encode; none of them runs inference.
 
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
-- [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, an animated gradient still, no kernel effects and no SDF text. `immich-memories preflight` prints which one your machine will use.
-- [CPU-only](./hardware/cpu-only.md): why the title screens, not the encoder, decide render time

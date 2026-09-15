@@ -23,7 +23,7 @@ function HeroSection() {
               screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
-              <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
+              <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
                 Get started
               </Link>
               <Link className={styles.ctaSecondary} to="/docs/">
@@ -244,7 +244,7 @@ function CtaSection() {
           Three services, all of them yours. The self-hosting guide is one page, in order.
         </p>
         <div className={styles.heroCtas}>
-          <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
+          <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
             Get started
           </Link>
           <Link className={styles.ctaSecondary} to="/docs/deploy/self-hosting">

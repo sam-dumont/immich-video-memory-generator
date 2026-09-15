@@ -36,23 +36,29 @@ const MEMORY_TYPES = [
   "Custom date range",
 ];
 
-const PICKED = "Year in Review";
+const PICKED = "Monthly Highlights";
 
 const OPEN_DROPDOWN = 45;
 const PICK_TYPE = 72;
 const CLICK_CUT = 145;
 
 // Measured against a 1920x1080 still render: the select field, the first
-// dropdown row, and the middle of the full-width Cut button.
+// dropdown row, and the middle of the full-width Cut button. Rows are 30 px, so
+// the picked row is the first plus its index.
+const ROW_HEIGHT = 30;
 const SELECT_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 111 };
 const FIRST_ROW_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 156 };
+const PICKED_ROW_XY = {
+  x: FIRST_ROW_XY.x,
+  y: FIRST_ROW_XY.y + ROW_HEIGHT * MEMORY_TYPES.indexOf(PICKED),
+};
 const CUT_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 440 };
 
 const cursorSteps = [
   { frame: 32, ...SELECT_XY },
   { frame: OPEN_DROPDOWN, ...SELECT_XY, click: true },
-  { frame: 62, ...FIRST_ROW_XY },
-  { frame: PICK_TYPE, ...FIRST_ROW_XY, click: true },
+  { frame: 62, ...PICKED_ROW_XY },
+  { frame: PICK_TYPE, ...PICKED_ROW_XY, click: true },
   { frame: 130, ...CUT_XY },
   { frame: CLICK_CUT, ...CUT_XY, click: true },
 ];
@@ -88,7 +94,7 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={1} />
+        <Sidebar active="Memory" />
         <div
           style={{
             flex: 1,
@@ -168,11 +174,12 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
               }}
             >
               <div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
-                <ImSelect label="Year" value="2025" style={{ width: 192 }} />
+                <ImSelect label="Year" value="2024" style={{ width: 144 }} />
+                <ImSelect label="Month" value="June" style={{ width: 192 }} />
                 <ImSelect
                   label="Only with (optional)"
                   value=""
-                  style={{ width: 288 }}
+                  style={{ width: 256 }}
                 />
               </div>
             </ImCard>
@@ -195,7 +202,7 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
                     marginLeft: 8,
                   }}
                 >
-                  Auto &middot; 10m 00s
+                  Auto &middot; 1m 00s
                 </span>
                 <span
                   style={{

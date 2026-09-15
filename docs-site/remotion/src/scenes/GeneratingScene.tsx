@@ -22,7 +22,7 @@ import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
 
-const FILENAME = "year_2025_memories.mp4";
+const FILENAME = "everyone_june_2024_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
 // Percent-of-progress the status line switches at.
@@ -68,7 +68,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="" />
         <div
           style={{
             flex: 1,
@@ -85,19 +85,19 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
           <div style={{ display: "flex", gap: 12 }}>
             <ImStatCard
               icon="movie"
-              value="6"
+              value="18"
               label="Clips"
               style={{ flex: "0 0 160px" }}
             />
             <ImStatCard
               icon="photo_library"
-              value="3"
+              value="120"
               label="Photo Pool"
               style={{ flex: "0 0 160px" }}
             />
             <ImStatCard
               icon="timer"
-              value="5:12"
+              value="1:19"
               label="Duration"
               style={{ flex: "0 0 160px" }}
             />

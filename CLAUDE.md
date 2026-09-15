@@ -252,11 +252,11 @@ tests/integration/
 - Run `make docs-build` after any docs change to verify the build passes.
 - The mapping of code → docs pages:
   - CLI commands/flags → `docs-site/docs/create/cli/`
-  - UI wizard changes → `docs-site/docs/create/web-ui/`
+  - UI wizard changes → `docs-site/docs/create/web-ui.mdx`
   - Config options → `docs-site/docs/deploy/configuration/`
-  - Hardware support → `docs-site/docs/deploy/hardware/`
-  - Audio/music → `docs-site/docs/create/pipeline/audio-and-music.md`
-  - Pipeline features → `docs-site/docs/create/pipeline/`
+  - Hardware support → `docs-site/docs/deploy/hardware.md`
+  - Audio/music → `docs-site/docs/create/titles-and-music.md`
+  - Pipeline features → `docs-site/docs/create/pipeline.md`
   - Deployment guides → `docs-site/docs/deploy/`
   - Reference (all flags/config) → `docs-site/docs/reference/`
 - After structural changes, also update `docs-site/sidebars.ts` if new pages were added.

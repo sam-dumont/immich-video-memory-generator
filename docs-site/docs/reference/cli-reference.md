@@ -280,7 +280,7 @@ immich-memories generate [OPTIONS]
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
 | `--format` | choice: `mp4` \| `h265` \| `prores` | - | Output format override (default: config value) |
 | `--quality`, `-q` | choice: `high` \| `medium` \| `low` | - | Output quality (default: from config, typically high) |
-| `--output`, `-o`, `-O` | path | - | Output file path |
+| `--output`, `-o`, `-O` | path | - | Output file path. The run writes it inside its own directory and adds a recipe hash to the name, so an identical rerun replaces itself |
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
 | `--dry-run` | boolean | false | Discover inputs and show preparation needs without selection or generation |

@@ -1,4 +1,4 @@
-# GPU Integration Tests — Architecture & Security
+# GPU integration tests
 
 ## Why a private mirror?
 
@@ -6,32 +6,25 @@ Self-hosted runners (with GPU access) **cannot safely run on public repos**. Any
 fork the repo, submit a PR with a modified test file (crypto miner, data exfiltration),
 and the runner would execute it. GitHub's own docs warn against this.
 
-## Architecture
+## Public repo, private mirror, cluster
 
-```
-PUBLIC REPO (sam-dumont/immich-video-memory-generator)
-├── ci.yml ──► unit tests on GitHub-hosted runners (free, safe)
-│              harden-runner monitors network egress
-└── mirror.yml ──► git push to private mirror (SSH deploy key)
-                   triggers: push to main (automatic)
-                             workflow_dispatch (manual, for testing branches)
-                   NEVER triggers on: pull_request (fork abuse vector)
-                              │
-                              ▼
-PRIVATE REPO (sam-dumont/immich-memories-ci)
-└── integration.yml ──► GPU integration tests
-                        triggered by: repository_dispatch from mirror.yml
-                        runs-on: gpu (ARC K8s runner with NVIDIA GPU)
-                        posts status back to public repo: "Integration (GPU)" ✅/❌
-                              │
-                              ▼
-K8S CLUSTER (rancher-cluster/55-github-arc)
-└── ARC runner pods
-    ├── NVIDIA runtimeClass + time-sliced GPU
-    ├── PVC cache for uv packages (10Gi, survives pod restarts)
-    ├── emptyDir /tmp (20Gi, ephemeral per job)
-    ├── Scoped to private repo ONLY (not org-level)
-    └── Scale 0→2 on demand, ephemeral (pod dies after each job)
+```mermaid
+flowchart TB
+    subgraph public["Public repo: sam-dumont/immich-video-memory-generator"]
+        ci["ci.yml: unit tests on GitHub-hosted runners,<br/>harden-runner watching network egress"]
+        mirror["mirror.yml: git push to the private mirror over an SSH deploy key.<br/>Triggers on push to main and on workflow_dispatch.<br/>Never on pull_request: that is the fork abuse vector"]
+    end
+
+    subgraph private["Private repo: sam-dumont/immich-memories-ci"]
+        integration["integration.yml: the GPU integration tests.<br/>Started by repository_dispatch from mirror.yml, runs-on: gpu.<br/>Posts Integration (GPU) back to the public repo"]
+    end
+
+    subgraph cluster["K8s cluster: rancher-cluster/55-github-arc"]
+        pods["ARC runner pods: NVIDIA runtimeClass and a time-sliced GPU,<br/>a 10Gi PVC for the uv cache, a 20Gi emptyDir on /tmp,<br/>scoped to the private repo alone, scale 0 to 2, ephemeral"]
+    end
+
+    mirror --> integration
+    integration --> pods
 ```
 
 ## Security layers

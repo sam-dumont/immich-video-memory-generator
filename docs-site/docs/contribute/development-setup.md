@@ -2,18 +2,11 @@
 sidebar_label: "Development Setup"
 ---
 
-# Development Setup
+# Development setup
 
-Get the project running locally for development. The full contribution guidelines are in [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).
+The full contribution guidelines are in [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).
 
-## Prerequisites
-
-- **Python 3.11+**
-- **FFmpeg** (for video processing tests)
-- **[uv](https://docs.astral.sh/uv/)** (Python package manager)
-- **GNU Make**
-
-## Clone and install
+You need Python 3.11+, FFmpeg, [uv](https://docs.astral.sh/uv/) and GNU Make.
 
 ```bash
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
@@ -21,75 +14,43 @@ cd immich-video-memory-generator
 make dev-test
 ```
 
-`make dev-test` is `uv sync --extra dev --locked`: the dev tools (pytest, ruff, mypy and the other CI gates) and nothing else. That is the fast path, no torch and no CUDA, and it is what the CI test jobs install. There is no `gpu` extra to add: the GPU title kernels are a base dependency wherever they publish a wheel. Run it before any other make target.
-
-Other install targets, when you need them:
+`make dev-test` is `uv sync --extra dev --locked`: the dev tools (pytest, ruff, mypy and the other
+CI gates) and nothing else. No torch, no CUDA, and it is what the CI test jobs install. There is no
+`gpu` extra to add: the GPU title kernels are a base dependency wherever they publish a wheel. Run
+it before any other make target.
 
 | Target | Installs | When |
 |--------|----------|------|
-| `make dev-ci` | dev tools only | Lint/typecheck-only work. Identical to `dev-test` today |
 | `make dev-test` | dev tools only | Default for contributors (what CI tests with) |
+| `make dev-ci` | dev tools only | Identical to `dev-test` today |
 | `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, the editorial stack) | Apple Silicon, full feature set |
 | `make dev` | every declared extra (torch, demucs, editorial), slow | Only if you work across all optional backends |
 
-## Verify everything works
+## Check the install
 
-```bash
-make check
-```
+`make check` runs lint, format check, type check, the file length and complexity gates, and the
+unit tests. If it passes, your setup is correct. `make ci` adds everything else and is what you run
+before opening a PR: if it passes locally, CI will pass too. Both depend on `ensure-dev`, which
+syncs every extra, so a run of either turns a `make dev-test` environment into a `make dev` one.
 
-This runs lint, format check, type check, file length gate, complexity gate, and all unit tests. It is the fast subset: it skips cognitive complexity, dead code, refurb, dep-check, arch-check, critique, the drift gates and every security scan. `make ci` runs those. If `make check` passes, your setup is correct.
+`make help` lists every target. Never run `ruff`, `pytest` or `mypy` directly: the make targets
+match what CI runs, so local results are consistent. Use
+[conventional commit](https://www.conventionalcommits.org/) messages.
 
-Both `make check` and `make ci` depend on `ensure-dev`, which syncs every extra, so a run of either turns a `make dev-test` environment into a `make dev` one.
-
-## Key commands
-
-| Command | What it does |
-|---------|-------------|
-| `make test` | Unit tests |
-| `make lint` | Ruff linter |
-| `make format` | Auto-format code |
-| `make typecheck` | mypy type checking |
-| `make ci` | Full CI pipeline (19 local gates, plus the unit tests) |
-| `make critique` | AI smell audit |
-| `make test-integration` | Integration tests (needs FFmpeg + Immich) |
-
-The **Makefile** is the single source of truth. Never run `ruff`, `pytest`, or `mypy` directly: the make targets match what CI runs, so local results are consistent.
-
-## Before submitting a PR
-
-```bash
-make ci
-```
-
-If `make ci` passes locally, CI will pass too. Use [conventional commit](https://www.conventionalcommits.org/) messages: `feat(scope): description`, `fix(scope): description`, etc.
-
-## Testing tiers
-
-**Unit tests** (`make test`): pure logic, no external dependencies. Run in CI on every PR.
-
-**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `audio_mixing`, `auth`, `automation`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored: do not try to commit them.
-
-### If diff-cover fails on your PR
-
-A PR needs 80% coverage on the lines it changes, unless the diff is under 10 source lines or over 1000, where the gate skips itself with a warning rather than pretend a threshold means anything. `analysis/apple_vision*.py` is excluded outright. Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
-
-To reproduce locally exactly what CI will see:
-
-```bash
-make integration-coverage-for-diff   # runs only the suites your diff touches
-make diff-cover-local                # merges them with unit coverage, same as CI
-```
-
-If diff-cover still fails after that, the uncovered lines are not reachable from an integration suite and do need unit tests. Subprocess boundaries can be stubbed rather than run for real: `tests/test_ffmpeg_pipe.py` shows the pattern.
+The test tiers, what each needs, and what to do when diff-cover fails on your PR are in the
+[Testing guide](testing.md).
 
 ## Private terms gate
 
-`make privacy-gate` (and two pre-commit hooks: one on the staged diff, one on the commit message) blocks owner-defined private terms (family names, birth dates, fine-grained GPS coordinates, anything the maintainer doesn't want landing in a diff, commit message, or PR title/body) using `scripts/private_terms_gate.py`.
+`make privacy-gate` blocks owner-defined private terms (family names, birth dates, GPS
+coordinates) from diffs, commit messages and PR titles. Two pre-commit hooks run it as well.
 
-The denylist itself never lives in this repo. It resolves from, in order: `--terms-file`, an env var named by `--terms-env` (how CI reads it from the `PRIVATE_TERMS` repository secret), `$IMMICH_MEMORIES_PRIVATE_TERMS` (a path), or `~/.config/immich-memories/private-terms.txt`. One term per line; `#` comments and blank lines are ignored; a line starting with `re:` is a regex. If none of those resolve to anything, the gate prints a notice and exits clean: most contributors have no denylist configured, and that isn't a failure.
-
-Every reported match is masked to its first character, so a hit report never contains the term it found. Forks never see the `PRIVATE_TERMS` secret, so the PR-automation job that scans title/body/diff skips there too.
+The denylist never lives in this repo. It resolves from, in order: `--terms-file`, an env var named
+by `--terms-env` (how CI reads the `PRIVATE_TERMS` secret), `$IMMICH_MEMORIES_PRIVATE_TERMS` (a
+path), or `~/.config/immich-memories/private-terms.txt`. One term per line, `#` comments ignored, a
+`re:` prefix for a regex. With none of those configured the gate prints a notice and exits clean,
+which is the normal case for a contributor. Matches are masked to their first character, so a hit
+report never contains the term it found.
 
 ## Project structure
 
@@ -115,4 +76,5 @@ src/immich_memories/
   memory_types/ # Preset system
 ```
 
-See [ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md) for the full module map with class relationships.
+[ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md)
+has the full module map with class relationships.

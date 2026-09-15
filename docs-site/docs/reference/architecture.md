@@ -3,15 +3,21 @@ title: Architecture
 sidebar_label: Architecture
 ---
 
-# Codebase Architecture
+# Codebase architecture
 
-How the code is organized, why it's built this way, and where to make changes.
+How the code is organized and where to make changes.
 
-## Composition over Inheritance
+## Composition over inheritance
 
-The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
-
-Now the four main orchestrators compose smaller service objects via constructor injection. The lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` (discovery → download → analysis → selection → render → music → delivery → complete), and it spans two entry points, not one. Selection runs first, as the story-first editorial route: `generate` (or the Memory page's Cut) → `build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` → `SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs preparation, the two readings, the structure planner and the story planner, and certifies the timing. `generate_memory()` in `generate.py` takes over from there and does extract → assemble → music → upload. Hand it no clips and it raises rather than going to find some.
+The four main orchestrators compose smaller service objects through constructor injection. The
+lifecycle a run reports is the `OperationalPhase` enum in `operations/phases.py` (discovery →
+download → analysis → selection → render → music → delivery → complete), and it spans two entry
+points. Selection runs first: `generate` (or the Memory page's Cut) →
+`build_smart_pipeline(editorial_context)` in `analysis/editorial_runtime.py` →
+`SmartPipeline.run_editorial_source()` → `RuntimeEditorialPlanner.plan_source()`, which runs
+preparation, the two readings, the structure and story planners, and certifies the timing.
+`generate_memory()` in `generate.py` then does extract → assemble → music → upload. Hand it no
+clips and it raises rather than going to find some.
 
 | Orchestrator | Services | What it does |
 |---|---|---|
@@ -20,120 +26,87 @@ Now the four main orchestrators compose smaller service objects via constructor 
 | **ImmichClient** | SearchService, AllAssetsService, AssetService, PersonService, AlbumService | Talks to the Immich API |
 | **TitleScreenGenerator** | RenderingService, EndingService, TripService | Creates title/ending screens |
 
-Each service is a standalone class you can test in isolation. The orchestrator wires them together in `__init__` and delegates work.
+The editorial route has Protocol-typed ports rather than services: the providers and the people
+loader, the structure planner, the judges it calls out to, and `EditorialAttempt` in `operations/`
+for the durable attempt tree and its OS lease. On disk each attempt is
+`<cache>/editorial-runs/<key>/attempts/<id>/`, and the annotation store is
+`<cache>/annotations.sqlite`.
+[ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md)
+names every port and the file it lives in, with the full module map.
 
-The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges the structure planner calls out to; the bank directory and the audience come in on `StructurePlanningInput` beside it), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
+## CI pipeline
 
-## CI Pipeline Structure
+CI runs in tiers, cheap to expensive.
 
-CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no point waiting 3 minutes for tests to tell you the same thing.
+- **Tier 0: cache setup.** Every job that installs the project waits on it.
+- **Tier 1: quality gates** (the table below), one job, steps in order, each carrying
+  `if: !cancelled()` so the first failure doesn't hide the rest. Commitlint runs on pull requests
+  only. A second job runs the security scans in parallel.
+- **Tier 2: tests**, after both tier 1 jobs pass. The unit suite (Ubuntu on 3.11/3.12/3.13; macOS on
+  3.13 for a pull request, all three on `main`), plus `make test-extras`. Neither extras job pulls
+  torch, so what runs there is the subset that survives without it; the rest is a local target.
+- **Tier 3: build**, after tests. Package build, and the Docker image on pull requests.
 
-**Tier 0: Cache setup** (every job that installs the project waits on it; the docs build doesn't)
+The docs build depends on nothing and starts immediately. The hermetic launch check runs on pull
+requests off the cache setup alone: `make launch-check-ci`, Playwright e2e against a fake Immich.
 
-**Tier 1: Cheap quality gates**; one job, run as steps in order. Each carries `if: !cancelled()`,
-so the first failure doesn't hide the ones behind it and you get the whole list from one run:
-- Ruff lint + format check
-- CLI and config reference drift (the generated pages must match the Click tree and the pydantic schema)
-- mypy type checking
-- Dead code detection (Vulture)
-- Cyclomatic complexity (Xenon grade C)
-- Cognitive complexity (complexipy)
-- File length (800-line soft limit warns, 1000-line hard limit fails)
-- Refurb modernization checks
-- Dependency hygiene (deptry)
-- Architecture layer enforcement (import-linter)
-- Code duplication detection (jscpd)
-- AI code critique
-- The compose file parsing alone, in an empty directory (`make compose-check`)
-- Commit message linting (Conventional Commits), on pull requests only
+`make ci` runs the same gates locally plus the unit tests; the Makefile is the list. CI adds what
+needs a remote or a diff: commitlint, pip-audit, gitleaks, hadolint.
 
-Sixteen steps on a pull request, fifteen on a push to `main`, which is the one the commit gate
-skips. `make docs-voice` and `make notices-check` are in `make ci` and in the pre-commit hooks, not
-in this job.
-
-**Tier 1: Security** (a second job, parallel with the quality gates):
-- Bandit static analysis
-- Semgrep rules
-- pip-audit dependency CVEs
-- Gitleaks secret detection
-- Hadolint Dockerfile linting
-
-**Tier 2: Tests** (runs after both quality and security pass):
-- Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
-- `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (demucs/editorial) unlocks. Note that the CI job installs `dev,audio` on Linux and
-  `dev,mac,audio` on macOS, neither of which pulls torch, so what runs there is the subset that
-  survives without it; the rest is a local target
-
-**Tier 3: Build + Docker** (runs after tests pass):
-- Package build verification
-- Docker image build, on pull requests only
-
-Two jobs sit outside the tiers. The docs site build depends on nothing and starts immediately. The
-hermetic launch check runs on pull requests off the cache setup alone, in parallel with the tests:
-CI calls `make launch-check-ci`, which is the Playwright e2e run against a fake Immich. The local
-`make launch-check` is the bigger one that also does `check`, `build`, and the docs build.
-
-`make ci` runs the same gates locally, plus the unit tests; the Makefile is the list. CI adds the checks that need a remote or a diff (commitlint, pip-audit, gitleaks, hadolint), then the build, Docker and docs jobs and the launch check. Every PR must pass all of them.
-
-## Quality Gates Overview
+## Quality gates
 
 | Gate | Tool | What it catches |
 |---|---|---|
-| Lint + format | Ruff | Style issues, import ordering, unused imports |
+| Lint + format | Ruff | Style, import ordering, unused imports |
 | Type check | mypy | Type mismatches, missing annotations |
-| Complexity | Xenon | Functions too complex to reason about (grade C max) |
-| File length | Makefile script | Files over 800 lines warn, over 1000 fail (split into services) |
+| Complexity | Xenon + complexipy | Xenon grade C max, cognitive complexity ≤15 |
+| File length | Makefile script | Over 800 lines warns, over 1000 fails |
 | Dead code | Vulture | Unused functions, variables, imports |
-| Duplication | jscpd | Copy-pasted code blocks (≤5%) |
+| Duplication | jscpd | Copy-pasted blocks (≤5%) |
+| Modernization | refurb | Idioms a newer Python replaced |
+| AI smells | `make critique` | Over-structured code, docstrings that restate the signature |
 | Security | Bandit + Semgrep | Common vulnerability patterns |
-| Secrets | Gitleaks | Accidentally committed API keys |
+| Secrets | Gitleaks | Committed API keys |
 | Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
-| Architecture | import-linter | Forbidden-import contracts: the core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`, and they plus `audio` must not import `cli`. The dependency runs one way: UI and CLI import core, never the reverse |
+| Architecture | import-linter | The core packages (`analysis`, `processing`, `titles`, `people`, `store`, `triage`, `operations`) must not import `ui`; they plus `audio` must not import `cli`. UI and CLI import core, never the reverse |
+| Compose | `make compose-check` | A `docker-compose.yml` that only parses with the repo beside it |
 | Commits | commitizen | Non-conventional commit messages |
-| Docs | docs-voice, docs-cli-check, docs-config-check, notices-check | Chatbot prose and em dashes; drift between the generated references and the code; drift in THIRD_PARTY_NOTICES |
-| Tests | pytest | the unit suite in CI; integration and e2e locally and on the GPU runner |
+| Docs | docs-voice, docs-cli-check, docs-config-check, notices-check | Chatbot prose and em dashes; drift between the generated references and the code |
+| Tests | pytest | The unit suite in CI; integration and e2e locally and on the GPU runner |
 
-## How to Add a New Feature
+`docs-voice` and `notices-check` run in `make ci` and the pre-commit hooks, not in the CI job.
 
-### Adding a new processing capability
+## How to add a feature
 
-1. Create a service class in the relevant package (e.g., `processing/my_service.py`)
-2. Keep it under 800 lines (soft limit; 1000 is the hard CI failure). If it needs more, split into a service + helpers file
-3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
-4. Add tests in `tests/test_my_service.py`
-5. Run `make ci` before committing; `make check` is the fast subset (lint, format, typecheck, file length, complexity, tests) and skips everything else: cognitive complexity, dead code, refurb, dep-check, arch-check, critique, duplication, the drift gates and every security scan
+### A new processing capability
 
-### Adding a new API endpoint
+1. Create a service class in the relevant package (for example `processing/my_service.py`)
+2. Inject it into the orchestrator's `__init__` in `video_assembler.py`
+3. Add tests in `tests/test_my_service.py`
 
-1. Add the method to the relevant service in `api/` (e.g., `search_service.py`)
+### A new API endpoint
+
+1. Add the method to the relevant service in `api/` (for example `search_service.py`)
 2. Add a delegating method on `ImmichClient` in `api/immich.py`
-3. Add the model to `api/models.py` if needed
-4. Test against a mock HTTP client
+3. Add the model to `api/models.py` if needed, and test against a mock HTTP client
 
-### Adding a new memory type
+### A new memory type
 
 1. Add the value to the `MemoryType` enum in `memory_types/registry.py`
 2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset`: the decorator *is* the registration, there is no second list to edit there
 3. Add date builder logic if the type needs its own, in `memory_types/date_builders.py`
 4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py`: `--memory-type` and the Memory page's select both read that tuple, in that order
-5. Add a page under `docs-site/docs/create/memory-types/`
+5. Document it in [`docs-site/docs/create/memory-types.mdx`](../create/memory-types.mdx)
 
-### Adding a new CLI command
+### A new CLI command
 
-1. Create a new file in `cli/` (e.g., `cli/my_cmd.py`)
+1. Create a new file in `cli/` (for example `cli/my_cmd.py`)
 2. Register the command group in `cli/__init__.py`
-3. Add corresponding docs in `docs-site/docs/`
+3. Add the docs page under `docs-site/docs/`, add its ID to `docs-site/sidebars.ts`, and run `make docs-build`
 
-### Adding a docs page
+## File naming conventions
 
-1. Create the markdown file in the appropriate `docs-site/docs/` subdirectory
-2. Add the page ID to `docs-site/sidebars.ts`
-3. Run `make docs-build` to verify it compiles
-
-## File Naming Conventions
-
-- `_prefixed.py`: private helpers, meant for their own package. Nothing enforces that (import-linter only guards the core/UI and core/CLI directions), and one cross-package import has leaked in (`generate_privacy.py` reaching into `titles._trip_titles`)
+- `_prefixed.py`: private helpers for their own package. Nothing enforces that, and one cross-package import has leaked in (`generate_privacy.py` reaching into `titles._trip_titles`)
 - `*_service.py`: composed service classes
 - `*_models.py`: data models (Pydantic or dataclass)
 - `*_helpers.py`: standalone helper functions

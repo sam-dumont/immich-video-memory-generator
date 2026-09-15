@@ -182,7 +182,7 @@ class DocumentedDifference:
 # date range. Both numbers are editable defaults for the surface they belong
 # to, which is the product decision #630 wrote down. Asserted to the value, so
 # a change on either side still lands here.
-_SPLIT_RECORD = "docs/create/memory-types/monthly-person-season.mdx#ui-and-cli-defaults-disagree"
+_SPLIT_RECORD = "docs-site/docs/create/memory-types.mdx#monthly-season-person-multi-person"
 DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
     MemoryType.SEASON: DocumentedDifference(cli=195.02, ui=135, recorded_at=_SPLIT_RECORD),
 }

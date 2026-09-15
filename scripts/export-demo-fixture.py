@@ -6,11 +6,16 @@ serves, so the two must agree: the thesis, the cut in capture order, the pool
 page's first page and its counters. This exports them from
 ``tests/e2e/fake_library`` into ``docs-site/remotion/src/fixture.ts`` so the
 demo cannot drift from the fixture. Run it through ``make demo-fixture``.
+
+It also measures the film the demo ends on, because the scene that plays it
+cannot be told its shape in a constant: a re-cut moves every one of them.
 """
 
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,13 +30,112 @@ from tests.e2e.fake_library import (  # noqa: E402
     summary_line,
 )
 
-OUT = Path(__file__).resolve().parents[1] / "docs-site" / "remotion" / "src" / "fixture.ts"
+from immich_memories.operations.reader_words import stage_words  # noqa: E402
+
+# The pass the fixture's editorial route records its rejections under; the pool
+# page prints the reader's words for it, not the engine's name.
+DROP_STAGE = "picture_review"
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "docs-site" / "remotion" / "src" / "fixture.ts"
+FILM = ROOT / "docs-site" / "remotion" / "public" / "output-preview.mp4"
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 POOL_PAGE = 20
+
+# How often the film is sampled when looking for the end of its pictures. The
+# ending card is several seconds long, so twice a second is far finer than the
+# answer needs and still one decode of the file.
+FILM_SAMPLE_FPS = 2
 
 
 def _taken_label(taken_at: str) -> str:
     return f"{MONTHS[int(taken_at[5:7]) - 1]} {taken_at[8:10]} {taken_at[11:16]}"
+
+
+def _timecodes() -> dict[str, str]:
+    """Where each kept picture starts in the cut, in the order the film plays them."""
+    at = 0.0
+    codes = {}
+    for picture in CARRIERS:
+        codes[picture.asset_id] = f"{int(at) // 60}:{int(at) % 60:02d}"
+        at += picture.seconds
+    return codes
+
+
+def _outcome(picture, timecodes: dict[str, str]) -> str:
+    """The line the pool prints under a thumbnail, in CandidateFates' words."""
+    if picture.shipped:
+        return f"In the cut at {timecodes[picture.asset_id]}: {picture.caption}"
+    reason = picture.drop_reason or "not part of any story the month tells"
+    return f"Left out at {stage_words(DROP_STAGE)}: {reason}"
+
+
+def _edge_energy() -> list[tuple[float, float]]:
+    """Per-sample sharpness of the film, as (seconds, energy).
+
+    `edgedetect` reads a flat 0 on the film's blurred ending card and 8 to 12 on
+    a photograph, which is what makes the end of the pictures findable rather
+    than guessable.
+    """
+    probe = subprocess.run(  # noqa: S603
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-v",
+            "error",
+            "-i",
+            str(FILM),
+            "-vf",
+            f"fps={FILM_SAMPLE_FPS},edgedetect=mode=wires,signalstats,"
+            "metadata=print:key=lavfi.signalstats.YAVG:file=-",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    samples = re.findall(r"pts_time:([0-9.]+)\s*\nlavfi\.signalstats\.YAVG=([0-9.]+)", probe)
+    return [(float(time), float(energy)) for time, energy in samples]
+
+
+def _film_facts() -> dict[str, object]:
+    """What the demo's last scene needs to know about the film it plays.
+
+    `OutputPreviewScene` plays the film's closing seconds and must stop on a
+    photograph: the film ends on a blurred card, and a demo that ends on mush is
+    the README's first impression. Both numbers move on every re-cut, so both
+    are measured here rather than typed there.
+    """
+    duration = float(
+        subprocess.run(  # noqa: S603
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                str(FILM),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    samples = _edge_energy()
+    energies = sorted(energy for _, energy in samples)
+    picture_level = energies[len(energies) // 2]
+    sharp = [time for time, energy in samples if energy >= picture_level / 2]
+    return {
+        "seconds": round(duration, 2),
+        # The last sample still showing a photograph, not the crossfade into the card.
+        "pictures_end": round(max(sharp), 2),
+        # The UI's own rounding, from `_format_file_size` in ui/pages/_step4_generate.py.
+        "size": f"{FILM.stat().st_size / 1_048_576:.0f} MB",
+    }
 
 
 def main() -> None:
@@ -51,6 +155,7 @@ def main() -> None:
             shot["chapter"] = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}".replace("Jun ", "June ")
             previous_month = month
         shots.append(shot)
+    timecodes = _timecodes()
     pool = [
         {
             "picture": f"library/{picture.source.name}",
@@ -60,14 +165,17 @@ def main() -> None:
             "favourite": picture.is_favorite,
             "ticked": picture.shipped,
             "seconds": int(picture.seconds),
+            "outcome": _outcome(picture, timecodes),
         }
         for picture in LIBRARY[:POOL_PAGE]
     ]
     videos = sum(1 for picture in LIBRARY if picture.is_video)
+    film = _film_facts()
     body = "\n".join(
         [
-            "// Generated by scripts/export-demo-fixture.py from tests/e2e/fake_library.py.",
-            "// Do not edit: run `make demo-fixture` after the fixture library changes.",
+            "// Generated by scripts/export-demo-fixture.py from tests/e2e/fake_library.py",
+            "// and from docs-site/remotion/public/output-preview.mp4.",
+            "// Do not edit: run `make demo-fixture` after the fixture library or the film changes.",
             "",
             "export type Shot = {",
             "  picture: string;",
@@ -88,6 +196,8 @@ def main() -> None:
             "  favourite: boolean;",
             "  ticked: boolean;",
             "  seconds: number;",
+            "  /** What the saved cut did with this picture, as the pool page prints it. */",
+            "  outcome: string;",
             "};",
             "",
             f"export const THESIS = {json.dumps(THESIS)};",
@@ -98,13 +208,24 @@ def main() -> None:
             f"export const POOL_PAGE = {POOL_PAGE};",
             f"export const CUT_COUNT = {len(CARRIERS)};",
             f"export const CUT_SECONDS = {int(sum(picture.seconds for picture in CARRIERS))};",
+            "",
+            "/** How long output-preview.mp4 runs, measured. */",
+            f"export const FILM_SECONDS = {film['seconds']};",
+            "/** The last second of it that still shows a photograph, before the ending card. */",
+            f"export const FILM_PICTURES_END = {film['pictures_end']};",
+            "/** Its size, in the words the completion page prints. */",
+            f"export const FILM_SIZE = {json.dumps(film['size'])};",
+            "",
             f"export const SHOTS: Shot[] = {json.dumps(shots, indent=2, ensure_ascii=False)};",
             f"export const POOL: PoolCard[] = {json.dumps(pool, indent=2, ensure_ascii=False)};",
             "",
         ]
     )
     OUT.write_text(body)
-    print(f"wrote {OUT.relative_to(OUT.parents[3])}: {len(shots)} shots, {len(pool)} pool cards")
+    print(
+        f"wrote {OUT.relative_to(OUT.parents[3])}: {len(shots)} shots, {len(pool)} pool cards, "
+        f"film {film['seconds']}s with pictures to {film['pictures_end']}s ({film['size']})"
+    )
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 import { CONTENT_X, CONTENT_Y } from "../components/PageHeader";
+import { FILM_SIZE } from "../fixture";
 
 type Props = { bassIntensity?: number; playAt: number };
 
@@ -49,7 +50,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="" />
         <div
           style={{
             flex: 1,
@@ -102,7 +103,18 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
                   marginTop: 4,
                 }}
               >
-                Saved to: /home/user/Videos/Memories/year_2025_memories.mp4 (42 MB)
+                Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 ({FILM_SIZE})
+              </div>
+              {/* The page prints this whether or not an upload was asked for. */}
+              <div
+                style={{
+                  fontSize: 13,
+                  color: COLORS.textSecondary,
+                  fontFamily,
+                  marginTop: 2,
+                }}
+              >
+                Immich delivery: Not Requested
               </div>
             </div>
           </div>
@@ -172,8 +184,8 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
               icon="arrow_back"
             />
             <ImButton
-              text="Start new project"
-              variant="ghost"
+              text="Start New Project"
+              variant="secondary"
               icon="refresh"
             />
           </div>

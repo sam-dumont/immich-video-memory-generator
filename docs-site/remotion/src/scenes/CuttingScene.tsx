@@ -52,6 +52,12 @@ const TIMELINE = [
 // The strip of pictures belongs to the per-picture passes; once the edit starts it fades.
 const STRIP_FADE_AT = 100;
 
+// The page prints the stage's own estimate beside the count. The strip spans
+// PREVIEW_START..PREVIEW_END at 30fps, so what is left follows from the count.
+const STAGE_SECONDS = (PREVIEW_END - PREVIEW_START) / 30;
+const remainingSeconds = (prepared: number) =>
+  Math.max(1, Math.ceil(STAGE_SECONDS * (1 - prepared / TOTAL)));
+
 type Props = { bassIntensity?: number };
 
 const PhaseRow: React.FC<{
@@ -102,14 +108,14 @@ const PhaseRow: React.FC<{
   );
 };
 
-/** The strip of pictures the cut is working on, filling in one at a time. */
+/** The strip of pictures the cut has just finished, then the stage's own bar. */
 const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> = ({
   prepared,
   fps,
   frame,
 }) => (
-  <div style={{ marginTop: 22 }}>
-    <div style={{ display: "flex", gap: 8 }}>
+  <div style={{ marginTop: 18 }}>
+    <div style={{ display: "flex", gap: 6 }}>
       {PREVIEWS.map((picture, i) => {
         const at = PREVIEW_START + ((PREVIEW_END - PREVIEW_START) / PREVIEWS.length) * i;
         const entry = spring({
@@ -121,8 +127,8 @@ const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> =
           <div
             key={picture}
             style={{
-              width: 104,
-              height: 62,
+              width: 78,
+              height: 78,
               borderRadius: 6,
               overflow: "hidden",
               opacity: i < prepared ? entry : 0,
@@ -139,16 +145,11 @@ const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> =
       })}
     </div>
     <div
-      style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 10 }}
-    >
-      previews {prepared} of {TOTAL}
-    </div>
-    <div
       style={{
-        width: 460,
+        width: "100%",
         height: 4,
         borderRadius: 2,
-        marginTop: 6,
+        marginTop: 16,
         backgroundColor: COLORS.border,
         overflow: "hidden",
       }}
@@ -160,6 +161,9 @@ const PreviewStrip: React.FC<{ prepared: number; fps: number; frame: number }> =
           backgroundColor: COLORS.primary,
         }}
       />
+    </div>
+    <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 8 }}>
+      previews {prepared} of {TOTAL} &middot; ~{remainingSeconds(prepared)}s left in this stage
     </div>
   </div>
 );
@@ -204,7 +208,7 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={1} />
+        <Sidebar active="Memory" />
         <div
           style={{
             flex: 1,
@@ -262,11 +266,30 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
             style={{
               fontSize: 14,
               color: COLORS.textSecondary,
-              marginTop: 20,
-              marginBottom: 16,
+              marginTop: 18,
             }}
           >
             Elapsed: {elapsed}s
+          </div>
+
+          {/* The engine's own stage lines, folded away as the page folds them */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              marginTop: 14,
+              marginBottom: 18,
+              padding: "10px 0",
+            }}
+          >
+            <MaterialIcon name="list" size={20} color={COLORS.textSecondary} />
+            <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>Details</span>
+            <MaterialIcon
+              name="keyboard_arrow_down"
+              size={22}
+              color={COLORS.textSecondary}
+            />
           </div>
 
           <div>

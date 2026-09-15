@@ -1,27 +1,33 @@
 ---
-sidebar_label: "prepare"
+sidebar_position: 2
+sidebar_label: "Preparing a library"
+title: Preparing a library
 ---
 
-# `prepare`: the expensive half, on its own
+# Preparing a library
 
-Preparation is the part of a cut that looks at pixels: a preview for every eligible picture,
-its measurements, the encoder and the six context heads, both detectors, and on the `full` tier
-a caption. Everything after it (grouping, reading, selection, render) is text and arithmetic.
+Four commands that run against the library rather than against one memory: `prepare` does the
+expensive pixel work up front, `people` works out who is in it, `discover-days` finds the days worth
+remembering, and a handful of small ones answer questions before you generate anything.
 
-It is banked per picture. A picture prepared today is free for every later cut until a producer's
-version changes, which is why it is worth doing alone:
+## `prepare`
+
+Preparation is the part of a cut that looks at pixels: a preview for every eligible picture, its
+measurements, the encoder and six context heads, both detectors, and on the `full` tier a caption.
+Everything after it (grouping, reading, selection, render) is text and arithmetic.
+
+It is banked per picture, so a picture prepared today is free for every later cut until a producer's
+version changes. That is why it is worth doing on its own:
 
 ```bash
 immich-memories prepare --year 2024 --month 6
 ```
 
-That prepares the month and stops. No selection, no video.
-
-## What it costs, in your units
-
-```bash
-immich-memories prepare --year 2024 --month 6 --library-size 10000
-```
+That prepares the month and stops. No selection, no video. The scope flags are `generate`'s
+(`--year`, `--year --month`, `--start --end`, `--start --period`) and it prepares exactly the
+pictures a cut over that scope would: no archived or hidden assets, no forwarded or re-encoded
+media, Live Photo components handled the same way. Each run resumes where the last stopped, so a
+`for month in 1 2 3 …` loop works through a year.
 
 ```text
 ℹ Preparing 1,440 pictures over 1 window(s)
@@ -33,55 +39,220 @@ detectors          1440      0.1980   20.9%      5 min
 total              1440      0.9480    100%     23 min
 
 At this rate 10,000 pictures would take 2 h 38 min.
-✓ 1,440 pictures prepared at 0.9480 s/picture.
 ```
 
-`s/picture` is the number to compare between machines and the number the projection uses.
-`pending` is what the producer still had to do: the whole scope on a cold run, a handful on a
-rerun. `share` says which producer to move to a faster machine (with
-[the inference service](../../deploy/installation/inference-service.md) the heads and detectors
-can run elsewhere; the table then shows a `remote_facts` row, and a `service s/pic` column beside
-the wall clock saying how much of the wait was the classifiers deciding rather than the wire).
-On a four-core Celeron the
-producers cost about 1.2 s a picture; captions cost about 31 s a picture on the same box, which is
-why the `no_captions` tier exists.
+`--library-size 10000` is what prints that last line. `s/picture` is the number to compare between
+machines. `pending` is what the producer still had to do: the whole scope on a cold run, a handful
+on a rerun. `share` says which producer to move to a faster machine; with
+[the inference service](../../deploy/installation/inference-service.md) the heads and detectors can
+run elsewhere, and the table then shows a `remote_facts` row with a `service s/pic` column beside the
+wall clock, saying how much of the wait was the classifiers deciding rather than the wire.
 
-Work through a library a month at a time; each run resumes where the last stopped:
+Exit 0 means every producer finished for every picture. Exit 1 means facts are still missing and the
+run says which producer and how many; a caption server that is not running is the usual cause, and
+one that is running but answers 401 or 403 says so and names
+`advanced.editorial.preparation.caption_api_key`. Rerunning is cheap, so "run it until it exits 0"
+is the intended loop.
+
+Preparation is the only stage that sends pixels anywhere, and it sends them only where you point it.
+Both endpoints default to `localhost` and nothing asks a second time once you point one elsewhere:
+read [Network and privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats)
+first. Before the first run, `immich-memories models fetch` puts the pinned encoder and detector
+files on disk.
+
+## `people`
+
+Works out who is in your library from the numbers Immich already holds, writes it to a file you can
+edit, and never overwrites an answer you gave it.
 
 ```bash
-for month in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  immich-memories prepare --year 2024 --month "$month"
-done
+immich-memories people scan     # build or refresh the file
+immich-memories people show     # read it back, --tier narrows it
 ```
 
-The scope flags are the ones `generate` takes: `--year`, `--year --month`, `--start --end`,
-`--start --period`. It prepares exactly the pictures a cut over that scope would prepare: no
-archived or hidden assets, no forwarded or re-encoded media, Live Photo components handled the
-same way.
+Nothing here looks at a pixel and nothing asks you a question. Counts, names, birth dates, the
+months each person appears in and how often two people appear together are enough, which is the
+point: curation you already did inside Immich has to pay off somewhere.
 
-Exit 0 means every producer finished for every picture. Exit 1 means facts are still missing, and
-the run says which producer and how many; a caption server that is not running is the usual
-cause. A caption server that is running but answers 401 or 403 says so and names
-`advanced.editorial.preparation.caption_api_key`. Rerunning is cheap, so "run it until it exits 0" is the intended loop.
+**Volume is a burst, continuity is a relationship.** That one rule does most of the work. A person
+with 160 pictures spread over four active months across scattered years was at four events with you.
+The same 160 pictures over forty months is part of your life. Pictures divided by active months is
+the discriminator that volume alone is not.
 
-## What leaves your machine
+| tier | shape |
+|---|---|
+| `inner` | dozens of active months, years of span, present in at least a third of the months between |
+| `recurring` | a dozen months or more, failing one of the `inner` conditions |
+| `episodic` | everything that is not one of the other three |
+| `event` | four active months or fewer at twenty-plus pictures each: a burst |
 
-This is the consent step. Preparation is the only stage that sends pixels anywhere, and it sends
-them only where you point it:
+On top of the tiers the scan reads four things. **Onset** is the first month with three more active
+months inside the following year, so one picture in 2011 and a real presence from 2018 makes the
+onset 2018. **Tight dyads** are two people who are each a quarter or more of *each other's*
+pictures; mutual is the point, because everybody appears in the busiest person's frames. **Twins**
+are two people with the same family name and birth date, flagged because face recognition merges
+identical faces and one record ends up holding nearly every picture (both are marked
+`counts_reliable: false`). **Duplicates** are one name on two person records, a split face cluster
+in Immich, which the graph flags rather than fixes.
 
-| Producer | Goes where | What is sent |
+A birth date changes the reading: someone born after your library started cannot have a span longer
+than their age, so span roughly equal to age means they have been here since day one. That is a
+two-year-old, not a friend you met two years ago.
+
+Co-occurrence undercounts every pair containing you, because you are behind the camera. Measured on
+a real library: in the quarter the owner met their partner, the partner appears twenty-five times
+and they share zero frames. So the dyad heuristic ignores co-appearance for the owner and reads
+month curves instead. The owner is identified three ways, and the file records which: `--owner
+"Their Name"` or `IMMICH_MEMORIES_OWNER` writes `identified: told`, the name on your Immich account
+writes `identified: account`, and failing both, the person with the longest span and most pictures
+is written `identified: inferred`. If it says `inferred`, check it.
+
+The file is `~/.immich-memories/people.yaml`, readable only by you and gitignored, because it holds
+the names of everyone in your library. Everything under `inferred:` is the scan's reading and gets
+recomputed every run. Everything under `confirmed:` is yours, and the contract is that a refresh
+never writes into a `confirmed:` field, never drops a person carrying anything confirmed even if
+they fall off the roster, and consumers prefer `confirmed:` where the two disagree.
+
+```yaml
+people:
+  - ids: [5f2c…]
+    name: Alex Example
+    birth_date: '1988-04-02'
+    inferred:
+      tier: inner
+      counts_reliable: true
+      evidence: {count: 4210, active_months: 180, span_years: 17.2, onset: '2009-06', continuity: 0.87}
+      links:
+        - {kind: tight-dyad, with: 91ab…, confidence: 0.51, via: co-occurrence}
+    confirmed:
+      role: null
+      links: []
+      notes: null
+```
+
+The same file is the **People** page in the web UI: one card per person with their face crop, tier
+and evidence, a role select, notes, and a check or cross on each link the scan found. Both write the
+same schema through the same writer.
+
+`people scan` prints tier counts and the file path rather than the roster, because a terminal may be
+a log. The flag worth setting is `--min-assets` (25). Unnamed faces are skipped either way; naming
+them is work that belongs in Immich.
+
+Every cut loads `people.yaml` and renders a `people` block onto the wall the text model reads: id,
+name, relationship, where that relationship came from, birth date, first appearance, onset and tier.
+So who somebody is to you is part of what the model weighs. What does not read it yet: selection
+weights, tie-breaks, person-rotation fairness and the automation's person priors.
+
+## `discover-days`
+
+Finds the days something happened on and writes them down, so a memory can arrive years later
+without you asking. Run it occasionally, not per video. What it produces and how a day comes back is
+on [Memory types](../memory-types.mdx#special-day-surprise-me).
+
+Volume is not what makes a day stand out. In a real library the densest single day is 166 photos of
+a work shoot inside one hour, and another holds 413 of one street performer. What separates them is
+how long the day stayed alive:
+
+| day | photos | active hours | occasion |
+|---|---|---|---|
+| a birth | 289 | 18 | yes |
+| a wedding party | 48 | 12 | yes |
+| a track day | 133 | 7 | yes |
+| an apartment viewing | 258 | 5 | no |
+| a street performer | 413 | 3 | no |
+| a work shoot | 166 | 1 | no |
+
+No overlap, but the rule is loose on its own: 22 % of days in that library clear six hours. So it is
+a filter, not a verdict, and it keeps the model off the other 78 %, which is what makes asking about
+the rest affordable. A 20-photo floor sits beside it. What passes goes to the model with a sample of
+the day's pictures.
+
+A day ends when the photographs stop for five hours, not at midnight, so a wedding that runs past
+one is one occasion. Days inside a detected trip are skipped, because a trip memory already tells
+that story, and so are holidays, which have their own type. A holiday is only skipped when the day's
+pictures agree it was one, taken around home: a day that merely lands on the same date and was spent
+67 km away at a race circuit goes to the model like any other candidate. Both filters read the
+thresholds under `trips:`, so this command and the rest of the app agree on what "away" means.
+
+Some days are an event and some contain one. A track day put most of its pictures in one place
+inside a couple of hours of a long day, and the memory should start at the circuit, so a discovered
+day can carry a window. The model is asked for the clock times in the same question, reading them off
+the per-picture lines: a circuit's coordinates are identical from the moment the car is parked to the
+moment it leaves, so the map cannot tell arrival from the start of the race and the pictures can.
+Where the model declines, the fallback is the first and last picture of the place that dominates the
+day, kept only when trimming to it removes at least 45 minutes and 15 % of the day and leaves at
+least half an hour.
+
+```bash
+immich-memories discover-days
+```
+
+```
+2019: 3854 assets
+  2019-06-12  A long evening out
+```
+
+| option | default | what it does |
 |---|---|---|
-| previews, pixels | nowhere | your Immich server answers preview requests over your LAN |
-| heads, detectors | nowhere by default; the inference service if `advanced.inference.facts_base_url` is set | the preview of each picture that still lacks those facts, once |
-| captions (`full` tier) | the caption server at `editorial.preparation.caption_base_url` | a 400 px JPEG tile of every eligible picture in the scope, once, no metadata, plus `caption_api_key` as a bearer token if the server wants one |
+| `--since` | 2007 | first year to scan |
+| `--until` | this year | last year to scan |
+| `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
+| `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
+| `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
+| `--rescan` | off | start over, replacing the existing catalogue |
 
-Both endpoints default to `localhost`. Nothing asks a second time once you point one elsewhere,
-so read [Network & Privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats)
-before you do. The reader (the text model) is not part of preparation; what it receives is on the
-same page.
+The scan takes hours across twenty years, so it resumes by default: years already in the catalogue
+are not scanned again, and a run that finds nothing will not replace a catalogue that has something
+in it. Each year costs up to `--per-year` days' worth of model calls and a paged metadata fetch per
+month.
 
-Before the first run, the pinned encoder and detector files have to be on disk:
+With `llm.thinking` at `low` or above the question splits in two: a fast call writes a line per
+sampled picture, then a text-only call reasons over those lines with the times, places and
+recognised names. Measured across 14 candidate days, one vision call said "special" to all fourteen
+and one call that both looked and reasoned truncated 6 of them past parsing, so two calls was the
+only shape that told an occasion from an ordinary Tuesday. `thinking: disabled` keeps the single
+vision call. Those per-picture lines are the record to check when a day you expected comes back
+ordinary; `immich-memories -v discover-days` prints them.
+
+Titles are checked against what the day actually recorded. A title naming a place the day was never
+in is dropped, and so is one claiming a distance or a race that nothing the model was shown
+mentions: a number on a title card reads exactly as true as a real one. A dropped title is asked for
+once more with the claim quoted back, never a third time, and a day with no true title left is left
+out of the catalogue rather than written down with an empty one.
 
 ```bash
-immich-memories models fetch
+immich-memories days-due              # anniversaries within three days, roundest first
+immich-memories days-due --on 2026-12-24
 ```
+
+```
+10 years ago  2015-06-12  A long evening out  18:40-23:55  9h
+```
+
+The clock times are the day's window when it found one, and the `9h` is how many hours of the clock
+the day put pictures in. Anniversaries either side of New Year are found. Catalogues written before
+any of this existed have none of it and still read.
+
+It needs an LLM configured under `llm:`, and a vision model is worth having: with pictures the model
+sees the day, without them it reasons from times, places and recognised names alone. That is the
+difference between "Driving through somewhere" and knowing what was being driven.
+
+## Small questions
+
+```bash
+immich-memories people          # every named person Immich knows
+immich-memories years           # the years that actually contain video
+immich-memories analyze --year 2024
+immich-memories export-project --year 2024 --output project.json
+```
+
+`people` (bare, no subcommand) lists names as Immich holds them, and "Emma" versus "Emma S." is the
+difference between a memory and an empty pool. `years` saves you guessing at `--year`, which on a
+library imported from old backups is often surprising. `analyze` fetches the videos for a year and
+prints how many there are: it prepares nothing, warms no bank, never looks at photos, and `--force`
+is accepted and ignored. `export-project` writes a JSON snapshot of the **videos** in scope, each
+marked `selected: true` because no selection ran.
+
+Nothing reads that JSON back. There is no import command and no flag that consumes it, so treat "for
+later editing" in its help text as an aspiration. To see how a selection was actually reached, use
+[`generate --trace-selection`](./generate.md#what-a-run-leaves-behind).

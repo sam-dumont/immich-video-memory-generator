@@ -21,7 +21,7 @@ about different things, so do not reconcile them by editing one.
 
 | Command (repo root) | Produces |
 |---|---|
-| `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 47-second composition, 1920×1080 H.264; it ends on the film the product made |
+| `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 50-second composition, 1920×1080 H.264; it ends on the film the product made |
 | `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 3.4 to 15.6 of `demo.mp4` (brief, cut, storyboard) then its last 3 s (the film), 720 px, 10 fps, 15.1 s, 3.8 MB, the README hero |
 | `make demo-cli` | `docs-site/remotion/public/cli-demo.mp4`, VHS recording the real CLI: `scripts/demo-cli-hermetic.py` runs `generate`, `runs story` and `runs why` against the hermetic fakes from `tests/e2e` (`make demo-cli-run` plays the same session without recording) |
 | `make demo-output` | `docs-site/remotion/public/output-preview.mp4` and `output-frame.jpg`, cut on the hermetic launch |
@@ -43,3 +43,9 @@ docs site, so it reaches the README on the next docs deploy, not on the next pus
 The scenes live in `docs-site/remotion/src/scenes/`. When a page name or a button changes in the
 app, the scene changes with it: `tests/e2e/test_demo_assets.py` pins the button labels the demo
 shows against the real pages.
+
+The last scene plays the closing seconds of `output-preview.mp4` and must stop before the film's
+blurred ending card, because the hero GIF's last three seconds are the demo's last three. It does
+not hold that moment in a constant: `make demo-fixture` measures the film with `edgedetect`, which
+reads a flat zero on that card and 8 to 12 on a photograph, and writes `FILM_PICTURES_END` into
+`fixture.ts`. Re-cutting the film moves the window with it.

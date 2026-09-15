@@ -171,11 +171,17 @@ def _validate_and_record_output(
 
 
 def _choose(page: Page, label: str, option: str) -> None:
-    """Choose one exact option from a NiceGUI/Quasar select."""
+    """Choose one exact option from a NiceGUI/Quasar select, and wait for it to close.
+
+    Quasar unmounts the popup a beat after the value lands, so a caller that
+    opens the next select immediately can see two option lists at once and
+    every `get_by_role("option")` after it is a strict-mode violation.
+    """
     select = page.get_by_role("combobox", name=label)
     select.click()
     page.get_by_role("option", name=option, exact=True).click()
     expect(select).to_have_value(option)
+    expect(page.get_by_role("option")).to_have_count(0)
 
 
 def _drive_to_step4(page: Page, launch_app_url: str) -> None:
