@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from immich_memories.config_models import expand_env_vars
 from immich_memories.processing.encoding_plan import HdrMode
@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 # `fill` keeps that rendering under its real name; `smart_crop` moves to blur,
 # which is what someone asking to keep faces in frame was actually after.
 _LEGACY_SCALE_MODES = {"smart_crop": "blur", "fill": "fit"}
+
+
+def _is_loopback(hostname: str) -> bool:
+    """Whether a worker hostname is this machine, where cleartext stays local."""
+    import ipaddress
+
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def normalize_scale_mode(value: str) -> str:
@@ -118,6 +130,14 @@ class RenderWorkerConfig(BaseModel):
         default="", description="Trusted render worker URL; blank renders on this machine"
     )
     worker_token: str = Field(default="", repr=False, description="Worker bearer token")
+    allow_insecure_http: bool = Field(
+        default=False,
+        description=(
+            "Explicitly accept a non-loopback cleartext HTTP worker; the render request "
+            "carries the Immich API key, so plain HTTP is only appropriate on a private "
+            "network the operator treats as trusted"
+        ),
+    )
     timeout_seconds: float = Field(default=3600, gt=0, le=86400)
     fallback_to_local: bool = Field(
         default=False, description="Render the same cut locally if the worker fails"
@@ -157,6 +177,18 @@ class RenderWorkerConfig(BaseModel):
                 "worker_base_url needs an HTTP(S) URL without credentials, query or fragment"
             )
         return value
+
+    @model_validator(mode="after")
+    def require_explicit_cleartext_transport(self) -> RenderWorkerConfig:
+        """A typo to http:// must not silently send the Immich key in cleartext."""
+        url = urlsplit(self.worker_base_url)
+        if url.scheme != "http" or self.allow_insecure_http or _is_loopback(url.hostname or ""):
+            return self
+        raise ValueError(
+            "render.worker_base_url uses cleartext HTTP for a worker that receives the "
+            "Immich API key. Use HTTPS, a loopback address, or set "
+            "render.allow_insecure_http: true for a network you treat as trusted"
+        )
 
 
 class TitleScreenConfig(BaseModel):

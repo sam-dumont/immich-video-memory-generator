@@ -75,6 +75,7 @@ Blank `worker_base_url` renders on the app's machine.
 render:
   worker_base_url: ""
   worker_token: ""             # Or ${RENDER_WORKER_TOKEN}
+  allow_insecure_http: false   # Explicitly accept a non-loopback cleartext HTTP worker
   timeout_seconds: 3600        # Wait for rendering and download; maximum 86400
   fallback_to_local: false     # Explicitly allow local rendering after a worker failure
 ```
@@ -82,7 +83,10 @@ render:
 Use the same app version on both machines. The worker receives the selected assets,
 exact cuts, Live source material, titles, locations, audio markers and the Immich API key
 so it can download the sources directly. Configure a worker you trust, reachable over
-your private network or HTTPS. Requests require the worker token and do not follow redirects.
+your private network or HTTPS. The handoff request carries that Immich key, so a
+non-loopback `http://` worker URL is refused until `allow_insecure_http: true` says you
+meant it; loopback addresses and HTTPS need no opt-in. Preflight names the transport
+before the first render request. Requests require the worker token and do not follow redirects.
 
 Output is H.264 or H.265 MP4. MOV and ProRes use local rendering. Orientation only sets
 the canvas; it does not change the selection. Speech detection and cut selection run
