@@ -9,9 +9,46 @@ soon as the file exists.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from immich_memories.ui.pages.step2_helpers import format_duration
+
+
+def _bound_film_length(state, selected_clips) -> float:
+    from immich_memories.processing.assembly_config import AssemblyClip, TitleScreenSettings
+    from immich_memories.processing.timeline_preview import preview_timeline
+    from immich_memories.ui.pages._step4_generate import _TRANSITION_MAP
+
+    policy = state.editorial_render_timing["policy"]
+    clips = []
+    for clip in selected_clips:
+        start, end = state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))
+        exif = clip.asset.exif_info
+        clips.append(
+            AssemblyClip(
+                Path(),
+                end - start,
+                asset_id=clip.asset.id,
+                date=clip.asset.file_created_at.isoformat(),
+                latitude=exif.latitude if exif else None,
+                longitude=exif.longitude if exif else None,
+                location_name=exif.city if exif else None,
+            )
+        )
+    titles = TitleScreenSettings(
+        **(json.loads(policy.get("title_settings_json") or "null") or {}),
+        memory_type=policy.get("memory_type"),
+    )
+    _, seconds = preview_timeline(
+        clips,
+        state.timeline_plan,
+        titles,
+        _TRANSITION_MAP.get(state.generation_options.get("transition"), policy["transition"]),
+        state.config.defaults.transition_duration,
+    )
+    return seconds
 
 
 def film_length_stat(state: Any, selected_clips: list) -> tuple[str, str]:
@@ -31,6 +68,8 @@ def film_length_stat(state: Any, selected_clips: list) -> tuple[str, str]:
     )
     if state.timeline_plan is None or state.config is None:
         return "Pictures & video", format_duration(content)
+    if state.editorial_render_timing is not None:
+        return "Film length", f"≈{format_duration(_bound_film_length(state, selected_clips))}"
     estimate = estimate_film_duration(
         state.timeline_plan,
         content_seconds=content,

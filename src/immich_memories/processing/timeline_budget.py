@@ -214,11 +214,9 @@ def estimate_film_duration(
 ) -> float:
     """How long the rendered file will run: titles, the content that fits, less the overlap.
 
-    An estimate, and it must be shown as one. ``_pick_transition`` draws an
-    unseeded random number at every boundary in smart mode, so the overlap the
-    assembler actually takes moves from run to run: the demo cut took 6.27 s
-    over 19 boundaries where this expects 6.65 s. Only a finished file has a
-    duration; ffprobe it and show that instead as soon as it exists.
+    This count-only estimate uses SMART's expected fade share. A preview with
+    source IDs can use ``preview_timeline`` for the actual boundary decisions.
+    A finished file's ffprobed duration replaces either estimate.
     """
     content = min(max(0.0, content_seconds), max(0.0, plan.content_budget))
     cards = int(plan.title_duration > 0.0) + plan.max_dividers + int(plan.ending_duration > 0.0)

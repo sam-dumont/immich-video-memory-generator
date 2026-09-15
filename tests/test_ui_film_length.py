@@ -55,3 +55,18 @@ def test_the_finished_file_replaces_the_estimate_with_its_measured_length() -> N
     state.output_duration_seconds = 52.73
 
     assert measured_film_label(state) == "Length: 0:52"
+
+
+def test_bound_video_holds_use_the_selected_intervals_and_actual_overlap() -> None:
+    from dataclasses import replace
+
+    state = _state(
+        replace(_PLAN, content_budget=12, title_budget=0, title_duration=0, ending_duration=0)
+    )
+    state.config.defaults.transition_duration = 1
+    state.generation_options = {"transition": "Crossfade"}
+    state.editorial_render_timing = {"policy": {"transition": "crossfade"}}
+    clips = [make_clip(f"clip-{index}", duration=20) for index in range(3)]
+    state.clip_segments = {clip.asset.id: (3, 7) for clip in clips}
+
+    assert film_length_stat(state, clips) == ("Film length", "≈0:10")

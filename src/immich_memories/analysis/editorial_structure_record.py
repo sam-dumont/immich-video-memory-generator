@@ -229,6 +229,21 @@ def _optional_metrics(port) -> dict:
     return dict(port()) if port else {}
 
 
+def _carrier_locations(carriers, assets) -> dict:
+    """Keep enough private metadata to place trip dividers in a saved storyboard."""
+    result = {}
+    for carrier in carriers:
+        asset = assets.get(carrier["asset_id"])
+        exif = asset.exif_info if asset else None
+        if exif is not None and exif.latitude is not None and exif.longitude is not None:
+            result[carrier["asset_id"]] = {
+                "latitude": exif.latitude,
+                "longitude": exif.longitude,
+                "location_name": exif.city,
+            }
+    return result
+
+
 def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) -> dict:
     case, intent = source.case, source.intent
     prior_events = {c["event"] for c in (facts.prior["carriers"] if facts.prior else [])}
@@ -316,6 +331,7 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
         "left_out_anchors": [],
         "anchor_records": [],
         "carriers": outcome.carriers,
+        "locations": _carrier_locations(outcome.carriers, source.assets),
         "cut_carriers": outcome.cut_carriers,
         "review": deepcopy(REVIEW),
         "structural_review": deepcopy(STRUCTURAL_REVIEW),

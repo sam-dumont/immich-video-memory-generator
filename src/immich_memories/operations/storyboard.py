@@ -25,7 +25,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from immich_memories.processing.timeline_budget import TimelinePlan, estimate_film_duration
+from immich_memories.processing.assembly_config import AssemblyClip, TitleScreenSettings
+from immich_memories.processing.timeline_budget import TimelinePlan
+from immich_memories.processing.timeline_preview import preview_timeline
 
 PLAN_FILE = "plan.private.json"
 PROJECTION_FILE = "render-projection.private.json"
@@ -141,8 +143,8 @@ def _content_budget(plan: Mapping[str, Any], timeline: TimelinePlan | None) -> f
 
 
 def _film_timing(
-    plan: Mapping[str, Any], content_seconds: float, content_clips: int
-) -> tuple[float, float, float | None]:
+    plan: Mapping[str, Any], rows: list, granted: list[float]
+) -> tuple[float, dict[str, tuple[float, float]], float | None]:
     """The renderer's content squeeze, the opening card's offset and the film's length.
 
     The squeeze is what `apply_final_content_budget` will apply: a selection over
@@ -151,20 +153,32 @@ def _film_timing(
     """
     timeline = _recorded_timeline(plan)
     budget = _content_budget(plan, timeline)
+    content_seconds = sum(granted)
     squeeze = 1.0
     if budget is not None and 0.0 < budget < content_seconds:
         squeeze = budget / content_seconds
     if timeline is None:
-        return squeeze, 0.0, None
+        return squeeze, {}, None
     policy = (plan.get("render_timing") or {}).get("policy") or {}
-    film = estimate_film_duration(
+    options = json.loads(policy.get("title_settings_json") or "null") or {}
+    clips = [
+        AssemblyClip(
+            Path(),
+            seconds * squeeze,
+            asset_id=str(row["asset_id"]),
+            date=row.get("taken"),
+            **((plan.get("locations") or {}).get(row["asset_id"]) or {}),
+        )
+        for row, seconds in zip(rows, granted, strict=True)
+    ]
+    positions, film = preview_timeline(
+        clips,
         timeline,
-        content_seconds=content_seconds,
-        content_clips=content_clips,
-        transition_mode=policy.get("transition", "none"),
-        transition_duration=float(policy.get("transition_duration") or 0.0),
+        TitleScreenSettings(**options, memory_type=policy.get("memory_type")),
+        policy.get("transition", "none"),
+        float(policy.get("transition_duration") or 0.0),
     )
-    return squeeze, timeline.title_duration, film
+    return squeeze, positions, film
 
 
 def _granted_seconds(projection: Mapping[str, Any] | None, row: Mapping[str, Any]) -> float:
@@ -183,7 +197,8 @@ def storyboard_from_plan(
     }
     rows = sorted(plan.get("carriers") or (), key=lambda row: str(row.get("taken") or ""))
     granted = [_granted_seconds(projection, row) for row in rows]
-    squeeze, start, film_seconds = _film_timing(plan, sum(granted), len(rows))
+    squeeze, positions, film_seconds = _film_timing(plan, rows, granted)
+    start = 0.0
     shots: list[Shot] = []
     previous_day = previous_month = ""
     for row, seconds in zip(rows, granted, strict=True):
@@ -192,6 +207,7 @@ def storyboard_from_plan(
         key = str(row.get("story_episode") or "")
         title = titles.get(key, key)
         held = round(seconds * squeeze, 2)
+        start, held = positions.get(str(row["asset_id"]), (start, held))
         shots.append(
             Shot(
                 asset_id=str(row.get("asset_id", "")),

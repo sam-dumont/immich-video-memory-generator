@@ -134,6 +134,34 @@ def test_shots_are_timed_and_placed_the_way_the_renderer_will_play_them() -> Non
     board = storyboard_from_plan(_timed_plan(), _projection())
 
     assert [shot.seconds for shot in board.shots] == [2.0, 2.75, 2.0]
-    assert [shot.start for shot in board.shots] == [3.5, 5.5, 8.25]
-    assert board.shots[-1].timecode == "0:08"
-    assert board.summary_label == "3 pictures, 0:06 of pictures and video, about 0:15 of film"
+    assert [shot.start for shot in board.shots] == [3.5, 5.0, 7.75]
+    assert board.shots[-1].timecode == "0:07"
+    assert board.summary_label == "3 pictures, 0:06 of pictures and video, about 0:16 of film"
+
+
+def test_crossfades_and_month_cards_both_move_the_shot_timecodes() -> None:
+    plan = _timed_plan()
+    timing = plan["render_timing"]
+    timing["policy"].update(transition="crossfade", transition_duration=1.0)
+    timing["timeline"].update(max_dividers=1, title_budget=12.5)
+
+    board = storyboard_from_plan(plan, _projection())
+
+    # Content-backed intro/ending cut; ordinary and divider boundaries fade.
+    assert [shot.start for shot in board.shots] == [3.5, 4.5, 7.25]
+    assert board.film_seconds == 16.25
+    assert board.shots[-1].start + board.shots[-1].seconds + 7 == board.film_seconds
+
+
+def test_no_titles_three_four_second_shots_with_one_second_fades_run_ten_seconds() -> None:
+    plan = _timed_plan()
+    plan.pop("duration_realization")
+    plan["render_timing"]["policy"].update(transition="crossfade", transition_duration=1.0)
+    plan["render_timing"]["timeline"].update(
+        content_budget=12, title_budget=0, title_duration=0, ending_duration=0
+    )
+
+    board = storyboard_from_plan(plan, None)
+
+    assert [shot.start for shot in board.shots] == [0, 3, 6]
+    assert board.film_seconds == 10
