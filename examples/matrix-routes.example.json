@@ -5,7 +5,7 @@
     "@placeholders that a private overlay fills in at build time. `duration_seconds`",
     "null means the memory type picks its own length. `music` names a loop in the",
     "bundled immich-memories-music package (folder/file).",
-    "See docs-site/docs/create/recipes/matrix-routes.md."
+    "See docs-site/docs/contribute/setup-matrix.md."
   ],
   "routes": [
     {

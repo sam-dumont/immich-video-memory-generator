@@ -202,5 +202,3 @@ scale and encode; none of them runs inference.
 
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
-- [Title kernels](./hardware.md#title-kernels): an Intel Mac or Python 3.14 has no Quadrants wheel and falls back to PIL titles. `immich-memories preflight` prints which renderer your machine will use
-- [CPU-only](./hardware.md#without-a-gpu): why the title screens, not the encoder, decide render time

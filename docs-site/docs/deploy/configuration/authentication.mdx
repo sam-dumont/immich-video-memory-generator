@@ -7,19 +7,17 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Authentication
 
-Authentication is disabled by default, and because of that the web UI binds to `127.0.0.1`
-unless you decide otherwise. To listen beyond localhost you either enable authentication, name the
-address yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a `server.host` that is not the
-`0.0.0.0` wildcard), or set `server.allow_unauthenticated_lan: true`. The Docker image passes
-`--host 0.0.0.0` because inside a container that is the only useful bind, so the compose port
-mapping is the real boundary: the shipped file publishes `127.0.0.1:8080:8080`.
+Authentication is disabled by default, and because of that the web UI binds to `127.0.0.1` unless
+you decide otherwise. To listen beyond localhost, either enable authentication, name the address
+yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a `server.host` that is not the `0.0.0.0`
+wildcard), or set `server.allow_unauthenticated_lan: true`. A bare `server.host: 0.0.0.0` in a
+config file does not count; the loader ignores it with a warning. In Docker the image passes
+`--host 0.0.0.0`, so the port mapping is the real boundary: the shipped compose file publishes
+`127.0.0.1:8080:8080`.
 
-A bare `server.host: 0.0.0.0` in a config file does not count: older versions wrote it into every
-file they saved, so the loader now ignores it with a warning.
-
-When the server listens beyond localhost without authentication, anyone who reaches the port can
-use the app and, through it, your Immich library. The UI is single-user, single-replica because
-workflow state lives in the process; a shared secret or volume does not make replicas safe.
+Anyone who reaches the port can use the app and, through it, your Immich library. The UI is
+single-user, single-replica because workflow state lives in the process; a shared secret or volume
+does not make replicas safe.
 
 <ThemedScreenshot name="login" alt="Login page" />
 
@@ -32,11 +30,8 @@ IMMICH_MEMORIES_AUTH_USERNAME=admin
 IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
 
-Running the app from a shell instead, these need `export` in front of each line, or the process
-does not see them.
-
-Set both; one alone is ignored. Setting both turns auth on with `provider: basic`. Passwords are
-compared in constant time. The YAML form:
+Set both; one alone is ignored, and setting both turns auth on with `provider: basic`. From a
+shell each line needs `export` in front of it. The YAML form:
 
 ```yaml
 advanced:
@@ -47,11 +42,10 @@ advanced:
     password: ${MY_SECRET_PASSWORD}   # password, client_secret, issuer_url and client_id expand ${VAR}
 ```
 
-:::warning The UI reads auth from the default config path
-`immich-memories --config PATH ui` uses `PATH` for host and port, then reads
-`~/.immich-memories/config.yaml` for every authentication decision. Keep the `auth:` block in the
-default path, or in environment variables, which apply either way.
-:::
+`immich-memories --config PATH ui` reads `PATH` for host and port only, and
+`~/.immich-memories/config.yaml` for every authentication decision, so keep the `auth:` block in
+the default path or in environment variables
+([why](environment-variables.md#shorthand-overrides)).
 
 ## OIDC / SSO
 
@@ -69,32 +63,28 @@ advanced:
     public_url: https://memories.example.com  # the URL users reach you on
     allowed_emails: [me@example.com]
     allowed_domains: [example.com]        # exact: does not admit sub.example.com
-    scope: openid email profile            # default
-    session_ttl_hours: 24                  # default, 1 to 720
     auto_launch: false                     # true: straight to the IdP, no login page
-    button_text: "Sign in with SSO"
 ```
 
-`public_url` pins the `redirect_uri` sent to the IdP (it must match what you registered there)
-and is what makes callback-origin validation possible.
+`public_url` pins the `redirect_uri` sent to the IdP, so it must match what you registered there,
+and it is what makes callback-origin validation possible. Register the callback URL
+`https://your-host/auth/callback` and the logout URL `https://your-host/logout`. Auth0: a Regular
+Web Application. Keycloak: a client with client authentication enabled. Authelia: a client with
+`pkce_challenge_method: S256`, scopes `openid`, `email`, `profile`, grant type
+`authorization_code`. The rest of the `auth` keys are in the
+[config reference](../../reference/config-reference.md).
 
 :::warning Your IdP decides who you are, not whether you may enter
 With no allow-list, anyone your IdP authenticates becomes a full admin of this app, Immich API key
 included. Fine for a personal tenant; wrong for a shared realm or an Auth0 tenant with social
 sign-ups. Set `allowed_emails` or `allowed_domains`: either list admits, matching ignores case, and
-once either is set an account whose token carries no `email` claim is refused. Someone who signs
-in but is not on the list gets a "Not authorised" page naming the account, not a redirect loop.
+once either is set an account whose token carries no `email` claim is refused.
 :::
-
-Register the callback URL `https://your-host/auth/callback` (and logout URL `https://your-host/logout`)
-with your provider. Auth0: a Regular Web Application. Keycloak: a client with client
-authentication enabled. Authelia: a client with `pkce_challenge_method: S256`, scopes `openid`,
-`email`, `profile`, grant type `authorization_code`.
 
 ## Trusted header (reverse proxy)
 
 For a proxy that authenticates (Traefik + Authelia, nginx + oauth2-proxy) and forwards the user in
-a header:
+a header.
 
 ```yaml
 advanced:
@@ -108,37 +98,32 @@ advanced:
     session_ttl_hours: 24
 ```
 
-Headers are read only when the immediate peer is in `trusted_proxies`; from anyone else the
-request is simply unauthenticated. An empty `trusted_proxies` with `provider: header` fails
-validation at startup. Nothing is stripped, so a proxy that forwards the header from an untrusted
-source is your problem to fix. Authelia forwards `Remote-User` and `Remote-Email` by default.
+Headers are read only when the immediate peer is in `trusted_proxies`; from anyone else the request
+is unauthenticated, and an empty `trusted_proxies` here fails validation at startup. Nothing is
+stripped, so a proxy that forwards the header from an untrusted source is your problem to fix.
+Authelia forwards `Remote-User` and `Remote-Email` by default.
 
 ## Behind a reverse proxy with TLS
 
 Four things, whichever provider you use:
 
-1. Do not publish 8080 on the LAN once the proxy is up: bind it to localhost or keep the container
-   on the proxy network only.
-2. List the proxy in `auth.trusted_proxies`. The app passes it to uvicorn as `forwarded_allow_ips`,
-   so `X-Forwarded-For` and `X-Forwarded-Proto` from that address are honoured. Without it every
-   visitor looks like the proxy (five wrong passwords from anyone lock login for everyone for ten
-   minutes) and the OIDC `redirect_uri` is built as `http://`. `"*"` trusts any peer; use it only
-   when the app is unreachable except through the proxy. With `provider: header` the forwarded
-   headers are deliberately not applied, and `"*"` is not parsed as an address there.
+1. Do not publish 8080 on the LAN once the proxy is up: bind it to localhost, or keep the
+   container on the proxy network only.
+2. List the proxy in `auth.trusted_proxies`, so its `X-Forwarded-For` and `X-Forwarded-Proto` are
+   honoured. Without it every visitor looks like the proxy (five wrong passwords from anyone lock
+   login for everyone for ten minutes) and the OIDC `redirect_uri` is built as `http://`. `"*"`
+   trusts any peer; use it only when the app is unreachable except through the proxy.
 3. Set `auth.public_url` to the address users type.
-4. Set `server.secure_cookies: true` so the session cookie carries `Secure`. Only once every
+4. Set `server.secure_cookies: true` so the session cookie carries `Secure`, but only once every
    visitor arrives over HTTPS: with it on, a plain `http://` origin other than `localhost` cannot
    log in.
 
-`FORWARDED_ALLOW_IPS` in the environment still works and, when set, wins over `trusted_proxies`.
+`FORWARDED_ALLOW_IPS` in the environment wins over `trusted_proxies` when set.
 
 ## Sessions
 
-Sessions last `session_ttl_hours` (24 by default). Abandoned session files are swept at startup
+Sessions last `session_ttl_hours` (24 by default) and abandoned session files are swept at startup
 and every 15 minutes. Logout is the sidebar button or `/logout`; OIDC logout also ends the IdP
-session when the IdP advertises `end_session_endpoint`. Scripts do not use sessions: they
-authenticate to [the trigger endpoint](../../create/recipes/automated-generation.md#trigger-it-over-http) with
-`server.trigger_token`.
-
-Every `advanced.auth` field with its default is in the
-[config reference](../../reference/config-reference.md).
+session when the IdP advertises `end_session_endpoint`. Scripts authenticate to
+[the trigger endpoint](../../create/recipes/automated-generation.md#trigger-it-over-http) with
+`server.trigger_token` instead.

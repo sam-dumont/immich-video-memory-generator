@@ -14,14 +14,14 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Create Memories',
+      label: 'Create memories',
       collapsed: false,
       items: [
         'create/first-memory',
         'create/web-ui',
         {
           type: 'category',
-          label: 'Using the CLI',
+          label: 'The CLI',
           items: [
             'create/cli/generate',
             'create/cli/prepare',
@@ -39,7 +39,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Deploy & Operate',
+      label: 'Deploy and operate',
       items: [
         'deploy/self-hosting',
         'deploy/running-modes',
@@ -71,7 +71,7 @@ const sidebars: SidebarsConfig = {
         'deploy/hardware',
         {
           type: 'category',
-          label: 'Common Setups',
+          label: 'Common setups',
           items: [
             'deploy/common-setups/nas-only',
             'deploy/common-setups/mac-local-llm',
@@ -81,7 +81,7 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Monitoring & Maintenance',
+          label: 'Monitoring and maintenance',
           items: [
             'deploy/maintenance/health-logs-cache',
             'deploy/maintenance/upgrading',

@@ -1,8 +1,8 @@
 ---
-sidebar_label: "Health, Logs & Cache"
+sidebar_label: "Health, logs and caches"
 ---
 
-# Health, Logs & Cache
+# Health, logs and caches
 
 ## Health endpoints
 

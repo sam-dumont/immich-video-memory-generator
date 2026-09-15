@@ -219,8 +219,9 @@ classifiers (0.6930 s a picture for the two detectors and 0.5963 s for the encod
 heads, out of 1.4404 s). **Cluster: the render again, at a quarter of the NAS.** The facts service is
 what makes the cluster's preparation cheap: on the fixture month the same pod paid 0.6083 s a picture
 to a CPU-backed service and 0.1957 s to a GPU-backed one. A pod deriving its own facts in process
-managed 0.2555 s there, so the service does not pay for itself on a box that quick. It is for hosts
-like the NAS, and for putting the classifiers on a card.
+managed 0.2555 s there, so the service does not pay for itself on a box that quick, and a Mac
+computing the same heads and detectors in process measured 23 to 40 ms a picture. The service is for
+hosts like the NAS, and for putting the classifiers on a card.
 
 ### What overlap means
 

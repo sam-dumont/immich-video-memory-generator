@@ -133,9 +133,8 @@ stops after the current stage. What those stages do, and what each costs, is on
 [How a memory gets cut](./pipeline.md); on a library that has never been read, *Reading dates, places
 and people* is the long one.
 
-A stage that counts its work draws a bar with an estimate such as **~36s left in this stage**,
-measured from that stage's own completed work, so a new stage starts without one. The CLI shows the
-same saved value and reloading keeps it.
+A stage that counts its work draws a bar with an estimate measured from that stage's own completed
+work, so a new stage starts without one. The CLI shows the same saved value and reloading keeps it.
 
 <ThemedScreenshot name="memory-cutting-estimate" alt="A preparation pass showing its count and estimated time left in this stage" />
 
@@ -146,21 +145,17 @@ seconds apart, so a server that is restarting survives and one that is off is na
 One session runs one cut at a time, and the run belongs to the session rather than the tab, so
 **Cut** is refused while one is running on either page. Reload mid-cut and it lands on the same rows,
 because the page polls the attempt the run writes under the cache directory. A cut that was
-cancelled, failed, or interrupted (the process that ran it is gone, which the attempt's released
-lease tells apart from a slow live run) is reported with **Cut again**. A cut that finished while the
-session held no result for it is read back from the attempt, and **Re-load media to export** rebuilds
-the selection so Export works.
+cancelled, failed, or interrupted (the attempt's released lease tells an interrupted run from a slow
+one) offers **Cut again**.
 
 ## The storyboard, then the story
 
 <ThemedScreenshot name="memory-story" alt="The storyboard: the thesis, then one shot per picture in capture order with its day, story and running timecode" />
 
 When the cut finishes the page opens on the **Storyboard**: the cut in the order the video plays it.
-Above both tabs sits the **thesis**, the editor's one-paragraph reading of the period, then the
-number of pictures and the seconds they add up to. A **chapter** label marks each month change. Then
-one row per picture in capture order: the running timecode, a thumbnail, the capture day (bold when
-the day changes), a **Video** or **Still** badge, the seconds it holds, the story it was granted to,
-the moment it depicts, and the editor's one-line reason.
+Above both tabs sits the **thesis**, the editor's one-paragraph reading of the period. Then one row
+per picture in capture order, with its timecode, its capture day, the seconds it holds, the story it
+was granted to and the editor's one-line reason.
 
 Read a story's day labels down the list. Two pictures under one story title on the same day is a
 moment; six pictures under one title across three bold days is a grouping that went loose, and this
@@ -183,20 +178,14 @@ with your ticks) and **Change the brief**.
 
 <ThemedScreenshot name="memory-export" alt="Export: summary, output filename, upload switch" />
 
-**Preview & Export** opens with stat cards and the **Output** card: the **Output filename** (built
-from the type, the people and the range, as in `everyone_jan-apr_2025_memories.mp4`), the "Will be
-saved to" line (`output.directory`, `~/Videos/Memories` by default, with the file in a per-run
-subfolder), and **Upload after generation** with an **Album name**, off by default. Nothing in your
-library is modified either way.
+**Preview & Export** carries the **Output filename** (built from the type, the people and the range,
+as in `everyone_jan-apr_2025_memories.mp4`), the directory it will be saved to (`output.directory`,
+`~/Videos/Memories` by default, with the file in a per-run subfolder), and **Upload after
+generation** with an **Album name**, off by default. Nothing in your library is modified either way.
 
-**Generate Video** starts the render. The status line names each phase as it runs, a preview frame
-updates during assembly, and the bar covers extraction, assembly, music and upload together, so
-finishing extraction cannot fill it. When it finishes you get **Saved to: path (size)**, an **Immich
-delivery** line and an inline player. There is no download button: open the path shown, or find the
-video in the album you chose.
-
-The render keeps going on the server if the tab is reloaded or its connection drops, and reloading
-lands on either "still running", the finished video, or a warning that the last run failed.
+**Generate Video** starts the render, which keeps going on the server if the tab is reloaded or its
+connection drops. There is no download button: open the path shown, or find the video in the album
+you chose.
 
 <ThemedScreenshot name="memory-options" alt="Generation Options: output settings, title, music" />
 

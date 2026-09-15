@@ -6,8 +6,8 @@ title: Network & Privacy
 # Data leaving your network
 
 The app runs locally and talks to your Immich server over your LAN. No telemetry, no update check,
-no analytics. Some features make outbound requests; this page lists every one, what is sent and
-how to turn it off. It comes from a sweep of the source and is kept by hand: if you find a call
+no analytics. Some features make outbound requests; every one is below, with what is sent and how
+to turn it off. The list comes from a sweep of the source and is kept by hand: if you find a call
 that is not here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 | Destination | When | What leaves your network | Opt out |
@@ -28,26 +28,12 @@ that is not here, [open an issue](https://github.com/sam-dumont/immich-video-mem
 | Your Apprise or ntfy targets | notifications | memory type, outcome, duration, output path, a redacted error tail; a JPEG frame if `attach_thumbnail: true` | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | the standard OIDC flow with PKCE | basic auth or the trusted-header provider |
 
-Three provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`
-(`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`) and `zai`
-(`https://api.z.ai/api/anthropic`). Set `base_url` yourself and the request goes where you point it,
-whichever provider is named; which dialect each one speaks is on
-[LLM Titles and Mood](../readers.md). `preflight` asks whatever the
-reader URL is for its model list, and sends one small test call when the host does not publish one.
+Three provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`,
+`anthropic` and `zai`. Set `base_url` yourself and the request goes where you point it, whichever
+provider is named. `preflight` asks that URL for its model list, and sends one small test call when
+the host does not publish one.
 
 ## The two picture seats
-
-Music selection reads the cut's text by default. An unavailable text model or an unusable answer
-falls back to defaults; it does not send pictures instead. The answer is banked separately from
-selection, and `runs why <asset-id> --run <run-id>` reports the music route. Standalone
-`music add --analyze-frames` and `music analyze` explicitly send sampled frames to the configured
-vision provider.
-
-Special-day scans prefer the configured producer's prepared captions, and only for a day the
-captions actually cover. The described pictures have to clear the same bar the day itself had to
-clear to be worth asking about: 20 of them across 6 hours of the clock. Below that the day keeps
-the frame fallback. Above it the day's tiles are never downloaded at all. Once a day takes the
-caption route, a failed text call never switches it to vision.
 
 | Seat | Setting | What it is shown |
 |---|---|---|
@@ -58,20 +44,28 @@ Both default to this machine. Pointing either at another host (a box on your LAN
 hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing
 asks a second time.
 
+Two features can reach a vision seat without being the editor, and both prefer text:
+
+- **Music selection** reads the cut's text. A missing text model or an unusable answer falls back
+  to defaults rather than sending pictures, and `runs why <asset-id> --run <run-id>` reports the
+  route taken. Standalone `music add --analyze-frames` and `music analyze` do send sampled frames.
+- **Special-day scans** use prepared captions, and only for a day they cover: 20 described pictures
+  across 6 hours of the clock. Below that bar the day falls back to sampled frames; above it the
+  day's tiles are never downloaded. Once a day takes the caption route, a failed text call never
+  switches it to vision.
+
 ## Geocoding and maps
 
 Trip detection reverse-geocodes each cluster's centroid so trips get names; home-base coordinates
-are used for the map animation only, never geocoded. Disabling title screens does not stop the
-geocoding, and privacy mode does not change it either: detection runs before anonymisation. The
-map fly-in requests hundreds of World Imagery tiles per animated title; in privacy mode the tiles
-cover the fake city.
+feed the map animation only and are never geocoded. Disabling title screens does not stop the
+geocoding, and neither does privacy mode: detection runs before anonymisation. The map fly-in
+requests hundreds of World Imagery tiles per animated title, of the fake city in privacy mode.
 
 ## Thumbnails inside the web UI
 
 Every thumbnail is an `<img>` the browser fetches from the app at `/media/thumb/<asset id>` on the
-same port, served from the cache the analysis already filled. The route answers only for assets the
-current session prepared, sits behind the same login as every page, and derives a 320 px grid
-thumbnail from the cached preview on first request. Privacy-mode blur applies to it.
+same port, out of the cache the analysis already filled. The route answers only for assets the
+current session prepared, sits behind the same login as every page, and honours privacy-mode blur.
 
 ## Privacy mode
 
@@ -84,8 +78,8 @@ immich-memories generate --privacy-mode --year 2024
 ```
 
 For the UI, set `server.enable_demo_mode: true` (off by default) and the sidebar shows a **Demo
-mode** switch. Toggling it on also blurs every image and video the UI renders, on every page, not
-just the clip review screen, so no preview shows your footage.
+mode** switch. Toggling it on blurs every image and video the UI renders, on every page, not just
+the clip review screen.
 
 | Data | How it is handled |
 |------|-----------------|
@@ -97,22 +91,14 @@ just the clip review screen, so no preview shows your footage.
 | Title screen text | Uses the fake person name and the fake city |
 | Map animation | Flies to the fake destination, same visual style |
 
-The move is the same every run, so two renders of the same trip put it in the same place and
-repeated renders give away nothing that could be averaged back to the real one.
-
-The *graphics* of a title screen are rendered clean: the title text, the map fly-over, the location
-cards, the ending screen. The footage behind them is not, because an opening card backed by a frame
-from your own clips is a clip and gets the same blur.
+The move is the same every run, so repeated renders of the same trip give away nothing that could
+be averaged back to the real location. Title *graphics* are rendered clean (the title text, the map
+fly-over, the location cards, the ending screen), but an opening card backed by a frame from your
+own clips is a clip and gets the same blur.
 
 Two things it does not cover. The output file name is built before anonymization, so it can still
 carry the real place or person names: rename the file before sharing it. And it changes what the
-film shows, not what the app sends, because trip detection and its geocoding have already run by
-then and the map still fetches its tiles (of the fake city).
-
-The demos and screenshots on this site do not use it. They run the real product over a CC0 stock
-library that tells one made-up household's June, so nothing needs blurring
-([how the demo assets are made](../../contribute/demo-assets.md)). Privacy mode stays for the case
-it was built for: showing the app over your own library to someone who should not see your pictures.
+film shows, not what the app sends: trip detection and its geocoding have already run by then.
 
 ## CI only
 

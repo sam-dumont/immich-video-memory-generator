@@ -10,27 +10,24 @@ NVENC has shipped since Kepler, so almost any card of the last decade encodes; a
 safe floor.
 
 What the card does not do is the reading. Work through
-[editorial annotation setup](../configuration/editorial-preparation.md) before the first
-uncached generation: the pinned context encoder, the detector weights, the caption endpoint and
-the story model are separate requirements from everything on this page.
-
-## Architecture
+[editorial annotation setup](../configuration/editorial-preparation.md) before the first uncached
+generation: the context encoder, the detector weights, the caption endpoint and the story model are
+separate requirements from everything on this page.
 
 ![Linux setup diagram](/img/diagrams/setup-linux.png)
 
 ## Prerequisites
 
 Install the NVIDIA container toolkit from NVIDIA's own
-[installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html):
-the per-distribution recipe moves, and the `distribution=$(. /etc/os-release; …)` form that used to
-be copied here is deprecated upstream. Whatever the guide says, it ends the same way:
+[installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html);
+the per-distribution recipe moves, so it is not copied here. Whatever the guide says, it ends the
+same way:
 
 ```bash
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
+docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 ```
-
-Verify with `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`.
 
 ## Docker Compose
 
@@ -70,51 +67,31 @@ IMMICH_URL=http://immich-server:2283
 IMMICH_API_KEY=your-api-key-here
 ```
 
-The port is published on loopback only. A GPU box is usually headless, so either tunnel
+A GPU box is usually headless, and the port above is published on loopback only, so either tunnel
 (`ssh -L 8080:localhost:8080 your-server`) or publish it properly: enable
 [authentication](../configuration/authentication) first (the app holds an Immich API key to your
 whole photo library), then change the mapping to `"8080:8080"`.
 
-One thing the compose file cannot do for you: the container runs as UID/GID 1000, so create the
-output directory yourself (`mkdir -p output`; `chown 1000:1000 output` if your user isn't 1000) or
-Docker creates it as root and the app cannot write there. The alternatives are on
-[Docker install](../installation/docker.md).
+The container runs as UID/GID 1000, so create the output directory yourself (`mkdir -p output`;
+`chown 1000:1000 output` if your user isn't 1000) or Docker creates it as root and the app cannot
+write there. The alternatives are on [Docker install](../installation/docker.md).
 
 ## What the card is for
 
-- **NVENC encoding**: H.264/H.265 on the card. NVIDIA is probed first, so it is used automatically.
-- **CUDA scaling**: the scaling in the render runs on the card too.
-- **GPU title renderer**: particle effects and gradient backgrounds instead of the PIL fallback.
-
+NVENC encoding, CUDA scaling and the GPU title renderer, all three probed and used automatically.
 Preparation, the six heads and the two detectors are CPU work here, and the reader and the caption
 server are their own services. All ten memory types work, same as anywhere else.
 
-## What doesn't work
-
-- **The reader on a small card**: the graded reader is 30B parameters at 4 bits, so roughly 17 GB of weights stay resident for as long as the server is up. A 24 GB card (3090, 4090) holds that; what a smaller one does about the overflow is up to whichever serving stack you pick, and nobody has measured it here. Below 24 GB, point `llm.base_url` at a box that can: there is no cut without a reader.
-- **A graded NVIDIA configuration**: there isn't one. The approved matrix ran on Apple Silicon MLX, for both the reader and the captions. Any OpenAI-compatible vision model with a 32k context is expected to work here; nobody has compared its output to the graded run.
-
-## What to expect
-
-There is no table here, because the setup matrix measured a Mac, a Synology NAS and a Kubernetes
-cluster and not a bare-metal Linux box. Its numbers are on
-[Running modes](../running-modes.md), and what the card is worth against a CPU encode, measured on
-a T1000, is on [Hardware overview](../hardware.md#what-the-card-is-actually-worth).
-
-What is true by construction: a run is bounded by your Immich server and your two model services
-rather than by this card, and every producer banks its answer, so a second cut over the same
-period skips preparation entirely.
-
-If you measure a run on your own box, [an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
-with the numbers is welcome.
-
 ## Pointing the reader at this box
 
-The reader has to accept images and hold at least a 32k context: some of the candidates reach it
-as 800 px tiles. The one graded configuration is
-`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX, which is Apple Silicon only. On NVIDIA,
-serve an equivalent vision model with vLLM or Ollama and treat the quality as your own
-measurement. Ten readers were pointed at one real month and three of them stopped:
+The reader has to accept images and hold at least a 32k context: some candidates reach it as 800 px
+tiles. The graded reader is 30B parameters at 4 bits, roughly 17 GB resident for as long as the
+server is up. A 24 GB card (3090, 4090) holds that; below 24 GB, point `llm.base_url` at a box that
+can, because there is no cut without a reader.
+
+There is no graded NVIDIA configuration. The approved matrix ran the reader and the captions on
+Apple Silicon MLX. Serve an equivalent vision model with vLLM or Ollama and treat the quality as
+your own measurement. Ten readers were pointed at one real month and three of them stopped:
 [Readers](../readers.md).
 
 ```yaml
@@ -130,8 +107,7 @@ advanced:
 ## Adding AI music
 
 MusicGen and ACE-Step want their own GPU allocation. On a single card, time-share it: generate the
-music first, then encode. Configure the server you run in the `musicgen` or `ace_step` section of
-`config.yaml`:
+music first, then encode.
 
 ```yaml
 advanced:
@@ -140,9 +116,13 @@ advanced:
     base_url: http://musicgen-server:8000
 ```
 
-## Tips
+## Checks worth running
 
-- **Check detection inside the container**: `docker exec immich-memories immich-memories hardware`. The host seeing the card proves nothing about what the container sees.
-- **Multi-GPU**: pick the card with `NVIDIA_VISIBLE_DEVICES=0` (or `CUDA_VISIBLE_DEVICES`) in the container environment; there is no config knob for it.
-- **VRAM**: nobody has recorded peak VRAM for the encode or for GPU titles, so watch `nvidia-smi` during a generation before you size a card around them.
-- **Headless**: `immich-memories generate` does everything the UI does. You never need a browser on this box.
+`docker exec immich-memories immich-memories hardware` reports what the container sees, which is
+the only view that matters: the host seeing the card proves nothing. On a multi-GPU box, pick one
+with `NVIDIA_VISIBLE_DEVICES=0` in the container environment. Peak VRAM for the encode and for GPU
+titles has never been recorded, so watch `nvidia-smi` before you size a card around them.
+
+The setup matrix measured a Mac, a NAS and a Kubernetes cluster, not a bare-metal Linux box, so
+there is no timing table for this page. What the card is worth against a CPU encode, measured on a
+T1000, is on [Hardware](../hardware.md#what-the-card-is-actually-worth).

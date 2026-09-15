@@ -1,8 +1,8 @@
 ---
-sidebar_label: "Code of Conduct"
+sidebar_label: "Code of conduct"
 ---
 
-# Code of Conduct
+# Code of conduct
 
 This project follows the [Contributor Covenant Code of Conduct v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 
