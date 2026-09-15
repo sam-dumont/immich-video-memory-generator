@@ -39,9 +39,10 @@ const CLICK_CUT_AGAIN = 92;
 
 const CARD_W = 108;
 const CARD_GAP = 18;
-// Measured against a 1920x1080 still render: the Include box of the second
-// card, and the middle of the Cut again button.
-const CHECKBOX_XY = { x: CONTENT_X + 20, y: CONTENT_Y + 370 };
+// Measured against a 1920x1080 still render: the Include box of the first
+// card, and the middle of the Cut again button. The box sits under the outcome
+// line, so it moves whenever that block's height does.
+const CHECKBOX_XY = { x: CONTENT_X + 20, y: CONTENT_Y + 427 };
 const CUT_AGAIN_XY = { x: CONTENT_X + 71, y: CONTENT_Y + 134 };
 
 const cursorSteps = [
@@ -103,6 +104,18 @@ const PoolCard: React.FC<{
       </div>
     )}
     <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 4 }}>{card.file}</div>
+    <div
+      style={{
+        fontSize: 10,
+        lineHeight: 1.3,
+        color: COLORS.textSecondary,
+        marginTop: 4,
+        height: 52,
+        overflow: "hidden",
+      }}
+    >
+      {card.outcome}
+    </div>
     <Checkbox checked={checked} />
   </ImCard>
 );
@@ -129,7 +142,7 @@ export const MediaPoolScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={2} completedSteps={[1]} />
+        <Sidebar active="Media pool" />
         <div
           style={{
             flex: 1,

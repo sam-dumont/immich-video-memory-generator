@@ -20,14 +20,16 @@ import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 
+// The four stat cards of the real Export page for this cut, as captured in
+// docs-site/static/img/screenshots/memory-export.png.
 const STATS = [
-  { icon: "movie", value: "6", label: "Clips" },
-  { icon: "photo_library", value: "3", label: "Photo Pool" },
-  { icon: "timer", value: "5:12", label: "Duration" },
+  { icon: "movie", value: "18", label: "Clips" },
+  { icon: "photo_library", value: "120", label: "Photo Pool" },
+  { icon: "timer", value: "1:19", label: "Duration" },
   { icon: "video_file", value: "MP4", label: "Format" },
 ];
 
-const FILENAME = "year_2025_memories.mp4";
+const FILENAME = "everyone_june_2024_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
 const CLICK_GENERATE = 78;
@@ -63,7 +65,7 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="" />
         <div
           style={{
             flex: 1,

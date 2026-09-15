@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tests.e2e.fake_library import (  # noqa: E402
     CARRIERS,
+    DROPPED,
     LIBRARY,
     STORY_OF,
     THESIS,
@@ -32,6 +33,32 @@ POOL_PAGE = 20
 
 def _taken_label(taken_at: str) -> str:
     return f"{MONTHS[int(taken_at[5:7]) - 1]} {taken_at[8:10]} {taken_at[11:16]}"
+
+
+def _timecode(seconds: float) -> str:
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+def _outcomes() -> dict[str, str]:
+    """The line the pool prints under a picture once a cut exists.
+
+    Same two shapes as `operations/candidate_fates.py`: the storyboard's
+    timecode and reason for a picture that shipped, and the pass that dropped
+    it for one that did not. The hermetic route rejects everything else in a
+    single `picture_review` pass, which is where those words come from.
+    """
+    at, running = {}, 0.0
+    for picture in CARRIERS:
+        at[picture.asset_id] = running
+        running += picture.seconds
+    shipped = {
+        picture.asset_id: f"In the cut at {_timecode(at[picture.asset_id])}: {picture.caption}"
+        for picture in CARRIERS
+    }
+    return shipped | {
+        asset_id: f"Left out at the picture review: {reason}"
+        for asset_id, reason in DROPPED.items()
+    }
 
 
 def main() -> None:
@@ -51,6 +78,7 @@ def main() -> None:
             shot["chapter"] = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}".replace("Jun ", "June ")
             previous_month = month
         shots.append(shot)
+    outcome_of = _outcomes()
     pool = [
         {
             "picture": f"library/{picture.source.name}",
@@ -60,6 +88,7 @@ def main() -> None:
             "favourite": picture.is_favorite,
             "ticked": picture.shipped,
             "seconds": int(picture.seconds),
+            "outcome": outcome_of[picture.asset_id],
         }
         for picture in LIBRARY[:POOL_PAGE]
     ]
@@ -87,6 +116,8 @@ def main() -> None:
             "  file: string;",
             "  favourite: boolean;",
             "  ticked: boolean;",
+            "  /** What the pool prints under the picture after a cut. */",
+            "  outcome: string;",
             "  seconds: number;",
             "};",
             "",

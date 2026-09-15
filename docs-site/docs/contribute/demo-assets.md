@@ -22,7 +22,7 @@ about different things, so do not reconcile them by editing one.
 | Command (repo root) | Produces |
 |---|---|
 | `make demo-ui` | `docs-site/static/demo/demo.mp4`, the 47-second composition, 1920×1080 H.264; it ends on the film the product made |
-| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 3.4 to 15.6 of `demo.mp4` (brief, cut, storyboard) then its last 3 s (the film), 720 px, 10 fps, 15.1 s, 3.8 MB, the README hero |
+| `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 3.4 to 15.6 of `demo.mp4` (brief, cut, storyboard) then its last 3 s (the film), 720 px, 10 fps, 15.1 s, 3.9 MB, the README hero |
 | `make demo-cli` | `docs-site/remotion/public/cli-demo.mp4`, VHS recording the real CLI: `scripts/demo-cli-hermetic.py` runs `generate`, `runs story` and `runs why` against the hermetic fakes from `tests/e2e` (`make demo-cli-run` plays the same session without recording) |
 | `make demo-output` | `docs-site/remotion/public/output-preview.mp4` and `output-frame.jpg`, cut on the hermetic launch |
 | `make demo-output-trip` | `docs-site/static/demo/trip-preview.mp4` and `docs-site/static/img/trip-map-flyover.jpg`, the fixture's lake week cut as a trip memory and the still of its map fly-over, both played by the trip memory page. Needs the network: the satellite tiles come from ArcGIS World Imagery and the trip's name from Nominatim, and neither has an offline stand-in |

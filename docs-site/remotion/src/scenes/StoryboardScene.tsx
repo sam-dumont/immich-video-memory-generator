@@ -207,7 +207,7 @@ export const StoryboardScene: React.FC<Props> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={1} completedSteps={[2]} />
+        <Sidebar active="Memory" />
         <div
           style={{
             flex: 1,

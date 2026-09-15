@@ -204,7 +204,7 @@ export const CuttingScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={1} />
+        <Sidebar active="Memory" />
         <div
           style={{
             flex: 1,

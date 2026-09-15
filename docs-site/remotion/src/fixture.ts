@@ -19,6 +19,8 @@ export type PoolCard = {
   file: string;
   favourite: boolean;
   ticked: boolean;
+  /** What the pool prints under the picture after a cut. */
+  outcome: string;
   seconds: number;
 };
 
@@ -185,7 +187,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2401.jpg",
     "favourite": false,
     "ticked": true,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "In the cut at 0:00: the first coffee of the month at the kitchen table"
   },
   {
     "picture": "library/home-breakfast-02.jpg",
@@ -194,7 +197,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2402.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-breakfast-03.jpg",
@@ -203,7 +207,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2403.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
   },
   {
     "picture": "library/home-evening-sky-01.jpg",
@@ -212,7 +217,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2404.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: a sky, and nothing of the family under it"
   },
   {
     "picture": "library/home-park-pond-01.jpg",
@@ -221,7 +227,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2405.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: the pond, with nobody of ours at it"
   },
   {
     "picture": "library/home-park-pond-02.jpg",
@@ -230,7 +237,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2406.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-park-pond-03.jpg",
@@ -239,7 +247,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2407.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
   },
   {
     "picture": "library/home-football-lawn-01.jpg",
@@ -248,7 +257,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2408.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: the ball on the grass, the game already over"
   },
   {
     "picture": "library/home-football-lawn-02.jpg",
@@ -257,7 +267,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2409.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-rain-window-01.jpg",
@@ -266,7 +277,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2410.jpg",
     "favourite": false,
     "ticked": true,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "In the cut at 0:04: rain on the kitchen window, the month's first grey morning"
   },
   {
     "picture": "library/home-rain-window-02.jpg",
@@ -275,7 +287,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2411.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-rain-window-03.jpg",
@@ -284,7 +297,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2412.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
   },
   {
     "picture": "library/home-kitchen-01.jpg",
@@ -293,7 +307,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2413.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: a pan on a stove, nothing to say about it"
   },
   {
     "picture": "library/home-kitchen-02.jpg",
@@ -302,7 +317,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2414.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-kitchen-03.jpg",
@@ -311,7 +327,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2415.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
   },
   {
     "picture": "library/home-desk-laptop-01.jpg",
@@ -320,7 +337,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2416.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: a laptop on a desk: work, not the household"
   },
   {
     "picture": "library/home-desk-laptop-02.jpg",
@@ -329,7 +347,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2417.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   },
   {
     "picture": "library/home-desk-laptop-03.jpg",
@@ -338,7 +357,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2418.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
   },
   {
     "picture": "library/home-dog-walk-01.jpg",
@@ -347,7 +367,8 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2419.mp4",
     "favourite": false,
     "ticked": true,
-    "seconds": 5
+    "seconds": 5,
+    "outcome": "In the cut at 0:08: the dog pulling towards the park"
   },
   {
     "picture": "library/home-dog-walk-02.jpg",
@@ -356,6 +377,7 @@ export const POOL: PoolCard[] = [
     "file": "IMG_2420.jpg",
     "favourite": false,
     "ticked": false,
-    "seconds": 4
+    "seconds": 4,
+    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
   }
 ];

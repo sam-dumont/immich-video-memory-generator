@@ -49,7 +49,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="" />
         <div
           style={{
             flex: 1,
@@ -102,7 +102,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
                   marginTop: 4,
                 }}
               >
-                Saved to: /home/user/Videos/Memories/year_2025_memories.mp4 (42 MB)
+                Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 (42 MB)
               </div>
             </div>
           </div>
@@ -172,8 +172,8 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
               icon="arrow_back"
             />
             <ImButton
-              text="Start new project"
-              variant="ghost"
+              text="Start New Project"
+              variant="secondary"
               icon="refresh"
             />
           </div>
