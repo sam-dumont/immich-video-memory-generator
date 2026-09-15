@@ -8,6 +8,7 @@ import {
 } from "remotion";
 import { fontFamily } from "../fonts";
 import { COLORS } from "../theme";
+import { FILM_PICTURES_END } from "../fixture";
 
 /**
  * The real rendered memory, last and full bleed, in real time. It is cut by the
@@ -15,18 +16,18 @@ import { COLORS } from "../theme";
  * tests/e2e/fixtures -- see `make demo-output`. Nothing in it is anyone's library.
  */
 
-// The rendered film is 54 s: pictures until about 47 s (the lake week, then
-// the pancakes back home), then its blurred ending card. The demo plays the
-// last nine seconds of pictures and ends where the card begins, so the closing
-// image is a picture rather than a blur.
-const FILM_START_SECONDS = 38;
+// The film ends on a blurred card, and the demo must not: this is the README's
+// first impression, and the hero GIF's last three seconds are this scene's last
+// three. So the window is anchored to the end of the film's pictures, which
+// `make demo-fixture` measures out of the film itself. A re-cut that moves it by
+// a second moves this with it; nothing here is a number anyone typed.
 const FPS = 30;
 
 type Props = { frames: number };
 
 export const OutputPreviewScene: React.FC<Props> = ({ frames }) => {
   const frame = useCurrentFrame();
-  const startFrom = FILM_START_SECONDS * FPS;
+  const startFrom = Math.max(0, Math.round(FILM_PICTURES_END * FPS) - frames);
 
   // The closing line fades in over the last two seconds.
   const closing = interpolate(frame, [frames - 60, frames - 40], [0, 1], {
