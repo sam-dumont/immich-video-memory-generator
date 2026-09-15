@@ -118,15 +118,15 @@ jobs:
           # breaking/* or major/* -> major
           # feat/* or feature/* or minor/* -> minor
           # fix/* or bugfix/* or patch/* -> patch
-          if echo "$MERGED_BRANCHES" | grep -qiE "(breaking/|major/)"; then
+          if grep -qiE "(breaking/|major/)" <<< "$MERGED_BRANCHES"; then
             echo "Found breaking/major branch merge"
             RELEASE_TYPE="major"
-          elif echo "$MERGED_BRANCHES" | grep -qiE "(feat/|feature/|minor/)"; then
+          elif grep -qiE "(feat/|feature/|minor/)" <<< "$MERGED_BRANCHES"; then
             echo "Found feature/minor branch merge"
             if [[ "$RELEASE_TYPE" != "major" ]]; then
               RELEASE_TYPE="minor"
             fi
-          elif echo "$MERGED_BRANCHES" | grep -qiE "(fix/|bugfix/|patch/|hotfix/)"; then
+          elif grep -qiE "(fix/|bugfix/|patch/|hotfix/)" <<< "$MERGED_BRANCHES"; then
             echo "Found fix/patch branch merge"
             if [[ "$RELEASE_TYPE" == "none" ]]; then
               RELEASE_TYPE="patch"
@@ -140,13 +140,14 @@ jobs:
             COMMITS=$(git log --pretty=format:"%B" 2>/dev/null || echo "")
           fi
 
-          if echo "$COMMITS" | grep -qE "^[a-z]+(\(.+\))?!:|^BREAKING[ -]CHANGE:"; then
+          # A grep -q pipeline can SIGPIPE its writer and fail under pipefail.
+          if grep -qE "^[a-z]+(\(.+\))?!:|^BREAKING[ -]CHANGE:" <<< "$COMMITS"; then
             RELEASE_TYPE="major"
-          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+          elif grep -qE "^feat(\(.+\))?:" <<< "$COMMITS"; then
             if [[ "$RELEASE_TYPE" != "major" ]]; then
               RELEASE_TYPE="minor"
             fi
-          elif echo "$COMMITS" | grep -qE "^(fix|perf)(\(.+\))?:"; then
+          elif grep -qE "^(fix|perf)(\(.+\))?:" <<< "$COMMITS"; then
             if [[ "$RELEASE_TYPE" == "none" ]]; then
               RELEASE_TYPE="patch"
             fi
