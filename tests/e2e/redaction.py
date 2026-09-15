@@ -94,6 +94,40 @@ def redact_text_nodes(page: Page) -> None:
         )
 
 
+# RFC 2606 keeps these domains for documentation. Anything else in a captured
+# frame is somebody's real mailbox.
+_EXAMPLE_DOMAINS = ("example.com", "example.org", "example.net", "example.edu", "example.test")
+
+
+def assert_no_address(page: Page) -> None:
+    """Fail before the shutter if a real mail address is on screen.
+
+    The connection page prints `user.name or user.email`, so an Immich account
+    with no display name puts an address in the frame. The redactions above
+    rewrite the places that are known to print one; this refuses to save a
+    screenshot when a new one appears somewhere they do not reach.
+    """
+    found = page.evaluate(
+        r"""(allowed) => {
+            const pattern = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+            const seen = new Set();
+            const collect = (text) => {
+                for (const hit of (text || '').matchAll(pattern)) {
+                    const address = hit[0];
+                    if (!allowed.some((d) => address.toLowerCase().endsWith('@' + d))) {
+                        seen.add(address);
+                    }
+                }
+            };
+            collect(document.body.innerText);
+            document.querySelectorAll('input, textarea').forEach((el) => collect(el.value));
+            return [...seen];
+        }""",
+        list(_EXAMPLE_DOMAINS),
+    )
+    assert not found, f"a mail address reached a screenshot: {found}"
+
+
 def redact_page(page: Page) -> None:
     """Apply all redactions (inputs + text nodes)."""
     redact_inputs(page)

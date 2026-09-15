@@ -18,6 +18,7 @@ import pytest
 from playwright.sync_api import Page
 
 from tests.e2e.conftest import _REPO_ROOT
+from tests.e2e.redaction import assert_no_address
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -123,6 +124,7 @@ def test_oidc_login_flow(
     if not sso_btn.is_visible(timeout=5000):
         pytest.skip("SSO button not visible — OIDC may not be configured")
 
+    assert_no_address(page)
     page.screenshot(path=str(screenshot_dir / "login-oidc.png"))
 
     # Click SSO — redirects to mock IdP
@@ -150,4 +152,5 @@ def test_oidc_login_flow(
     username = page.get_by_text("testuser")
     assert username.is_visible(timeout=5000)
 
+    assert_no_address(page)
     page.screenshot(path=str(screenshot_dir / "oidc-authenticated.png"))

@@ -20,7 +20,7 @@ import pytest
 from playwright.sync_api import Page
 
 from tests.e2e.conftest import _REPO_ROOT
-from tests.e2e.redaction import redact_page
+from tests.e2e.redaction import assert_no_address, redact_page
 
 pytestmark = pytest.mark.e2e
 
@@ -120,6 +120,7 @@ def test_login_and_auth_controls(
     assert "/login" in page.url or page.get_by_role("button", name="Sign in").is_visible(
         timeout=5000
     )
+    assert_no_address(page)
     page.screenshot(path=str(screenshot_dir / "login-basic-auth.png"))
 
     # Fill in credentials and sign in
@@ -140,6 +141,7 @@ def test_login_and_auth_controls(
     assert sign_out.is_visible(timeout=3000)
 
     redact_page(page)
+    assert_no_address(page)
     page.screenshot(path=str(screenshot_dir / "memory-with-auth.png"))
 
 
