@@ -1,5 +1,9 @@
 """Duration fitting must keep speech boundaries and the selected interval together."""
 
+import logging
+
+import pytest
+
 from immich_memories.analysis.editorial_structure_record import shave_content_duration
 
 
@@ -62,6 +66,160 @@ def test_short_video_contributes_its_actual_duration_to_minimum_fit():
     kept, dropped = trim_to_timing_budget(carriers, lambda _: 6, 3.5)
     assert kept == carriers
     assert dropped == []
+
+
+def test_a_source_that_cannot_be_measured_keeps_its_interval_and_does_not_poison_others(
+    caplog,
+):
+    """Speech protection is a refinement: one unmeasurable source degrades alone."""
+    from immich_memories.analysis.editorial_speech import resolve_speech_cuts
+    from immich_memories.speech.facts import SpeechMeasurementUnavailable
+
+    def regions_for(asset_id):
+        if asset_id == "broken":
+            raise SpeechMeasurementUnavailable("playback unavailable")
+        return [(4.0, 8.0)]
+
+    carriers = [
+        {"asset_id": "broken", "kind": "video", "seconds": 6.0, "raw_seconds": 10.0},
+        {"asset_id": "fine", "kind": "video", "seconds": 6.0, "raw_seconds": 10.0},
+    ]
+    with caplog.at_level(logging.WARNING, logger="immich_memories.analysis.editorial_speech"):
+        resolved = resolve_speech_cuts(carriers, regions_for, buffer=0.08)
+
+    assert any("broken" in record.message for record in caplog.records), (
+        "the run must say which source could not be speech-measured and why"
+    )
+    broken = resolved[0]
+    assert broken["seconds"] == 6.0, "an unmeasurable source must keep the selected interval"
+    assert "speech_regions" not in broken, "no regions were measured; none may be invented"
+    fine = resolved[1]
+    assert fine["speech_regions"] == [[3.92, 8.08]], (
+        "one unavailable carrier must not disable protection for the others"
+    )
+
+
+def test_an_unmeasurable_live_motion_member_keeps_the_carrier_unchanged():
+    from immich_memories.analysis.editorial_speech import resolve_speech_cuts
+    from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
+    from immich_memories.speech.facts import SpeechMeasurementUnavailable
+
+    material = LiveRenderMaterial(
+        (
+            LiveSourceEntry("a", "va", 0, 0, 3),
+            LiveSourceEntry("b", "vb", 2, 1, 4),
+        )
+    )
+    carrier = {
+        "asset_id": "a",
+        "kind": "live-motion",
+        "seconds": 4.0,
+        "raw_seconds": 6.0,
+        "live_material": material.as_dict(),
+    }
+
+    def regions_for(video_id):
+        if video_id == "vb":
+            raise SpeechMeasurementUnavailable("audio extraction failed")
+        return [(2.0, 3.0)]
+
+    resolved = resolve_speech_cuts([carrier], regions_for, buffer=0.08)
+    assert resolved[0]["seconds"] == 4.0
+    assert "speech_regions" not in resolved[0]
+
+
+def test_speech_facts_transport_and_decode_failures_are_unavailable(tmp_path):
+    """Playback transport and audio-extraction failures degrade, not abort."""
+    import httpx
+
+    from immich_memories.config_models_analysis import SpeechConfig
+    from immich_memories.speech.facts import SpeechFacts, SpeechMeasurementUnavailable
+    from tests.conftest import make_asset
+
+    config = SpeechConfig()
+    assets = {"v": make_asset("v")}
+
+    def stub_detector():
+        return type("Stub", (), {"detect": staticmethod(lambda *_a, **_k: [])})()
+
+    def failing_fetch(asset_id):
+        raise httpx.ConnectError("server down")
+
+    facts = SpeechFacts(assets=assets, cache_dir=tmp_path, fetch=failing_fetch, config=config)
+    facts.detector = stub_detector()
+    with pytest.raises(SpeechMeasurementUnavailable):
+        facts("v")
+
+    facts = SpeechFacts(assets=assets, cache_dir=tmp_path, fetch=lambda _: None, config=config)
+    facts.detector = stub_detector()
+    with pytest.raises(SpeechMeasurementUnavailable):
+        facts("v")
+
+
+def test_speech_facts_still_fail_loudly_when_the_cache_identity_drifts(tmp_path, monkeypatch):
+    """A tampered/mismatched cache record is an invariant break, not an unavailable source."""
+    import json
+    import subprocess
+
+    from immich_memories.config_models_analysis import SpeechConfig
+    from immich_memories.speech.facts import SpeechFacts
+    from tests.conftest import make_asset
+
+    config = SpeechConfig()
+    assets = {"v": make_asset("v")}
+    silent = tmp_path / "silent.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:d=0.3",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=16000:cl=mono",
+            "-t",
+            "0.3",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-y",
+            str(silent),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    facts = SpeechFacts(
+        assets=assets,
+        cache_dir=tmp_path,
+        fetch=lambda _: silent.read_bytes(),
+        config=config,
+    )
+    assert facts("v") == [], "the silent source measures no speech regions"
+
+    # The same call replays the banked answer without measuring again...
+    assert facts("v") == []
+
+    # ...but a cache row whose identity no longer matches its input is refused
+    # loudly by a fresh process (whose memo does not already hold the answer).
+    cache_files = [p for p in tmp_path.glob("*.json") if p.name != "silent.mp4"]
+    assert len(cache_files) == 1
+    record = json.loads(cache_files[0].read_text())
+    record["identity"]["source"] = "tampered"
+    cache_files[0].write_text(json.dumps(record))
+    refetched = SpeechFacts(
+        assets=assets,
+        cache_dir=tmp_path,
+        fetch=lambda _: silent.read_bytes(),
+        config=config,
+    )
+    with pytest.raises(ValueError, match="Speech cache source changed"):
+        refetched("v")
 
 
 def test_real_planner_budgets_video_lengths_and_fits_after_speech_detection(tmp_path):
