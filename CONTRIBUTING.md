@@ -121,6 +121,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map.
 
 ## Commit Messages
 
+PRs are squash-merged. Before merging a large integration branch, push its complete history to
+a `history/` branch and link it in the PR. Releases require a manual workflow dispatch after
+the image smoke test passes. See [merging and releasing](docs-site/docs/contribute/development-setup.md#merging-and-releasing).
+
 [Conventional Commits](https://www.conventionalcommits.org/) format, enforced by commitlint:
 
 ```

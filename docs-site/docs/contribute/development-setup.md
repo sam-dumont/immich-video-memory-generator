@@ -40,6 +40,31 @@ match what CI runs, so local results are consistent. Use
 The test tiers, what each needs, and what to do when diff-cover fails on your PR are in the
 [Testing guide](testing.md).
 
+## Merging and releasing
+
+PRs are squash-merged. Before merging a large integration branch, preserve its individual
+commits on a `history/` branch. Pick a name for that integration and date, then run this from
+the branch being merged:
+
+```bash
+git push origin HEAD:refs/heads/history/my-integration-2026-09-15
+```
+
+Link that branch in the PR before squashing. Keep the archive when deleting the working branch.
+
+Merging to `main` does not publish a release. The maintainer opens **Actions → Release → Run
+workflow**, selects `main`, and chooses the version bump. `auto` reads conventional commits,
+including `!` and `BREAKING CHANGE:` markers in the squash message. Select **Dry run** to build
+the candidate package without publishing tags, images, packages or docs.
+
+A real release runs CI, builds the app images, renders a CPU smoke film in the exact amd64 image,
+and publishes the tested multi-architecture image before the GitHub release and PyPI packages.
+The package build must also pass before the Git tag is pushed. Release runs execute one at a time.
+
+CI uses `make secret-scan` for both PRs and release runs: all commits since the latest version
+tag, or all history for the first release. It also catches secrets removed by a later commit in
+that range. Install Gitleaks 8.24.3 to run the same scan locally; pre-commit uses that version too.
+
 ## Private terms gate
 
 `make privacy-gate` blocks owner-defined private terms (family names, birth dates, GPS

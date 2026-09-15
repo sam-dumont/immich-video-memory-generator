@@ -5,7 +5,7 @@ on:
   # branch below it, and a main-only filter meant those never ran CI at all —
   # they showed green because nothing had run.
   pull_request:
-  workflow_call:  # Called from release.yml on push to main (provides Codecov baseline)
+  workflow_call:  # Called by the manually dispatched release workflow.
 
 permissions:
   contents: read
@@ -154,10 +154,19 @@ jobs:
       - name: pip-audit (dependency CVEs)
         run: make pip-audit
 
+      - name: Install Gitleaks (same version as pre-commit)
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --silent --show-error --location \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            --output "$archive"
+          echo "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/gitleaks-bin"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
+          echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
+
       - name: Gitleaks (secret detection)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make secret-scan
 
       - name: Hadolint (Dockerfile)
         uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0

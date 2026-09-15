@@ -453,6 +453,14 @@ privacy-range:  ## Check PR research history and optional private terms (PRIVATE
 privacy-gate:  ## Scan the staged diff for private terms (denylist lives outside the repo)
 	uv run python scripts/private_terms_gate.py --staged
 
+.PHONY: secret-scan
+secret-scan:  ## Scan all commits since the latest release, for PRs and release dispatches alike
+	@set -eu; \
+	PREV_TAG=$$(git tag --list 'v[0-9]*' --sort=-version:refname | head -1); \
+	SCAN_RANGE=$${PREV_TAG:+$$PREV_TAG..}HEAD; \
+	echo "Secret scan range: $$SCAN_RANGE"; \
+	gitleaks git --redact --log-opts="$$SCAN_RANGE"
+
 # Commit message lint (Commitizen conventional commits)
 commitlint:
 	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}

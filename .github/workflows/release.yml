@@ -1,16 +1,13 @@
 name: Release
 
 on:
-  # Automatic release on push to main (semantic-release determines if needed)
-  push:
-    branches: [main]
-  # Manual trigger for releases
+  # A merge prepares the next release; the owner chooses when to publish it.
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Dry run (no actual release)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
       force_version:
         description: 'Force version bump type (optional)'
@@ -30,6 +27,11 @@ on:
 permissions:
   contents: read
 
+# Version calculation and publication must not overlap another release.
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
+
 env:
   PYTHON_VERSION: "3.13"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -39,7 +41,9 @@ jobs:
   analyze:
     name: Analyze Commits & Branches
     runs-on: ubuntu-latest
-    if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    if: >-
+      github.repository == 'sam-dumont/immich-video-memory-generator' &&
+      (github.ref == 'refs/heads/main' || inputs.dry_run || inputs.inference_only)
     outputs:
       should_release: ${{ steps.analyze.outputs.should_release }}
       next_version: ${{ steps.analyze.outputs.next_version }}
@@ -129,14 +133,14 @@ jobs:
             fi
           fi
 
-          # Also check commit messages (conventional commits)
+          # Read full squash messages: breaking-change footers live in the body.
           if [[ -n "$PREV_TAG" ]]; then
-            COMMITS=$(git log $COMMIT_RANGE --pretty=format:"%s" 2>/dev/null || echo "")
+            COMMITS=$(git log $COMMIT_RANGE --pretty=format:"%B" 2>/dev/null || echo "")
           else
-            COMMITS=$(git log --pretty=format:"%s" 2>/dev/null || echo "")
+            COMMITS=$(git log --pretty=format:"%B" 2>/dev/null || echo "")
           fi
 
-          if echo "$COMMITS" | grep -qE "^feat(\(.+\))?!:|BREAKING CHANGE"; then
+          if echo "$COMMITS" | grep -qE "^[a-z]+(\(.+\))?!:|^BREAKING[ -]CHANGE:"; then
             RELEASE_TYPE="major"
           elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
             if [[ "$RELEASE_TYPE" != "major" ]]; then
@@ -196,14 +200,15 @@ jobs:
       contents: read
       pull-requests: write
 
-  # Create release (requires approval for major releases)
+  # Publish only after the tested app image is available under its release tag.
   release:
     name: Create Release
-    needs: [analyze, ci]
-    if: needs.analyze.outputs.should_release == 'true'
+    needs: [analyze, ci, docker-manifest]
+    if: >-
+      !cancelled() && needs.analyze.outputs.should_release == 'true' &&
+      needs.ci.result == 'success' &&
+      (inputs.dry_run || needs.docker-manifest.result == 'success')
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ needs.analyze.outputs.release_type == 'major' && 'production-major' || 'production' }}
     permissions:
       contents: write
       # Provenance: the OIDC token is what identifies this workflow to
@@ -231,8 +236,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Create tag and release
-        if: inputs.dry_run != 'true'
+      - name: Build package
+        env:
+          # The tag is not pushed until this succeeds; pin the candidate version.
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: uv build
+
+      - name: Show built version
+        run: |
+          echo "Built packages:"
+          ls -la dist/
+          unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
+
+      - name: Push release tag
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
@@ -248,23 +265,9 @@ jobs:
           git tag -a "v$NEXT_VERSION" -m "Release v$NEXT_VERSION"
           git push origin "v$NEXT_VERSION"
 
-      - name: Build package
-        env:
-          # Pin version explicitly so hatch-vcs/setuptools-scm doesn't
-          # produce a .devN version from a dirty tree (e.g. uv sync
-          # updating uv.lock before the build step).
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.analyze.outputs.next_version }}
-        run: uv build
-
-      - name: Show built version
-        run: |
-          echo "Built packages:"
-          ls -la dist/
-          unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
-
       - name: Attest build provenance
         id: attest
-        if: inputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
@@ -272,7 +275,7 @@ jobs:
             dist/*.tar.gz
 
       - name: Stage the attestation as release assets
-        if: inputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
           NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
@@ -327,7 +330,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        if: inputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           tag_name: v${{ needs.analyze.outputs.next_version }}
@@ -348,7 +351,7 @@ jobs:
           path: dist/
 
       - name: Summary
-        if: inputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         env:
           NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
         run: |
@@ -358,7 +361,7 @@ jobs:
           ls -la dist/ >> $GITHUB_STEP_SUMMARY
 
       - name: Dry run summary
-        if: inputs.dry_run == 'true'
+        if: inputs.dry_run
         run: |
           echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -372,7 +375,7 @@ jobs:
   pypi-publish:
     name: Publish to PyPI
     needs: [analyze, release, pypi-publish-music]
-    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -397,7 +400,7 @@ jobs:
   pypi-publish-music:
     name: Publish bundled music to PyPI
     needs: [analyze, release]
-    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -425,7 +428,7 @@ jobs:
   deploy-docs:
     name: Deploy Docs
     needs: [analyze, release]
-    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
     uses: ./.github/workflows/docs.yml
     with:
       version: v${{ needs.analyze.outputs.next_version }}
@@ -437,9 +440,12 @@ jobs:
   # Build and push Docker images using native runners per platform
   docker-build:
     name: Build Docker Image (${{ matrix.platform }})
-    needs: [analyze, release]
-    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    needs: [analyze, ci]
+    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
     runs-on: ${{ matrix.runner }}
+    # Keep the existing approval before the first registry write.
+    environment:
+      name: ${{ needs.analyze.outputs.release_type == 'major' && 'production-major' || 'production' }}
     permissions:
       contents: read
       packages: write
@@ -724,7 +730,7 @@ jobs:
   deployment-bundle:
     name: Publish matching deployment manifests
     needs: [analyze, docker-manifest, inference-manifest]
-    if: needs.analyze.outputs.should_release == 'true' && inputs.dry_run != 'true'
+    if: needs.analyze.outputs.should_release == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
     permissions:
       contents: write
