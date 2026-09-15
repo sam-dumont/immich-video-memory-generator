@@ -38,10 +38,8 @@ _PROVIDER_PRESETS: dict[str, dict] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "thinking_params": {"reasoning_effort": "medium"},
-        # The gpt-5 family reasons on every call and cannot be told not to, so
-        # "do not think" means the cheapest effort it sells -- one level below
-        # the "low" the generic compatible hosts stop at. Two story-pick calls
-        # at 300 and 600 tokens came back raw "" on gpt-5.6-luna for want of it.
+        # Older GPT-5 models cannot turn reasoning off. Models with a verified
+        # off switch override this fallback in _openai_reasoning below.
         "no_thinking_params": {"reasoning_effort": "minimal"},
         "always_reasons": True,
     },
@@ -63,6 +61,26 @@ _PROVIDER_PRESETS: dict[str, dict] = {
 # accepts is what "do not reason" has to mean there; older lines take
 # "disabled".
 _ALWAYS_REASONING_MODELS = re.compile(r"^glm-5(\.\d+)?(-|$)")
+
+
+def _openai_reasoning(config: LLMConfig) -> dict:
+    """Use the model's off switch where it has been verified to accept one."""
+    # Verified 2026-09-15: Luna rejects "minimal" with unsupported_value and
+    # defaults to medium when the field is removed; "none" bills no reasoning.
+    # Include pinned snapshots without extending this claim to other models.
+    if re.fullmatch(r"gpt-5\.6-luna(?:-\d{4}-\d{2}-\d{2})?", config.model.strip().lower()):
+        effort = config.no_thinking_params.get("reasoning_effort", "none")
+        # Mirror request shaping: auto omits the switch, drops remove it, and
+        # extra_params has the final word. Only an effective "none" means the
+        # caller's token cap can be spent entirely on the answer.
+        if config.thinking == "auto" or "reasoning_effort" in config.drop_params:
+            effort = None
+        effort = config.extra_params.get("reasoning_effort", effort)
+        return {
+            "no_thinking_params": {"reasoning_effort": "none"},
+            "always_reasons": effort != "none",
+        }
+    return {}
 
 
 def _zai_off_level(model: str) -> str:
@@ -100,7 +118,11 @@ def _zai_reasoning(config: LLMConfig) -> dict:
     }
 
 
-_REASONING_BY_PROVIDER = {"zai": _zai_reasoning, "anthropic": _anthropic_reasoning}
+_REASONING_BY_PROVIDER = {
+    "openai": _openai_reasoning,
+    "zai": _zai_reasoning,
+    "anthropic": _anthropic_reasoning,
+}
 
 
 def _preset_for(config: LLMConfig) -> dict | None:

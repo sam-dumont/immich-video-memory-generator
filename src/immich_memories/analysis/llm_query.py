@@ -537,7 +537,9 @@ def _apply_bulk_reasoning(
         payload.update(config.no_thinking_params)
     headroom = reasoning_headroom(endpoint, declared=config.always_reasons)
     if headroom:
-        apply_reasoning_headroom(payload, max_tokens, headroom)
+        apply_reasoning_headroom(
+            payload, max_tokens, headroom, set_effort=config.thinking != "auto"
+        )
 
 
 def _openai_request(

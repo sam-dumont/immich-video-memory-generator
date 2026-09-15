@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from immich_memories.analysis import llm_wire
@@ -203,11 +204,17 @@ async def test_an_incomplete_record_carries_what_the_provider_billed():
 
 
 @pytest.mark.asyncio
-async def test_a_host_that_refuses_the_effort_field_still_gets_the_room():
+@pytest.mark.parametrize(
+    "error",
+    [
+        {"message": "Unknown parameter: 'reasoning_effort'."},
+        {"message": "Unsupported parameter: 'reasoning_effort'."},
+        {"code": "unsupported_parameter", "param": "reasoning_effort"},
+    ],
+)
+async def test_a_host_that_refuses_the_effort_field_still_gets_the_room(error):
     refusal = AsyncMock(status_code=400)
-    refusal.json = MagicMock(
-        return_value={"error": {"message": "Unknown parameter: 'reasoning_effort'."}}
-    )
+    refusal.json = MagicMock(return_value={"error": error})
     # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
     with patch("httpx.AsyncClient.post", side_effect=[refusal, _reply()]) as post:
         await query_llm("read", _hosted(always_reasons=True), max_tokens=300)
@@ -218,18 +225,162 @@ async def test_a_host_that_refuses_the_effort_field_still_gets_the_room():
 
 
 @pytest.mark.asyncio
-async def test_openai_asks_for_the_least_reasoning_its_own_family_sells():
+@pytest.mark.parametrize("model", ["gpt-5.6-luna", "gpt-5.6-luna-2026-09-01"])
+async def test_luna_disables_reasoning_and_keeps_the_answer_budget_in_live_and_batch(model):
+    config = LLMConfig(provider="openai", model=model, api_key="sk-test")
     # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
     with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
-        await query_llm(
-            "pick the moments",
-            LLMConfig(provider="openai", model="gpt-5.6-luna", api_key="sk-test"),
-            max_tokens=300,
-        )
+        await query_llm("pick the moments", config, max_tokens=300)
+
+    payload = post.call_args[1]["json"]
+    assert payload["reasoning_effort"] == "none"
+    assert payload["max_tokens"] == 300
+    assert llm_wire.batch_text_payload(config, "pick the moments", max_tokens=300) == payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        (
+            "unsupported_value",
+            "Unsupported value: 'reasoning_effort' does not support 'minimal' with this model. "
+            "Supported values are: 'none', 'low', 'medium', 'high'.",
+        ),
+        (None, "Unsupported value: 'reasoning_effort' does not support 'minimal'."),
+        (None, "Unsupported parameter value for 'reasoning_effort': 'minimal'."),
+    ],
+)
+async def test_an_unsupported_effort_value_is_reported_without_disabling_the_parameter(
+    code, message
+):
+    config = LLMConfig(
+        provider="openai",
+        model="gpt-5.6-luna",
+        no_thinking_params={"reasoning_effort": "minimal"},
+    )
+    refusal = httpx.Response(
+        400,
+        json={
+            "error": {
+                "code": code,
+                "param": "reasoning_effort",
+                "message": message,
+            }
+        },
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+    )
+    # WHY: the provider's HTTP endpoint rejects a value, not the parameter.
+    with patch("httpx.AsyncClient.post", side_effect=[refusal, _reply()]) as post:
+        with pytest.raises(httpx.HTTPStatusError, match="minimal"):
+            await query_llm("read", config)
+        assert post.call_count == 1, "invalid settings must not silently enable default reasoning"
+        valid = config.model_copy(update={"no_thinking_params": {"reasoning_effort": "high"}})
+        await query_llm("judge", valid)
+
+    assert post.call_args[1]["json"]["reasoning_effort"] == "high"
+    assert llm_wire.batch_text_payload(valid, "judge", max_tokens=300)["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gpt-5", "gpt-5-mini", "gpt-5-nano"])
+async def test_older_openai_models_keep_minimal_effort_and_reasoning_room(model):
+    config = LLMConfig(provider="openai", model=model)
+    # WHY: older GPT-5 models still require reasoning; Luna's fix must not disable it for them.
+    with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
+        await query_llm("pick", config, max_tokens=300)
 
     payload = post.call_args[1]["json"]
     assert payload["reasoning_effort"] == "minimal"
     assert payload["max_tokens"] == 300 + REASONING_HEADROOM_TOKENS
+    assert llm_wire.batch_text_payload(config, "pick", max_tokens=300) == payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["none", "low", "medium", "high"])
+async def test_luna_preserves_explicit_bulk_effort_in_live_and_batch(effort):
+    config = LLMConfig(
+        provider="openai",
+        model="gpt-5.6-luna",
+        no_thinking_params={"reasoning_effort": effort},
+    )
+    # WHY: the operator's supported value must win over the model preset on both routes.
+    with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
+        await query_llm("pick", config, max_tokens=300)
+
+    assert post.call_args[1]["json"]["reasoning_effort"] == effort
+    expected_tokens = 300 if effort == "none" else 300 + REASONING_HEADROOM_TOKENS
+    assert post.call_args[1]["json"]["max_tokens"] == expected_tokens
+    assert llm_wire.batch_text_payload(config, "pick", max_tokens=300) == post.call_args[1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_luna_auto_still_leaves_reasoning_to_the_provider():
+    config = LLMConfig(provider="openai", model="gpt-5.6-luna", thinking="auto")
+    # WHY: auto deliberately delegates reasoning to the provider; it must stay distinct from off.
+    with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
+        await query_llm("pick", config, max_tokens=300)
+
+    payload = post.call_args[1]["json"]
+    assert "reasoning_effort" not in payload
+    assert payload["max_tokens"] == 300 + REASONING_HEADROOM_TOKENS
+    assert llm_wire.batch_text_payload(config, "pick", max_tokens=300) == payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "effort", "max_tokens"),
+    [
+        ({"extra_params": {"reasoning_effort": "high"}}, "high", 300 + REASONING_HEADROOM_TOKENS),
+        (
+            {
+                "no_thinking_params": {"reasoning_effort": "high"},
+                "extra_params": {"reasoning_effort": "none"},
+            },
+            "none",
+            300,
+        ),
+        ({"thinking": "auto", "extra_params": {"reasoning_effort": "none"}}, "none", 300),
+        ({"drop_params": ["reasoning_effort"]}, None, 300 + REASONING_HEADROOM_TOKENS),
+        (
+            {
+                "drop_params": ["reasoning_effort"],
+                "extra_params": {"reasoning_effort": "none"},
+            },
+            "none",
+            300,
+        ),
+        ({"always_reasons": True}, "none", 300 + REASONING_HEADROOM_TOKENS),
+    ],
+)
+async def test_luna_budgets_for_the_bulk_effort_that_reaches_the_wire(
+    overrides, effort, max_tokens
+):
+    config = LLMConfig(provider="openai", model="gpt-5.6-luna", **overrides)
+    # WHY: provider shaping can replace or remove the preset's off switch before the POST.
+    with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
+        await query_llm("pick", config, max_tokens=300)
+
+    payload = post.call_args[1]["json"]
+    assert payload.get("reasoning_effort") == effort
+    assert payload["max_tokens"] == max_tokens
+    assert llm_wire.batch_text_payload(config, "pick", max_tokens=300) == payload
+
+
+@pytest.mark.asyncio
+async def test_luna_can_still_request_reasoning_with_an_explicit_effort():
+    config = LLMConfig(
+        provider="openai",
+        model="gpt-5.6-luna",
+        thinking=True,
+        thinking_params={"reasoning_effort": "high"},
+    )
+    # WHY: the off preset only applies to bulk calls; deliberate reasoning keeps its budget.
+    with patch("httpx.AsyncClient.post", return_value=_reply()) as post:
+        await query_llm("judge", config, max_tokens=300, thinking=True)
+
+    assert post.call_args[1]["json"]["reasoning_effort"] == "high"
+    assert post.call_args[1]["json"]["max_tokens"] == THINKING_MIN_MAX_TOKENS
 
 
 @pytest.mark.asyncio

@@ -76,6 +76,8 @@ class LLMCounters:
     # back on one 5.4k-token prompt, billed at the completion rate.
     reasoning_tokens: int = 0
     truncated: int = 0
+    # Sum of individual request durations, not elapsed time when requests overlap.
+    # Keep the historical field name so stored run metrics remain readable.
     wall_seconds: float = 0.0
     by_model: dict[str, ModelSpend] = field(default_factory=dict)
     # The subset of the three counters above that a provider batch answered

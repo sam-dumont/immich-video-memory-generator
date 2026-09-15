@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -73,7 +74,19 @@ def adaptation_for(error: dict) -> str | None:
         return "max_completion_tokens"
     if "temperature" in message and ("not support" in message or "Unsupported" in message):
         return "default_temperature"
-    if "reasoning_effort" in message:
+    # A rejected value still means the parameter exists. Removing it would
+    # silently select the provider's default effort (medium on Luna), and the
+    # learned adaptation would then erase even valid values on later calls.
+    if error.get("param") == "reasoning_effort" and error.get("code") in {
+        "unsupported_parameter",
+        "unknown_parameter",
+    }:
+        return _NO_REASONING_EFFORT
+    if re.search(
+        r"\b(?:unknown|unsupported|unrecognized) parameter:?\s*['\"]?reasoning_effort\b",
+        message,
+        re.IGNORECASE,
+    ):
         return _NO_REASONING_EFFORT
     return None
 
@@ -183,30 +196,17 @@ class LLMReply:
     retry_without_thinking: bool = False
 
 
-# Measured 2026-09-14 on the demo month's 17 KB episode read, at the reader's own
-# 4,000-token ask, against Melious (api.melious.ai/v1) and OpenAI. Every model
-# there returns `message.reasoning_content` and `usage.reasoning_tokens` with
-# nothing having asked it to think, and both providers put `reasoning_tokens`
-# inside `completion_tokens` — so the caller's answer budget was never the
-# answer's. Asked for the cheapest reasoning on offer, that one prompt cost
-# glm-5.3-flash 245 thinking tokens, gpt-5.6-luna 1,253, gemma-4-31b 4,126,
-# deepseek-v4.1-flash 6,256 and muse-glimmer 13,469. 16,384 carries all five in
-# one call, which matters more than it looks: a second call inherits what is
-# left of the caller's read budget, and muse-glimmer's retry ran that out.
-# It is a ceiling and not a spend -- a model that does not think that long is
-# not billed for the room, and an endpoint that does not reason never gets it.
+# Reasoning counts against the same completion limit as the answer. Hosted
+# episode reads have used over 13,000 thinking tokens before returning JSON.
+# Fund that separately for reasoning endpoints; this is a ceiling, not a spend.
 REASONING_HEADROOM_TOKENS = 16384
-# One growth, for a model that thinks harder than any measured one. Granted
-# once, on a reply that spent the answer's budget thinking, rather than paid for
-# on every call. A host that needs it is also likely to need a longer
-# `llm.timeout_seconds` than the 300 the matrix runs at.
+# One retry can double the allowance when all output was spent on reasoning.
 GROWN_REASONING_HEADROOM_TOKENS = 32768
 
 # The cheapest reasoning an OpenAI-compatible host admits to. Melious documents
 # "low" | "medium" | "high" and ignores the field on a model that does not
-# reason; OpenAI's own gpt-5 family takes "minimal" below that, which its preset
-# carries. Reasoning cannot be turned off on either: muse-glimmer reasons by
-# architecture, so the ask is for as little of it as the host will sell.
+# reason. Model-specific presets can ask for less or disable it entirely;
+# always-reasoning models such as muse-glimmer only get the lowest effort.
 LOWEST_REASONING_EFFORT = "low"
 
 # Which endpoints reason whether or not anybody asked, and how much room their
@@ -265,9 +265,12 @@ def widen_for_reasoning(key: tuple[str, str], *, reasoning_tokens: int, answered
     return True
 
 
-def apply_reasoning_headroom(payload: dict, max_tokens: int, headroom: int) -> None:
-    """Ask for the least thinking on offer, and pay for it outside the answer's budget."""
-    payload.setdefault("reasoning_effort", LOWEST_REASONING_EFFORT)
+def apply_reasoning_headroom(
+    payload: dict, max_tokens: int, headroom: int, *, set_effort: bool = True
+) -> None:
+    """Budget for reasoning, optionally asking for the least effort on offer."""
+    if set_effort:
+        payload.setdefault("reasoning_effort", LOWEST_REASONING_EFFORT)
     payload["max_tokens"] = max_tokens + headroom
 
 
@@ -458,7 +461,9 @@ def batch_text_payload(config: LLMConfig, prompt: str, *, max_tokens: int) -> di
     endpoint = (resolved.base_url.rstrip("/"), resolved.model)
     headroom = reasoning_headroom(endpoint, declared=resolved.always_reasons)
     if headroom:
-        apply_reasoning_headroom(payload, max_tokens, headroom)
+        apply_reasoning_headroom(
+            payload, max_tokens, headroom, set_effort=resolved.thinking != "auto"
+        )
     shape_for_provider(payload, resolved)
     apply_adaptations(
         payload,

@@ -7,7 +7,42 @@ is reported at run level, which is where it is stored and why.
 
 from __future__ import annotations
 
-from immich_memories.cli._run_summary import render_llm_totals
+from immich_memories.analysis.llm_metrics import LLMCounters
+from immich_memories.cli._run_summary import render_llm_totals, render_run_summary
+
+
+def test_overlapping_request_time_is_named_separately_from_elapsed_time() -> None:
+    counters = LLMCounters(calls=4, wall_seconds=120.0)
+    live = render_run_summary(
+        total_seconds=40.0,
+        analysis_seconds=30.0,
+        generation_seconds=10.0,
+        eligible=20,
+        planned=8,
+        counters=counters,
+    )
+    stored = render_llm_totals(counters.as_metrics())
+
+    assert "Memory generated in 40s" in live
+    assert "2m 00s summed request time" in live
+    assert "2m 00s summed request time" in stored
+
+
+def test_reasoning_is_visible_as_part_of_completion_in_live_and_stored_totals() -> None:
+    counters = LLMCounters(calls=2, completion_tokens=1600, reasoning_tokens=1200)
+    live = render_run_summary(
+        total_seconds=40.0,
+        analysis_seconds=30.0,
+        generation_seconds=10.0,
+        eligible=20,
+        planned=8,
+        counters=counters,
+    )
+    stored = render_llm_totals(counters.as_metrics())
+
+    for text in (live, stored):
+        assert "1.6k completion" in text
+        assert "1.2k of the completion tokens were reasoning" in text
 
 
 def test_the_totals_line_names_the_cache_it_counted() -> None:

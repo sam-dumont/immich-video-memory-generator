@@ -388,34 +388,54 @@ class CachedTextEpisodeReader:
             )
         calls = 0
         _offer_batch(self._requester, packs, lines, self._limits)
-        for pack in packs:
+        for pack, response in self._read_packs(packs, lines):
             calls += 1
             announce_stage(
                 StageUpdate("event evidence", done=calls, total=len(packs), verb="Reading")
             )
-            page_readings.extend(self._ask(pack, lines, diagnostics, unavailable_by_group, failed))
+            page_readings.extend(
+                self._record_response(pack, response, diagnostics, unavailable_by_group, failed)
+            )
             self._bank_complete(missing, request_scopes, page_readings, banked)
         for _round in range(self._limits.unread_retry_rounds):
             unread = _unread_scopes(request_scopes, page_readings, failed)
             if not unread:
                 break
-            for scope in unread:
+            retries = tuple((scope,) for scope in unread)
+            for pack, response in self._read_packs(retries, lines):
                 calls += 1
                 page_readings.extend(
-                    self._ask((scope,), lines, diagnostics, unavailable_by_group, failed)
+                    self._record_response(pack, response, diagnostics, unavailable_by_group, failed)
                 )
                 self._bank_complete(missing, request_scopes, page_readings, banked)
         return calls
 
-    def _ask(self, pack, lines, diagnostics, unavailable_by_group, failed):
+    def _read_packs(self, packs, lines):
+        def read(requester, pack):
+            return self._ask(requester, pack, lines)
+
+        run = getattr(self._requester, "iter_independent", None)
+        if callable(run):
+            yield from run(read, packs)
+        else:
+            for pack in packs:
+                yield pack, read(self._requester, pack)
+
+    def _ask(self, requester, pack, lines):
         try:
-            response = _read_missing(
-                self._requester,
+            return _read_missing(
+                requester,
                 pack,
                 lines,
                 max_tokens=_completion_budget(pack, self._limits),
             )
         except Exception as exc:  # WHY: one failed pack cannot remove other episodes
+            return exc
+
+    def _record_response(self, pack, response, diagnostics, unavailable_by_group, failed):
+        """Mutate diagnostics and semantic state only after returning to the store's thread."""
+        if isinstance(response, Exception):
+            exc = response
             detail = str(exc).strip() or type(exc).__name__
             reason = f"text episode provider failed ({type(exc).__name__}): {detail}"
             # Without this the run only ever says "no readable episode evidence" (#908).

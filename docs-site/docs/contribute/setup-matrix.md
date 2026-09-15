@@ -141,6 +141,12 @@ the preparation for this host, tier and facts source.
 
 ## Cost is the price list times the tokens
 
+The CLI labels LLM duration as `summed request time`: it adds the duration of every request,
+including requests that overlap. Four concurrent 30-second calls contribute 120 request-seconds.
+Use the selection and render columns for elapsed time. Stored `llm_wall_seconds` and
+`hosted_usage.wall_seconds` keep this same cumulative meaning. The CLI also shows how many
+completion tokens were reasoning; they are already included in the completion total.
+
 `hosted_usage.tokens_in` and `tokens_out` come from `llm-usage.json`, which every run that asked a
 model leaves in its attempt directory beside the plan. It carries the counts unrounded, plus the
 reasoning tokens the model billed on its own account and a per-model split for the runs that ask

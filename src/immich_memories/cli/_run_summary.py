@@ -58,9 +58,13 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
             f"{_thousands(counters.completion_tokens)} completion"
         )
     if counters.wall_seconds:
-        parts.append(_clock(counters.wall_seconds))
+        parts.append(f"{_clock(counters.wall_seconds)} summed request time")
 
     lines = ["", "  LLM   " + " · ".join(parts)]
+    if counters.reasoning_tokens:
+        lines.append(
+            f"        {_thousands(counters.reasoning_tokens)} of the completion tokens were reasoning"
+        )
     if counters.batch_calls:
         lines.append(
             f"        {_thousands(counters.batch_prompt_tokens)} prompt / "
@@ -161,6 +165,7 @@ def render_llm_totals(metrics: dict) -> str:
         cache_hits=int(metrics.get("llm_cache_hits", 0)),
         prompt_tokens=int(metrics.get("llm_prompt_tokens", 0)),
         completion_tokens=int(metrics.get("llm_completion_tokens", 0)),
+        reasoning_tokens=int(metrics.get("llm_reasoning_tokens", 0)),
         truncated=int(metrics.get("llm_truncated", 0)),
         wall_seconds=float(metrics.get("llm_wall_seconds", 0.0)),
     )

@@ -413,8 +413,8 @@ def _selection_sheet(facts: PlanFacts, outcome: PlanOutcome, judged) -> str:
     md.extend(
         (
             "",
-            f"30B calls {metrics['llm_calls']}, completion tokens {metrics['llm_completion_tokens']}, prompt tokens "
-            f"{metrics['llm_prompt_tokens']}, wall {metrics['llm_wall_seconds']} s.",
+            f"LLM calls {metrics['llm_calls']}, completion tokens {metrics['llm_completion_tokens']}, prompt tokens "
+            f"{metrics['llm_prompt_tokens']}, summed request time {metrics['llm_wall_seconds']} s.",
         )
     )
     return "\n".join(md)

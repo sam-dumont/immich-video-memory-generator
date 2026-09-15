@@ -7,6 +7,7 @@ from click.testing import CliRunner
 from immich_memories.analysis.llm_wire import TRANSPORT_RETRIES, LLMTransportAttempt
 from immich_memories.analysis.provider_status import watch_provider
 from immich_memories.cli import main
+from immich_memories.cli._generate_display import saved_path_line
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cut_progress import announcing_stages
 from immich_memories.operations.storyboard import Shot, Storyboard
@@ -83,35 +84,24 @@ def test_the_quiet_flags_say_what_they_silence_and_point_to_verbose() -> None:
     assert "-v" in auto_help.split("--quiet", 1)[1].split("\n\n")[0]
 
 
-def _saved_messages(caplog, path) -> list[str]:
-    import logging
-
-    from immich_memories.cli._generate_display import _print_generation_result
-
-    with caplog.at_level(logging.INFO, logger="immich_memories.cli"):
-        _print_generation_result(
-            dry_run=False, no_render=False, result_path=path, should_upload=False, album_name=None
-        )
-    return [record.getMessage() for record in caplog.records]
-
-
-def test_a_short_saved_path_shares_the_label_line(caplog) -> None:
+def test_a_short_saved_path_shares_the_label_line() -> None:
     from pathlib import Path
 
-    messages = _saved_messages(caplog, Path("/tmp/a/very/long/path/june_ec6210e5.mp4"))
-    assert "Video saved to: /tmp/a/very/long/path/june_ec6210e5.mp4" in messages
+    path = Path("/tmp/a/very/long/path/june_ec6210e5.mp4")
+    assert saved_path_line(path) == "Video saved to: /tmp/a/very/long/path/june_ec6210e5.mp4"
 
 
-def test_a_long_saved_path_is_indented_under_the_label(caplog) -> None:
+def test_a_long_saved_path_is_indented_under_the_label() -> None:
     from pathlib import Path
 
     long_path = Path("/tmp/" + "deep/" * 14 + "june_ec6210e5.mp4")
-    messages = _saved_messages(caplog, long_path)
-    assert f"Video saved to:\n  {long_path}" in messages
+    assert saved_path_line(long_path) == f"Video saved to:\n  {long_path}"
 
 
-def test_a_saved_path_under_home_is_shown_with_a_tilde(caplog) -> None:
+def test_a_saved_path_under_home_is_shown_with_a_tilde() -> None:
     from pathlib import Path
 
-    messages = _saved_messages(caplog, Path.home() / "Videos" / "june-2024.mp4")
-    assert "Video saved to: ~/Videos/june-2024.mp4" in messages
+    assert (
+        saved_path_line(Path.home() / "Videos" / "june-2024.mp4")
+        == "Video saved to: ~/Videos/june-2024.mp4"
+    )

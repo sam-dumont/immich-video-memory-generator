@@ -23,7 +23,7 @@ from immich_memories.analysis.editorial_json_completion import (
 from immich_memories.analysis.editorial_text_artifacts import TextPromptArtifacts
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPrompt, batch_prompt_key
-from immich_memories.analysis.llm_providers import resolved_llm_config
+from immich_memories.analysis.llm_providers import reader_concurrency, resolved_llm_config
 from immich_memories.analysis.llm_query import query_llm
 from immich_memories.analysis.llm_single_flight import TEXT_JUDGMENTS
 from immich_memories.analysis.llm_text_identity import text_model_identity
@@ -325,6 +325,12 @@ class SyncTextPromptRequester:
                 for prompt, budget in asked
             ]
         )
+
+    def iter_independent(self, work, items):
+        """Use the endpoint's reader limit while preserving usage and cancellation context."""
+        from immich_memories.analysis.editorial_reader_concurrency import iter_reader_jobs
+
+        return iter_reader_jobs(self, work, items, limit=reader_concurrency(self.llm_config))
 
     def _batched(self, prompt: str, max_tokens: int) -> LLMReply | None:
         if self.batch is None:

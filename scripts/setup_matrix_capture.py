@@ -214,7 +214,7 @@ def parse_llm_line(text: str) -> HostedUsage:
     calls = _CALLS.search(body)
     hits = _CACHE_HITS.search(body)
     tokens_in, tokens_out, exact = _tokens(body)
-    tail = body.rsplit("·", 1)[-1].strip()
+    tail = body.rsplit("·", 1)[-1].strip().removesuffix(" summed request time")
     return HostedUsage(
         calls=int(calls.group(1)) if calls else None,
         cache_hits=int(hits.group(1)) if hits else 0,

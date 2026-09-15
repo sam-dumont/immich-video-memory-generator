@@ -362,7 +362,13 @@ parseable in it. This field is sent on every non-thinking call: it hangs off
 the switch, not off `thinking`, because a server that reasons by default does
 so whether or not you turned reasoning on. The default is Qwen's
 `chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
-that reason only when asked, which the `openai` preset already does.
+that reason only when asked.
+
+The `openai` preset sends `reasoning_effort: none` for `gpt-5.6-luna` and its
+dated snapshots. Older GPT-5 models keep `minimal`. An explicit setting wins
+over the preset. A provider that rejects a reasoning value now reports that
+error; it does not silently remove the control and fall back to default
+reasoning. Only a rejection of the parameter itself permits that fallback.
 
 z.ai takes a level rather than an on and off, so the `zai` preset sends
 `thinking: {"type": ...}` with one of `disabled`, `low`, `high` or `max`. The
@@ -413,7 +419,8 @@ than being silently overwritten, so a ceiling you set yourself is the one that
 is sent.
 
 `reader_concurrency` limits independent story-reader jobs in flight (range 1 to
-16). Different event inventories and worthiness/standing blocks can overlap.
+16). Independent episode-evidence packs, event inventories and
+worthiness/standing blocks can overlap.
 Pages within an event, story-episode pages and later dependent picks remain
 sequential. Left unset it is read from `base_url`: 1 for a loopback or private
 address, or a bare service name, all of which mean a model sharing one machine

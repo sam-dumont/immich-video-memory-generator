@@ -9,13 +9,13 @@ Only jobs that have not started are dropped.
 
 import logging
 import sys
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextvars import copy_context
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from immich_memories.analysis.llm_providers import reader_concurrency
-from immich_memories.operations.cancellation import check_cancelled
+from immich_memories.operations.cancellation import PipelineCancelled, check_cancelled
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,41 @@ def reader_map(judge, work, items):
 def _run(work, judge, item):
     check_cancelled()
     return work(judge, item)
+
+
+def iter_reader_jobs(reader, work, items, *, limit):
+    """Yield item/answer pairs in source order; save paid answers before cancellation."""
+    if limit == 1 or len(items) < 2:
+        for item in items:
+            yield item, _run(work, reader, item)
+        return
+    pool = ThreadPoolExecutor(max_workers=limit, thread_name_prefix="episode-reader")
+    futures: list[Future] = []
+    try:
+        for item in items:
+            futures.append(pool.submit(copy_context().run, _run, work, reader, item))
+        yield from _ordered_reader_answers(items, futures)
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+        _name_every_failure(futures)
+
+
+def _ordered_reader_answers(items, futures):
+    """Drain successful siblings before propagating a stop; cancel only pending work."""
+    cancelled = None
+    for item, future in zip(items, futures, strict=True):
+        try:
+            answer = future.result()
+        except PipelineCancelled as exc:
+            cancelled = exc
+            for pending in futures:
+                pending.cancel()
+        except CancelledError:
+            continue
+        else:
+            yield item, answer
+    if cancelled is not None:
+        raise cancelled
 
 
 def _merge_audit(parent, child):
