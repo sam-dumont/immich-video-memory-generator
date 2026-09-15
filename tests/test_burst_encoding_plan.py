@@ -9,6 +9,7 @@ software-encoded clips in the memory.
 from __future__ import annotations
 
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 
 import pytest
@@ -130,7 +131,10 @@ def test_the_download_path_carries_the_setting_into_the_merge() -> None:
             return_value=["ffmpeg"],
         ) as build,
         # WHY: replaces the FFmpeg run.
-        patch("immich_memories.generate_downloads.subprocess.run"),
+        patch(
+            "immich_memories.generate_downloads.subprocess.run",
+            return_value=CompletedProcess(["ffmpeg"], 1, stdout="", stderr="fixture failure"),
+        ),
     ):
         _try_merge_burst(clips, trims, Path("out.mp4"), hardware_enabled=False)
 

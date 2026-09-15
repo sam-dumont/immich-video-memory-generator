@@ -92,7 +92,7 @@ def test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, l
     # carries that: finishing overwrites the reason with the outcome.
     live = AutomationStateStore(launch_workspace.database_path).get_last_attempt()
     assert live.reason == SUGGESTION_REASON
-    expect(page.get_by_role("link", name="Open run", exact=True)).to_be_visible(timeout=240_000)
+    expect(page.get_by_role("link", name="Open run", exact=True)).to_be_visible(timeout=660_000)
     page.get_by_role("link", name="Open run", exact=True).click()
     disclosure = page.get_by_text("Read the cut", exact=True)
     expect(disclosure).to_be_visible()

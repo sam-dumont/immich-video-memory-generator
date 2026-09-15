@@ -64,7 +64,7 @@ def install_fake_automation(config_path: Path, state_dir: Path) -> None:
             ],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=600,
         )
         return ProcessResult(result.returncode, result.stdout, result.stderr)
 

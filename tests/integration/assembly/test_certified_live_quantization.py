@@ -12,17 +12,18 @@ from immich_memories import generate_downloads as downloads
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.processing import editorial_live_render as certified
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
+from immich_memories.processing.probe_cache import ProbeCache
 from tests.conftest import make_asset
 from tests.integration.conftest import requires_ffmpeg
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
-def _companion(path: Path, frames: int = 89) -> Path:
+def _companion(path: Path, frames: int = 89, *, size: str = "320x240") -> Path:
     subprocess.run(
         [
             "ffmpeg", "-y", "-v", "error",
-            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30",
+            "-f", "lavfi", "-i", f"testsrc2=size={size}:rate=30",
             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
             "-frames:v", str(frames), "-shortest",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
@@ -33,7 +34,8 @@ def _companion(path: Path, frames: int = 89) -> Path:
     return path
 
 
-def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
+@pytest.mark.parametrize("sizes", [("320x240", "320x240"), ("320x240", "160x120")])
+def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path, sizes):
     # Each cut rounds its own segment up to whole output frames before concat:
     # 89 + 74 frames at 30 fps is 38.8 ms past the declared 5.3945 s, more than one frame.
     material = LiveRenderMaterial(
@@ -59,7 +61,10 @@ def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
             "selected_interval": [0.0, material.duration_seconds],
         },
     )
-    paths = [_companion(tmp_path / f"{video_id}.mov") for video_id in material.video_ids]
+    paths = [
+        _companion(tmp_path / f"{video_id}.mov", size=size)
+        for video_id, size in zip(material.video_ids, sizes, strict=True)
+    ]
 
     merged = certified.render_certified_live(
         clip, paths, tmp_path, merge=downloads._try_merge_burst, hardware_enabled=False
@@ -74,3 +79,6 @@ def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
         74,
     ]
     assert record["frame_quantization"]["final_frame_hold"] is None
+    probe = ProbeCache().get(merged)
+    assert probe.resolution == (320, 240)
+    assert probe.has_audio

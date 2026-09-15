@@ -379,7 +379,7 @@ def _try_merge_burst(
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
         if result.returncode == 0 and merged_path.exists():
             return merged_path
-        logger.warning(f"Live photo merge failed: {result.stderr[:500]}")
+        logger.warning("Live photo merge failed: %s", sanitize_error_message(result.stderr[-2000:]))
     except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Live photo merge error: {e}")
 
