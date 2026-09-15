@@ -146,7 +146,7 @@ patience for it needs no second box.
 
 ```bash
 docker compose --profile captioner up -d
-curl -s localhost:8092/v1/models
+curl -s localhost:8094/v1/models
 ```
 
 Leave `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY` at 1: four image encodes at

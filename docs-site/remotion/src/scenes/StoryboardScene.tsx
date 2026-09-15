@@ -30,7 +30,7 @@ import { AnimatedCursor } from "../components/AnimatedCursor";
  * (`../fixture`, generated from tests/e2e/fake_library.py by `make demo-fixture`).
  */
 
-import { SHOTS, THESIS, type Shot } from "../fixture";
+import { SHOTS, RECUT_SHOTS, CUT_FILM_SECONDS, RECUT_FILM_SECONDS, THESIS, type Shot } from "../fixture";
 
 export { SHOTS, THESIS };
 export type { Shot };
@@ -38,9 +38,9 @@ export type { Shot };
 const timecode = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
-const contentLabel = (shots: Shot[]) => {
+const contentLabel = (shots: Shot[], film: number) => {
   const total = shots.reduce((sum, s) => sum + s.seconds, 0);
-  return `${shots.length} pictures, ${timecode(total)} of pictures and video`;
+  return `${shots.length} pictures, ${timecode(total)} of pictures and video, about ${timecode(film)} of film`;
 };
 
 const Tabs: React.FC = () => (
@@ -178,7 +178,7 @@ export const StoryboardScene: React.FC<Props> = ({
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const shots = SHOTS.filter((_, i) => !without.includes(i));
+  const shots = without.length ? RECUT_SHOTS : SHOTS;
 
   const reveal = (delay: number) =>
     spring({ frame, fps, config: { damping: 20, stiffness: 130 }, delay });
@@ -201,7 +201,6 @@ export const StoryboardScene: React.FC<Props> = ({
     { frame: clickAt, ...target, click: true },
   ];
 
-  let at = 0;
   let previousChapter: string | undefined;
 
   return (
@@ -236,7 +235,7 @@ export const StoryboardScene: React.FC<Props> = ({
 
             <div style={{ opacity: reveal(12) }}>
               <ImSectionHeader icon="view_timeline" title="The storyboard" />
-              <ImSectionHeader icon="movie" title={contentLabel(shots)} />
+              <ImSectionHeader icon="movie" title={contentLabel(shots, without.length ? RECUT_FILM_SECONDS : CUT_FILM_SECONDS)} />
               <div
                 style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: -6, marginBottom: 10 }}
               >
@@ -245,8 +244,6 @@ export const StoryboardScene: React.FC<Props> = ({
             </div>
 
             {shots.map((shot, i) => {
-              const rowAt = at;
-              at += shot.seconds;
               const chapter =
                 shot.chapter && shot.chapter !== previousChapter ? shot.chapter : undefined;
               if (shot.chapter) previousChapter = shot.chapter;
@@ -265,7 +262,7 @@ export const StoryboardScene: React.FC<Props> = ({
                       {chapter}
                     </div>
                   )}
-                  <ShotRow shot={shot} at={rowAt} reveal={reveal(18 + i * 5)} drift={drift} />
+                  <ShotRow shot={shot} at={shot.start} reveal={reveal(18 + i * 5)} drift={drift} />
                 </React.Fragment>
               );
             })}

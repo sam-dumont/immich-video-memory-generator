@@ -9,6 +9,11 @@ Kustomize manifests live in `deploy/kubernetes/`. The base boots on any cluster,
 scheduling is an overlay. Docker Compose is the primary path, and CI renders these manifests
 without applying them to a live cluster, so read the rendered output before you apply it.
 
+The base starts at `no_captions`, which needs no caption server. Releases attach an
+`immich-memories-deploy-X.Y.Z.tar.gz` bundle after the app and inference images finish
+publishing. Its three image pins match that release. Download it from the release page,
+extract it, then use the `deploy/kubernetes/` directory inside it.
+
 ```
 deploy/kubernetes/
 ├── base/                    Namespace, Secret, PVCs, Deployment, Service, NetworkPolicy
@@ -112,6 +117,8 @@ on the Deployment and on the Job and CronJobs if you use them:
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
               value: "no_captions"       # full | no_captions | metadata_only
             # On full, with overlays/captioner applied:
+            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
+            #   value: "full"
             # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
             #   value: "http://captioner:8092/v1"
 ```

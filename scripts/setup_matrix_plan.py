@@ -566,10 +566,10 @@ def reads_with_a_model(cell: Cell) -> bool:
 
 
 def probe_readers_step(cell: Cell, library: str, month: str) -> Step:
-    """Ask this cell's reader the three shapes it will be asked, before it spends anything.
+    """Probe image/text support and the library budget before the full cell runs.
 
     It runs on this machine rather than on the host the cell runs on: a reader is
-    a URL and this machine can reach it, and three calls now are cheaper than the
+    a URL and this machine can reach it, and four small probes are cheaper than the
     hour of pictures run 1 spent on four models that answered every read with
     HTTP 200 and nothing in it.
     """

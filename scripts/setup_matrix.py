@@ -34,6 +34,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from matrix_pinned_config import pinned_config, read_operator_immich  # noqa: E402
@@ -142,10 +144,12 @@ DEFAULT_ENV_FILES = (
     Path.home() / ".immich-memories-matrix" / ".env",
     Path.home() / ".immich-memories-matrix" / "matrix.env",
 )
-# The image that exists on the NAS today. 0.85.0 was never published as an
-# image; 0.84.1 is the last published tag and is runtime-identical to main for
-# everything this matrix measures.
-DEFAULT_IMAGE_TAG = "0.84.1"
+# Use the same published release as the shipped Kubernetes deployment.
+DEFAULT_IMAGE_TAG = str(
+    yaml.safe_load((REPO_ROOT / "deploy/kubernetes/base/kustomization.yaml").read_text())["images"][
+        0
+    ]["newTag"]
+)
 IMAGE_REPO = "ghcr.io/sam-dumont/immich-video-memory-generator"
 # The pictures the demo library is built from. The inference warm-up sends one of
 # them: a real photograph, not a synthetic square, so every model the cells will
@@ -1071,9 +1075,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--probe-readers-only",
         action="store_true",
-        help="ask each chosen reader the three shapes it will be asked, and run nothing else."
-        " Exits non-zero if any shape comes back unreadable, which is what the same step at"
-        " the head of every reader cell does before that cell spends anything.",
+        help="probe image and text support, projected time and cost, and run nothing else."
+        " The same gate runs at the head of every reader cell.",
+    )
+    parser.add_argument(
+        "--allow-reader-budget-overrun",
+        action="append",
+        default=[],
+        metavar="CELL",
+        help="waive the projected time/cost ceiling for this cell; repeatable."
+        " Image support and readable answers are still required.",
     )
     parser.add_argument(
         "--serve-fixture", action="store_true", help="serve the fixture library on the LAN"
@@ -1169,6 +1180,14 @@ def main(argv: list[str] | None = None) -> int:
         # records already on disk reads no config and needs no home.
         if not (opts.summarize_only or opts.recapture):
             check_homebase(manifest, environment)
+        from setup_matrix_probe_readers import configure_reader_probes
+
+        plan = configure_reader_probes(
+            plan,
+            config_source=opts.config,
+            env_files=opts.env_file,
+            budget_overrides=opts.allow_reader_budget_overrun,
+        )
     except PlanError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
@@ -1202,7 +1221,13 @@ def main(argv: list[str] | None = None) -> int:
         from setup_matrix_probe_readers import probe_cells
 
         _report_skips(plan)
-        return probe_cells(plan, opts.config, manifest.get("pricing") or {})
+        return probe_cells(
+            plan,
+            opts.config,
+            manifest.get("pricing") or {},
+            budget=manifest["libraries"][plan.library].get("reader_budget", {}),
+            budget_overrides=opts.allow_reader_budget_overrun,
+        )
 
     if plan.anonymize_required and not opts.anonymize:
         print(

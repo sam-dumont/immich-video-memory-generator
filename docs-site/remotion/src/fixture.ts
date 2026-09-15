@@ -7,6 +7,7 @@ export type Shot = {
   day: string;
   motion: boolean;
   seconds: number;
+  start: number;
   story: string;
   reason: string;
   /** Set on the first picture of a month: the real page prints a chapter label. */
@@ -33,11 +34,13 @@ export const POOL_VIDEOS = 13;
 export const POOL_PAGE = 20;
 export const CUT_COUNT = 18;
 export const CUT_SECONDS = 79;
+export const CUT_FILM_SECONDS = 61.65000000000001;
+export const RECUT_FILM_SECONDS = 61.79999999999999;
 
 /** How long output-preview.mp4 runs, measured. */
-export const FILM_SECONDS = 52.73;
+export const FILM_SECONDS = 61.57;
 /** The last second of it that still shows a photograph, before the ending card. */
-export const FILM_PICTURES_END = 46.0;
+export const FILM_PICTURES_END = 54.5;
 /** Its size, in the words the completion page prints. */
 export const FILM_SIZE = "14 MB";
 
@@ -46,7 +49,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/home-breakfast-01.jpg",
     "day": "2024-06-01",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 3.5,
     "story": "Ordinary days",
     "reason": "the first coffee of the month at the kitchen table",
     "chapter": "June 2024"
@@ -55,7 +59,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/home-rain-window-01.jpg",
     "day": "2024-06-03",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 5.84,
     "story": "Ordinary days",
     "reason": "rain on the kitchen window, the month's first grey morning"
   },
@@ -63,7 +68,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/home-dog-walk-01.jpg",
     "day": "2024-06-04",
     "motion": true,
-    "seconds": 5,
+    "seconds": 3.55,
+    "start": 8.69,
     "story": "Ordinary days",
     "reason": "the dog pulling towards the park"
   },
@@ -71,7 +77,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/birthday-balloons-01.jpg",
     "day": "2024-06-08",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 11.74,
     "story": "A birthday in the garden",
     "reason": "balloons tied to the fence before anyone arrived"
   },
@@ -79,7 +86,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/garden-table.jpg",
     "day": "2024-06-08",
     "motion": true,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 14.08,
     "story": "A birthday in the garden",
     "reason": "the table and chairs still out on the lawn"
   },
@@ -87,7 +95,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/garden-cake.jpg",
     "day": "2024-06-08",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 16.43,
     "story": "A birthday in the garden",
     "reason": "the cake with the candles still in it"
   },
@@ -95,7 +104,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/birthday-candles-01.jpg",
     "day": "2024-06-08",
     "motion": true,
-    "seconds": 5,
+    "seconds": 3.55,
+    "start": 19.27,
     "story": "A birthday in the garden",
     "reason": "the candles going out"
   },
@@ -103,7 +113,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/woods-hamper.jpg",
     "day": "2024-06-15",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 22.82,
     "story": "The Saturday in the woods",
     "reason": "the hamper open on the checked cloth"
   },
@@ -111,7 +122,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/woods-stream-01.jpg",
     "day": "2024-06-15",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 25.17,
     "story": "The Saturday in the woods",
     "reason": "the stream where the boots came off"
   },
@@ -119,7 +131,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/woods-path.jpg",
     "day": "2024-06-15",
     "motion": true,
-    "seconds": 6,
+    "seconds": 4.26,
+    "start": 28.01,
     "story": "The Saturday in the woods",
     "reason": "the long green path back to the car"
   },
@@ -127,7 +140,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/home-suitcase-02.jpg",
     "day": "2024-06-21",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 31.77,
     "story": "A week by the lake",
     "reason": "the suitcase open on the bed, the morning we left"
   },
@@ -135,7 +149,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/trip-lake-arrival-01.jpg",
     "day": "2024-06-21",
     "motion": true,
-    "seconds": 5,
+    "seconds": 3.55,
+    "start": 34.62,
     "story": "A week by the lake",
     "reason": "the first sight of the lake from the road down"
   },
@@ -143,7 +158,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/lake-tents.jpg",
     "day": "2024-06-21",
     "motion": true,
-    "seconds": 5,
+    "seconds": 3.55,
+    "start": 37.67,
     "story": "A week by the lake",
     "reason": "the tents pitched on the slope above the lake"
   },
@@ -151,7 +167,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/trip-morning-mist-01.jpg",
     "day": "2024-06-22",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 40.72,
     "story": "A week by the lake",
     "reason": "mist on the water before anyone else was up"
   },
@@ -159,7 +176,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/trip-swim-01.jpg",
     "day": "2024-06-22",
     "motion": true,
-    "seconds": 5,
+    "seconds": 3.55,
+    "start": 43.07,
     "story": "A week by the lake",
     "reason": "the first swim"
   },
@@ -167,7 +185,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/lake-sunset.jpg",
     "day": "2024-06-22",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 46.62,
     "story": "A week by the lake",
     "reason": "the last of the sun going down over the water"
   },
@@ -175,7 +194,8 @@ export const SHOTS: Shot[] = [
     "picture": "library/trip-summit-view-01.jpg",
     "day": "2024-06-23",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 49.46,
     "story": "A week by the lake",
     "reason": "the lake from the top"
   },
@@ -183,7 +203,164 @@ export const SHOTS: Shot[] = [
     "picture": "library/home-pancakes-01.jpg",
     "day": "2024-06-29",
     "motion": false,
-    "seconds": 4,
+    "seconds": 2.84,
+    "start": 51.81,
+    "story": "Ordinary days",
+    "reason": "pancakes on the first morning back"
+  }
+];
+export const RECUT_SHOTS: Shot[] = [
+  {
+    "picture": "library/home-rain-window-01.jpg",
+    "day": "2024-06-03",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 3.5,
+    "story": "Ordinary days",
+    "reason": "rain on the kitchen window, the month's first grey morning",
+    "chapter": "June 2024"
+  },
+  {
+    "picture": "library/home-dog-walk-01.jpg",
+    "day": "2024-06-04",
+    "motion": true,
+    "seconds": 3.72,
+    "start": 6.48,
+    "story": "Ordinary days",
+    "reason": "the dog pulling towards the park"
+  },
+  {
+    "picture": "library/birthday-balloons-01.jpg",
+    "day": "2024-06-08",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 9.7,
+    "story": "A birthday in the garden",
+    "reason": "balloons tied to the fence before anyone arrived"
+  },
+  {
+    "picture": "library/garden-table.jpg",
+    "day": "2024-06-08",
+    "motion": true,
+    "seconds": 2.98,
+    "start": 12.17,
+    "story": "A birthday in the garden",
+    "reason": "the table and chairs still out on the lawn"
+  },
+  {
+    "picture": "library/garden-cake.jpg",
+    "day": "2024-06-08",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 14.65,
+    "story": "A birthday in the garden",
+    "reason": "the cake with the candles still in it"
+  },
+  {
+    "picture": "library/birthday-candles-01.jpg",
+    "day": "2024-06-08",
+    "motion": true,
+    "seconds": 3.72,
+    "start": 17.62,
+    "story": "A birthday in the garden",
+    "reason": "the candles going out"
+  },
+  {
+    "picture": "library/woods-hamper.jpg",
+    "day": "2024-06-15",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 21.34,
+    "story": "The Saturday in the woods",
+    "reason": "the hamper open on the checked cloth"
+  },
+  {
+    "picture": "library/woods-stream-01.jpg",
+    "day": "2024-06-15",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 23.82,
+    "story": "The Saturday in the woods",
+    "reason": "the stream where the boots came off"
+  },
+  {
+    "picture": "library/woods-path.jpg",
+    "day": "2024-06-15",
+    "motion": true,
+    "seconds": 4.46,
+    "start": 26.8,
+    "story": "The Saturday in the woods",
+    "reason": "the long green path back to the car"
+  },
+  {
+    "picture": "library/home-suitcase-02.jpg",
+    "day": "2024-06-21",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 30.76,
+    "story": "A week by the lake",
+    "reason": "the suitcase open on the bed, the morning we left"
+  },
+  {
+    "picture": "library/trip-lake-arrival-01.jpg",
+    "day": "2024-06-21",
+    "motion": true,
+    "seconds": 3.72,
+    "start": 33.74,
+    "story": "A week by the lake",
+    "reason": "the first sight of the lake from the road down"
+  },
+  {
+    "picture": "library/lake-tents.jpg",
+    "day": "2024-06-21",
+    "motion": true,
+    "seconds": 3.72,
+    "start": 36.96,
+    "story": "A week by the lake",
+    "reason": "the tents pitched on the slope above the lake"
+  },
+  {
+    "picture": "library/trip-morning-mist-01.jpg",
+    "day": "2024-06-22",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 40.18,
+    "story": "A week by the lake",
+    "reason": "mist on the water before anyone else was up"
+  },
+  {
+    "picture": "library/trip-swim-01.jpg",
+    "day": "2024-06-22",
+    "motion": true,
+    "seconds": 3.72,
+    "start": 42.65,
+    "story": "A week by the lake",
+    "reason": "the first swim"
+  },
+  {
+    "picture": "library/lake-sunset.jpg",
+    "day": "2024-06-22",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 46.37,
+    "story": "A week by the lake",
+    "reason": "the last of the sun going down over the water"
+  },
+  {
+    "picture": "library/trip-summit-view-01.jpg",
+    "day": "2024-06-23",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 49.35,
+    "story": "A week by the lake",
+    "reason": "the lake from the top"
+  },
+  {
+    "picture": "library/home-pancakes-01.jpg",
+    "day": "2024-06-29",
+    "motion": false,
+    "seconds": 2.98,
+    "start": 51.82,
     "story": "Ordinary days",
     "reason": "pancakes on the first morning back"
   }
@@ -197,7 +374,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": true,
     "seconds": 4,
-    "outcome": "In the cut at 0:00: the first coffee of the month at the kitchen table"
+    "outcome": "In the cut at 0:03: the first coffee of the month at the kitchen table"
   },
   {
     "picture": "library/home-breakfast-02.jpg",
@@ -287,7 +464,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": true,
     "seconds": 4,
-    "outcome": "In the cut at 0:04: rain on the kitchen window, the month's first grey morning"
+    "outcome": "In the cut at 0:05: rain on the kitchen window, the month's first grey morning"
   },
   {
     "picture": "library/home-rain-window-02.jpg",

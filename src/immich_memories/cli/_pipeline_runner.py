@@ -175,6 +175,7 @@ def _finish_preparation(
     no_music,
     should_upload,
     album_name,
+    canvas_provisional=False,
 ) -> tuple[Path, bool, str | None]:
     """Describe discovered inputs without making a different, approximate selection."""
     import click
@@ -196,6 +197,7 @@ def _finish_preparation(
     click.echo("Selection: pending (use --no-render to run story-first selection)")
     click.echo(
         f"Canvas: {output_canvas.width}x{output_canvas.height} ({output_canvas.orientation})"
+        + (" — provisional until selection" if canvas_provisional else "")
     )
     click.echo(f"Music: {music_policy(config=config, music=music, no_music=no_music)}")
     click.echo(f"Output (planned): {output_path}")
@@ -446,6 +448,7 @@ def run_pipeline_and_generate(
             no_music=no_music,
             should_upload=resolved.should_upload,
             album_name=album or config.upload.album_name,
+            canvas_provisional=output_orientation == "auto",
         )
 
     thumbnail_cache = ThumbnailCache(
@@ -480,6 +483,15 @@ def run_pipeline_and_generate(
     if not selected_clips:
         print_error("Pipeline selected no clips")
         sys.exit(1)
+
+    if output_orientation == "auto":
+        output_canvas = _configure_output_canvas(
+            clips=selected_clips,
+            photo_assets=None,
+            config=config,
+            output_resolution=output_resolution,
+            output_orientation=output_orientation,
+        )
 
     timing_binding = pipeline_result.stats.get("editorial_render_timing")
     timeline_plan = final_timeline(

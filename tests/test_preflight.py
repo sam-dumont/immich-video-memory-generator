@@ -254,7 +254,7 @@ def test_title_rendering_preflight_says_what_the_pil_fallback_costs() -> None:
         result = check_title_rendering(Config())
 
     assert result.status is CheckStatus.WARNING
-    assert result.message == "PIL renderer: static title screens, no animation and no SDF text"
+    assert result.message == "PIL renderer: animated backgrounds, raster text (no SDF effects)"
     details = result.details or ""
     assert "quadrants publishes no wheel" in details
     assert "Python 3.10-3.13" in details
@@ -294,7 +294,7 @@ def test_title_rendering_preflight_reports_a_cpu_that_cannot_run_a_kernel() -> N
     # The reason is the message, not the details: `preflight` only prints details under -v,
     # and a NAS user meeting this needs the sentence on the first run.
     assert result.message == crash
-    assert result.details == "PIL renderer: static title screens, no animation and no SDF text"
+    assert result.details == "PIL renderer: animated backgrounds, raster text (no SDF effects)"
 
 
 def test_preflight_run_lists_every_absent_optional_feature() -> None:

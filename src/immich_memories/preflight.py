@@ -448,7 +448,7 @@ def check_title_rendering(config: Config) -> CheckResult:
     return _kernel_library_check()
 
 
-_PIL_RENDERER_MESSAGE = "PIL renderer: static title screens, no animation and no SDF text"
+_PIL_RENDERER_MESSAGE = "PIL renderer: animated backgrounds, raster text (no SDF effects)"
 
 
 def _kernel_library_check() -> CheckResult:
@@ -721,8 +721,11 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
     Returns:
         List of check results.
     """
+    from immich_memories.preflight_homebase import check_homebase
+
     return [
         check_immich(config),
+        check_homebase(config),
         check_llm(config),
         check_title_rendering(config),
         check_encoder(config),

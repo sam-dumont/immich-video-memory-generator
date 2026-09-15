@@ -23,7 +23,7 @@ from PIL import Image, ImageStat
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import _REPO_ROOT, _build_launch_environment
-from tests.e2e.fake_library import THESIS
+from tests.e2e.fake_library import CARRIERS, THESIS, summary_line
 from tests.e2e.test_launch_smoke import _choose
 
 pytestmark = [pytest.mark.e2e, pytest.mark.visual, pytest.mark.demo, pytest.mark.slow]
@@ -48,6 +48,18 @@ def _render_at_1080p(page: Page, launch_app_url: str) -> None:
     page.get_by_role("button", name="Cut", exact=True).click()
 
     expect(page.get_by_text(THESIS)).to_be_visible(timeout=180_000)
+    # The Remotion owner unticks the first picture and cuts again before export.
+    page.get_by_role("button", name="Review the pool", exact=True).click()
+    box = page.get_by_role("checkbox", name="Include").first
+    expect(box).to_be_checked()
+    box.click()
+    expect(box).not_to_be_checked()
+    page.get_by_role("button", name="Cut again", exact=True).click()
+    tab = page.get_by_role("tab", name="Story", exact=True)
+    expect(tab).to_be_visible(timeout=120_000)
+    tab.click()
+    expected = summary_line().replace(f"{len(CARRIERS)} pictures", f"{len(CARRIERS) - 1} pictures")
+    expect(page.get_by_text(expected, exact=True)).to_be_visible(timeout=120_000)
     page.get_by_role("button", name="Export", exact=True).click()
     page.wait_for_url("**/step4", timeout=30_000)
     page.get_by_role("button", name="Back to Generation Options").click()

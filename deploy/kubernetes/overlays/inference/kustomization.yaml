@@ -27,4 +27,4 @@ resources:
 # page before you apply, and bump it when you upgrade.
 images:
   - name: ghcr.io/sam-dumont/immich-video-memory-generator/inference
-    newTag: "0.87.4"
+    newTag: "0.100.4"

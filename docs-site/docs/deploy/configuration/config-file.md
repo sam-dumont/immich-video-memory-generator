@@ -158,6 +158,9 @@ upload:
   album_name: "2024 Memories"
 ```
 
+Trip detection needs both homebase coordinates. Preflight warns when either is missing
+or they are left at the placeholder `(0, 0)`; trips stay disabled until you set them.
+
 ## Reader concurrency
 
 `advanced.llm.reader_concurrency` is unset by default, and the number is then read from

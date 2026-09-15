@@ -123,6 +123,35 @@ def test_the_two_inference_overlays_name_the_same_release() -> None:
 
     assert re.fullmatch(r"\d+\.\d+\.\d+", tags["inference"]), tags
     assert tags["inference-cuda"] == f"{tags['inference']}-cuda", tags
+    assert tags["inference"] == _kustomization()["images"][0]["newTag"]
+
+
+def test_every_app_pod_starts_without_a_caption_service() -> None:
+    for name, pod in _pod_specs():
+        for container in pod["containers"]:
+            env = {row["name"]: row.get("value") for row in container.get("env", [])}
+            assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER"] == "no_captions", name
+
+
+def test_compose_profiles_have_distinct_host_ports_and_persistent_detector_storage() -> None:
+    services = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())["services"]
+    inference = services["immich-memories-inference"]["ports"]
+    captioner = services["immich-memories-captioner"]["ports"]
+    assert set(inference).isdisjoint(captioner)
+    app = services["immich-memories"]
+    cache = app["environment"]["IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR"]
+    assert cache.startswith(CONFIG_DIR + "/models/")
+    assert any(volume.endswith(":" + CONFIG_DIR) for volume in app["volumes"])
+
+
+def test_terraform_initializes_models_on_a_persistent_claim() -> None:
+    main = (TF_DIR / "main.tf").read_text()
+    assert 'resource "kubernetes_persistent_volume_claim_v1" "models"' in main
+    assert "init_container {" in main
+    assert "immich-memories models fetch" in main
+    assert "kubernetes_persistent_volume_claim_v1.models.metadata[0].name" in main
+    assert all(key in main for key in MODEL_PATH_ENV)
+    assert "IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER" in main
 
 
 def test_only_the_kustomization_pin_names_a_concrete_version() -> None:

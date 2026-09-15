@@ -15,16 +15,11 @@ import { Sidebar } from "../components/Sidebar";
 import { PageHeader } from "../components/PageHeader";
 import { ImButton } from "../components/ImButton";
 import { MaterialIcon } from "../components/MaterialIcon";
-import { AnimatedCursor } from "../components/AnimatedCursor";
-import { CONTENT_X, CONTENT_Y } from "../components/PageHeader";
-import { FILM_SIZE } from "../fixture";
+import { FILM_SIZE, FILM_SECONDS } from "../fixture";
 
-type Props = { bassIntensity?: number; playAt: number };
+type Props = { bassIntensity?: number };
 
-// Measured against a 1920x1080 still render: the centre of the play button.
-const PLAY_XY = { x: CONTENT_X + 668, y: CONTENT_Y + 459 };
-
-export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
+export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -50,7 +45,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar active="" />
+        <Sidebar active="none" />
         <div
           style={{
             flex: 1,
@@ -104,6 +99,9 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
                 }}
               >
                 Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 ({FILM_SIZE})
+              </div>
+              <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 4 }}>
+                Length: {Math.floor(FILM_SECONDS / 60)}:{String(Math.floor(FILM_SECONDS % 60)).padStart(2, "0")}
               </div>
               {/* The page prints this whether or not an upload was asked for. */}
               <div
@@ -191,12 +189,6 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
           </div>
         </div>
       </WindowFrame>
-      <AnimatedCursor
-        steps={[
-          { frame: playAt - 22, ...PLAY_XY },
-          { frame: playAt, ...PLAY_XY, click: true },
-        ]}
-      />
     </AbsoluteFill>
   );
 };

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, call, patch
 
 from click.testing import CliRunner
@@ -22,8 +24,12 @@ def _invoke(args: list[str]) -> object:
     """Invoke the CLI with mocked config and init_config_dir."""
     runner = CliRunner()
     with (
+        TemporaryDirectory() as temporary,
         patch("immich_memories.cli.init_config_dir"),
-        patch("immich_memories.cli.get_config", return_value=Config()),
+        patch(
+            "immich_memories.cli.get_config",
+            return_value=Config(cache={"database": str(Path(temporary) / "cache.db")}),
+        ),
     ):
         return runner.invoke(main, args, catch_exceptions=False)
 

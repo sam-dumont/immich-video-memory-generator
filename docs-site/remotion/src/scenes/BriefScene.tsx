@@ -36,29 +36,31 @@ const MEMORY_TYPES = [
   "Custom date range",
 ];
 
+// The fixture library is one household's June 2024, and every scene after this
+// one shows that cut; the brief has to ask for it.
 const PICKED = "Monthly Highlights";
 
 const OPEN_DROPDOWN = 45;
 const PICK_TYPE = 72;
 const CLICK_CUT = 145;
 
-// Measured against a 1920x1080 still render: the select field, the first
-// dropdown row, and the middle of the full-width Cut button. Rows are 30 px, so
-// the picked row is the first plus its index.
+// Measured against a 1920x1080 still render: the select field, the picked
+// dropdown row, and the middle of the full-width Cut button. The rows are 30px
+// and Monthly Highlights is the fifth.
 const ROW_HEIGHT = 30;
+const PICKED_INDEX = MEMORY_TYPES.indexOf(PICKED);
 const SELECT_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 111 };
-const FIRST_ROW_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 156 };
-const PICKED_ROW_XY = {
-  x: FIRST_ROW_XY.x,
-  y: FIRST_ROW_XY.y + ROW_HEIGHT * MEMORY_TYPES.indexOf(PICKED),
+const FIRST_ROW_XY = {
+  x: CONTENT_X + 144,
+  y: CONTENT_Y + 156 + PICKED_INDEX * ROW_HEIGHT,
 };
-const CUT_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 440 };
+const CUT_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 556 };
 
 const cursorSteps = [
   { frame: 32, ...SELECT_XY },
   { frame: OPEN_DROPDOWN, ...SELECT_XY, click: true },
-  { frame: 62, ...PICKED_ROW_XY },
-  { frame: PICK_TYPE, ...PICKED_ROW_XY, click: true },
+  { frame: 62, ...FIRST_ROW_XY },
+  { frame: PICK_TYPE, ...FIRST_ROW_XY, click: true },
   { frame: 130, ...CUT_XY },
   { frame: CLICK_CUT, ...CUT_XY, click: true },
 ];
@@ -174,12 +176,31 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
               }}
             >
               <div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
-                <ImSelect label="Year" value="2024" style={{ width: 144 }} />
+                <ImSelect label="Year" value="2024" style={{ width: 160 }} />
                 <ImSelect label="Month" value="June" style={{ width: 192 }} />
-                <ImSelect
-                  label="Only with (optional)"
-                  value=""
-                  style={{ width: 256 }}
+              </div>
+              <ImSelect
+                label="Only with (optional)"
+                value=""
+                style={{ width: 288, marginTop: 14 }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  marginTop: 10,
+                  padding: "8px 0",
+                }}
+              >
+                <MaterialIcon name="tune" size={20} color={COLORS.textSecondary} />
+                <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
+                  Advanced people condition
+                </span>
+                <MaterialIcon
+                  name="keyboard_arrow_down"
+                  size={22}
+                  color={COLORS.textSecondary}
                 />
               </div>
             </ImCard>

@@ -216,7 +216,7 @@ def storyboard_from_plan(
                 story_key=key,
                 story_title=title,
                 moment=str(row.get("depicted_moment") or ""),
-                seconds=held,
+                seconds=round(held, 2),
                 start=round(start, 2),
                 motion=str(row.get("kind", "")) in MOTION_KINDS,
                 new_day=day != previous_day,

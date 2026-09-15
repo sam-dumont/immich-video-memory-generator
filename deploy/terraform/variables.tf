@@ -171,6 +171,12 @@ variable "storage_class_name" {
   default     = null
 }
 
+variable "models_storage_size" {
+  description = "Size of the pinned-model PVC (/models)"
+  type        = string
+  default     = "10Gi"
+}
+
 # Ingress. Authentication is disabled by default: enable it before turning this on.
 variable "ingress_enabled" {
   description = "Enable ingress"

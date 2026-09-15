@@ -87,12 +87,12 @@ serves them.
 
 ```bash
 docker compose --profile captioner up -d
-curl -s localhost:8092/v1/models
+curl -s localhost:8094/v1/models
 ```
 
-The first `up` pulls 546 MB; re-running it is cheap, the digest check short-circuits. The
-`inference` profile publishes the same host port, so running both means changing one of the two
-left-hand sides in the compose file.
+The first `up` pulls 546 MB; re-running it is cheap, the digest check short-circuits.
+Compose publishes captions on host port **8094** and inference on **8092**, so both
+profiles can run together. Inside the Compose network both services still use port 8092.
 
 Then raise the tier and point the app at the service by name, both in `docker-compose.yml`:
 
@@ -193,6 +193,15 @@ editorial:
 ```
 
 Across namespaces that is `captioner.immich-memories.svc.cluster.local:8092`.
+
+The app's base manifest pins `no_captions`. Override that environment setting when
+enabling this service; a config-file value cannot override it:
+
+```bash
+kubectl -n immich-memories set env deployment/immich-memories \
+  IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER=full \
+  IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL=http://captioner:8092/v1
+```
 
 `captioner-cuda` is the same Deployment with the `server-cuda` image, `--n-gpu-layers 99` appended,
 and the three things the GPU Operator wants: `runtimeClassName: nvidia`, the `nvidia.com/gpu.present`

@@ -12,8 +12,11 @@ from immich_memories.ui.nicegui_compat import io_bound_result
 
 logger = logging.getLogger(__name__)
 
-# Preview cache path (not managed by a dedicated class)
-_PREVIEW_CACHE_DIR = Path("~/.immich-memories/cache/preview-cache").expanduser()
+
+def _preview_cache_dir() -> Path:
+    from immich_memories.config import get_config
+
+    return get_config().cache.cache_path / "preview-cache"
 
 
 def _format_size(size_bytes: int) -> str:
@@ -29,20 +32,22 @@ def _format_size(size_bytes: int) -> str:
 
 def _get_preview_cache_stats() -> dict:
     """Get preview cache stats (no dedicated cache class)."""
-    if not _PREVIEW_CACHE_DIR.exists():
+    directory = _preview_cache_dir()
+    if not directory.exists():
         return {"file_count": 0, "total_size_bytes": 0}
-    files = list(_PREVIEW_CACHE_DIR.glob("*.mp4"))
+    files = list(directory.glob("*.mp4"))
     total = sum(f.stat().st_size for f in files)
     return {"file_count": len(files), "total_size_bytes": total}
 
 
 def _clear_preview_cache() -> int:
     """Clear preview cache directory."""
-    if not _PREVIEW_CACHE_DIR.exists():
+    directory = _preview_cache_dir()
+    if not directory.exists():
         return 0
-    files = list(_PREVIEW_CACHE_DIR.glob("*.mp4"))
+    files = list(directory.glob("*.mp4"))
     count = len(files)
-    shutil.rmtree(_PREVIEW_CACHE_DIR)
+    shutil.rmtree(directory)
     return count
 
 

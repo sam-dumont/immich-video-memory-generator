@@ -33,6 +33,11 @@ output "pvc_cache" {
   value       = kubernetes_persistent_volume_claim_v1.cache.metadata[0].name
 }
 
+output "pvc_models" {
+  description = "Pinned-model PVC name"
+  value       = kubernetes_persistent_volume_claim_v1.models.metadata[0].name
+}
+
 output "port_forward_command" {
   description = "Command to port-forward the UI"
   value       = "kubectl port-forward -n ${var.namespace} svc/${kubernetes_service_v1.this.metadata[0].name} 8080:80"

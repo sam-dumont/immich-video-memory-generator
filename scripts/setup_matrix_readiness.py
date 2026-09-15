@@ -17,7 +17,8 @@ only pod is still pulling an image has no ready endpoint, and a `port-forward` t
 it never gets a local listener at all, so the one that used to be built around the
 warm-up ended a whole run in sixty seconds with none of the warm-up's own budget
 spent. The forward is disposable here instead: it is replaced whenever it stops
-answering, on the same fifteen minutes.
+answering. Three failed listener starts stop the warm-up; a responding service
+keeps the fifteen-minute model-loading budget. A heartbeat reports both cases.
 
 The caption server is the same shape again and slower to arrive: its init
 container fetches 546 MB of GGUF onto a claim that is empty the first time a
@@ -33,6 +34,8 @@ import io
 import json
 import socket
 import subprocess
+import tempfile
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -60,6 +63,8 @@ WARMUP_TIMEOUT_S = 15 * 60
 WARMUP_FIRST_WAIT_S = 2.0
 WARMUP_MAX_WAIT_S = 30.0
 WARMUP_REQUEST_TIMEOUT_S = 60.0
+WARMUP_STATUS_INTERVAL_S = 30.0
+WARMUP_LISTENER_ATTEMPTS = 3
 # How long one port-forward is given to produce a local listener. A forward that
 # is going to work has one in a moment; a forward that has not is pointed at a
 # Service with no ready endpoint, and no amount of waiting on THAT forward fixes
@@ -212,7 +217,8 @@ def await_facts_via_forward(
     Service never gets a local listener. That used to end the whole run in sixty
     seconds, before the warm-up's own budget had been touched at all. So the
     forward is disposable: whatever the last one did, the next attempt gets a new
-    one, and the fifteen minutes belong to the service rather than to any forward.
+    one. Three consecutive listener failures stop early; a reachable service
+    keeps its full model-loading budget.
     """
     payload = _facts_payload(image, producers)
     forward = _Forward(kubectl, service, port)
@@ -241,19 +247,43 @@ def _keep_asking(attempt: Callable[[], str | None], *, reached: str, wanted: str
     started = time.monotonic()
     deadline = started + WARMUP_TIMEOUT_S
     wait = WARMUP_FIRST_WAIT_S
-    said = "it never answered at all"
-    while True:
-        failure = attempt()
-        if failure is None:
-            return round(time.monotonic() - started, 2)
-        said = failure
-        if time.monotonic() + wait >= deadline:
-            raise SystemExit(
-                f"{reached} never answered {wanted} within "
-                f"{WARMUP_TIMEOUT_S / 60:.0f} min. Last failure: {said}"
-            )
-        time.sleep(wait)
-        wait = min(wait * 2, WARMUP_MAX_WAIT_S)
+    said = "none yet"
+    number = 1
+    stopped = threading.Event()
+
+    def report() -> None:
+        remaining = max(0, deadline - time.monotonic())
+        detail = " ".join(said.split())[:240]
+        print(
+            f"{reached}: warming {wanted}, attempt {number}, "
+            f"{remaining:.0f}s budget left; last failure: {detail}",
+            flush=True,
+        )
+
+    def heartbeat() -> None:
+        while not stopped.wait(WARMUP_STATUS_INTERVAL_S):
+            report()
+
+    report()
+    reporter = threading.Thread(target=heartbeat, daemon=True)
+    reporter.start()
+    try:
+        while True:
+            failure = attempt()
+            if failure is None:
+                return round(time.monotonic() - started, 2)
+            said = failure
+            if time.monotonic() + wait >= deadline:
+                raise SystemExit(
+                    f"{reached} never answered {wanted} within "
+                    f"{WARMUP_TIMEOUT_S / 60:.0f} min. Last failure: {said}"
+                )
+            time.sleep(wait)
+            wait = min(wait * 2, WARMUP_MAX_WAIT_S)
+            number += 1
+    finally:
+        stopped.set()
+        reporter.join()
 
 
 class _Unreachable(RuntimeError):
@@ -393,6 +423,9 @@ class _Forward:
         self._port = port
         self._process: subprocess.Popen[bytes] | None = None
         self._local = 0
+        self._listener_failures = 0
+        self._stderr = None
+        self._last_error = ""
 
     def address(self) -> str | None:
         """A local base URL something is listening on, or None if a new forward never came up.
@@ -405,22 +438,41 @@ class _Forward:
             return f"http://127.0.0.1:{self._local}"
         self.stop()
         self._local = _free_port()
+        self._stderr = tempfile.TemporaryFile()
         self._process = subprocess.Popen(  # noqa: S603
             [*self._command, f"{self._local}:{self._port}"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=self._stderr,
         )
         if _listening(self._local, WARMUP_LISTENER_TIMEOUT_S):
+            self._listener_failures = 0
             return f"http://127.0.0.1:{self._local}"
         self.stop()
+        self._listener_failures += 1
+        if self._listener_failures >= WARMUP_LISTENER_ATTEMPTS:
+            raise SystemExit(
+                f"{self._command[-1]} port-forward never answered after "
+                f"{self._listener_failures} listener attempts; check the Service endpoints "
+                f"and kubectl connection. {self._last_error}"
+            )
         return None
 
     def stop(self) -> None:
-        if self._process is None:
-            return
-        self._process.terminate()
-        self._process.wait(timeout=10)
-        self._process = None
+        if self._process is not None:
+            if self._process.poll() is None:
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._process.kill()
+                    self._process.wait(timeout=5)
+            self._process = None
+        if self._stderr is not None:
+            size = self._stderr.seek(0, 2)
+            self._stderr.seek(max(0, size - 4096))
+            self._last_error = self._stderr.read().decode(errors="replace").strip()
+            self._stderr.close()
+            self._stderr = None
 
 
 def _free_port() -> int:

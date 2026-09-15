@@ -40,13 +40,13 @@ const D = {
   storyboardAgain: 75, // 2.5s — the second cut, one picture fewer; click Export
   export: 100, // 3.3s — summary lands, cursor arrives, click Generate
   generating: 140, // 4.7s — progress + live preview
+  complete: 60, // 2.0s — the finished file and its measured length
+  runs: 90, // 3.0s — the completed run in the browser's history
+  suggestions: 90, // 3.0s — what automation would propose next
   // The recording runs 62.56s and CliScene starts it at 15s, so 178 frames at
   // 8x is the whole rest of it: one more and the terminal freezes on its last
   // line, one fewer and the `open` that ends it never arrives.
   cli: 178, // 5.9s — the real terminal at 8x: the bar, the cut, runs story, runs why
-  runs: 90, // 3.0s — the history runs why reads from, in the browser
-  suggestions: 90, // 3.0s — the same month, as automation would have proposed it
-  complete: 60, // 2.0s — ready; the cursor presses Play
   output: 212, // 7.1s — the film it made, ending on its last picture, full bleed
 };
 
@@ -102,7 +102,7 @@ export const DemoVideo: React.FC = () => {
             bassIntensity={bass}
             frames={D.storyboard}
             clickTarget="pool"
-            clickAt={192}
+            clickAt={174}
             scrollPx={1520}
           />
         </TransitionSeries.Sequence>
@@ -159,9 +159,9 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 9. CLI — the same run in a terminal, ending on the saved file */}
-        <TransitionSeries.Sequence durationInFrames={D.cli}>
-          <CliScene />
+        {/* 9. Complete — finish the UI workflow before showing other features */}
+        <TransitionSeries.Sequence durationInFrames={D.complete}>
+          <CompleteScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -189,9 +189,9 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 12. Complete — ready; the cursor presses Play */}
-        <TransitionSeries.Sequence durationInFrames={D.complete}>
-          <CompleteScene bassIntensity={bass} playAt={44} />
+        {/* 12. CLI — its final `open` leads straight into the rendered film */}
+        <TransitionSeries.Sequence durationInFrames={D.cli}>
+          <CliScene />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition

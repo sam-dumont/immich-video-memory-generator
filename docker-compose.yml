@@ -62,6 +62,7 @@ services:
       # full. Either tier wants `models fetch` run inside the container first;
       # metadata_only fetches nothing and cannot export as sendable.
       IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"
       # Raise the tier to "full" with this, once a caption server answers.
       # The captioner profile below is one, and it is this compose network:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://immich-memories-captioner:8092/v1"
@@ -255,7 +256,7 @@ services:
     # Localhost only, as with the UI. The captioner holds no credential and
     # answers whatever reaches the port.
     ports:
-      - "127.0.0.1:8092:8092"
+      - "127.0.0.1:8094:8092"
     volumes:
       - immich-memories-caption-models:/models:ro
     command:

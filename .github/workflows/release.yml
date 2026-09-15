@@ -720,3 +720,25 @@ jobs:
             -t "$IMAGE:$VERSION" \
             -t "$IMAGE:latest" \
             $(printf "$IMAGE@sha256:%s " *)
+
+  deployment-bundle:
+    name: Publish matching deployment manifests
+    needs: [analyze, docker-manifest, inference-manifest]
+    if: needs.analyze.outputs.should_release == 'true' && inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Package and attach deployment files
+        env:
+          VERSION: ${{ needs.analyze.outputs.next_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bundle="/tmp/immich-memories-deploy-${VERSION}.tar.gz"
+          python3 scripts/package_deployment.py "$VERSION" "$bundle"
+          gh release upload "v$VERSION" "$bundle" --clobber

@@ -273,7 +273,7 @@ immich-memories generate [OPTIONS]
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
-| `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
+| `--orientation` | choice: `landscape` \| `portrait` \| `square` \| `auto` | landscape | Output orientation (auto follows the final selected cut) |
 | `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |
 | `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart, a mix of fades and cuts) |
 | `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |

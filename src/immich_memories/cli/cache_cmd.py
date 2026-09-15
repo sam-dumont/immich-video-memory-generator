@@ -17,16 +17,20 @@ def register_cache_commands(cli_group: click.Group) -> None:
     """Register cache subcommands."""
 
     @cli_group.group()
-    def cache() -> None:
+    @click.pass_context
+    def cache(ctx: click.Context) -> None:
         """Manage the analysis cache (LLM scores, video metadata)."""
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        VideoAnalysisCache(db_path=ctx.obj["config"].cache.database_path)
 
     @cache.command()
-    def stats() -> None:
+    @click.pass_context
+    def stats(ctx: click.Context) -> None:
         """Show cache statistics."""
         from immich_memories.cache.asset_score_cache import AssetScoreCache
-        from immich_memories.config import get_config
 
-        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
+        score_cache = AssetScoreCache(db_path=ctx.obj["config"].cache.database_path)
         s = score_cache.get_cache_stats()
 
         table = Table(title="Cache Statistics")
@@ -45,12 +49,12 @@ def register_cache_commands(cli_group: click.Group) -> None:
 
     @cache.command()
     @click.argument("output_path", type=click.Path())
-    def export(output_path: str) -> None:
+    @click.pass_context
+    def export(ctx: click.Context, output_path: str) -> None:
         """Export asset scores to JSON (safe, lock-aware)."""
         from immich_memories.cache.asset_score_cache import AssetScoreCache
-        from immich_memories.config import get_config
 
-        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
+        score_cache = AssetScoreCache(db_path=ctx.obj["config"].cache.database_path)
         with score_cache._get_connection() as conn:
             rows = conn.execute("SELECT * FROM asset_scores").fetchall()
             data = [dict(row) for row in rows]
@@ -60,13 +64,13 @@ def register_cache_commands(cli_group: click.Group) -> None:
 
     @cache.command(name="import")
     @click.argument("input_path", type=click.Path(exists=True))
-    def import_scores(input_path: str) -> None:
+    @click.pass_context
+    def import_scores(ctx: click.Context, input_path: str) -> None:
         """Import asset scores from JSON backup."""
         from immich_memories.cache.asset_score_cache import AssetScoreCache
-        from immich_memories.config import get_config
 
         data = json.loads(Path(input_path).read_text())
-        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
+        score_cache = AssetScoreCache(db_path=ctx.obj["config"].cache.database_path)
 
         imported = 0
         for row in data:
@@ -87,12 +91,12 @@ def register_cache_commands(cli_group: click.Group) -> None:
 
     @cache.command()
     @click.argument("output_path", type=click.Path())
-    def backup(output_path: str) -> None:
+    @click.pass_context
+    def backup(ctx: click.Context, output_path: str) -> None:
         """Backup the entire cache DB (safe SQLite backup API)."""
         from immich_memories.cache.database import VideoAnalysisCache
-        from immich_memories.config import get_config
 
-        db = VideoAnalysisCache(db_path=get_config().cache.database_path)
+        db = VideoAnalysisCache(db_path=ctx.obj["config"].cache.database_path)
         with db._get_connection() as src_conn:
             dst = sqlite3.connect(output_path)
             src_conn.backup(dst)

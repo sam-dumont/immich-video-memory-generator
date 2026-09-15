@@ -77,8 +77,8 @@ _REMOVED_TOP_LEVEL_SECTIONS = {
 _WENT_WITH_THE_SCORER = "went with the legacy clip scorer; story-first selection never read it"
 
 # Keys that went with the legacy clip scorer. Unlike the sections above these are
-# refused, not dropped: section models ignore unknown keys, so a file that still
-# sets one would keep loading while the setting silently did nothing.
+# warned about and dropped: section models ignore unknown keys, so without the
+# warning an old setting would silently do nothing after an upgrade.
 _REMOVED_CONFIG_KEYS: dict[str, str] = {
     "content_analysis": _WENT_WITH_THE_SCORER,
     "audio_content": _WENT_WITH_THE_SCORER,

@@ -85,6 +85,10 @@ window is what decides whether a model can do this job at all, and the vision he
 
 ## Four rules that make the numbers mean anything
 
+The facts warm-up reports its attempt, last failure and remaining budget every 30 seconds.
+A service loading models gets 15 minutes; a port-forward that cannot start a listener stops
+after three attempts (about one minute), with the last `kubectl` error.
+
 **One cache per cell.** The runner pins `cache.directory`, `cache.database` and the annotation bank
 per cell, so nothing one cell derived and nothing one cell decided reaches the next. This is not a
 tidiness rule: the first Mac lane run shared the operator's cache across both cells, and `mac-rules`
@@ -128,6 +132,23 @@ including requests that overlap. Four concurrent 30-second calls contribute 120 
 Use the selection and render columns for elapsed time. Stored `llm_wall_seconds` and
 `hosted_usage.wall_seconds` keep this same cumulative meaning. The CLI also shows how many
 completion tokens were reasoning; they are already included in the completion total.
+
+Before a reader cell runs, its probe sends one real fixture tile through the picture-facts
+contract, then an episode read, period read and story pick. A failed shape stops the cell.
+The manifest's `libraries.<name>.reader_budget` projects each shape over a conservative call
+count. Only stages marked `parallel` divide elapsed time by the reader's configured concurrency;
+every call still counts toward cost, including reasoning tokens already billed in the completion.
+
+| Library | Reader time ceiling | Token cost ceilings |
+|---|---|---|
+| `demo` | 20 minutes | EUR 0.10 / USD 0.20 |
+| `february` | 45 minutes | EUR 0.25 / USD 0.50 |
+
+These are estimates for selection, not a cap on the provider's final bill or the whole render.
+The probe prints its counts, concurrency, projection and ceiling. Missing hosted prices or token
+usage cannot pass the cost check. To deliberately measure one expensive cell, pass
+`--allow-reader-budget-overrun CELL` to either matrix command. This waives its budget refusal,
+but image support and readable answers remain required. No currency conversion is assumed.
 
 `hosted_usage.tokens_in` and `tokens_out` come from `llm-usage.json`, which every run that asked a
 model leaves in its attempt directory. `usage_source` says `record` when the row was read from there,

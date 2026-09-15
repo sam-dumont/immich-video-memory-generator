@@ -17,10 +17,12 @@ import json
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.e2e.fake_immich import TIMELINE_ASSETS  # noqa: E402
 from tests.e2e.fake_library import (  # noqa: E402
     CARRIERS,
     LIBRARY,
@@ -30,7 +32,14 @@ from tests.e2e.fake_library import (  # noqa: E402
     summary_line,
 )
 
+from immich_memories.api.models import Asset  # noqa: E402
+from immich_memories.config_loader import Config  # noqa: E402
 from immich_memories.operations.reader_words import stage_words  # noqa: E402
+from immich_memories.operations.storyboard import storyboard_from_plan  # noqa: E402
+from immich_memories.processing.editorial_timing import (  # noqa: E402
+    bind_editorial_timeline,
+    build_editorial_timing_policy,
+)
 
 # The pass the fixture's editorial route records its rejections under; the pool
 # page prints the reader's words for it, not the engine's name.
@@ -52,14 +61,35 @@ def _taken_label(taken_at: str) -> str:
     return f"{MONTHS[int(taken_at[5:7]) - 1]} {taken_at[8:10]} {taken_at[11:16]}"
 
 
-def _timecodes() -> dict[str, str]:
-    """Where each kept picture starts in the cut, in the order the film plays them."""
-    at = 0.0
-    codes = {}
-    for picture in CARRIERS:
-        codes[picture.asset_id] = f"{int(at) // 60}:{int(at) % 60:02d}"
-        at += picture.seconds
-    return codes
+def _board(pictures):
+    """The same fixture cut and 60-second title policy as the hermetic UI."""
+    carriers = [
+        {
+            "asset_id": p.asset_id,
+            "seconds": p.seconds,
+            "taken": p.taken_at,
+            "kind": "video" if p.is_video else "still",
+        }
+        for p in pictures
+    ]
+    assets = {raw["id"]: Asset.model_validate(raw) for raw in TIMELINE_ASSETS}
+    policy = build_editorial_timing_policy(
+        config=Config(),
+        target_seconds=60,
+        memory_type="monthly_highlights",
+        date_start=date(2024, 6, 1),
+        date_end=date(2024, 6, 30),
+    )
+    timeline = policy.resolve(carriers, assets)
+    return storyboard_from_plan(
+        {
+            "carriers": carriers,
+            "render_timing": bind_editorial_timeline(
+                policy, timeline, [p.asset_id for p in pictures]
+            ),
+        },
+        None,
+    )
 
 
 def _outcome(picture, timecodes: dict[str, str]) -> str:
@@ -138,16 +168,17 @@ def _film_facts() -> dict[str, object]:
     }
 
 
-def main() -> None:
+def _shots(pictures, board) -> list[dict]:
     shots = []
     previous_month = None
-    for picture in CARRIERS:
+    for picture, timed in zip(pictures, board.shots, strict=True):
         month = picture.taken_at[:7]
         shot = {
             "picture": f"library/{picture.source.name}",
             "day": picture.taken_at[:10],
             "motion": picture.is_video,
-            "seconds": int(picture.seconds),
+            "seconds": round(timed.seconds, 2),
+            "start": timed.start,
             "story": STORY_OF[picture.asset_id].title,
             "reason": picture.caption,
         }
@@ -155,7 +186,14 @@ def main() -> None:
             shot["chapter"] = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}".replace("Jun ", "June ")
             previous_month = month
         shots.append(shot)
-    timecodes = _timecodes()
+    return shots
+
+
+def main() -> None:
+    board = _board(CARRIERS)
+    recut = _board(CARRIERS[1:])
+    shots = _shots(CARRIERS, board)
+    timecodes = {shot.asset_id: shot.timecode for shot in board.shots}
     pool = [
         {
             "picture": f"library/{picture.source.name}",
@@ -182,6 +220,7 @@ def main() -> None:
             "  day: string;",
             "  motion: boolean;",
             "  seconds: number;",
+            "  start: number;",
             "  story: string;",
             "  reason: string;",
             "  /** Set on the first picture of a month: the real page prints a chapter label. */",
@@ -208,6 +247,8 @@ def main() -> None:
             f"export const POOL_PAGE = {POOL_PAGE};",
             f"export const CUT_COUNT = {len(CARRIERS)};",
             f"export const CUT_SECONDS = {int(sum(picture.seconds for picture in CARRIERS))};",
+            f"export const CUT_FILM_SECONDS = {board.film_seconds};",
+            f"export const RECUT_FILM_SECONDS = {recut.film_seconds};",
             "",
             "/** How long output-preview.mp4 runs, measured. */",
             f"export const FILM_SECONDS = {film['seconds']};",
@@ -217,6 +258,7 @@ def main() -> None:
             f"export const FILM_SIZE = {json.dumps(film['size'])};",
             "",
             f"export const SHOTS: Shot[] = {json.dumps(shots, indent=2, ensure_ascii=False)};",
+            f"export const RECUT_SHOTS: Shot[] = {json.dumps(_shots(CARRIERS[1:], recut), indent=2, ensure_ascii=False)};",
             f"export const POOL: PoolCard[] = {json.dumps(pool, indent=2, ensure_ascii=False)};",
             "",
         ]

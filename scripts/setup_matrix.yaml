@@ -125,6 +125,16 @@ libraries:
   demo:
     month: "2024-06"
     anonymize_required: false
+    # Planning envelopes, not measured stage counts. Include room for extra
+    # structure reads; revise these when the fixture or selection stages change.
+    reader_budget:
+      max_seconds: 1200
+      max_cost: {EUR: 0.10, USD: 0.20}
+      calls:
+        episodes: {count: 12, parallel: true}
+        period: {count: 4, parallel: false}
+        story-pick: {count: 48, parallel: true}
+        picture-facts: {count: 36, parallel: false}
     config:
       immich.url: $env:MATRIX_FIXTURE_BASE_URL
       immich.api_key: fake-immich-api-key
@@ -134,6 +144,16 @@ libraries:
   february:
     month: "2024-02"
     anonymize_required: true
+    # A conservative 176-call envelope against the observed 156-call run.
+    # The breakdown is an estimate using the probe shapes as stage proxies.
+    reader_budget:
+      max_seconds: 2700
+      max_cost: {EUR: 0.25, USD: 0.50}
+      calls:
+        episodes: {count: 48, parallel: true}
+        period: {count: 8, parallel: false}
+        story-pick: {count: 80, parallel: true}
+        picture-facts: {count: 40, parallel: false}
     config: {}
 
 # What every cell asks the product for. One memory, same length, same shape.

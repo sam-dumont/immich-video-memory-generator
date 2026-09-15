@@ -21,17 +21,25 @@ locals {
   # ~/.immich-memories, so that directory is a writable PVC, not a ConfigMap.
   data_dir   = "/home/immich/.immich-memories"
   output_dir = "/app/output"
+  models_dir = "/models"
+  model_env = {
+    IMMICH_MEMORIES_TRIAGE__ENCODER                            = "/models/triage/dinov2-small.onnx"
+    IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX         = "/models/detectors/nsfw-marqo-384.onnx"
+    IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR = "/models/huggingface"
+  }
 
   # Everything is configured through IMMICH_MEMORIES_<SECTION>__<KEY> env vars,
   # the same way docker-compose does it. Secrets live in the Secret (envFrom).
   env = merge(
+    local.model_env,
     {
-      IMMICH_MEMORIES_OUTPUT__DIRECTORY  = local.output_dir
-      IMMICH_MEMORIES_OUTPUT__RESOLUTION = var.output_resolution
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY            = local.output_dir
+      IMMICH_MEMORIES_OUTPUT__RESOLUTION           = var.output_resolution
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER = "no_captions"
     },
     var.llm_base_url != "" ? {
-      IMMICH_MEMORIES_LLM__BASE_URL             = var.llm_base_url
-      IMMICH_MEMORIES_LLM__MODEL                = var.llm_model
+      IMMICH_MEMORIES_LLM__BASE_URL = var.llm_base_url
+      IMMICH_MEMORIES_LLM__MODEL    = var.llm_model
     } : {},
     var.musicgen_enabled ? {
       IMMICH_MEMORIES_MUSICGEN__ENABLED  = "true"
@@ -128,6 +136,23 @@ resource "kubernetes_persistent_volume_claim_v1" "cache" {
   depends_on = [kubernetes_namespace_v1.this]
 }
 
+resource "kubernetes_persistent_volume_claim_v1" "models" {
+  metadata {
+    name      = "immich-memories-models"
+    namespace = var.namespace
+    labels    = local.labels
+  }
+  spec {
+    access_modes       = ["ReadWriteOnce"]
+    storage_class_name = var.storage_class_name
+    resources {
+      requests = { storage = var.models_storage_size }
+    }
+  }
+  wait_until_bound = false
+  depends_on       = [kubernetes_namespace_v1.this]
+}
+
 # Deployment
 resource "kubernetes_deployment_v1" "this" {
   metadata {
@@ -141,7 +166,7 @@ resource "kubernetes_deployment_v1" "this" {
     replicas = var.replicas
 
     strategy {
-      type = "Recreate" # both PVCs are ReadWriteOnce
+      type = "Recreate" # all PVCs are ReadWriteOnce
     }
 
     selector {
@@ -167,6 +192,36 @@ resource "kubernetes_deployment_v1" "this" {
 
           seccomp_profile {
             type = "RuntimeDefault"
+          }
+        }
+
+        init_container {
+          name    = "fetch-models"
+          image   = "${var.image_repository}:${var.image_tag}"
+          command = ["/bin/sh", "-c", "test -s /models/triage/dinov2-small.onnx && test -s /models/detectors/nsfw-marqo-384.onnx && test -d /models/huggingface || immich-memories models fetch"]
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            capabilities { drop = ["ALL"] }
+          }
+          dynamic "env" {
+            for_each = local.env
+            content {
+              name  = env.key
+              value = env.value
+            }
+          }
+          volume_mount {
+            name       = "data"
+            mount_path = local.data_dir
+          }
+          volume_mount {
+            name       = "models"
+            mount_path = local.models_dir
+          }
+          volume_mount {
+            name       = "tmp"
+            mount_path = "/tmp"
           }
         }
 
@@ -234,6 +289,11 @@ resource "kubernetes_deployment_v1" "this" {
           }
 
           volume_mount {
+            name       = "models"
+            mount_path = local.models_dir
+          }
+
+          volume_mount {
             name       = "tmp"
             mount_path = "/tmp"
           }
@@ -279,6 +339,13 @@ resource "kubernetes_deployment_v1" "this" {
 
         # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
         volume {
+          name = "models"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.models.metadata[0].name
+          }
+        }
+
+        volume {
           name = "tmp"
           empty_dir {
             size_limit = var.tmp_size
@@ -302,6 +369,7 @@ resource "kubernetes_deployment_v1" "this" {
     kubernetes_secret_v1.this,
     kubernetes_persistent_volume_claim_v1.output,
     kubernetes_persistent_volume_claim_v1.cache,
+    kubernetes_persistent_volume_claim_v1.models,
   ]
 }
 

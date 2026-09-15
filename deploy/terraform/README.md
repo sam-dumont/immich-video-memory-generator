@@ -11,7 +11,7 @@ applied to a live cluster on every release. Read the plan before you apply it.
 
 ## What it creates
 
-Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
+Namespace (optional), Secret, three `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
 
 The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`:
 
@@ -19,7 +19,12 @@ The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`:
 |-------|-----------|-------|
 | `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache.db`, video cache, projects, automation history |
 | `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/models` | models PVC (`models_storage_size`, 10Gi) | pinned encoder, sensitive-content model and detector snapshot |
 | `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates |
+
+The init container runs `models fetch` on an empty models claim. The default tier is
+`no_captions`; to use a caption server, set both `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER`
+to `full` and `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` in `env`.
 
 There is no ConfigMap. `immich_url` / `immich_api_key` (and `llm_api_key`, `musicgen_api_key`,
 `secret_env`) land in the Secret and reach the pod through `envFrom`; every other setting is an

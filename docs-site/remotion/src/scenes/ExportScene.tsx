@@ -18,24 +18,30 @@ import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
+import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 
-// The four stat cards of the real Export page for this cut, as captured in
-// docs-site/static/img/screenshots/memory-export.png.
+import { RECUT_SHOTS, RECUT_FILM_SECONDS, POOL_TOTAL, POOL_VIDEOS } from "../fixture";
+
+const PHOTOS = POOL_TOTAL - POOL_VIDEOS;
+const DURATION = `≈${Math.floor(RECUT_FILM_SECONDS / 60)}:${String(Math.floor(RECUT_FILM_SECONDS % 60)).padStart(2, "0")}`;
+
 const STATS = [
-  { icon: "movie", value: "18", label: "Clips" },
-  { icon: "photo_library", value: "120", label: "Photo Pool" },
-  { icon: "timer", value: "1:19", label: "Duration" },
+  { icon: "movie", value: String(RECUT_SHOTS.length), label: "Clips" },
+  { icon: "photo_library", value: String(PHOTOS), label: "Photo Pool" },
+  { icon: "timer", value: DURATION, label: "Film length" },
   { icon: "video_file", value: "MP4", label: "Format" },
 ];
 
+// The name the filename builder gives the fixture's June, and the directory the
+// screenshots show: a plain home path, not the temp root a hermetic run uses.
 const FILENAME = "everyone_june_2024_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
 const CLICK_GENERATE = 78;
 
 // Measured against a 1920x1080 still render: the middle of the full-width button.
-const GENERATE_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 460 };
+const GENERATE_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 510 };
 
 // The cursor is hidden until 15 frames before its first step, so a late first
 // step is a still page. This one arrives while the cards are still landing.
@@ -65,7 +71,7 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar active="" />
+        <Sidebar active="none" />
         <div
           style={{
             flex: 1,
@@ -98,7 +104,28 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
             })}
           </div>
 
-          <div style={{ marginTop: 16, opacity: reveal(30) }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              marginTop: 14,
+              padding: "10px 0",
+              opacity: reveal(26),
+            }}
+          >
+            <MaterialIcon name="photo_library" size={20} color={COLORS.textSecondary} />
+            <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
+              {PHOTOS} Photos Available (auto-selected at generation)
+            </span>
+            <MaterialIcon
+              name="keyboard_arrow_down"
+              size={22}
+              color={COLORS.textSecondary}
+            />
+          </div>
+
+          <div style={{ marginTop: 10, opacity: reveal(30) }}>
             <ImSectionHeader icon="folder" title="Output" />
           </div>
           <ImCard

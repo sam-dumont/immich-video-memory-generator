@@ -15,8 +15,8 @@ import { ImSelect } from "../components/ImSelect";
 
 /**
  * The Runs page: every run the server has made, manual or automatic, kept with
- * its cut and its timings. It is where `runs why` reads from, so it follows the
- * terminal scene.
+ * its cut and its timings. It follows the completed export, keeping the browser
+ * workflow together before the terminal scene.
  */
 
 const RUNS = [

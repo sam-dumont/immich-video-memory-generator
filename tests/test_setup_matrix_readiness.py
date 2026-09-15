@@ -313,6 +313,45 @@ def test_a_forward_that_never_answers_spends_the_budget_and_says_it_was_the_forw
     assert "svc/inference" in str(failure.value)
 
 
+def test_broken_forward_stops_after_three_listener_attempts(monkeypatch, tmp_path) -> None:
+    _fake_forwarding_kubectl(tmp_path, silent=99)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_LISTENER_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_TIMEOUT_S", 3.0)
+
+    with pytest.raises(SystemExit, match="3 listener attempts"):
+        setup_matrix_readiness.await_facts_via_forward(
+            ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)
+        )
+
+    assert (tmp_path / "forwards").read_text().strip() == "3"
+
+
+def test_warmup_reports_while_a_request_is_waiting(monkeypatch, capsys) -> None:
+    """The heartbeat must not depend on a blocked HTTP request returning."""
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_STATUS_INTERVAL_S", 0.02)
+    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
+    finished = threading.Event()
+    calls = 0
+
+    def attempt():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "facts answered 503: loading heads"
+        finished.wait(0.08)
+        return None
+
+    setup_matrix_readiness._keep_asking(attempt, reached="svc/inference", wanted="facts")
+
+    output = capsys.readouterr().out
+    assert "attempt 1" in output
+    assert "attempt 2" in output
+    assert "loading heads" in output
+    assert "budget left" in output
+
+
 def _fake_rollout_kubectl(tmp_path: Path, *, rollout_code: int) -> None:
     """A kubectl that writes down every subcommand it was given, and can fail the rollout."""
     script = tmp_path / "kubectl"

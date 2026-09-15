@@ -22,6 +22,10 @@ import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
 
+import { RECUT_SHOTS, RECUT_FILM_SECONDS, POOL_TOTAL, POOL_VIDEOS } from "../fixture";
+
+const PHOTOS = POOL_TOTAL - POOL_VIDEOS;
+const DURATION = `≈${Math.floor(RECUT_FILM_SECONDS / 60)}:${String(Math.floor(RECUT_FILM_SECONDS % 60)).padStart(2, "0")}`;
 const FILENAME = "everyone_june_2024_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
@@ -68,7 +72,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar active="" />
+        <Sidebar active="none" />
         <div
           style={{
             flex: 1,
@@ -85,20 +89,20 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
           <div style={{ display: "flex", gap: 12 }}>
             <ImStatCard
               icon="movie"
-              value="18"
+              value={String(RECUT_SHOTS.length)}
               label="Clips"
               style={{ flex: "0 0 160px" }}
             />
             <ImStatCard
               icon="photo_library"
-              value="120"
+              value={String(PHOTOS)}
               label="Photo Pool"
               style={{ flex: "0 0 160px" }}
             />
             <ImStatCard
               icon="timer"
-              value="1:19"
-              label="Duration"
+              value={DURATION}
+              label="Film length"
               style={{ flex: "0 0 160px" }}
             />
             <ImStatCard

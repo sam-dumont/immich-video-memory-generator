@@ -73,6 +73,11 @@ def test_dry_run_prepares_without_an_alternate_selection(capsys) -> None:
     assert "Selection: pending" in capsys.readouterr().out
 
 
+def test_dry_run_labels_auto_canvas_as_provisional(capsys) -> None:
+    _run(dry_run=True, output_orientation="auto")
+    assert "provisional until selection" in capsys.readouterr().out
+
+
 def test_the_flag_exists_and_says_what_it_does() -> None:
     """A flag nobody can find is a flag nobody uses."""
     from click.testing import CliRunner

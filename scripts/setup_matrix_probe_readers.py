@@ -1,16 +1,13 @@
-"""Ask a cell's reader the three questions the run will ask, before paying for the run.
+"""Probe a reader's image and text contracts, cost and latency before a full cell.
 
-A reader cell is an hour of pictures and a bill. Run 1 spent both on four hosted
-models that answered every read with HTTP 200 and content "", because a reasoning
-model charges its thinking to the same budget as its answer. That is three calls'
-worth of evidence, and this asks for exactly those three: the episode read, the
-period read and one story pick, at the sizes the run uses, against the cell's own
-configuration built the way the runner builds it.
+A reader can return HTTP 200 and no usable answer, reject its first image, or
+answer correctly at an unacceptable cost. Send a real picture first, followed
+by an episode read, period read and story pick using the production contracts.
+Then project the library's call envelope against its time and cost ceilings.
 
 One call per shape, deliberately. The stages wrap `query_llm` in a retry that
 doubles the budget or repairs the JSON; a probe wants the first answer, not the
-recovered one, and a budget of three calls per model is what keeps this free
-enough to run before every cell.
+recovered one. Stop on the first failed shape, with at most four shapes per cell.
 
     uv run python scripts/setup_matrix_probe_readers.py --cell mac-hosted-openai-luna
     uv run python scripts/setup_matrix.py --probe-readers-only --lane mac
@@ -26,13 +23,15 @@ import re
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from math import ceil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from setup_matrix_plan import (  # noqa: E402
+    PROBE_READERS,
     CellPlan,
     Plan,
     PlanError,
@@ -41,9 +40,13 @@ from setup_matrix_plan import (  # noqa: E402
     reads_with_a_model,
 )
 
+from immich_memories.analysis import editorial_picture_facts as picture_facts  # noqa: E402
 from immich_memories.analysis.editorial_json_completion import complete_final_json  # noqa: E402
 from immich_memories.analysis.editorial_story_pick_contract import _read_pick  # noqa: E402
-from immich_memories.analysis.llm_providers import resolved_llm_config  # noqa: E402
+from immich_memories.analysis.llm_providers import (  # noqa: E402
+    reader_concurrency,
+    resolved_llm_config,
+)
 from immich_memories.analysis.llm_query import query_llm  # noqa: E402
 from immich_memories.analysis.llm_wire import LLMTransportAttempt  # noqa: E402
 from immich_memories.analysis.provider_status import watch_provider  # noqa: E402
@@ -67,6 +70,7 @@ from immich_memories.store.period_insights import (  # noqa: E402
 )
 
 PROMPTS = Path(__file__).resolve().parent / "reader_probe_prompts"
+PROBE_PICTURE = PROMPTS.parent.parent / "tests/e2e/fixtures/library/home-football-lawn-01.jpg"
 # The moment grant the recorded story pick was asked under; the contract reads
 # `unused_slots` against it, so a different number would reject a valid answer.
 STORY_PICK_SLOTS = 8
@@ -88,6 +92,7 @@ class ShapeResult:
     seconds: float
     cost: str
     verdict: str
+    usage_measured: bool = False
 
     @property
     def failed(self) -> bool:
@@ -191,7 +196,17 @@ def _story_pick_verdict(raw: str, prompt: str) -> str:
     return f"ok ({len(kept)} kept, {unused} unused)"
 
 
+def _picture_verdict(raw: str, _prompt: str) -> str:
+    record = picture_facts._read_facts(raw)
+    return (
+        "ok (picture facts read)"
+        if record["status"] == "available"
+        else "parser: invalid picture facts"
+    )
+
+
 SHAPES = (
+    ("picture-facts", None, picture_facts.MAX_OUTPUT_TOKENS, True, _picture_verdict),
     ("episodes", "episodes.txt", TEXT_EPISODE_MAX_OUTPUT_TOKENS, True, _episode_verdict),
     ("period", "period.txt", TEXT_PERIOD_MAX_OUTPUT_TOKENS, True, _period_verdict),
     ("story-pick", "story-pick.txt", STORY_PICK_MAX_TOKENS, False, _story_pick_verdict),
@@ -225,7 +240,9 @@ class _Billing:
         self._watch(attempt)
 
 
-def _ask(prompt: str, config, *, max_tokens: int, require_complete: bool, billing) -> str:
+def _ask(
+    prompt: str, config, *, max_tokens: int, require_complete: bool, billing, images=()
+) -> str:
     return asyncio.run(
         query_llm(
             prompt,
@@ -237,13 +254,16 @@ def _ask(prompt: str, config, *, max_tokens: int, require_complete: bool, billin
             cache_path=None,
             transport_observer=billing,
             require_complete=require_complete,
+            images=images,
+            image_detail="high",
         )
     )
 
 
 def probe_shape(shape, config, *, reader: str, pricing: dict) -> ShapeResult:
     name, filename, max_tokens, require_complete, verdict_of = shape
-    prompt = (PROMPTS / filename).read_text()
+    prompt = (PROMPTS / filename).read_text() if filename else picture_facts.PROMPT
+    images = () if filename else (picture_facts.picture_tile(PROBE_PICTURE.read_bytes()),)
     billing = _Billing(config)
     started = time.monotonic()
     failure = ""
@@ -255,6 +275,7 @@ def probe_shape(shape, config, *, reader: str, pricing: dict) -> ShapeResult:
             max_tokens=max_tokens,
             require_complete=require_complete,
             billing=billing,
+            images=images,
         )
     except Exception as exc:  # The probe reports every refusal rather than raising one.
         failure = f"transport: {type(exc).__name__}: {str(exc).strip()[:200]}"
@@ -272,7 +293,82 @@ def probe_shape(shape, config, *, reader: str, pricing: dict) -> ShapeResult:
         seconds=seconds,
         cost=_price(pricing, reader, config.model, billed),
         verdict=failure or verdict_of(raw, prompt),
+        usage_measured=(
+            billed is not None
+            and billed.prompt_tokens is not None
+            and billed.completion_tokens is not None
+        ),
     )
+
+
+def check_budget(results, *, budget: dict, config, reader: str, pricing: dict) -> list[str]:
+    """Project stage envelopes from measured calls; cost counts every concurrent call."""
+    if not budget:
+        return ["no reader budget declared for this library"]
+    measured = {result.shape: result for result in results}
+    seconds = spend = 0.0
+    rate = (pricing.get(reader) or {}).get(config.model)
+    currency = (pricing.get(reader) or {}).get("currency", "")
+    local = reader == "local_model"
+    priced = local or rate is not None
+    for name, stage in budget["calls"].items():
+        result = measured.get(name)
+        if result is None:
+            return [f"no measurement for projected stage {name}"]
+        count = int(stage["count"])
+        parallel = reader_concurrency(config) if stage.get("parallel") else 1
+        elapsed = ceil(count / parallel) * result.seconds
+        seconds += elapsed
+        print(f"  project {name}: {count} calls, concurrency {parallel}, {elapsed:.0f}s")
+        if rate and result.usage_measured:
+            spend += (
+                count
+                * (
+                    result.prompt_tokens * float(rate["input_per_million"])
+                    + result.completion_tokens * float(rate["output_per_million"])
+                )
+                / 1_000_000
+            )
+        elif not local:
+            priced = False
+    ceiling = float(budget["max_seconds"])
+    print(f"  projected reader time: {seconds:.0f}s / {ceiling:.0f}s ceiling")
+    problems = []
+    if seconds > ceiling:
+        problems.append("projected time exceeds the library ceiling")
+    if local:
+        print("  projected token cost: local model, no token bill")
+    elif not priced:
+        problems.append("cannot project hosted cost: missing prices or token usage")
+    elif currency not in budget["max_cost"]:
+        problems.append(f"no cost ceiling declared in {currency}")
+    else:
+        cost_ceiling = float(budget["max_cost"][currency])
+        print(f"  projected token cost: {currency} {spend:.5f} / {cost_ceiling:.5f} ceiling")
+        if spend > cost_ceiling:
+            problems.append("projected cost exceeds the library ceiling")
+    return problems
+
+
+def configure_reader_probes(plan, *, config_source, env_files, budget_overrides):
+    """Give each probe the runner's actual config and explicit per-cell overrides."""
+    unknown = set(budget_overrides) - {item.cell.id for item in plan.cells}
+    if unknown:
+        raise PlanError(f"budget override names unselected cell(s): {', '.join(sorted(unknown))}")
+    common = ("--config", str(config_source.resolve())) if config_source else ()
+    for path in env_files:
+        common += ("--env-file", str(path.resolve()))
+    cells = []
+    for item in plan.cells:
+        extra = common
+        if item.cell.id in budget_overrides:
+            extra += ("--allow-reader-budget-overrun", item.cell.id)
+        steps = tuple(
+            replace(step, command=(*step.command, *extra)) if step.name == PROBE_READERS else step
+            for step in item.steps
+        )
+        cells.append(replace(item, steps=steps))
+    return replace(plan, cells=tuple(cells))
 
 
 @contextlib.contextmanager
@@ -314,15 +410,19 @@ def probe_cell(item: CellPlan, plan: Plan, config_source: Path | None, pricing: 
     llm = cell_llm_config(item, plan, config_source)
     print(f"{item.cell.id}: {llm.model} at {llm.base_url}", flush=True)
     print(HEADER, flush=True)
-    results = [
-        probe_shape(shape, llm, reader=item.cell.reader, pricing=pricing) for shape in SHAPES
-    ]
-    for result in results:
+    results = []
+    for shape in SHAPES:
+        result = probe_shape(shape, llm, reader=item.cell.reader, pricing=pricing)
+        results.append(result)
         print(result.row(), flush=True)
+        if result.failed:
+            break
     return results
 
 
-def probe_cells(plan: Plan, config_source: Path | None, pricing: dict) -> int:
+def probe_cells(
+    plan: Plan, config_source: Path | None, pricing: dict, *, budget: dict, budget_overrides=()
+) -> int:
     """0 when every shape of every probed cell came back readable, 1 otherwise."""
     probed = [item for item in plan.runnable if reads_with_a_model(item.cell)]
     if not probed:
@@ -330,15 +430,28 @@ def probe_cells(plan: Plan, config_source: Path | None, pricing: dict) -> int:
         return 0
     failures = []
     for item in probed:
-        failures.extend(
-            result for result in probe_cell(item, plan, config_source, pricing) if result.failed
+        results = probe_cell(item, plan, config_source, pricing)
+        broken = [result for result in results if result.failed]
+        if broken:
+            failures.extend(f"{item.cell.id} {result.shape}: {result.verdict}" for result in broken)
+            continue
+        problems = check_budget(
+            results,
+            budget=budget,
+            config=cell_llm_config(item, plan, config_source),
+            reader=item.cell.reader,
+            pricing=pricing,
         )
+        if problems and item.cell.id in budget_overrides:
+            print(f"  {item.cell.id}: explicit budget override: {'; '.join(problems)}")
+        else:
+            failures.extend(f"{item.cell.id}: {problem}" for problem in problems)
     if failures:
-        print(f"\n{len(failures)} reader shape(s) failed:", file=sys.stderr)
+        print(f"\n{len(failures)} reader refusal(s):", file=sys.stderr)
         for result in failures:
-            print(f"  {result.model} {result.shape}: {result.verdict}", file=sys.stderr)
+            print(f"  {result}", file=sys.stderr)
         return 1
-    print("\nevery reader answered every shape")
+    print("\nevery reader answered every shape and passed its budget gate")
     return 0
 
 
@@ -352,6 +465,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--month", default=None)
     parser.add_argument("--env-file", action="append", type=Path, default=[])
     parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument(
+        "--allow-reader-budget-overrun", action="append", default=[], metavar="CELL"
+    )
     return parser.parse_args(argv)
 
 
@@ -379,7 +495,16 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         for item in plan.skipped:
             print(f"{item.cell.id}: skipped, {item.skip_reason}")
-        return probe_cells(plan, opts.config, manifest.get("pricing") or {})
+        if set(opts.allow_reader_budget_overrun) - {item.cell.id for item in plan.cells}:
+            print("budget override must name a selected cell", file=sys.stderr)
+            return 2
+        return probe_cells(
+            plan,
+            opts.config,
+            manifest.get("pricing") or {},
+            budget=manifest["libraries"][plan.library].get("reader_budget", {}),
+            budget_overrides=opts.allow_reader_budget_overrun,
+        )
 
 
 if __name__ == "__main__":
