@@ -65,7 +65,7 @@ def test_certified_live_intervals_are_refused_rather_than_silently_dropped(tmp_p
     with TestClient(worker_app(tmp_path, _Renderer()), headers=AUTH) as client:
         response = client.post("/jobs", json=body)
     assert response.status_code == 409
-    assert "later contract version" in response.json()["detail"]
+    assert "matching carrier certificates" in response.json()["detail"]
 
 
 def test_a_matching_envelope_reaches_the_renderer_with_the_bound_timeline(tmp_path):

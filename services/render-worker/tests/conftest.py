@@ -17,6 +17,8 @@ def render_request_body(
     titles=None,
     certified_content_intervals=None,
     output=None,
+    options=None,
+    memory=None,
 ):
     """Return a submittable body whose binding really was computed over its own cut."""
     from immich_memories_render_worker.admission import envelope_policy
@@ -29,8 +31,9 @@ def render_request_body(
         "memory_key": memory_key,
         "immich": {"url": url, "api_key": api_key},
         "plan": {"clips": clips},
-        "memory": {"target_duration_seconds": target_duration_seconds},
+        "memory": {"target_duration_seconds": target_duration_seconds} | (memory or {}),
         "titles": titles or {},
+        "options": options or {},
         "timing": _PLACEHOLDER,
         "certified_content_intervals": certified_content_intervals or {},
     }
@@ -55,7 +58,7 @@ class _Source:
         self.is_photo = False
 
 
-def stub_artifact(directory, *, encoder="libx264", **extra):
+def stub_artifact(directory, *, encoder="libx264", size="32x32", seconds=1, **extra):
     """A real, tiny, plan-conformant mp4, so the output contract has something to accept."""
     import subprocess
 
@@ -73,7 +76,7 @@ def stub_artifact(directory, *, encoder="libx264", **extra):
             "-f",
             "lavfi",
             "-i",
-            "color=blue:s=32x32:r=2:d=1",
+            f"color=blue:s={size}:r=30:d={seconds}",
             "-vf",
             "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",
             "-c:v",

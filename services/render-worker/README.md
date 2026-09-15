@@ -78,17 +78,26 @@ byte. The binding is also what carries the title, ending and divider durations,
 so the worker re-derives none of them.
 
 `certified_content_intervals` has no default. An envelope that omits the key is
-refused, because the audience gate's trims are the one field whose absence is
-silently wrong. This slice renders no merged Live carriers, so the only value it
-accepts is an empty map; a non-empty one is a loud 409, not a quiet mismatch.
+refused. For a merged Live carrier, send its `editorial_live_manifest` unchanged
+in the clip's `live` field: version, canonical source material and selected interval.
+That interval must match both the clip's start/end and its entry in
+`certified_content_intervals`. Missing or changed trims return 409 before rendering.
 
 The cut is ordered, with at most 500 distinct assets and one hour of source
 intervals. `still` renders a photo, or a video's `render_frame_seconds`.
-Moving Live Photos use their selected video asset in S1; merged Live bursts
-need a later contract version. Output is SDR MP4, H.264 or H.265, at 720p,
-1080p or 4K, landscape or portrait. Source audio is preserved; adding a
+Moving Live Photos can use a video asset directly or a certified Live carrier.
+The worker restores all source segments, including their trim points and shutter times.
+Output is MP4, H.264 or H.265, at 720p, 1080p or 4K, landscape, portrait or square.
+`hdr_mode`, `codec_policy` and `quality` use the app's output settings; omitted HDR
+mode retains the original SDR default. Source audio is preserved; adding a
 soundtrack belongs to the submitting app, which is why the result carries
 `music_mute_windows`.
+
+Clips also carry `rotation_override`, `audio_categories` and `llm_emotion`.
+The `titles` object accepts the full title configuration; `memory` accepts
+`person_name` and `preset_params`. `options` carries `scale_mode`, date/place
+overlays, `privacy_mode` and `photo_duration`. These preserve the submitted film
+and source-audio decisions when the worker rebuilds generation parameters.
 
 A job is named after its cut, `(memory_key, plan_digest)`, not after a
 caller-chosen id: two callers holding the same cut get the same job, and a
@@ -147,5 +156,7 @@ make -C services/render-worker ci
 The integration check uses a local HTTP source and real FFmpeg on a CPU host:
 one case renders a film end to end and asserts the software encoder is reported
 as a degradation, the other drops a selected asset and asserts the job fails
-naming it. A successful CUDA/NVENC render has never executed and still requires
-validation on an NVIDIA host before deployment.
+naming it. The Live integration case also renders two certified source clips,
+checks the exact five-second title/content/ending timeline and decodes the retained
+audio. It passed on a real NVIDIA T1000 with CUDA titles and `h264_nvenc` on
+2026-09-15. Full app-to-worker handoff and NAS month measurements remain in #931.

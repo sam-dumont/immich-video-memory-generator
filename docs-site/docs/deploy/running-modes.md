@@ -350,6 +350,12 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
+The experimental [render worker](https://github.com/sam-dumont/immich-video-memory-generator/tree/main/services/render-worker)
+can render certified stitched Live clips through its authenticated job API. A real NVIDIA T1000
+check passed with CUDA titles, NVENC, the selected Live duration and retained source audio.
+App-side handoff and NAS month timings are still being completed in #931; the setup timings above
+continue to describe rendering on the app's own host.
+
 Every mode above renders title screens the same way: on the GPU kernels where they exist, and with
 PIL where they do not. Which one your machine gets, and what the fallback loses, is on
 [Title kernels](./hardware.md#title-kernels).
