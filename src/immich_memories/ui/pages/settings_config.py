@@ -8,7 +8,7 @@ from typing import Any
 
 from nicegui import ui
 
-from immich_memories.config import Config, get_config
+from immich_memories.config import get_config, get_config_path
 from immich_memories.ui.components import im_button, im_info_card, im_section_header
 
 logger = logging.getLogger(__name__)
@@ -165,7 +165,7 @@ def render_config_page() -> None:
 
         im_button("Reload from Disk", variant="secondary", on_click=reload_config, icon="refresh")
 
-        config_path = Config.get_default_path()
+        config_path = get_config_path()
         ui.label(f"Config file: {config_path}").classes("text-sm self-center").style(
             "color: var(--im-text-secondary)"
         )

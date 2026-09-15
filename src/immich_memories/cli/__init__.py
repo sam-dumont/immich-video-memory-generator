@@ -17,7 +17,7 @@ import click
 
 from immich_memories import __version__
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
-from immich_memories.config import Config, get_config, init_config_dir
+from immich_memories.config import Config, get_config, init_config_dir, load_config
 
 # Re-export helpers so external code can still do `from immich_memories.cli import console` etc.
 __all__ = ["console", "main", "print_error", "print_info", "print_success"]
@@ -101,7 +101,7 @@ def main(
     try:
         if config:
             config_path = Path(config).expanduser().resolve()
-            ctx.obj["config"] = Config.from_yaml(config_path)
+            ctx.obj["config"] = load_config(config_path)
             ctx.obj["config_path"] = config_path
         else:
             ctx.obj["config"] = get_config()
