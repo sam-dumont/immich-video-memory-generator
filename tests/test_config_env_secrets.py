@@ -222,3 +222,68 @@ def test_an_unset_template_survives_a_save(tmp_path: Path, monkeypatch):
     config.save_yaml(out)
 
     assert "${MY_CAPTION_KEY}" in out.read_text()
+
+
+@pytest.mark.parametrize(
+    ("provider", "other_alias", "header_name"),
+    [
+        ("anthropic", "OPENAI_API_KEY", "x-api-key"),
+        ("zai", "OPENAI_API_KEY", "x-api-key"),
+        ("openai", "ANTHROPIC_API_KEY", "Authorization"),
+        ("openai-compatible", "ANTHROPIC_API_KEY", "Authorization"),
+    ],
+)
+def test_an_unrelated_providers_key_never_reaches_the_request_header(
+    monkeypatch, provider: str, other_alias: str, header_name: str
+):
+    """A key belonging to one host must not be posted to another host.
+
+    Asserted on the header rather than on the field, because the header is what
+    actually leaves the machine: an explicit key the operator configured was
+    being replaced by whichever alias happened to be exported.
+    """
+    from immich_memories.analysis.llm_wire import anthropic_headers, openai_headers
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv(other_alias, "someone-elses-key")
+    config = Config()
+    config.llm.provider = provider
+    config.llm.api_key = "the-key-the-operator-configured"
+
+    _apply_env_overrides(config)
+
+    headers = (
+        anthropic_headers(config.llm) if header_name == "x-api-key" else openai_headers(config.llm)
+    )
+    assert "someone-elses-key" not in headers.get(header_name, "")
+    assert "the-key-the-operator-configured" in headers[header_name]
+
+
+@pytest.mark.parametrize(
+    ("provider", "unrelated_alias"),
+    [
+        ("anthropic", "OPENAI_API_KEY"),
+        ("zai", "OPENAI_API_KEY"),
+        ("openai", "ANTHROPIC_API_KEY"),
+        ("openai-compatible", "ANTHROPIC_API_KEY"),
+    ],
+)
+@pytest.mark.parametrize("configured_key", ["", "explicit-provider-key"])
+def test_the_full_load_does_not_borrow_another_providers_key(
+    tmp_path: Path, monkeypatch, provider: str, unrelated_alias: str, configured_key: str
+):
+    """The whole load path, where `IMMICH_MEMORIES_LLM__API_KEY` is the explicit route."""
+    from immich_memories import config_loader
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv(unrelated_alias, "someone-elses-key")
+    monkeypatch.setenv("IMMICH_MEMORIES_LLM__PROVIDER", provider)
+    monkeypatch.setenv("IMMICH_MEMORIES_LLM__API_KEY", configured_key)
+    monkeypatch.setattr(config_loader, "_config", None)
+
+    config = config_loader.get_config(reload=True)
+
+    assert config.llm.api_key == configured_key

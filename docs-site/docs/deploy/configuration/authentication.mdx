@@ -82,8 +82,10 @@ and is what makes callback-origin validation possible.
 With no allow-list, anyone your IdP authenticates becomes a full admin of this app, Immich API key
 included. Fine for a personal tenant; wrong for a shared realm or an Auth0 tenant with social
 sign-ups. Set `allowed_emails` or `allowed_domains`: either list admits, matching ignores case, and
-once either is set an account whose token carries no `email` claim is refused. Someone who signs
-in but is not on the list gets a "Not authorised" page naming the account, not a redirect loop.
+once either is set the token must carry both `email` and the boolean `email_verified: true`.
+Configure your provider to verify addresses and include that claim: a matching address the IdP has
+not verified is refused, because on a tenant with open sign-ups anyone can type one. A refused
+account gets a "Not authorised" page, not a redirect loop.
 :::
 
 Register the callback URL `https://your-host/auth/callback` (and logout URL `https://your-host/logout`)

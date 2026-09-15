@@ -279,6 +279,45 @@ captioner holds no credential and never talks to Immich. What it does receive is
 every picture in the library, so the Service stays ClusterIP and the NetworkPolicy allows ingress
 on 8092 only.
 
+### Knowing which build wrote a caption
+
+The alias is a contract, not a build identifier. Both recipes on this page advertise
+`smolvlm2-500m-base-public` on port 8092, so neither the model name nor the URL can tell a bank
+filled by mlx-serving from one filled by llama.cpp. New caption rows keep two things that came
+from the weights instead:
+
+- the served `/models` row, minus the `created` timestamp that llama.cpp answers with the current
+  clock. llama.cpp reports `owned_by=llamacpp`, `meta.ftype=Q8_0` and `meta.n_params`; mlxcel
+  reports `owned_by=user` and no `meta` at all.
+- a 16-character digest of the three schema controls the probe already sends before any of your
+  pictures. Greedy decoding makes it stable per build, and two builds that word a `setting`
+  differently cannot produce the same digest.
+
+An optional label of your own goes alongside them:
+
+```yaml
+advanced:
+  editorial:
+    preparation:
+      caption_artifact_id: "SmolVLM2-Q8_0@your-weight-revision"
+```
+
+`prepare` prints one line per run naming every distinct captioner behind the bank it just read,
+and the word `MIXED` when there is more than one:
+
+```
+caption origins: 2 distinct over 48689 captions MIXED [...]
+```
+
+All of this is a label for new rows. Changing the endpoint, the server or the artifact label does
+**not** re-caption anything already banked, and rows written before origins were recorded stay
+**unknown** rather than being credited to whatever is configured now.
+
+`immich-memories runs why <asset-id> --run <run-id>` shows the origin saved with that run, not the
+server configured today. Reader prompt text and bank identities are unchanged. For a deliberately
+fresh bank, choose a separate `editorial.annotation_database`; preparing it recomputes all the
+required facts, not only captions.
+
 ### On a GPU node
 
 ```bash

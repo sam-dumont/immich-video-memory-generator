@@ -9,7 +9,6 @@ Starts a separate server with basic auth enabled to test:
 
 from __future__ import annotations
 
-import os
 import signal
 import subprocess
 import time
@@ -24,23 +23,20 @@ from tests.e2e.redaction import redact_page
 
 pytestmark = pytest.mark.e2e
 
-_AUTH_PORT = 8098
-_AUTH_URL = f"http://localhost:{_AUTH_PORT}"
 _TEST_USER = "testuser"
 _TEST_PASS = "testpass123"  # noqa: S105
 
 
 @pytest.fixture(scope="module")
-def auth_server_url() -> str:
+def auth_server_url(tmp_path_factory, unused_tcp_port_factory, fake_immich_server):
     """Start a server with basic auth enabled on a separate port."""
-    if _is_ready():
-        return _AUTH_URL
+    from tests.e2e.conftest import _build_launch_environment
 
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith("NICEGUI_") and k != "PYTEST_CURRENT_TEST"
-    }
+    port = unused_tcp_port_factory()
+    url = f"http://localhost:{port}"
+    env = _build_launch_environment(tmp_path_factory.mktemp("basic-auth"))
+    env["IMMICH_URL"] = fake_immich_server.base_url
+    env["IMMICH_API_KEY"] = fake_immich_server.api_key
     env["IMMICH_MEMORIES_AUTH__ENABLED"] = "true"
     env["IMMICH_MEMORIES_AUTH__PROVIDER"] = "basic"
     env["IMMICH_MEMORIES_AUTH__USERNAME"] = _TEST_USER
@@ -59,7 +55,7 @@ def auth_server_url() -> str:
             str(venv_bin / "immich-memories"),
             "ui",
             "--port",
-            str(_AUTH_PORT),
+            str(port),
             "--host",
             "localhost",
         ],
@@ -73,8 +69,8 @@ def auth_server_url() -> str:
         if proc.poll() is not None:
             stderr = (proc.stderr.read() if proc.stderr else b"").decode(errors="replace")
             pytest.skip(f"Auth server exited: {stderr[-1000:]}")
-        if _is_ready():
-            yield _AUTH_URL
+        if _is_ready(url):
+            yield url
             proc.send_signal(signal.SIGINT)
             try:
                 proc.wait(timeout=10)
@@ -89,9 +85,9 @@ def auth_server_url() -> str:
     pytest.skip("Auth server did not start in 30s")
 
 
-def _is_ready() -> bool:
+def _is_ready(url: str) -> bool:
     try:
-        r = httpx.get(_AUTH_URL, timeout=2.0, follow_redirects=True)
+        r = httpx.get(url, timeout=2.0, follow_redirects=True)
         return r.status_code < 500
     except (httpx.ConnectError, httpx.TimeoutException):
         return False

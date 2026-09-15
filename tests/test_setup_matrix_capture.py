@@ -24,6 +24,7 @@ from setup_matrix_capture import (  # noqa: E402
     downloaded_asset_ids,
     film_clip_count,
     parse_cache_primed,
+    parse_caption_origins,
     parse_cgroup_cpu_seconds,
     parse_cgroup_peak_rss_mb,
     parse_encoder,
@@ -771,3 +772,33 @@ def test_the_film_says_how_many_clips_it_was_made_of() -> None:
     """The count is the film's own; the decoder lines name photos by id and videos by a hash."""
     assert film_clip_count(_download_log(["garden-cake"], clips=14)) == 14
     assert film_clip_count("a log from a run that never assembled anything") is None
+
+
+def test_the_captioners_behind_a_cell_are_read_off_the_line_prepare_prints() -> None:
+    """A matrix row compares readers given the same facts; two captioners break that."""
+    from immich_memories.operations.caption_origins import caption_origin_summary
+
+    provenance = {
+        "origins": [
+            {
+                "model_id": "smolvlm2-500m-base-public",
+                "endpoint": "http://localhost:8092/v1",
+                "served": {"owned_by": "llamacpp", "meta.ftype": "Q8_0"},
+                "control_digest": "61df0a0c11b612f4",
+                "assets": 120,
+            },
+            {"status": "unknown", "assets": 13},
+        ],
+        "by_asset": {},
+    }
+    log = f"some other line\n{caption_origin_summary(provenance)}\nand another\n"
+
+    read = parse_caption_origins(log)
+    assert read["distinct"] == 2
+    assert read["captions"] == 133
+    assert read["mixed"] is True
+    assert read["labels"][-1] == "unknown x13"
+
+
+def test_a_cell_that_captioned_nothing_reports_no_captioners() -> None:
+    assert parse_caption_origins("2 pictures prepared at 0.1 s/picture.") is None
