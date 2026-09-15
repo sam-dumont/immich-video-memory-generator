@@ -319,28 +319,48 @@ def test_broken_forward_stops_after_three_listener_attempts(monkeypatch, tmp_pat
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_LISTENER_TIMEOUT_S", 0.2)
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_TIMEOUT_S", 3.0)
+    launched = []
+    popen = setup_matrix_readiness.subprocess.Popen
+
+    # WHY: observe the process-launch boundary while still running real child processes.
+    # A timed-out child may be killed before its Python bookkeeping ever executes.
+    def launch(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        launched.append(process.pid)
+        return process
+
+    monkeypatch.setattr(setup_matrix_readiness.subprocess, "Popen", launch)
 
     with pytest.raises(SystemExit, match="3 listener attempts"):
         setup_matrix_readiness.await_facts_via_forward(
             ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)
         )
 
-    assert (tmp_path / "forwards").read_text().strip() == "3"
+    assert len(launched) == 3
 
 
 def test_warmup_reports_while_a_request_is_waiting(monkeypatch, capsys) -> None:
     """The heartbeat must not depend on a blocked HTTP request returning."""
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_STATUS_INTERVAL_S", 0.02)
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
-    finished = threading.Event()
+    reported = threading.Event()
     calls = 0
+
+    # WHY: observe the stdout boundary and release the waiting request only after
+    # the real heartbeat reports it, independent of the runner's scheduling speed.
+    def report(message, **kwargs):
+        print(message, **kwargs)
+        if "attempt 2" in message:
+            reported.set()
+
+    monkeypatch.setattr(setup_matrix_readiness, "print", report, raising=False)
 
     def attempt():
         nonlocal calls
         calls += 1
         if calls == 1:
             return "facts answered 503: loading heads"
-        finished.wait(0.08)
+        assert reported.wait(5), "the heartbeat did not report while the request was blocked"
         return None
 
     setup_matrix_readiness._keep_asking(attempt, reached="svc/inference", wanted="facts")

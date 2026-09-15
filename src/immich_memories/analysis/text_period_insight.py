@@ -33,7 +33,7 @@ from immich_memories.store.period_insights import (
     PeriodInsightStore,
 )
 
-TEXT_PERIOD_PROMPT_VERSION = "period-text-v3-bounded-account"
+TEXT_PERIOD_PROMPT_VERSION = "period-text-v4-bounded-citations"
 TEXT_PERIOD_MAX_OUTPUT_TOKENS = 3_000  # a ten-year, 38-range custom scope truncated at 1_500 (2026-09-05); the parser caps every field after parse
 _DEFAULT_MAX_PROMPT_CHARS = 48_000
 _LEAF_PROMPT_SUFFIX = "+leaf-v1"

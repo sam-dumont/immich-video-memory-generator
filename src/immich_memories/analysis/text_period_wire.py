@@ -39,7 +39,9 @@ are one occasion. State what the period was, not whether it was good. Episode an
 are private; use only the numeric episode aliases.
 
 Return JSON only, at most 20 evidence rows, 12 tensions, 12 recurring threads.
-Each observation is at most 180 characters. Cite only the episodes needed to support it.
+Each observation is at most 180 characters. Each "episodes" list MUST contain only 1 to 5
+representative episode aliases, even when the observation applies to hundreds of episodes.
+Never enumerate every matching episode: the complete table remains the grounding.
 {{"schema_version":"period-insight-text-v1","thesis":"at most 80 words",
 "evidence":[{{"observation":"what this shows about the period","episodes":[1,2]}}],
 "tensions":["at most 12 words"],"recurring_threads":["at most 8 words"]}}
@@ -60,6 +62,9 @@ the tensions that hold across it. Do not concatenate the part theses. Cite only 
 part's range. State what the period was, not whether it was good.
 
 Return JSON only, at most 20 evidence rows, 12 tensions, 12 recurring threads:
+Each observation is at most 180 characters. Each "episodes" list MUST contain only 1 to 5
+representative episode aliases, chosen across the relevant parts. Never enumerate every matching
+episode: the complete episode grounding is retained separately from these example citations.
 {{"schema_version":"period-insight-text-v1","thesis":"at most 80 words",
 "evidence":[{{"observation":"what this shows about the period","episodes":[1,2]}}],
 "tensions":["at most 12 words"],"recurring_threads":["at most 8 words"]}}
