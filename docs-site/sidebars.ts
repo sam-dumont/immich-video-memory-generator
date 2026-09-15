@@ -19,16 +19,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'create/first-memory',
-        {
-          type: 'category',
-          label: 'Using the Web UI',
-          items: [
-            'create/web-ui/memory',
-            'create/web-ui/suggestions',
-            'create/web-ui/runs',
-            'create/web-ui/settings',
-          ],
-        },
+        'create/web-ui',
         {
           type: 'category',
           label: 'Using the CLI',

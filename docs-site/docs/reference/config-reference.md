@@ -56,7 +56,7 @@ Caveat: **the Memory page's "Save Config"** (under Advanced) writes every value 
 fields it appears to be about, after which they all count as "set by you", and the preset has
 nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
 single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
-does not save; see [Settings](../create/web-ui/settings.mdx).
+does not save; see [Settings](../create/web-ui.mdx#config-what-is-actually-running).
 
 ## Immich connection
 
