@@ -8,10 +8,19 @@ import tempfile
 from pathlib import Path
 
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
-from immich_memories.processing.probe_cache import ProbeCache
+from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 from immich_memories.security import write_secret_file
 from immich_memories.speech.fireredvad import FireRedSpeechDetector
 from immich_memories.speech.vad import VAD_SAMPLE_RATE, extract_audio_16k
+
+
+class SpeechMeasurementUnavailable(RuntimeError):
+    """A selected source could not be measured for speech.
+
+    Speech-boundary protection is a best-effort refinement on top of an already
+    valid cut: a playback, download or audio-extraction failure means that one
+    carrier keeps its selected interval, not that the memory is unrenderable.
+    """
 
 
 class SpeechFacts:
@@ -45,15 +54,31 @@ class SpeechFacts:
         return regions
 
     def _measure(self, asset_id: str) -> list[tuple[float, float]]:
-        payload = self.fetch(asset_id)
+        try:
+            payload = self.fetch(asset_id)
+        except Exception as error:
+            # WHY: any transport failure is "this source cannot be measured",
+            # which degrades the refinement; only a caller seeing this class
+            # may treat it as non-fatal.
+            raise SpeechMeasurementUnavailable(
+                f"playback for {asset_id} could not be fetched: {type(error).__name__}"
+            ) from error
         if not payload:
-            raise ValueError("Selected video is unavailable for speech detection")
+            raise SpeechMeasurementUnavailable(f"playback for {asset_id} was empty")
         with tempfile.TemporaryDirectory(prefix="editorial-speech-") as directory:
             path = Path(directory) / "source.mp4"
             path.write_bytes(payload)
-            if not ProbeCache().get(path).has_audio:
+            try:
+                probe = ProbeCache().get(path)
+            except ProbeError as error:
+                raise SpeechMeasurementUnavailable(
+                    f"playback for {asset_id} could not be probed: {type(error).__name__}"
+                ) from error
+            if not probe.has_audio:
                 return []
             audio = extract_audio_16k(path)
             if audio is None:
-                raise ValueError("Could not extract selected video audio for speech detection")
+                raise SpeechMeasurementUnavailable(
+                    f"audio for {asset_id} could not be extracted for speech detection"
+                )
             return [(r.start, r.end) for r in self.detector.detect(audio, VAD_SAMPLE_RATE)]
