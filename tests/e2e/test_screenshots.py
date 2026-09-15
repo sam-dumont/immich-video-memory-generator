@@ -102,7 +102,9 @@ def test_trip_walkthrough(
     expect(export).to_be_visible(timeout=120_000)
     _save(page, screenshot_dir, _name("memory-trip-story", theme))
     page.get_by_role("tab", name="Story", exact=True).click()
-    expect(page.get_by_text("A week by the lake", exact=True)).to_be_visible()
+    # The story's own heading: the trip's story title repeats on every storyboard
+    # row behind the hidden tab, so matching on it is seven elements, not one.
+    expect(page.get_by_text("The story", exact=True)).to_be_visible()
     export.click()
     page.wait_for_url("**/step4", timeout=30_000)
     expect(page.get_by_role("button", name="Generate Video")).to_be_visible(timeout=30_000)
