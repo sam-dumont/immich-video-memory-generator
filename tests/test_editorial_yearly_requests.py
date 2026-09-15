@@ -110,3 +110,28 @@ def test_a_failed_late_page_leaves_the_whole_year_incomplete():
     assert records[-1]["status"] == "incomplete"
     assert not any(r["stage"] == "story-weighing" for r in records[-1]["synthesis"])
     assert any(r["status"] == "complete" for r in records[-1]["synthesis"] if "status" in r)
+
+
+def test_an_exhausted_page_is_read_in_smaller_groups_without_using_partial_edits():
+    model = YearJudge()
+
+    def reply(stage, prompt):
+        answer = model.ask(stage, prompt)
+        if not stage.startswith("story-weighing"):
+            return answer
+        keys = re.findall(r"^(K\d+) \|", prompt, re.MULTILINE)
+        value = json.loads(answer)
+        if "K89" in keys and len(keys) > 32:
+            del value["weights"]["K89"]
+            value["retitle"] = {"K89": "An edit from a rejected answer"}
+            value["join"] = [["K89", "K90"]]
+        return json.dumps(value)
+
+    result = read_year(ScriptedJudge(reply), count=200)
+
+    assert len(result.stories) == 200
+    recovered = next(s for s in result.stories if s["key"] == "K89")
+    assert recovered["weight"] == "minor"
+    assert recovered["title"] == "Outing S0089"
+    assert recovered["episodes"] == ["S0089"]
+    assert any("K89" in keys and len(keys) <= 32 for _, _, _, keys in model.weighing)
