@@ -25,7 +25,7 @@ fetch map tiles. [Running modes](../deploy/running-modes.md) has the table per m
 No. `reader` ships as `auto`, which resolves to the rules reader while `llm.model` is blank, and with it the ten standard memory types
 are cut from dates, places, favourites, people and whatever image facts the tier produced. It is
 a simpler editor: no thesis, and it can miss an occasion in a broad recap. What it keeps per
-memory type, measured against the model editor, is on [Rules mode](../create/pipeline/rules-mode.md).
+memory type, measured against the model editor, is on [Rules mode](../create/pipeline.md#editing-without-a-language-model).
 
 **How long does a cut take?**
 
@@ -55,7 +55,7 @@ Yes. Without a person, a period covers everyone. Face recognition only narrows t
 Included by default. The editor treats a Live Photo as a photograph that carries motion it may
 play when the motion earns it; burst-captured Live Photos are merged into one continuous moment.
 Tested on iPhones; Samsung and Pixel motion photos should work through Immich's normalisation
-but have not been tested first-hand. See [Live Photos](../create/pipeline/live-photos.md).
+but have not been tested first-hand. See [Live Photos](../create/photos-and-live-photos.md#live-photos).
 
 **Which formats?**
 

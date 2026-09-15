@@ -32,7 +32,7 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 | Album | "Album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
 | Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
 | Holiday | Holiday, Most recent year, Years to span (2–10), Only with | 1 min |
-| Surprise me | "Pick a day" from the days [`discover-days`](../cli/discover-days.md) found | auto: 30 s + 6 s per active hour, bounded 60–180 s |
+| Surprise me | "Pick a day" from the days [`discover-days`](../cli/prepare.md#discover-days) found | auto: 30 s + 6 s per active hour, bounded 60–180 s |
 | Custom date range | date range tabs and person filter (below) | about 10 min per year of range |
 
 Four of them do something the picker does not show:
@@ -40,7 +40,7 @@ Four of them do something the picker does not show:
 - **[Trip](../memory-types.mdx#trip)**: discovery reaches a month either side of the selected year, so a trip across New Year keeps its full dates; only trips overlapping that year are offered. The year picker includes years with only photos, and the dropdown counts photos as well as videos.
 - **On This Day** and **[Holiday](../memory-types.mdx#holiday)** do not cover one continuous period. Each builds a separate window per year and the page fetches every one, so five years of Christmas queries five windows around Christmas, not the five years between them.
 - **[Album](../memory-types.mdx#album)** is its own pool: the album decides what is in the memory, so it carries no person filter, and the title defaults to the album's name (the title model is not asked for a second opinion).
-- **[Surprise me](../memory-types.mdx#special-day-surprise-me)** offers only the days [`discover-days`](../cli/discover-days.md) wrote to `~/.immich-memories/special-days.json`, anniversaries first and labelled *"10 years ago: A long evening out"*. With no catalogue the page says which file it looked for and which command builds one; it will not offer a random day.
+- **[Surprise me](../memory-types.mdx#special-day-surprise-me)** offers only the days [`discover-days`](../cli/prepare.md#discover-days) wrote to `~/.immich-memories/special-days.json`, anniversaries first and labelled *"10 years ago: A long evening out"*. With no catalogue the page says which file it looked for and which command builds one; it will not offer a random day.
 
 ### People
 
@@ -82,7 +82,7 @@ One primary button: **Cut** before a cut exists, **Cut again** after one, both u
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress: one row per phase, the editor's current stage under the active one" />
 
-Five phase rows (**Finding media**, **Loading thumbnails**, **Reading the pictures**, **Editing**, **Done**) carry the run's own stage beside the active one, the elapsed time, and **Cancel**, which stops after the current stage. What those stages do, and what each costs, is the table in [Pipeline Overview](../pipeline/pipeline-overview.md); on a library that has never been read, *Reading dates, places and people* is the long one.
+Five phase rows (**Finding media**, **Loading thumbnails**, **Reading the pictures**, **Editing**, **Done**) carry the run's own stage beside the active one, the elapsed time, and **Cancel**, which stops after the current stage. What those stages do, and what each costs, is the table in [Pipeline Overview](../pipeline.md); on a library that has never been read, *Reading dates, places and people* is the long one.
 
 A stage that counts its work draws a bar with its count and an estimate such as **~36s left in this stage**, measured from that stage's own completed work. It appears once the count advances past the first update; a new stage starts with none, since previews and captions have different costs, and slow items can move it. The CLI shows the same saved value, and reloading keeps it. The preparation passes also show a strip of the last twelve pictures they finished, which goes away once the edit starts.
 
@@ -145,10 +145,10 @@ The render keeps going on the server if the tab is reloaded or its connection dr
 
 **Back to Generation Options** on the Export page opens the Options page; **Next: Preview & Export** brings you back. Nothing here changes the cut, only how it is rendered.
 
-**Resolution** (**Auto (match clips)**, 4K, 1080p, 720p) and **Output Format** (MP4 or MOV, H.264, H.265 or ProRes) default to `output.codec` and `output.format`. **Advanced options** adds **Orientation**, **Scaling Mode**, **Transition Style**, the date and place captions (`--add-date`, `--add-place`), **Keep intermediate files**, and the **Photo duration** when photos are in the pool. Two of those are worth knowing before you touch them: clips are never cropped, so an aspect mismatch is filled with a blurred backdrop or letterboxed ([Face-aware framing](../pipeline/face-aware-cropping.md)), and **Smart** transitions pick per cut point, crossfading slow scenes and hard-cutting fast action.
+**Resolution** (**Auto (match clips)**, 4K, 1080p, 720p) and **Output Format** (MP4 or MOV, H.264, H.265 or ProRes) default to `output.codec` and `output.format`. **Advanced options** adds **Orientation**, **Scaling Mode**, **Transition Style**, the date and place captions (`--add-date`, `--add-place`), **Keep intermediate files**, and the **Photo duration** when photos are in the pool. Two of those are worth knowing before you touch them: clips are never cropped, so an aspect mismatch is filled with a blurred backdrop or letterboxed ([Face-aware framing](../photos-and-live-photos.md#ken-burns-and-where-the-pan-lands)), and **Smart** transitions pick per cut point, crossfading slow scenes and hard-cutting fast action.
 
-**Title** and **Subtitle** come pre-filled with the pipeline's suggestion, with a **Language** select and **Regenerate**; trip memories also show the detected trip and map mode. See [Title Screens & Maps](../pipeline/title-screens-and-maps.md).
+**Title** and **Subtitle** come pre-filled with the pipeline's suggestion, with a **Language** select and **Regenerate**; trip memories also show the detected trip and map mode. See [Title Screens & Maps](../titles-and-music.md).
 
-**Background music** always offers **None** and **Upload file** (`.mp3`, `.m4a`, `.wav`, with a volume slider). **Bundled** appears only when the music package is installed, and picks a royalty-free track matched to the memory's mood. **AI Generated** appears only when `ace_step` or `musicgen` is enabled, in which case it is the default, and **Generate Music** lets you hear the track before rendering. See [Audio & Music](../pipeline/audio-and-music.md).
+**Background music** always offers **None** and **Upload file** (`.mp3`, `.m4a`, `.wav`, with a volume slider). **Bundled** appears only when the music package is installed, and picks a royalty-free track matched to the memory's mood. **AI Generated** appears only when `ace_step` or `musicgen` is enabled, in which case it is the default, and **Generate Music** lets you hear the track before rendering. See [Audio & Music](../titles-and-music.md#music).
 
 Hardware acceleration is not shown here; it is auto-detected at encode time. `immich-memories hardware` and `immich-memories preflight` say what your machine offers.

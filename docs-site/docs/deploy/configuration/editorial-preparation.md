@@ -173,7 +173,7 @@ key. Save writes the `${MY_KEY}` form back either way.
 `reader: rules` needs nothing beyond the app on `tier: metadata_only` and cuts all ten memory
 types from dates, places, favourites, known people and whatever facts the tier produced; custom
 free-text subjects are refused. What the rules answer in place of a model is on
-[Rules mode](../../create/pipeline/rules-mode.md), and the measured shares per memory type are on
+[Rules mode](../../create/pipeline.md#editing-without-a-language-model), and the measured shares per memory type are on
 [Running modes](../running-modes.md). With `no_captions` the classifiers add evidence but not a
 guaranteed better cut: the measured season cut became longer while choosing more household
 objects. Review the result before sharing it.

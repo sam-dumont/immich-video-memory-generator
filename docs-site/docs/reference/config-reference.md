@@ -736,7 +736,7 @@ of the section is config-only.
 
 `trigger_token` turns on the HTTP trigger: one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
-[Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
+[Trigger from Immich or anything else](../create/recipes/automated-generation.md#trigger-it-over-http). Keep it out of
 `config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` is not one of the sections
 that expand a `${VAR}` reference, so writing one here stores the six literal characters `${VAR}`
 as your token. Either way the value is redacted from `/health`, the config viewer, and the logs.

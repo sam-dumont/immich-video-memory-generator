@@ -29,7 +29,7 @@ opens with its name and "Through the Years", On This Day with the month and day,
 template that follows `title_screens.locale` and counts both the first and last day. A wordy title
 from a new special-day scan is asked for again rather than cut off mid-sentence, while existing
 catalogue entries keep their saved titles. `--title` and `--subtitle` override all of it. See
-[titles](./titles.md).
+[titles](../titles-and-music.md).
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile (1080p, H.264, medium quality, static title backgrounds)

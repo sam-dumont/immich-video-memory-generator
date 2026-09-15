@@ -92,7 +92,7 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Daily automation: one scheduled `auto run` either retries a pending upload or generates one eligible memory, then notifies. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
 - Privacy mode blurs every frame and moves the map to a fake city, for showing the app over your own library.
 
-How the editor decides is written up in [The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).
+How the editor decides is written up in [How a memory gets cut](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline).
 
 ## About the demo
 

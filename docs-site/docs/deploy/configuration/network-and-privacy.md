@@ -32,7 +32,7 @@ Three provider names fill in a vendor URL when `llm.base_url` is left at its def
 (`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`) and `zai`
 (`https://api.z.ai/api/anthropic`). Set `base_url` yourself and the request goes where you point it,
 whichever provider is named; which dialect each one speaks is on
-[LLM Titles and Mood](../../create/pipeline/llm-content-analysis.md). `preflight` asks whatever the
+[LLM Titles and Mood](../readers.md). `preflight` asks whatever the
 reader URL is for its model list, and sends one small test call when the host does not publish one.
 
 ## The two picture seats
@@ -75,9 +75,44 @@ thumbnail from the cached preview on first request. Privacy-mode blur applies to
 
 ## Privacy mode
 
-`--privacy-mode` (or `server.enable_demo_mode: true`) changes what the film shows, not what the app
-sends. Trip detection and its geocoding have already run by then, and the map still fetches its
-tiles. See [Privacy mode](../../create/pipeline/privacy-mode.md).
+Privacy mode blurs every frame of every clip, makes the audio unintelligible, and replaces person
+names with fake ones. What survives is the timing, the transitions, the music and the structure:
+enough to show someone how the app edits, with none of your pictures in it.
+
+```bash
+immich-memories generate --privacy-mode --year 2024
+```
+
+For the UI, set `server.enable_demo_mode: true` (off by default) and the sidebar shows a **Demo
+mode** switch. Toggling it on also blurs every image and video the UI renders, on every page, not
+just the clip review screen, so no preview shows your footage.
+
+| Data | How it is handled |
+|------|-----------------|
+| Video content | Whole-frame Gaussian blur plus a noise texture (frosted glass, not pixelation), added to the encode filter chain rather than run as a pass before it. Not face detection: every pixel of every clip goes |
+| Audio | Segment reversal (200 ms) and a 300 Hz lowpass on all clip audio, not just detected speech: you hear people talking but cannot make out words |
+| GPS coordinates | The whole memory moves onto one fake city: its centre lands on the city, every clip keeps its bearing and distance from that centre, and a memory spread wider than about 25 km is scaled down to fit. Home base moves with it |
+| Place names | Replaced with the fake city's name wherever the memory carried one. A clip with no place name does not gain one |
+| Person names | Replaced with one of twelve fake names, picked by SHA-256 of the real one, so the same person is the same alias every run |
+| Title screen text | Uses the fake person name and the fake city |
+| Map animation | Flies to the fake destination, same visual style |
+
+The move is the same every run, so two renders of the same trip put it in the same place and
+repeated renders give away nothing that could be averaged back to the real one.
+
+The *graphics* of a title screen are rendered clean: the title text, the map fly-over, the location
+cards, the ending screen. The footage behind them is not, because an opening card backed by a frame
+from your own clips is a clip and gets the same blur.
+
+Two things it does not cover. The output file name is built before anonymization, so it can still
+carry the real place or person names: rename the file before sharing it. And it changes what the
+film shows, not what the app sends, because trip detection and its geocoding have already run by
+then and the map still fetches its tiles (of the fake city).
+
+The demos and screenshots on this site do not use it. They run the real product over a CC0 stock
+library that tells one made-up household's June, so nothing needs blurring
+([how the demo assets are made](../../contribute/demo-assets.md)). Privacy mode stays for the case
+it was built for: showing the app over your own library to someone who should not see your pictures.
 
 ## CI only
 

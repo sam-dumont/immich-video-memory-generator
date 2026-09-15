@@ -12,7 +12,7 @@ their own.
 
 The "score" on this page ranks candidate memories against each other. It never touches which
 pictures go into a video: that is the editor's job, and it works the same for a scheduled memory
-as for one you asked for. See [The Curator](../pipeline/the-curator.md).
+as for one you asked for. See [The Curator](../pipeline.md).
 
 ## How a candidate is chosen
 

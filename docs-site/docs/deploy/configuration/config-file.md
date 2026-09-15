@@ -174,4 +174,4 @@ requests there queue instead of overlapping; a hosted endpoint is a fleet. Set t
 (1 to 16) for a local server that does take concurrent requests, or a hosted provider that wants a
 lower rate. Changing it keeps existing judgment banks usable, and the rules reader makes no model
 calls at all. What overlaps and what cannot is
-[drawn on the pipeline overview](../../create/pipeline/pipeline-overview.md#what-overlaps-and-what-cannot).
+[drawn on the pipeline overview](../../create/pipeline.md#what-overlaps-and-what-cannot).

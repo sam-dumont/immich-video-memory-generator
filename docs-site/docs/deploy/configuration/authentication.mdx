@@ -137,7 +137,7 @@ Four things, whichever provider you use:
 Sessions last `session_ttl_hours` (24 by default). Abandoned session files are swept at startup
 and every 15 minutes. Logout is the sidebar button or `/logout`; OIDC logout also ends the IdP
 session when the IdP advertises `end_session_endpoint`. Scripts do not use sessions: they
-authenticate to [the trigger endpoint](../../create/recipes/trigger-endpoint.md) with
+authenticate to [the trigger endpoint](../../create/recipes/automated-generation.md#trigger-it-over-http) with
 `server.trigger_token`.
 
 Every `advanced.auth` field with its default is in the

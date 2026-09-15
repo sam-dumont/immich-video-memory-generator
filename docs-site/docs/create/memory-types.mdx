@@ -80,9 +80,40 @@ Multi-person defaults to AND, so two people who were never in the same frame pro
 memory rather than two solo reels. Title screens and default filenames say whether the people are
 joined by AND or OR, so two runs cannot overwrite one another.
 
-`--birthday` turns a person spotlight into a different memory: the year **ending** on that year's
-birthday, plus each of the five previous birthdays as a ±1 day cutaway, reading the birth date from
-Immich. See [Birthday compilations](./recipes.md#birthday-compilations).
+### Birthday compilations
+
+`--birthday` turns a person spotlight into a different memory: the year of someone's life that
+**ends** on the birthday you are celebrating, plus that birthday in earlier years. For a 21 July
+birthday and `--year 2025` it runs 22 July 2024 through 21 July 2025, so the party itself is in the
+video and last year's party belongs to last year's video. `--year` names the birthday being
+celebrated, not a calendar year to run forward from.
+
+```bash
+immich-memories generate --person "Emma" --year 2025 --birthday --duration 600
+```
+
+The birth date lives in Immich: open **People**, pick the person, edit, fill it in. Every birthday
+memory then anchors on it, on the CLI, the Memory page and the nightly automation alike. Without one,
+a birthday memory refuses rather than guessing a date and quietly rendering the wrong twelve months.
+`--birthday 07-21` overrides it for one run; give it month first, matching every other date in the
+project, because slashed forms are rejected rather than guessed.
+
+Five earlier birthdays are reached by default, each ±1 day, for the "look how small you were"
+cutaways. Most of those single days hold nothing and that is expected: the run prints one summary
+line (`history: 2 of 5 earlier windows hold material`) rather than a warning per year. An empty
+**rolling year** does still warn, because that one means something is wrong. 29 February is
+celebrated on the 28th in a year that has no 29th, and the cutaways still reach the 29th in the years
+that do.
+
+There is no Birthday type in the web UI. Pick **Person Spotlight** and tick **Birthday to birthday**,
+which turns itself on when Immich has a birth date for that person and stays greyed out when it does
+not. **Custom date range** to **Year** to **From Birthday** gives you the rolling year only, with no
+cutaways.
+
+Cut it the night before: a year of one person's life is a cold run, and every eligible picture gets
+its description and facts prepared once. And check the face before you cut, because if two people in
+your library share a name the filter is only as good as Immich's tagging, and you find out at the
+party.
 
 ## On this day
 
@@ -249,7 +280,7 @@ The nine types above cover something you named. A special day is the one you did
 your own library that a scan flagged as an occasion, wrote down, and offers back years later when
 its anniversary comes round.
 
-Nothing searches for it. [`discover-days`](./cli/discover-days.md) walks the library a month at a
+Nothing searches for it. [`discover-days`](./cli/prepare.md#discover-days) walks the library a month at a
 time, keeps the days that stayed alive for hours rather than the days that merely shot a lot, and
 asks the local model whether anything actually happened. That is why it finds the day that mattered
 with 30 photos and skips the one with 413 pictures of a street performer.
@@ -294,4 +325,4 @@ via special-days catalogue
 ```
 
 It needs an LLM configured under `llm:`, and a vision model is worth having: see
-[`discover-days`](./cli/discover-days.md#what-you-need).
+[`discover-days`](./cli/prepare.md#discover-days).

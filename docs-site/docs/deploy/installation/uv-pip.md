@@ -102,7 +102,7 @@ GPU title rendering (Metal, CUDA, Vulkan) needs no extra: the kernel library is 
 wherever it publishes a wheel. See [Title kernels](../hardware.md#title-kernels) for the
 platforms that have one. AI music generation (ACE-Step, MusicGen) is not an extra either: it talks
 to a server or an in-process ACE-Step install, see
-[Audio and music](../../create/pipeline/audio-and-music.md).
+[Audio and music](../../create/titles-and-music.md#music).
 
 exiftool is worth having on an Apple HEIC library. It is the fallback when the built-in pure Python
 HDR headroom parser trips on an unusual file: `brew install exiftool` on macOS,

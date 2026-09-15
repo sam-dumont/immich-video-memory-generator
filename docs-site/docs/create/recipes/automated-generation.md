@@ -1,41 +1,36 @@
 ---
 sidebar_position: 2
-title: Automated Generation
+title: Automated generation
 ---
 
-# Automated Generation
+# Automated generation
 
-Three ways to get memories without asking for them, in the order you should try them: `auto run`
-on a host scheduler, the same decision inside the web UI process when you run Docker, or the old
-scheduler daemon when you need a named memory type on a named date.
+Three ways to get memories without asking for them: `auto run` on a host scheduler, the same
+decision inside the web UI process when you run Docker, or an HTTP POST from anything that can make
+one.
 
 ## auto run
 
-`immich-memories auto run` is the single daily entry point: it scans the library, decides which
-one memory is worth making today, and exits. One invocation does exactly one thing: retry a pending delivery, generate one eligible memory, or
-return a typed skip or dry-run result.
+`immich-memories auto run` is the single daily entry point. It scans the library, decides which one
+memory is worth making today, and exits. One invocation does exactly one thing: retry a pending
+delivery, generate one eligible memory, or return a typed skip or dry-run result.
 
 ```bash
-# What would it generate?
-immich-memories auto suggest
-
-# Decide and perform one action
-immich-memories auto run
-
-# Schedule it daily (launchd on macOS, systemd on Linux)
-immich-memories auto install --hour 9
+immich-memories auto suggest        # what would it generate?
+immich-memories auto run            # decide and perform one action
+immich-memories auto install --hour 9   # schedule it daily (launchd on macOS, systemd on Linux)
 ```
 
-Variety rules stop it from becoming a monthly-highlight vending machine: only the latest completed
-month is eligible, monthly runs are capped at one per calendar month, a category cannot repeat
+Variety rules stop it becoming a monthly-highlight vending machine: only the latest completed month
+is eligible, monthly runs are capped at one per calendar month, a category cannot repeat
 back-to-back, and no category may take more than two of the last six completed automatic runs. The
-nine detectors, their scores and the rest of the rotation rules are in [auto](../cli/auto.md).
+nine detectors, their scores and the rest of the rotation rules are on [auto](../cli/auto.md).
 
-### Docker and the web UI: the built-in timer
+## Docker and the web UI: the built-in timer
 
 `auto install` needs a host scheduler and the binary on the host. In Docker the container's only
-process is the web UI, so the timer lives there instead: one config toggle makes the UI process
-run the same `auto run` decision once a day, with the same lease, history, delivery retry and
+process is the web UI, so the timer lives there instead: one config toggle makes the UI process run
+the same `auto run` decision once a day, with the same lease, history, delivery retry and
 notifications as the CLI.
 
 ```yaml
@@ -45,88 +40,79 @@ advanced:
     daily_at: "09:00"    # local wall-clock time of the container (set TZ=)
 ```
 
-or, for compose, `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and
-`IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00`. Then `docker compose up` is the whole setup: a memory
-appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifications are on.
+or `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and `IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00` for
+compose. Then `docker compose up` is the whole setup.
 
-- One automation decision per calendar day: a container that was down at `daily_at` catches up
-  when it starts; if the day's run already happened (including a manual `docker exec … auto run`),
-  it waits for tomorrow.
-- A manual UI or CLI run in progress holds the same lock, so the timer's run is reported as
-  `skipped` rather than overlapping it.
-- `/health/ready` shows the timer under `in_process_scheduler` (`enabled`, `daily_at`, `next_run`,
-  `running`, `last_fired_at`, `last_outcome`, `last_reason`).
-- The timer never runs when `enabled` is `false` (the default): `auto install` stays the route
-  for bare-metal installs.
+One automation decision per calendar day: a container that was down at `daily_at` catches up when it
+starts, and if the day's run already happened (including a manual `docker exec … auto run`) it waits
+for tomorrow. A manual UI or CLI run in progress holds the same lock, so the timer's run is reported
+as `skipped` rather than overlapping it. `/health/ready` shows the timer under
+`in_process_scheduler`. With `enabled: false`, the default, the timer never runs and `auto install`
+stays the route for bare-metal installs.
 
-To fire the same decision on demand instead of on a clock (from an Immich workflow, a cron on
-another machine, a phone shortcut), see
-[Trigger from Immich or Anything Else](./trigger-endpoint.md).
+## Trigger it over HTTP
 
-## Scheduler daemon
+The server accepts one POST that starts a memory. It takes no parameters and runs exactly the
+decision `auto run` would have made, on the same detectors, variety rules, cooldown and history. You
+are choosing *when*, not *what*. That makes it the piece Immich Workflows was missing: a workflow
+that fires when an album fills up, a cron on another box, a phone shortcut, a Home Assistant
+automation.
 
-:::tip Use the `auto` system instead
-The scheduler is for the case `auto` cannot express: a specific memory type on a specific date.
-:::
+The endpoint is **not served at all** unless something can authenticate the caller, because this
+process holds your Immich API key.
 
-It runs inside immich-memories and handles timezone-aware cron, auto-resolved date parameters and
-upload-back, so there is no shell scripting around it.
+| `auth.enabled` | `server.trigger_token` | `POST /api/trigger` |
+|---|---|---|
+| off | unset | **404**: the route is not enabled |
+| off | set | token required |
+| on | unset | logged-in session required (browsers only) |
+| on | set | token **or** session |
 
-```yaml
-# config.yaml
-scheduler:
-  enabled: true
-  timezone: "America/New_York"
-  schedules:
-    - name: "yearly-recap"
-      memory_type: "year_in_review"
-      cron: "0 9 15 1 *"          # Jan 15 at 9am
-      upload_to_immich: true
-      album_name: "{year} Memories"
-
-    - name: "monthly-highlights"
-      memory_type: "monthly_highlights"
-      cron: "0 9 1 * *"           # 1st of each month
-      duration_minutes: 3
-
-    - name: "on-this-day"
-      memory_type: "on_this_day"
-      cron: "0 9 * * *"           # Every morning
-```
+For headless callers, set a long random token and keep it in the environment:
 
 ```bash
-# Start the daemon (foreground mode required, background mode not yet implemented)
-immich-memories scheduler start --foreground
-
-# Check what's scheduled
-immich-memories scheduler list
-immich-memories scheduler status
+export IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN="$(openssl rand -hex 32)"
 ```
 
-Date parameters are resolved from fire time: `year_in_review` firing in January generates the
-previous year, `monthly_highlights` firing on the 1st generates the previous month, `on_this_day`
-uses the current date. Explicit `params` in the schedule override that. Full reference:
-[scheduler CLI docs](../cli/scheduler.md).
-
-## Hand-written cron
-
-`auto install` writes the cron, launchd or systemd config for you, so hand-written entries are
-mostly a way to get the date arithmetic wrong. The CLI is headless, so any of this works over SSH,
-in a container, or in CI.
+Writing it into `config.yaml` works too, but `server` is not one of the sections that expand a
+`${VAR}` reference: put `"${SOMETHING}"` there and the token is those literal characters. Either way
+the value is compared in constant time and redacted from logs, `/health` and the config viewer. It
+is a shared secret over whatever transport your server already uses, so put it behind the same HTTPS
+reverse proxy as the web interface: a token sent over plain HTTP is a token you have published.
 
 ```bash
-# crontab -e: a yearly recap every 1 January at 3 AM
-0 3 1 1 * immich-memories generate --person "Emma" --year $(date -d 'last year' +\%Y) --duration 600
+curl -X POST https://memories.example.com/api/trigger \
+  -H "x-api-key: $IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN"
 ```
 
-For everyone in the house at once, loop over the names:
-
-```bash
-for person in "Emma" "Lucas" "Sophie"; do
-  immich-memories generate --person "$person" --year 2024 --duration 600 \
-    --output "/videos/memories/${person}_2024.mp4"
-done
+```json
+{
+  "status": "accepted",
+  "attempt_id": "6f1c2a54-9d0e-4c31-9f6a-2c1d0b7e8a44",
+  "status_url": "/api/trigger/6f1c2a54-9d0e-4c31-9f6a-2c1d0b7e8a44"
+}
 ```
+
+`202 Accepted`, not `200 OK`: a generation takes minutes to hours, so the call returns the moment the
+run is booked. `Authorization: Bearer <token>` works in place of `x-api-key`. **409 Conflict** means
+a run is already going and the body names it, enforced by the same lock the nightly timer uses, so a
+trigger cannot make two generations fight over your GPU.
+
+GET the `status_url` for progress. `phase` is live (`discovery` through `complete`) rather than a
+flat "running", and when it finishes `state` becomes `completed`, `failed`, `skipped` or `dry_run`,
+with `run` carrying `run_id`, `status`, `created_at`, `completed_at`, `last_phase`,
+`output_duration_seconds`, `delivery_status` and `immich_asset_id`. The rest of the record holds host
+paths and person names, which this contract has no reason to promise.
+
+`skipped` is a normal answer. The trigger runs what `auto run` decides, and `auto run` declines when
+the cooldown is still active or no candidate cleared its bar; `reason` says which. Two things to know
+before wiring it to Immich Workflows: a workflow that fires on every upload will mostly get
+`skipped` back, which is the system working, and a workflow that fires on a trip album does not
+generate *that* album, it asks for the best candidate right now. For a specific memory, use the CLI
+or the web UI.
+
+Clear `server.trigger_token` to turn it off; with authentication also off the routes go back to
+answering 404.
 
 ## Kubernetes
 
@@ -138,5 +124,27 @@ PVCs of the [Kubernetes deployment](../../deploy/installation/kubernetes.md):
 kubectl apply -f deploy/kubernetes/base/job.yaml
 ```
 
-The Job runs to completion and writes the video to the output volume (`/app/output`), which keeps
-the render off your laptop.
+The Job runs to completion and writes the video to the output volume (`/app/output`), which keeps the
+render off your laptop.
+
+## A named memory type on a named date
+
+That is the one thing `auto` cannot express, and the only reason the legacy
+[scheduler daemon](../cli/scheduler.md) still exists. It handles timezone-aware cron and resolves
+date parameters from fire time, so `year_in_review` firing in January generates the previous year.
+
+```yaml
+scheduler:
+  enabled: true
+  timezone: "America/New_York"
+  schedules:
+    - name: "yearly-recap"
+      memory_type: "year_in_review"
+      cron: "0 9 15 1 *"          # Jan 15 at 9am
+      upload_to_immich: true
+      album_name: "{year} Memories"
+```
+
+```bash
+immich-memories scheduler start --foreground
+```
