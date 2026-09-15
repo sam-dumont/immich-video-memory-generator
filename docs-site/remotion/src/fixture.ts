@@ -52,7 +52,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 3.5,
     "story": "Ordinary days",
-    "reason": "the first coffee of the month at the kitchen table",
+    "reason": "coffee and pastries on a table",
     "chapter": "June 2024"
   },
   {
@@ -62,7 +62,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 5.84,
     "story": "Ordinary days",
-    "reason": "rain on the kitchen window, the month's first grey morning"
+    "reason": "rain on a window"
   },
   {
     "picture": "library/home-dog-walk-01.jpg",
@@ -71,7 +71,7 @@ export const SHOTS: Shot[] = [
     "seconds": 3.55,
     "start": 8.69,
     "story": "Ordinary days",
-    "reason": "the dog pulling towards the park"
+    "reason": "a dog outdoors"
   },
   {
     "picture": "library/birthday-balloons-01.jpg",
@@ -80,7 +80,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 11.74,
     "story": "A birthday in the garden",
-    "reason": "balloons tied to the fence before anyone arrived"
+    "reason": "colourful party balloons"
   },
   {
     "picture": "library/garden-table.jpg",
@@ -89,7 +89,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 14.08,
     "story": "A birthday in the garden",
-    "reason": "the table and chairs still out on the lawn"
+    "reason": "a table and chairs on the lawn"
   },
   {
     "picture": "library/garden-cake.jpg",
@@ -98,7 +98,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 16.43,
     "story": "A birthday in the garden",
-    "reason": "the cake with the candles still in it"
+    "reason": "a birthday cake with lit candles"
   },
   {
     "picture": "library/birthday-candles-01.jpg",
@@ -107,7 +107,7 @@ export const SHOTS: Shot[] = [
     "seconds": 3.55,
     "start": 19.27,
     "story": "A birthday in the garden",
-    "reason": "the candles going out"
+    "reason": "lit birthday candles on a cake"
   },
   {
     "picture": "library/woods-hamper.jpg",
@@ -116,7 +116,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 22.82,
     "story": "The Saturday in the woods",
-    "reason": "the hamper open on the checked cloth"
+    "reason": "a closed picnic basket on a checked cloth"
   },
   {
     "picture": "library/woods-stream-01.jpg",
@@ -125,7 +125,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 25.17,
     "story": "The Saturday in the woods",
-    "reason": "the stream where the boots came off"
+    "reason": "a stream through the woods"
   },
   {
     "picture": "library/woods-path.jpg",
@@ -134,7 +134,7 @@ export const SHOTS: Shot[] = [
     "seconds": 4.26,
     "start": 28.01,
     "story": "The Saturday in the woods",
-    "reason": "the long green path back to the car"
+    "reason": "a sunlit path through the woods"
   },
   {
     "picture": "library/home-suitcase-02.jpg",
@@ -143,7 +143,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 31.77,
     "story": "A week by the lake",
-    "reason": "the suitcase open on the bed, the morning we left"
+    "reason": "badges displayed in an open suitcase at a market"
   },
   {
     "picture": "library/trip-lake-arrival-01.jpg",
@@ -152,7 +152,7 @@ export const SHOTS: Shot[] = [
     "seconds": 3.55,
     "start": 34.62,
     "story": "A week by the lake",
-    "reason": "the first sight of the lake from the road down"
+    "reason": "a wooden jetty pointing towards the mountains"
   },
   {
     "picture": "library/lake-tents.jpg",
@@ -161,7 +161,7 @@ export const SHOTS: Shot[] = [
     "seconds": 3.55,
     "start": 37.67,
     "story": "A week by the lake",
-    "reason": "the tents pitched on the slope above the lake"
+    "reason": "two tents on a slope above the lake"
   },
   {
     "picture": "library/trip-morning-mist-01.jpg",
@@ -170,7 +170,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 40.72,
     "story": "A week by the lake",
-    "reason": "mist on the water before anyone else was up"
+    "reason": "mist above the lake"
   },
   {
     "picture": "library/trip-swim-01.jpg",
@@ -179,7 +179,7 @@ export const SHOTS: Shot[] = [
     "seconds": 3.55,
     "start": 43.07,
     "story": "A week by the lake",
-    "reason": "the first swim"
+    "reason": "a swimmer underwater"
   },
   {
     "picture": "library/lake-sunset.jpg",
@@ -188,7 +188,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 46.62,
     "story": "A week by the lake",
-    "reason": "the last of the sun going down over the water"
+    "reason": "sunset over a sandy beach"
   },
   {
     "picture": "library/trip-summit-view-01.jpg",
@@ -197,7 +197,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 49.46,
     "story": "A week by the lake",
-    "reason": "the lake from the top"
+    "reason": "a view of the mountains"
   },
   {
     "picture": "library/home-pancakes-01.jpg",
@@ -206,7 +206,7 @@ export const SHOTS: Shot[] = [
     "seconds": 2.84,
     "start": 51.81,
     "story": "Ordinary days",
-    "reason": "pancakes on the first morning back"
+    "reason": "pancakes for breakfast"
   }
 ];
 export const RECUT_SHOTS: Shot[] = [
@@ -217,7 +217,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 3.5,
     "story": "Ordinary days",
-    "reason": "rain on the kitchen window, the month's first grey morning",
+    "reason": "rain on a window",
     "chapter": "June 2024"
   },
   {
@@ -227,7 +227,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 3.72,
     "start": 6.48,
     "story": "Ordinary days",
-    "reason": "the dog pulling towards the park"
+    "reason": "a dog outdoors"
   },
   {
     "picture": "library/birthday-balloons-01.jpg",
@@ -236,7 +236,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 9.7,
     "story": "A birthday in the garden",
-    "reason": "balloons tied to the fence before anyone arrived"
+    "reason": "colourful party balloons"
   },
   {
     "picture": "library/garden-table.jpg",
@@ -245,7 +245,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 12.17,
     "story": "A birthday in the garden",
-    "reason": "the table and chairs still out on the lawn"
+    "reason": "a table and chairs on the lawn"
   },
   {
     "picture": "library/garden-cake.jpg",
@@ -254,7 +254,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 14.65,
     "story": "A birthday in the garden",
-    "reason": "the cake with the candles still in it"
+    "reason": "a birthday cake with lit candles"
   },
   {
     "picture": "library/birthday-candles-01.jpg",
@@ -263,7 +263,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 3.72,
     "start": 17.62,
     "story": "A birthday in the garden",
-    "reason": "the candles going out"
+    "reason": "lit birthday candles on a cake"
   },
   {
     "picture": "library/woods-hamper.jpg",
@@ -272,7 +272,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 21.34,
     "story": "The Saturday in the woods",
-    "reason": "the hamper open on the checked cloth"
+    "reason": "a closed picnic basket on a checked cloth"
   },
   {
     "picture": "library/woods-stream-01.jpg",
@@ -281,7 +281,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 23.82,
     "story": "The Saturday in the woods",
-    "reason": "the stream where the boots came off"
+    "reason": "a stream through the woods"
   },
   {
     "picture": "library/woods-path.jpg",
@@ -290,7 +290,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 4.46,
     "start": 26.8,
     "story": "The Saturday in the woods",
-    "reason": "the long green path back to the car"
+    "reason": "a sunlit path through the woods"
   },
   {
     "picture": "library/home-suitcase-02.jpg",
@@ -299,7 +299,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 30.76,
     "story": "A week by the lake",
-    "reason": "the suitcase open on the bed, the morning we left"
+    "reason": "badges displayed in an open suitcase at a market"
   },
   {
     "picture": "library/trip-lake-arrival-01.jpg",
@@ -308,7 +308,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 3.72,
     "start": 33.74,
     "story": "A week by the lake",
-    "reason": "the first sight of the lake from the road down"
+    "reason": "a wooden jetty pointing towards the mountains"
   },
   {
     "picture": "library/lake-tents.jpg",
@@ -317,7 +317,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 3.72,
     "start": 36.96,
     "story": "A week by the lake",
-    "reason": "the tents pitched on the slope above the lake"
+    "reason": "two tents on a slope above the lake"
   },
   {
     "picture": "library/trip-morning-mist-01.jpg",
@@ -326,7 +326,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 40.18,
     "story": "A week by the lake",
-    "reason": "mist on the water before anyone else was up"
+    "reason": "mist above the lake"
   },
   {
     "picture": "library/trip-swim-01.jpg",
@@ -335,7 +335,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 3.72,
     "start": 42.65,
     "story": "A week by the lake",
-    "reason": "the first swim"
+    "reason": "a swimmer underwater"
   },
   {
     "picture": "library/lake-sunset.jpg",
@@ -344,7 +344,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 46.37,
     "story": "A week by the lake",
-    "reason": "the last of the sun going down over the water"
+    "reason": "sunset over a sandy beach"
   },
   {
     "picture": "library/trip-summit-view-01.jpg",
@@ -353,7 +353,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 49.35,
     "story": "A week by the lake",
-    "reason": "the lake from the top"
+    "reason": "a view of the mountains"
   },
   {
     "picture": "library/home-pancakes-01.jpg",
@@ -362,7 +362,7 @@ export const RECUT_SHOTS: Shot[] = [
     "seconds": 2.98,
     "start": 51.82,
     "story": "Ordinary days",
-    "reason": "pancakes on the first morning back"
+    "reason": "pancakes for breakfast"
   }
 ];
 export const POOL: PoolCard[] = [
@@ -374,7 +374,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": true,
     "seconds": 4,
-    "outcome": "In the cut at 0:03: the first coffee of the month at the kitchen table"
+    "outcome": "In the cut at 0:03: coffee and pastries on a table"
   },
   {
     "picture": "library/home-breakfast-02.jpg",
@@ -384,7 +384,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-breakfast-03.jpg",
@@ -394,7 +394,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-evening-sky-01.jpg",
@@ -424,7 +424,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-park-pond-03.jpg",
@@ -434,7 +434,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-football-lawn-01.jpg",
@@ -454,7 +454,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-rain-window-01.jpg",
@@ -464,7 +464,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": true,
     "seconds": 4,
-    "outcome": "In the cut at 0:05: rain on the kitchen window, the month's first grey morning"
+    "outcome": "In the cut at 0:05: rain on a window"
   },
   {
     "picture": "library/home-rain-window-02.jpg",
@@ -474,7 +474,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-rain-window-03.jpg",
@@ -484,7 +484,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-kitchen-01.jpg",
@@ -494,7 +494,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: a pan on a stove, nothing to say about it"
+    "outcome": "Left out at the picture review: kitchen details, with no occasion to show"
   },
   {
     "picture": "library/home-kitchen-02.jpg",
@@ -504,7 +504,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-kitchen-03.jpg",
@@ -514,7 +514,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-desk-laptop-01.jpg",
@@ -524,7 +524,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: a laptop on a desk: work, not the household"
+    "outcome": "Left out at the picture review: a desk: work, not the household"
   },
   {
     "picture": "library/home-desk-laptop-02.jpg",
@@ -534,7 +534,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-desk-laptop-03.jpg",
@@ -544,7 +544,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 4 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   },
   {
     "picture": "library/home-dog-walk-01.jpg",
@@ -554,7 +554,7 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": true,
     "seconds": 5,
-    "outcome": "In the cut at 0:08: the dog pulling towards the park"
+    "outcome": "In the cut at 0:08: a dog outdoors"
   },
   {
     "picture": "library/home-dog-walk-02.jpg",
@@ -564,6 +564,6 @@ export const POOL: PoolCard[] = [
     "favourite": false,
     "ticked": false,
     "seconds": 4,
-    "outcome": "Left out at the picture review: another frame of the same moment, 2 minutes later"
+    "outcome": "Left out at the picture review: another view of a subject already represented in the pool"
   }
 ];

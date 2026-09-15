@@ -110,6 +110,11 @@ dev-ci:
 dev-test:
 	uv sync --extra dev --locked
 
+# The assembly suite exercises the real local speech detector as well as FFmpeg.
+.PHONY: dev-test-integration
+dev-test-integration:
+	uv sync --extra dev --extra editorial --locked
+
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
 	uv sync --extra all-mac --extra dev
@@ -549,7 +554,7 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		echo "   tests/test_ffmpeg_pipe.py for the pattern." && \
 		exit 1)
 
-integration-coverage-for-diff:  ## Run only the FFmpeg-only integration suites the diff touches (used by CI before diff-cover)
+integration-coverage-for-diff:  ## Run only the local integration suites the diff touches (used by CI before diff-cover)
 	@CHANGED=$$(git diff --name-only origin/main...HEAD -- 'src/immich_memories/**/*.py' 2>/dev/null); \
 	SUITES=""; \
 	case "$$CHANGED" in *src/immich_memories/titles/*) SUITES="$$SUITES titles";; esac; \

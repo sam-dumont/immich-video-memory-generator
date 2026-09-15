@@ -36,8 +36,8 @@ a model reader. The per-host table is on [Running modes](../deploy/running-modes
 **How much disk?**
 
 The caches are bounded by config, not by the library: 10 GB of downloaded video (evicted after
-7 days), 10 GB of Immich previews, 2 GB of clip previews, plus the annotation store. One measured
-62-second 1080p H.264 output was 87 MB, 30 MB under `preset: fast`.
+7 days), 10 GB of Immich previews, 2 GB of clip previews, plus the annotation store. Finished
+films need additional space; their size depends on duration, resolution, codec and quality.
 
 **Can I generate for several people at once?**
 

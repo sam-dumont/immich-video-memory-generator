@@ -11,6 +11,9 @@ can prove every file is the one credited here.
 
 None of these is anyone's real library. The clips the fake Immich serves are pans
 over these same photographs, made at test time, so no video needs a credit.
+`captions.json` records the visible content of each photograph used by the fake
+library, keyed by its filename without the extension. The story, capture dates
+and people in `fake_library.py` are a script, not facts about these stock photos.
 
 | File | Title | Author | Source | Licence | Fetched | SHA-256 |
 | --- | --- | --- | --- | --- | --- | --- |

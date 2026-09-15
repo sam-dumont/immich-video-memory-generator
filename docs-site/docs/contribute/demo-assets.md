@@ -12,7 +12,10 @@ is 136 stock pictures under `tests/e2e/fixtures/library/` that tell one househol
 ordinary days at home, a birthday in the garden, a Saturday in the woods, a week by a lake 590 km
 away and the drive home. `tests/e2e/fake_library.py` is the script: which picture belongs to
 which story, which ones the editor keeps (18) and the reason for every one it leaves out. Every
-file is credited in `CREDITS.md` next to the pictures, and `tests/test_fixture_library.py` pins
+file is credited in `CREDITS.md` next to the pictures. `captions.json` describes each displayed
+photograph separately; alternative pictures do not inherit the first picture's description.
+The clips are pans over those stills, so their captions describe the visible scene.
+`tests/test_fixture_library.py` pins
 the credits, the hashes and the 60 MB ceiling.
 
 The demo unticks the first picture and cuts again before export: 17 pictures in the

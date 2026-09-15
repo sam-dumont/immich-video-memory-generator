@@ -3,11 +3,10 @@
 One month, June 2024, told by public-domain stock photographs that live next
 door in ``fixtures/library`` (see its CREDITS.md): ordinary days at home in
 Brussels, a birthday in the garden, a Saturday in the woods, a week camped by a
-lake in the Alps, and the return. This file says what each picture shows, when
-it was taken, where, who was there, and which story the scripted editor hung it
-on -- or why it left it out. Caption and picture are declared together on
-purpose: the story view puts them side by side, and a reader who does not
-believe the pair does not believe the product.
+lake in the Alps, and the return. This file assigns dates, places, people and
+story roles to the pictures. ``fixtures/library/captions.json`` describes what
+each photo shows: the story view puts them side by side, and a reader who does
+not believe the pair does not believe the product.
 
 Nothing here is anyone's real library. The home is a public landmark, the
 people are a made-up cast, and the pictures are CC0 stock chosen so that no
@@ -17,6 +16,7 @@ leans on that).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -105,14 +105,13 @@ class Scene:
 
     ``key`` is the file prefix under ``fixtures/library``: ``<key>.jpg`` for the
     six originals, ``<key>-01.jpg`` … for the fetched sets. The first file of a
-    scene is its main shot; the later files are the near-duplicates a phone
-    always holds, and the editor leaves them out with a reason of their own.
+    scene is its main shot; the later files play the alternative shots a phone library
+    holds, and the editor leaves them out with a reason of their own.
     """
 
     key: str
     day: int
     time: str
-    caption: str
     place: Place = HOME
     story: str | None = None
     drop: str | None = None
@@ -123,14 +122,13 @@ class Scene:
 
 
 # Capture order. A scene with a story ships its main shot; every other file the
-# scene holds is a near-duplicate the editor drops.
+# scene holds is an alternative the scripted editor drops.
 SCENES: tuple[Scene, ...] = (
     # Week one: home.
     Scene(
         "home-breakfast",
         1,
         "08:15",
-        "the first coffee of the month at the kitchen table",
         story="S0004",
         people=ADULTS,
     ),
@@ -138,21 +136,18 @@ SCENES: tuple[Scene, ...] = (
         "home-evening-sky",
         1,
         "21:30",
-        "the sky over the roofs after dinner",
         drop="a sky, and nothing of the family under it",
     ),
     Scene(
         "home-park-pond",
         2,
         "10:00",
-        "the ducks at the park pond",
         drop="the pond, with nobody of ours at it",
     ),
     Scene(
         "home-football-lawn",
         2,
         "16:00",
-        "the ball left on the lawn",
         drop="the ball on the grass, the game already over",
         people=("Kit",),
     ),
@@ -160,28 +155,24 @@ SCENES: tuple[Scene, ...] = (
         "home-rain-window",
         3,
         "07:40",
-        "rain on the kitchen window, the month's first grey morning",
         story="S0004",
     ),
     Scene(
         "home-kitchen",
         3,
         "18:00",
-        "the pan on the stove",
-        drop="a pan on a stove, nothing to say about it",
+        drop="kitchen details, with no occasion to show",
     ),
     Scene(
         "home-desk-laptop",
         4,
         "12:30",
-        "the laptop on the desk",
-        drop="a laptop on a desk: work, not the household",
+        drop="a desk: work, not the household",
     ),
     Scene(
         "home-dog-walk",
         4,
         "17:45",
-        "the dog pulling towards the park",
         story="S0004",
         people=("Charlie",),
         video=True,
@@ -191,53 +182,46 @@ SCENES: tuple[Scene, ...] = (
         "home-cat-window",
         5,
         "08:00",
-        "the cat asleep in the window",
         drop="the cat asleep, the same as every morning",
     ),
     Scene(
         "home-playground",
         5,
         "16:20",
-        "the swing in the park",
         drop="the swing, empty by the time the phone came out",
         people=("Kit",),
         video=True,
     ),
-    Scene("home-laundry", 6, "11:00", "washing on the line", drop="washing on the line, a chore"),
+    Scene("home-laundry", 6, "11:00", drop="washing on the line, a chore"),
     Scene(
         "home-sofa-reading",
         6,
         "19:00",
-        "a book and a cup on the sofa",
-        drop="a book and a cup, and nobody reading",
+        drop="reading material, with no occasion to show",
     ),
     Scene(
         "home-market-veg",
         7,
         "09:00",
-        "the vegetable stall at the market",
         drop="a market stall, could be anyone's Saturday",
     ),
     Scene(
         "home-street-tram",
         7,
         "14:00",
-        "the tram on the way home",
-        drop="a tram in the street, the way home from the market",
+        drop="a street crossing, with no occasion to show",
     ),
     # The birthday, Saturday the 8th.
     Scene(
         "home-garden-roses",
         8,
         "10:30",
-        "the roses out on the morning of the party",
         drop="the roses, three frames of the same bush",
     ),
     Scene(
         "birthday-balloons",
         8,
         "11:00",
-        "balloons tied to the fence before anyone arrived",
         story="S0001",
         people=("Robin",),
     ),
@@ -245,7 +229,6 @@ SCENES: tuple[Scene, ...] = (
         "garden-table",
         8,
         "12:15",
-        "the table and chairs still out on the lawn",
         story="S0001",
         people=EVERYONE,
         video=True,
@@ -255,21 +238,18 @@ SCENES: tuple[Scene, ...] = (
         "birthday-lemonade",
         8,
         "13:00",
-        "the lemonade jug in the sun",
-        drop="the jug of lemonade, one of four shots of the drinks",
+        drop="a drink, with the birthday already covered",
     ),
     Scene(
         "birthday-cupcakes",
         8,
         "15:30",
-        "cupcakes on the tray",
-        drop="cupcakes on the tray: the cake is the picture",
+        drop="cupcakes: the birthday cake is already in the cut",
     ),
     Scene(
         "garden-cake",
         8,
         "16:30",
-        "the cake with the candles still in it",
         story="S0001",
         people=("Kit",),
         favorite=True,
@@ -278,7 +258,6 @@ SCENES: tuple[Scene, ...] = (
         "birthday-candles",
         8,
         "16:32",
-        "the candles going out",
         story="S0001",
         people=("Kit", "Robin"),
         video=True,
@@ -288,22 +267,19 @@ SCENES: tuple[Scene, ...] = (
         "birthday-gifts",
         8,
         "17:00",
-        "the presents, wrapping still on",
         drop="the presents before they were opened",
     ),
     Scene(
         "birthday-confetti",
         8,
         "17:30",
-        "confetti on the grass",
-        drop="confetti on the grass, the party already over",
+        drop="party decorations, with the birthday already covered",
     ),
-    Scene("birthday-pinata", 8, "18:00", "the piñata mid-swing", drop="blurred mid-swing"),
+    Scene("birthday-pinata", 8, "18:00", drop="a piñata, with the birthday already covered"),
     Scene(
         "home-coffee-cup",
         9,
         "09:15",
-        "the morning after, one cup",
         drop="one cup of coffee, the morning after",
     ),
     # Ordinary days between the party and the woods.
@@ -311,21 +287,18 @@ SCENES: tuple[Scene, ...] = (
         "home-bread-baking",
         10,
         "18:30",
-        "the loaf out of the oven",
         drop="a loaf on the rack, a Monday",
     ),
     Scene(
         "home-tomatoes-garden",
         11,
         "19:00",
-        "the tomato plants tied up",
-        drop="tomato plants, the same as last week",
+        drop="tomatoes, with no occasion to show",
     ),
     Scene(
         "home-bath-toys",
         12,
         "19:30",
-        "bath toys on the edge of the tub",
         drop="the bath toys, no one in the bath",
         people=("Kit",),
     ),
@@ -333,30 +306,26 @@ SCENES: tuple[Scene, ...] = (
         "home-balcony-flowers",
         13,
         "08:30",
-        "the pots on the balcony",
         drop="the balcony pots, watered",
     ),
     Scene(
         "home-shoes-door",
         13,
         "17:00",
-        "shoes by the door",
-        drop="shoes by the door, taken by mistake",
+        drop="trainers, with no occasion to show",
     ),
     # The Saturday in the woods, the 15th.
     Scene(
         "woods-tall-trees",
         15,
         "10:40",
-        "the tall trees at the start of the walk",
         place=WOODS,
-        drop="the trees at the car park, the path says it better",
+        drop="woodland scenery, with the walk already covered",
     ),
     Scene(
         "woods-hamper",
         15,
         "11:05",
-        "the hamper open on the checked cloth",
         place=WOODS,
         story="S0003",
         people=EVERYONE,
@@ -366,15 +335,13 @@ SCENES: tuple[Scene, ...] = (
         "woods-picnic",
         15,
         "11:30",
-        "the blanket from the other side",
         place=WOODS,
-        drop="the same blanket from the other side of the clearing",
+        drop="the picnic is already covered",
     ),
     Scene(
         "woods-stream",
         15,
         "12:45",
-        "the stream where the boots came off",
         place=WOODS,
         story="S0003",
         people=("Kit",),
@@ -383,7 +350,6 @@ SCENES: tuple[Scene, ...] = (
         "woods-moss",
         15,
         "13:30",
-        "moss on a fallen trunk",
         place=WOODS,
         drop="moss on a log, a close-up of the ground",
     ),
@@ -391,7 +357,6 @@ SCENES: tuple[Scene, ...] = (
         "woods-fern",
         15,
         "14:15",
-        "ferns along the path",
         place=WOODS,
         drop="ferns, another close-up of the ground",
     ),
@@ -399,7 +364,6 @@ SCENES: tuple[Scene, ...] = (
         "woods-path",
         15,
         "15:40",
-        "the long green path back to the car",
         place=WOODS,
         story="S0003",
         people=ADULTS,
@@ -410,7 +374,6 @@ SCENES: tuple[Scene, ...] = (
         "woods-path-light",
         15,
         "15:50",
-        "the path again, in the light",
         place=WOODS,
         drop="the same path ten minutes later",
     ),
@@ -419,8 +382,7 @@ SCENES: tuple[Scene, ...] = (
         "home-bike-park",
         16,
         "10:30",
-        "the Sunday bike ride to the park",
-        drop="the bike ride, the frame is mostly road",
+        drop="a parked bicycle, with nobody riding it",
         people=("Robin", "Kit"),
         video=True,
     ),
@@ -428,15 +390,13 @@ SCENES: tuple[Scene, ...] = (
         "home-drawing",
         18,
         "17:00",
-        "crayons and a drawing on the table",
-        drop="crayons on the table, the drawing out of frame",
+        drop="coloured pencils, with no finished drawing",
         people=("Kit",),
     ),
     Scene(
         "home-evening-lamp",
         19,
         "21:00",
-        "the lamp on in the living room",
         drop="the living room at night, nothing happening",
     ),
     # The week by the lake, the 21st to the 28th.
@@ -444,7 +404,6 @@ SCENES: tuple[Scene, ...] = (
         "home-suitcase",
         21,
         "08:30",
-        "the suitcase open on the bed, the morning we left",
         story="S0002",
         people=("Charlie",),
     ),
@@ -452,23 +411,20 @@ SCENES: tuple[Scene, ...] = (
         "trip-motorway",
         21,
         "11:45",
-        "the motorway through the windscreen",
         place=ROAD,
-        drop="the motorway through the windscreen, the same as every motorway",
+        drop="a road, with no stop or occasion to show",
     ),
     Scene(
         "trip-map-car",
         21,
         "12:30",
-        "the map on the passenger seat",
         place=ROAD,
-        drop="the map on the seat",
+        drop="a parked car, with nobody in frame",
     ),
     Scene(
         "trip-lake-arrival",
         21,
         "17:20",
-        "the first sight of the lake from the road down",
         place=LAKE,
         story="S0002",
         people=EVERYONE,
@@ -479,7 +435,6 @@ SCENES: tuple[Scene, ...] = (
         "lake-tents",
         21,
         "18:45",
-        "the tents pitched on the slope above the lake",
         place=LAKE,
         story="S0002",
         people=ADULTS,
@@ -490,7 +445,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-campfire",
         21,
         "21:00",
-        "the fire on the first night",
         place=LAKE,
         drop="the fire, too dark to see who was round it",
         video=True,
@@ -499,7 +453,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-morning-mist",
         22,
         "07:30",
-        "mist on the water before anyone else was up",
         place=LAKE,
         story="S0002",
     ),
@@ -507,15 +460,13 @@ SCENES: tuple[Scene, ...] = (
         "trip-lake-jetty",
         22,
         "10:00",
-        "the jetty, empty",
         place=LAKE,
-        drop="the jetty with nobody on it",
+        drop="the lakeshore is already covered",
     ),
     Scene(
         "trip-swim",
         22,
         "11:30",
-        "the first swim",
         place=LAKE,
         story="S0002",
         people=("Kit", "Charlie"),
@@ -526,16 +477,14 @@ SCENES: tuple[Scene, ...] = (
         "trip-ice-cream",
         22,
         "14:00",
-        "two cones, half eaten",
         place=LAKE,
-        drop="two ice creams, half eaten",
+        drop="ice cream, with the lake day already covered",
         people=("Kit",),
     ),
     Scene(
         "lake-sunset",
         22,
         "21:10",
-        "the last of the sun going down over the water",
         place=LAKE,
         story="S0002",
         favorite=True,
@@ -544,7 +493,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-cows-meadow",
         23,
         "11:30",
-        "cows on the meadow halfway up",
         place=SEMNOZ,
         drop="cows on the way up, the top says it better",
         people=EVERYONE,
@@ -553,7 +501,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-summit-view",
         23,
         "12:30",
-        "the lake from the top",
         place=SEMNOZ,
         story="S0002",
         people=EVERYONE,
@@ -562,15 +509,13 @@ SCENES: tuple[Scene, ...] = (
         "trip-town-canal",
         24,
         "10:00",
-        "the canal in the old town",
         place=LAKE,
-        drop="the canal, a postcard",
+        drop="a building facade, with no occasion to show",
     ),
     Scene(
         "trip-cheese-market",
         24,
         "11:00",
-        "the cheese stall at the market",
         place=LAKE,
         drop="the cheese stall, could be anyone's market",
     ),
@@ -578,23 +523,20 @@ SCENES: tuple[Scene, ...] = (
         "trip-rain-day",
         25,
         "09:30",
-        "rain, the day nobody left the tent",
         place=LAKE,
-        drop="rain on the tent, one grey day",
+        drop="the lakeshore on an overcast day",
     ),
     Scene(
         "trip-tent-morning",
         25,
         "14:00",
-        "the tents drying out",
         place=LAKE,
-        drop="the tents again, drying",
+        drop="the campsite is already covered",
     ),
     Scene(
         "trip-cable-car",
         26,
         "10:00",
-        "the cable car up the mountain",
         place=SEMNOZ,
         drop="the cable car, mostly window",
         people=("Kit", "Robin"),
@@ -604,7 +546,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-waterfall",
         26,
         "13:00",
-        "the waterfall at the end of the walk",
         place=SEMNOZ,
         drop="the waterfall, no one in front of it",
         video=True,
@@ -614,9 +555,8 @@ SCENES: tuple[Scene, ...] = (
         "trip-kayak",
         27,
         "10:30",
-        "paddling out to the middle of the lake",
         place=LAKE,
-        drop="the paddle out, the swim already says the lake",
+        drop="kayaks, with the swim already in the cut",
         people=("Robin", "Kit"),
         video=True,
         seconds=5.0,
@@ -625,7 +565,6 @@ SCENES: tuple[Scene, ...] = (
         "trip-lake-dusk",
         27,
         "21:00",
-        "the lake at dusk, the last night",
         place=LAKE,
         drop="the lake at dusk, the sunset from the first night is in",
     ),
@@ -634,7 +573,6 @@ SCENES: tuple[Scene, ...] = (
         "home-pancakes",
         29,
         "09:30",
-        "pancakes on the first morning back",
         story="S0004",
         people=EVERYONE,
     ),
@@ -642,7 +580,6 @@ SCENES: tuple[Scene, ...] = (
         "home-sunday-park",
         30,
         "16:00",
-        "the park bench on the last Sunday",
         drop="a bench in the park, the month already over",
     ),
 )
@@ -701,6 +638,8 @@ def _stamp(scene: Scene, minutes_later: int) -> str:
 
 def _expand() -> tuple[Picture, ...]:
     pictures: list[Picture] = []
+    captions_path = LIBRARY_DIR / "captions.json"
+    captions = json.loads(captions_path.read_text()) if captions_path.exists() else {}
     counter = 2400
     for scene in SCENES:
         stems = _scene_files(scene)
@@ -710,19 +649,16 @@ def _expand() -> tuple[Picture, ...]:
             video = scene.video and main
             if main:
                 story, drop = scene.story, scene.drop
-                caption = scene.caption
             else:
                 story = None
-                minutes = 2 * index
-                caption = f"another frame of {scene.caption}"
-                drop = f"another frame of the same moment, {minutes} minutes later"
+                drop = "another view of a subject already represented in the pool"
             pictures.append(
                 Picture(
                     asset_id=stem,
                     filename=f"IMG_{counter}.{'mp4' if video else 'jpg'}",
                     kind="video" if video else "still",
                     taken_at=_stamp(scene, 2 * index),
-                    caption=caption,
+                    caption=captions[stem],
                     scene=scene.key,
                     place=scene.place,
                     is_favorite=scene.favorite and main,
@@ -736,7 +672,7 @@ def _expand() -> tuple[Picture, ...]:
             )
     if not pictures:
         # WHY loudly: this module IS its directory -- the scenes above are only
-        # captions until a glob of LIBRARY_DIR says which files exist. A consumer
+        # scene definitions until a glob of LIBRARY_DIR says which files exist. A consumer
         # that stages the module without the pictures (the release smoke mounted
         # fake_library.py alone, #881) used to read an empty month and drop every
         # candidate, which surfaces far downstream as "selected no clips".

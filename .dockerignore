@@ -18,6 +18,7 @@ deploy
 scripts
 
 # Tool caches and coverage artifacts
+dist
 **/__pycache__
 *.pyc
 *.pyo
