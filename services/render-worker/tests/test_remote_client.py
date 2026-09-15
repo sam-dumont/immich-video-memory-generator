@@ -30,7 +30,7 @@ def test_remote_client_returns_a_validated_film_and_exact_cut_metadata(tmp_path)
                 music_mute_windows=[(0.5, 1.5)],
             )
 
-    settings = RenderWorkerConfig(worker_base_url="http://testserver", worker_token=WORKER_TOKEN)
+    settings = RenderWorkerConfig(worker_base_url="http://127.0.0.1", worker_token=WORKER_TOKEN)
     progress = []
     with TestClient(worker_app(tmp_path / "worker", Renderer())) as http:
         artifact = RemoteRenderClient(settings, client=http).render(
@@ -60,7 +60,7 @@ def test_normal_generation_uses_the_worker_and_completes_the_local_run(tmp_path,
     params.config.cache.directory = str(tmp_path / "cache")
     params.config.cache.database = str(tmp_path / "cache" / "runs.sqlite")
     params.config.render = RenderWorkerConfig(
-        worker_base_url="http://testserver", worker_token=WORKER_TOKEN
+        worker_base_url="http://127.0.0.1", worker_token=WORKER_TOKEN
     )
     params.no_music = True
     seen = []
@@ -125,7 +125,7 @@ def test_a_changed_worker_result_cannot_replace_a_good_output(tmp_path, changed)
                 music_mute_windows=[(9, 10)] if changed == "audio_window" else None,
             )
 
-    settings = RenderWorkerConfig(worker_base_url="http://testserver", worker_token=WORKER_TOKEN)
+    settings = RenderWorkerConfig(worker_base_url="http://127.0.0.1", worker_token=WORKER_TOKEN)
     with (
         TestClient(worker_app(tmp_path / "worker", Renderer())) as http,
         pytest.raises(GenerationError, match="worker"),
