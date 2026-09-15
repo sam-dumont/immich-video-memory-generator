@@ -343,7 +343,10 @@ def _build_ducking_filter(
     # duration on re-decode — the stream decodes shorter than container metadata.
     pad = f"apad=whole_dur={video_duration},atrim=0:{video_duration},"
     if config.normalize_audio:
-        filter_parts.append(f"[0:a]{pad}loudnorm=I=-16:TP=-1.5:LRA=11,asplit=2[va][vamix]")
+        # Resample loudnorm's large 192 kHz blocks before the FFmpeg 6/7 sidechain.
+        filter_parts.append(
+            f"[0:a]{pad}loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,asplit=2[va][vamix]"
+        )
     else:
         filter_parts.append(f"[0:a]{pad}asplit=2[va][vamix]")
 

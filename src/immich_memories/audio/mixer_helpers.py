@@ -260,7 +260,9 @@ def mix_audio_with_4stem_ducking(
     # for the final mix, padded to the same clock as the picture.
     source_filter = f"[0:a]apad=whole_dur={video_duration},atrim=0:{video_duration},"
     if config.normalize_audio:
-        source_filter += "loudnorm=I=-16:TP=-1.5:LRA=11,"
+        # loudnorm emits large 192 kHz blocks; FFmpeg 6/7 sidechains can lose the
+        # stem samples behind those blocks. Resample before splitting the voice.
+        source_filter += "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
     filter_parts.append(source_filter + "asplit=4[voice_bass][voice_vocals][voice_other][original]")
 
     # Apply sidechain compression to stems that should duck during speech.

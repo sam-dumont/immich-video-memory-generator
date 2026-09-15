@@ -98,7 +98,8 @@ def test_stems_duck_under_speech_and_all_respect_existing_music(tmp_path):
         )
 
 
-def test_shared_music_phase_uses_generated_stems(tmp_path, monkeypatch):
+@pytest.mark.parametrize("use_stems", [True, False])
+def test_shared_music_phase_mixes_generated_music(tmp_path, monkeypatch, use_stems):
     from unittest.mock import MagicMock
 
     from immich_memories.audio.music_generator_models import GeneratedMusic, MusicStems
@@ -111,7 +112,7 @@ def test_shared_music_phase_uses_generated_stems(tmp_path, monkeypatch):
     silent = tmp_path / "full.wav"
     tone = tmp_path / "vocals.wav"
     _write_audio(silent, np.zeros_like(time))
-    _write_audio(tone, 0.05 * np.sin(2 * np.pi * 440 * time))
+    _write_audio(tone, 0.15 * np.sin(2 * np.pi * 440 * time))
     video = tmp_path / "video.mp4"
     subprocess.run(
         [
@@ -135,7 +136,11 @@ def test_shared_music_phase_uses_generated_stems(tmp_path, monkeypatch):
         ],
         check=True,
     )
-    generated = GeneratedMusic(silent, MusicStems(tone, drums=silent, bass=silent, other=silent))
+    generated = (
+        GeneratedMusic(silent, MusicStems(tone, drums=silent, bass=silent, other=silent))
+        if use_stems
+        else GeneratedMusic(tone)
+    )
     # WHY: stands in for expensive model inference; FFmpeg still mixes and validates real files.
     monkeypatch.setattr(
         "immich_memories.generate_music.auto_generate_music", lambda *_a, **_k: generated
