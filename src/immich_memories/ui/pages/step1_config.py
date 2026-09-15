@@ -9,7 +9,7 @@ from datetime import date
 from nicegui import ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
-from immich_memories.config import Config, set_config
+from immich_memories.config import get_config_path, set_config
 from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
     birthday_year,
@@ -126,9 +126,9 @@ def render_immich_connection(state) -> None:
                 config = state.config
                 config.immich.url = state.immich_url
                 config.immich.api_key = state.immich_api_key
-                config_path = Config.get_default_path()
+                config_path = get_config_path()
                 config.save_yaml(config_path)
-                set_config(config)
+                set_config(config, path=config_path)
                 ui.notify("Configuration saved!", type="positive")
 
             im_button("Test Connection", variant="secondary", on_click=test_connection, icon="wifi")

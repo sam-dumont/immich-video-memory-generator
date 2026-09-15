@@ -410,17 +410,25 @@ class Config(BaseSettings):
         return Path.home() / ".immich-memories" / "config.yaml"
 
 
-# Global configuration instance
+# Global configuration instance, and the file it was loaded from. The path is
+# what makes one process have one configuration source: `--config PATH ui` and
+# the settings pages must all read, reload and save that same file, never
+# silently falling back to the default path.
 _config: Config | None = None
+_config_path: Path | None = None
 
 
-def _arm_log_redaction(config: Config) -> None:
+def _arm_log_redaction(config: Config | None) -> None:
     """Teach the log filter this config's secrets so they never reach a log line.
 
     Called from every path that produces a live Config, because config load is
     the first moment the values exist. Lines logged before it -- startup, a
     config file that fails to parse -- cannot be redacted by construction.
+    A None reset installs no values; previously armed redactions stay armed.
     """
+    if config is None:
+        install_secret_redaction(())
+        return
     install_secret_redaction(configured_secret_values(config))
 
 
@@ -485,7 +493,7 @@ def get_config(reload: bool = False) -> Config:
     global _config
 
     if _config is None or reload:
-        _config = Config.from_yaml(Config.get_default_path())
+        _config = Config.from_yaml(get_config_path())
         _apply_env_overrides(_config)
         # Env vars can introduce credentials the YAML never held.
         _arm_log_redaction(_config)
@@ -493,10 +501,51 @@ def get_config(reload: bool = False) -> Config:
     return _config
 
 
-def set_config(config: Config) -> None:
-    """Set the global configuration instance."""
-    global _config
+def get_config_path() -> Path:
+    """The file the process's configuration was loaded from.
+
+    A `--config PATH` run records PATH here; without one this is the default
+    path. Reloads and the settings pages' reads and saves follow it, so a
+    reload can never silently switch the process to the default config.
+    """
+    return _config_path or Config.get_default_path()
+
+
+def load_config(path: Path) -> Config:
+    """Load a config file as this process's single configuration source.
+
+    Applies environment overrides and arms log redaction, exactly as
+    `get_config()` does for the default path, and records `path` as the source
+    a reload returns to.
+
+    Args:
+        path: The config file to load.
+
+    Returns:
+        The loaded Config, also installed as the global instance.
+    """
+    global _config, _config_path
+    _config_path = path
+    _config = Config.from_yaml(path)
+    _apply_env_overrides(_config)
+    _arm_log_redaction(_config)
+    return _config
+
+
+def set_config(config: Config | None, path: Path | None = None) -> None:
+    """Set the global configuration instance.
+
+    Args:
+        config: The Config to install, or None to reset the global.
+        path: The file the config was loaded from, when it is not the default.
+              Resetting the global to None also clears the recorded source.
+    """
+    global _config, _config_path
     _config = config
+    if config is None:
+        _config_path = None
+    elif path is not None:
+        _config_path = path
     _arm_log_redaction(config)
 
 
