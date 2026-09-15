@@ -49,7 +49,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="none" />
         <div
           style={{
             flex: 1,
@@ -94,6 +94,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
               >
                 Your memory video is ready!
               </div>
+              {/* Secondary text, never the error colour: a red path reads as a failure */}
               <div
                 style={{
                   fontSize: 13,
@@ -102,7 +103,17 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity, playAt }) => {
                   marginTop: 4,
                 }}
               >
-                Saved to: /home/user/Videos/Memories/year_2025_memories.mp4 (42 MB)
+                Saved to: /home/user/Videos/Memories/everyone_june_2024_memories.mp4 (24 MB)
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: COLORS.textSecondary,
+                  fontFamily,
+                  marginTop: 2,
+                }}
+              >
+                Immich delivery: Not Requested
               </div>
             </div>
           </div>

@@ -36,17 +36,25 @@ const MEMORY_TYPES = [
   "Custom date range",
 ];
 
-const PICKED = "Year in Review";
+// The fixture library is one household's June 2024, and every scene after this
+// one shows that cut; the brief has to ask for it.
+const PICKED = "Monthly Highlights";
 
 const OPEN_DROPDOWN = 45;
 const PICK_TYPE = 72;
 const CLICK_CUT = 145;
 
-// Measured against a 1920x1080 still render: the select field, the first
-// dropdown row, and the middle of the full-width Cut button.
+// Measured against a 1920x1080 still render: the select field, the picked
+// dropdown row, and the middle of the full-width Cut button. The rows are 30px
+// and Monthly Highlights is the fifth.
+const ROW_HEIGHT = 30;
+const PICKED_INDEX = MEMORY_TYPES.indexOf(PICKED);
 const SELECT_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 111 };
-const FIRST_ROW_XY = { x: CONTENT_X + 144, y: CONTENT_Y + 156 };
-const CUT_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 440 };
+const FIRST_ROW_XY = {
+  x: CONTENT_X + 144,
+  y: CONTENT_Y + 156 + PICKED_INDEX * ROW_HEIGHT,
+};
+const CUT_XY = { x: CONTENT_X + 520, y: CONTENT_Y + 556 };
 
 const cursorSteps = [
   { frame: 32, ...SELECT_XY },
@@ -88,7 +96,7 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={1} />
+        <Sidebar active="Memory" />
         <div
           style={{
             flex: 1,
@@ -168,11 +176,31 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
               }}
             >
               <div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
-                <ImSelect label="Year" value="2025" style={{ width: 192 }} />
-                <ImSelect
-                  label="Only with (optional)"
-                  value=""
-                  style={{ width: 288 }}
+                <ImSelect label="Year" value="2024" style={{ width: 160 }} />
+                <ImSelect label="Month" value="June" style={{ width: 192 }} />
+              </div>
+              <ImSelect
+                label="Only with (optional)"
+                value=""
+                style={{ width: 288, marginTop: 14 }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  marginTop: 10,
+                  padding: "8px 0",
+                }}
+              >
+                <MaterialIcon name="tune" size={20} color={COLORS.textSecondary} />
+                <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
+                  Advanced people condition
+                </span>
+                <MaterialIcon
+                  name="keyboard_arrow_down"
+                  size={22}
+                  color={COLORS.textSecondary}
                 />
               </div>
             </ImCard>
@@ -195,7 +223,7 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
                     marginLeft: 8,
                   }}
                 >
-                  Auto &middot; 10m 00s
+                  Auto &middot; 1m 00s
                 </span>
                 <span
                   style={{

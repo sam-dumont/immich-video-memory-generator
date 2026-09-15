@@ -25,6 +25,12 @@ from tests.e2e.fake_library import (  # noqa: E402
     summary_line,
 )
 
+from immich_memories.operations.reader_words import stage_words  # noqa: E402
+
+# The pass the fixture's editorial route records its rejections under; the pool
+# page prints the reader's words for it, not the engine's name.
+DROP_STAGE = "picture_review"
+
 OUT = Path(__file__).resolve().parents[1] / "docs-site" / "remotion" / "src" / "fixture.ts"
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 POOL_PAGE = 20
@@ -32,6 +38,24 @@ POOL_PAGE = 20
 
 def _taken_label(taken_at: str) -> str:
     return f"{MONTHS[int(taken_at[5:7]) - 1]} {taken_at[8:10]} {taken_at[11:16]}"
+
+
+def _timecodes() -> dict[str, str]:
+    """Where each kept picture starts in the cut, in the order the film plays them."""
+    at = 0.0
+    codes = {}
+    for picture in CARRIERS:
+        codes[picture.asset_id] = f"{int(at) // 60}:{int(at) % 60:02d}"
+        at += picture.seconds
+    return codes
+
+
+def _outcome(picture, timecodes: dict[str, str]) -> str:
+    """The line the pool prints under a thumbnail, in CandidateFates' words."""
+    if picture.shipped:
+        return f"In the cut at {timecodes[picture.asset_id]}: {picture.caption}"
+    reason = picture.drop_reason or "not part of any story the month tells"
+    return f"Left out at {stage_words(DROP_STAGE)}: {reason}"
 
 
 def main() -> None:
@@ -51,6 +75,7 @@ def main() -> None:
             shot["chapter"] = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}".replace("Jun ", "June ")
             previous_month = month
         shots.append(shot)
+    timecodes = _timecodes()
     pool = [
         {
             "picture": f"library/{picture.source.name}",
@@ -60,6 +85,7 @@ def main() -> None:
             "favourite": picture.is_favorite,
             "ticked": picture.shipped,
             "seconds": int(picture.seconds),
+            "outcome": _outcome(picture, timecodes),
         }
         for picture in LIBRARY[:POOL_PAGE]
     ]
@@ -88,6 +114,8 @@ def main() -> None:
             "  favourite: boolean;",
             "  ticked: boolean;",
             "  seconds: number;",
+            "  /** What the saved cut did with this picture, as the pool page prints it. */",
+            "  outcome: string;",
             "};",
             "",
             f"export const THESIS = {json.dumps(THESIS)};",

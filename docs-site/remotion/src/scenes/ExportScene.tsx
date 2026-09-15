@@ -18,16 +18,24 @@ import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImSeparator } from "../components/ImSeparator";
 import { ImToggle } from "../components/ImToggle";
+import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
 
+import { CUT_COUNT, CUT_SECONDS, POOL_TOTAL, POOL_VIDEOS } from "../fixture";
+
+const PHOTOS = POOL_TOTAL - POOL_VIDEOS;
+const DURATION = `${Math.floor(CUT_SECONDS / 60)}:${String(CUT_SECONDS % 60).padStart(2, "0")}`;
+
 const STATS = [
-  { icon: "movie", value: "6", label: "Clips" },
-  { icon: "photo_library", value: "3", label: "Photo Pool" },
-  { icon: "timer", value: "5:12", label: "Duration" },
+  { icon: "movie", value: String(CUT_COUNT), label: "Clips" },
+  { icon: "photo_library", value: String(PHOTOS), label: "Photo Pool" },
+  { icon: "timer", value: DURATION, label: "Duration" },
   { icon: "video_file", value: "MP4", label: "Format" },
 ];
 
-const FILENAME = "year_2025_memories.mp4";
+// The name the filename builder gives the fixture's June, and the directory the
+// screenshots show: a plain home path, not the temp root a hermetic run uses.
+const FILENAME = "everyone_june_2024_memories.mp4";
 const OUTPUT_DIR = "/home/user/Videos/Memories";
 
 const CLICK_GENERATE = 78;
@@ -63,7 +71,7 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
-        <Sidebar activeStep={4} completedSteps={[1, 2]} />
+        <Sidebar active="none" />
         <div
           style={{
             flex: 1,
@@ -96,7 +104,28 @@ export const ExportScene: React.FC<Props> = ({ bassIntensity }) => {
             })}
           </div>
 
-          <div style={{ marginTop: 16, opacity: reveal(30) }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              marginTop: 14,
+              padding: "10px 0",
+              opacity: reveal(26),
+            }}
+          >
+            <MaterialIcon name="photo_library" size={20} color={COLORS.textSecondary} />
+            <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
+              {PHOTOS} Photos Available (auto-selected at generation)
+            </span>
+            <MaterialIcon
+              name="keyboard_arrow_down"
+              size={22}
+              color={COLORS.textSecondary}
+            />
+          </div>
+
+          <div style={{ marginTop: 10, opacity: reveal(30) }}>
             <ImSectionHeader icon="folder" title="Output" />
           </div>
           <ImCard
