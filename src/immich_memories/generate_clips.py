@@ -393,14 +393,14 @@ def _cleanup_temp_dirs(output_dir: Path) -> None:
                 shutil.rmtree(path)
 
 
-def assets_to_clips(assets: list) -> list:
-    """Convert raw Asset objects to VideoClipInfo, filtering short clips."""
+def assets_to_clips(assets: list, *, min_duration: float = MIN_CLIP_DURATION) -> list:
+    """Convert metadata to timed clips; a zero minimum leaves admission to the editor."""
     from immich_memories.api.models import VideoClipInfo
 
     clips = []
     for asset in assets:
         duration = asset.duration_seconds or 0
-        if duration < MIN_CLIP_DURATION:
+        if duration < min_duration:
             continue
         clips.append(
             VideoClipInfo(

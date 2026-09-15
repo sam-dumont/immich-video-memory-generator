@@ -163,11 +163,9 @@ def _filter_near_home(assets: list, state) -> list:
 
 def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
     """Retain raw metadata so the story selector can inspect every requested source."""
-    clips = []
-    for asset in assets:
-        duration = asset.duration_seconds or 0
-        clips.append(VideoClipInfo(asset=asset, duration_seconds=duration))
-    return clips, 0
+    from immich_memories.generate_clips import assets_to_clips
+
+    return assets_to_clips(assets, min_duration=0.0), 0
 
 
 def _fetch_photos(state) -> list:

@@ -95,7 +95,7 @@ def _source_pipeline(result: PipelineResult) -> MagicMock:
 
 
 @pytest.mark.parametrize("no_render", [False, True])
-def test_cli_source_route_preserves_raw_album_demand_and_exact_render_handoff(tmp_path, no_render):
+def test_cli_source_route_uses_timed_clips_and_preserves_exact_render_handoff(tmp_path, no_render):
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 
     result = _finished_selection()
@@ -141,7 +141,10 @@ def test_cli_source_route_preserves_raw_album_demand_and_exact_render_handoff(tm
         )
 
     assert actual == output
-    assert pipeline.run_editorial_source.call_args.args[0] == [*videos, *photos]
+    sources = pipeline.run_editorial_source.call_args.args[0]
+    assert [clip.asset for clip in sources[:4]] == videos
+    assert [clip.duration_seconds for clip in sources[:4]] == [7.5, 0.25, 0.0, 8.0]
+    assert sources[4:] == photos
     assert pipeline.run_editorial_source.call_args.kwargs["include_live_photos"] is False
     context = build.call_args.kwargs["editorial_context"]
     assert context.album_sources == (*videos, *photos)
@@ -166,17 +169,15 @@ def test_cli_source_route_preserves_raw_album_demand_and_exact_render_handoff(tm
 
 
 @pytest.mark.parametrize("duration", [0.25, None])
-def test_cli_raw_video_only_reaches_editor_before_legacy_minimum_duration_exit(tmp_path, duration):
+def test_cli_short_and_unknown_videos_reach_editor_as_timed_clips(tmp_path, duration):
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
     from immich_memories.generate import assets_to_clips
 
     asset = make_asset("raw-only", duration=duration, file_created_at=_WHEN)
     assert assets_to_clips([asset]) == []
     pipeline = _source_pipeline(_finished_selection())
-    # Stop at the actual seam: an unknown duration is evidence to resolve, not
-    # permission for this wiring test to fabricate a playable source interval.
     pipeline.run_editorial_source.side_effect = RuntimeError("source route reached")
-    # WHY: swaps in the pipeline stub so the run reaches the asserted RuntimeError path.
+    # WHY: stop at the model boundary; unknown timing belongs to the editor.
     with (
         # WHY: the collaborator under inspection; its call args are asserted after the raise.
         patch(
@@ -201,7 +202,9 @@ def test_cli_raw_video_only_reaches_editor_before_legacy_minimum_duration_exit(t
             album=None,
             no_render=True,
         )
-    assert pipeline.run_editorial_source.call_args.args[0] == [asset]
+    sources = pipeline.run_editorial_source.call_args.args[0]
+    assert len(sources) == 1 and sources[0].asset == asset
+    assert sources[0].duration_seconds == (duration or 0.0)
 
 
 @pytest.mark.parametrize("include_photos", [False, True])

@@ -10,6 +10,10 @@ story, keeps the pictures that carry it, and renders a cut. It prepares missing 
 period first, so the first run over a period is the slow one: the second is mostly the render. The
 audience is always "family", which is part of the request rather than a setting.
 
+The CLI and web UI pass the same timed source clips to the editor, including
+short videos and those with unknown duration. The editor checks whether they can
+be used. The selection count includes photos when photos are enabled.
+
 ```bash
 immich-memories generate [OPTIONS]
 ```

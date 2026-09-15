@@ -351,8 +351,10 @@ def run_pipeline_and_generate(
         memory_preset_params=memory_preset_params,
     )
 
-    clips = assets_to_clips(assets)
-    if not assets and not resolved.has_photos:
+    clips = assets_to_clips(assets, min_duration=0.0)
+    source_photos = resolved.photo_assets or []
+    source_count = len(clips) + len(source_photos)
+    if not source_count:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
@@ -369,7 +371,7 @@ def run_pipeline_and_generate(
 
     _runner_logger = logging.getLogger(__name__)
 
-    print_success(f"{len(clips)} clips ready for generation")
+    print_success(f"{len(clips)} video clips and {len(source_photos)} photos ready for selection")
 
     # WHY: ONE unified task covers the entire pipeline (analysis → generation).
     # The adaptive ETA in LiveDisplay uses elapsed/percentage, so it
@@ -384,8 +386,8 @@ def run_pipeline_and_generate(
         progress,
         task,
     )
-    phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
-    phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
+    phases.emit(OperationalPhase.DISCOVERY, source_count, source_count, "Discovery complete")
+    phases.emit(OperationalPhase.DOWNLOAD, 0, source_count, "Preparing source downloads")
 
     pipeline_config = PipelineConfig(hdr_only=False)
     output_canvas = _configure_output_canvas(
@@ -463,12 +465,11 @@ def run_pipeline_and_generate(
     phases.emit(
         OperationalPhase.SELECTION,
         0,
-        len(assets) + len(photo_assets or ()),
+        source_count,
         "Preparing canonical editorial evidence",
     )
-    source_photos = (photo_assets or []) if include_photos else []
     all_candidates, pipeline_result = pipeline.run_editorial_source(
-        [*assets, *source_photos],
+        [*clips, *source_photos],
         progress_callback=_SourceProgressReporter(progress, task),
         include_live_photos=use_live_photos and config.analysis.include_live_photos,
     )

@@ -93,10 +93,11 @@ def test_cli_real_display_enters_indeterminate_then_reports_actual_terminal_stag
         else:
             run()
     # The route is proven by what the runner consumed: the editorial source ran
-    # once over the raw assets, and the result it carried says so. The mock
+    # once over the admitted clips, and the result it carried says so. The mock
     # pipeline raises on run_analysis/run_planning_analysis/run_selection.
     assert pipeline.run_editorial_source.call_count == 1
-    assert pipeline.run_editorial_source.call_args.args[0] == [
+    sources = pipeline.run_editorial_source.call_args.args[0]
+    assert [clip.asset for clip in sources] == [
         result.selected_clips[0].asset,
         result.selected_clips[2].asset,
     ]
