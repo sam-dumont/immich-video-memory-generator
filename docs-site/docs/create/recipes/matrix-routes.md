@@ -37,7 +37,7 @@ becomes reproducible:
 ```
 
 Pick a day the bank already holds and the route replays with no provider calls, like the other
-ten. `day` is [`generate`'s own `--day`](../memory-types/monthly-person-season#on-this-day), so the
+ten. `day` is [`generate`'s own `--day`](../memory-types.mdx#on-this-day), so the
 pin is one flag and the run is filed under the same name as an unpinned one.
 
 **The values are private.** Which year, which person, which album: those never enter the

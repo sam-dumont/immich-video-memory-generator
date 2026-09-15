@@ -105,7 +105,7 @@ container: give them real hostnames.
 
 Those are the working sizes the compose limit (`memory: 4G`) was set around, not a profile of this
 image. Fine for 1080p; for 4K, give it 8 GB. On a CPU-only box the title screens cost more than
-the encode: at `--cpus=2`, 263 s of a 339 s assembly. See [CPU-only](../hardware/cpu-only.md).
+the encode: at `--cpus=2`, 263 s of a 339 s assembly. See [CPU-only](../hardware.md#without-a-gpu).
 
 The file sets no CPU limit. `cpus:` is a CFS quota and some kernels are built without the
 controller: a Synology DS423+ on cgroup v1 refused the whole `up` with `NanoCPUs can not be set,

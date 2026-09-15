@@ -35,4 +35,4 @@ recording and the 45-second clip of a wall out of the editor's hands. Twins and 
 itself; what it cannot know is what you would never show anyone.
 
 For what a GPU is and is not worth here, the measured numbers are in
-[Hardware acceleration](../../deploy/hardware/overview.md#what-the-card-is-actually-worth).
+[Hardware acceleration](../../deploy/hardware.md#what-the-card-is-actually-worth).

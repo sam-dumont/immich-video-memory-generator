@@ -164,7 +164,7 @@ A day sitting in the catalogue becomes a video three ways:
 All three scope the memory to the day's window when it recorded one, take the runtime
 from how long the day stayed awake, and read the title out of the catalogue rather than
 off the command line. A day the model could not name is refused rather than rendered
-under a generic date. See [Special Days](../memory-types/special-days.mdx).
+under a generic date. See [Special Days](../memory-types.mdx#special-day-surprise-me).
 
 ## What you need
 

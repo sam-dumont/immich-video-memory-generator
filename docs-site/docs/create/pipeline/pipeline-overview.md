@@ -182,4 +182,4 @@ cut produces it. Readings are keyed by the exact request, prompt included.
 - [The Curator](./the-curator.md), [Rules mode](./rules-mode.md)
 - [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md)
 - [Running modes](../../deploy/running-modes.md)
-- [Hardware acceleration](../../deploy/hardware/overview.md)
+- [Hardware acceleration](../../deploy/hardware.md)

@@ -150,7 +150,7 @@ on February, same model over both. Two of the three cells that stopped on Februa
 
 The last two rows are the same cluster at `full`: captions take a 43 s preparation to 540 s on 133
 pictures, which is the tier's whole cost in one line. The T1000 pair above them is the encoder A/B,
-and its phase split is on [the hardware overview](./hardware/overview.md#what-the-card-is-actually-worth);
+and its phase split is on [the hardware overview](./hardware.md#what-the-card-is-actually-worth);
 the NVENC cell's film came back truncated on copy-out, so its duration is blank and its render
 second is the one to read.
 
@@ -355,7 +355,7 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
-Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware/cpu-only.md#title-kernels).
+Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware.md#title-kernels).
 
 
 ## Render worker: service contract available
@@ -373,7 +373,7 @@ on the assembly stage and about 15% of the whole render, because fetching the
 originals from Immich is 48 to 59% of it. A worker that cannot open NVENC
 therefore renders about 15% slower and says so in `/health` and in the job
 record, instead of refusing the film. The full split is on
-[the hardware overview](./hardware/overview.md#what-the-card-is-actually-worth).
+[the hardware overview](./hardware.md#what-the-card-is-actually-worth).
 
 This slice does not change CLI or web rendering. App-side handoff, NAS setup and
 cluster deployment are still pending. The service README documents its

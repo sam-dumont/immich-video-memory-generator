@@ -242,7 +242,7 @@ set `output.codec: h264`, or turn on `preset: fast`, and pass the device through
 The render node is usually `root:render` with no world access, so `devices:` alone leaves it
 present and unopenable. The GID differs per host: 104 on Debian, 937 on Synology DSM;
 `stat -c '%g' /dev/dri/renderD128` prints yours. ARM NAS models have no Quick Sync path; the
-VA-API drivers ship in the amd64 image only. Details on [Intel Quick Sync](../hardware/intel-qsv.md).
+VA-API drivers ship in the amd64 image only. Details on [Intel Quick Sync](../hardware.md#intel-quick-sync-and-amd-vaapi).
 
 ## One switch: `preset: fast`
 
@@ -274,7 +274,7 @@ slow part. A run that does not fit logs one `WARNING` naming the setting.
   tested DS423+ included,
   the kernel renderer is out entirely: it dies with SIGILL on the first kernel it compiles, a
   child-process probe catches that at startup, and every title is PIL-rendered. See
-  [CPUs without AVX](../hardware/cpu-only.md#cpus-without-avx).
+  [CPUs without AVX](../hardware.md#cpus-without-avx).
 
 ## NAS notes
 

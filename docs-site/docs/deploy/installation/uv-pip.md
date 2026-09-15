@@ -99,7 +99,7 @@ The `editorial` extra is the runtime and nothing else. Its pinned encoder, detec
 compact-caption endpoint are [editorial annotation setup](../configuration/editorial-preparation.md).
 
 GPU title rendering (Metal, CUDA, Vulkan) needs no extra: the kernel library is a base dependency
-wherever it publishes a wheel. See [Title kernels](../hardware/cpu-only.md#title-kernels) for the
+wherever it publishes a wheel. See [Title kernels](../hardware.md#title-kernels) for the
 platforms that have one. AI music generation (ACE-Step, MusicGen) is not an extra either: it talks
 to a server or an in-process ACE-Step install, see
 [Audio and music](../../create/pipeline/audio-and-music.md).

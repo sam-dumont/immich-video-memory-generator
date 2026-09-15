@@ -117,7 +117,7 @@ CI calls `make launch-check-ci`, which is the Playwright e2e run against a fake 
 2. Write a factory function in `memory_types/factory.py` and decorate it with `@register_preset`: the decorator *is* the registration, there is no second list to edit there
 3. Add date builder logic if the type needs its own, in `memory_types/date_builders.py`
 4. Add it to `OFFERED_MEMORY_TYPES` in `memory_types/registry.py`: `--memory-type` and the Memory page's select both read that tuple, in that order
-5. Add a page under `docs-site/docs/create/memory-types/`
+5. Add a page under `docs-site/docs/create/memory-types.mdx`
 
 ### Adding a new CLI command
 

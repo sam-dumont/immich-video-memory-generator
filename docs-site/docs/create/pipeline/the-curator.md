@@ -87,7 +87,7 @@ it finds the day that mattered with 30 photos, not just the day with 300. It is
 not asked about everything: a day has to clear 20 photos and six active hours
 before the question is worth a model call. A day
 it found comes back years later as a
-[Special Day memory](../memory-types/special-days.mdx) nobody asked for.
+[Special Day memory](../memory-types.mdx#special-day-surprise-me) nobody asked for.
 
 ## The craft you don't see
 

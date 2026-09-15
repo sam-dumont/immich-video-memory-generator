@@ -99,7 +99,7 @@ server are their own services. All ten memory types work, same as anywhere else.
 There is no table here, because the setup matrix measured a Mac, a Synology NAS and a Kubernetes
 cluster and not a bare-metal Linux box. Its numbers are on
 [Running modes](../running-modes.md), and what the card is worth against a CPU encode, measured on
-a T1000, is on [Hardware overview](../hardware/overview.md#what-the-card-is-actually-worth).
+a T1000, is on [Hardware overview](../hardware.md#what-the-card-is-actually-worth).
 
 What is true by construction: a run is bounded by your Immich server and your two model services
 rather than by this card, and every producer banks its answer, so a second cut over the same

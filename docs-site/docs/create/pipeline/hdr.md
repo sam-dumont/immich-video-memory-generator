@@ -38,4 +38,4 @@ Either way it is refused rather than silently flattened. **HDR clips only** on t
 SDR video from the pool when you want a purely HDR cut.
 
 The encoder capabilities per backend (which of NVENC, VideoToolbox, QSV and VAAPI take 10-bit)
-are on [Hardware acceleration](../../deploy/hardware/overview.md).
+are on [Hardware acceleration](../../deploy/hardware.md).

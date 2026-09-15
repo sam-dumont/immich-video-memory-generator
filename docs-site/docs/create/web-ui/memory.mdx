@@ -37,10 +37,10 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 
 Four of them do something the picker does not show:
 
-- **[Trip](../memory-types/trip-memories.mdx)**: discovery reaches a month either side of the selected year, so a trip across New Year keeps its full dates; only trips overlapping that year are offered. The year picker includes years with only photos, and the dropdown counts photos as well as videos.
-- **On This Day** and **[Holiday](../memory-types/holiday.mdx)** do not cover one continuous period. Each builds a separate window per year and the page fetches every one, so five years of Christmas queries five windows around Christmas, not the five years between them.
-- **[Album](../memory-types/album-memories.mdx)** is its own pool: the album decides what is in the memory, so it carries no person filter, and the title defaults to the album's name (the title model is not asked for a second opinion).
-- **[Surprise me](../memory-types/special-days.mdx)** offers only the days [`discover-days`](../cli/discover-days.md) wrote to `~/.immich-memories/special-days.json`, anniversaries first and labelled *"10 years ago: A long evening out"*. With no catalogue the page says which file it looked for and which command builds one; it will not offer a random day.
+- **[Trip](../memory-types.mdx#trip)**: discovery reaches a month either side of the selected year, so a trip across New Year keeps its full dates; only trips overlapping that year are offered. The year picker includes years with only photos, and the dropdown counts photos as well as videos.
+- **On This Day** and **[Holiday](../memory-types.mdx#holiday)** do not cover one continuous period. Each builds a separate window per year and the page fetches every one, so five years of Christmas queries five windows around Christmas, not the five years between them.
+- **[Album](../memory-types.mdx#album)** is its own pool: the album decides what is in the memory, so it carries no person filter, and the title defaults to the album's name (the title model is not asked for a second opinion).
+- **[Surprise me](../memory-types.mdx#special-day-surprise-me)** offers only the days [`discover-days`](../cli/discover-days.md) wrote to `~/.immich-memories/special-days.json`, anniversaries first and labelled *"10 years ago: A long evening out"*. With no catalogue the page says which file it looked for and which command builds one; it will not offer a random day.
 
 ### People
 

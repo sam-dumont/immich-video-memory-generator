@@ -45,18 +45,7 @@ const sidebars: SidebarsConfig = {
             'create/cli/discovery-and-utility',
           ],
         },
-        {
-          type: 'category',
-          label: 'Memory Types',
-          items: [
-            'create/memory-types/year-in-review',
-            'create/memory-types/monthly-person-season',
-            'create/memory-types/holiday',
-            'create/memory-types/trip-memories',
-            'create/memory-types/album-memories',
-            'create/memory-types/special-days',
-          ],
-        },
+        'create/memory-types',
         {
           type: 'category',
           label: 'Recipes',
@@ -119,18 +108,7 @@ const sidebars: SidebarsConfig = {
             'deploy/configuration/editorial-preparation',
           ],
         },
-        {
-          type: 'category',
-          label: 'Hardware Acceleration',
-          items: [
-            'deploy/hardware/overview',
-            'deploy/hardware/nvidia',
-            'deploy/hardware/apple-silicon',
-            'deploy/hardware/intel-qsv',
-            'deploy/hardware/amd-vaapi',
-            'deploy/hardware/cpu-only',
-          ],
-        },
+        'deploy/hardware',
         {
           type: 'category',
           label: 'Common Setups',

@@ -157,7 +157,7 @@ CRF is the image-quality authority. `quality` is only a shorthand used when `crf
 an explicit `crf` wins. The number is on **libx265's CRF scale**, which is the reference every
 other encoder is calibrated against: each backend gets whatever setting reproduces the same
 picture, measured by SSIM, rather than the same integer. See
-[the hardware overview](../deploy/hardware/overview.md#quality-one-dial-calibrated-per-encoder)
+[the hardware overview](../deploy/hardware.md#quality-one-dial-calibrated-per-encoder)
 for the measured table. Lower CRF still means higher quality everywhere.
 
 The presets are points on that curve, measured on 1080p60 film and (for `balanced`) judged by
