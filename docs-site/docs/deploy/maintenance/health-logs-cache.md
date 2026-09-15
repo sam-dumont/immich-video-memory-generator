@@ -16,6 +16,10 @@ sidebar_label: "Health, Logs & Cache"
 degraded one is passed through as `degraded` with the same `200`, which is what makes it useless as
 a probe.
 
+The two detailed endpoints reuse a snapshot for up to ten seconds to avoid repeating Immich
+and database reads on every poll. Polling `/health` does not change the status returned by
+`/health/ready`; both can be used at the same time.
+
 All three are unauthenticated, on purpose and even with login turned on: a container runtime has no
 session. They carry the version, whether config is present and whether Immich answered, and nothing
 about your library. Put them behind your ingress rules if that is more than you want to publish.
