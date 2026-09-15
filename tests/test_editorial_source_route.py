@@ -160,8 +160,12 @@ def test_only_exact_native_centisecond_rounding_is_reconciled_and_reported():
 
 
 def test_negative_video_source_never_borrows_photograph_duration():
-    with pytest.raises(ValueError, match="invalid duration"):
-        demand([make_clip("negative", duration=-1)])
+    """A negative duration is refused at source admission (#1013), before the
+    route's own guard could see it; the guard stays for defense in depth."""
+    prepared, rows = demand([make_clip("negative", duration=-1)])
+    assert rows == ()
+    assert prepared.excluded_ids == ("negative",)
+    assert "metadata" in prepared.trace.story_of("negative").reason
 
 
 def test_changed_live_companion_or_trim_fails_before_rendering():

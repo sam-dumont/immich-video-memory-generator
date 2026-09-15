@@ -100,6 +100,10 @@ class SourceScope:
     # This never relaxes date/person/library scope, privacy, owner exclusions,
     # or Live Photo component handling.
     accept_any_provenance: bool = False
+    # Cost, decided on Immich metadata before any download or analysis: one
+    # selected six-second shot once dragged a 37GB hour-long original into
+    # preparation (#1013). 0 disables the cap.
+    max_source_video_seconds: float = 300.0
     # Visibility, not provenance: whether Immich shows an asset on the timeline
     # at all. Off by default and hard-coded off at generation, so pointing
     # analysis at the archive on purpose stays possible without a forgotten
