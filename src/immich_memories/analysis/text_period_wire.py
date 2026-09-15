@@ -38,7 +38,8 @@ dictionaries; - means unavailable. Use only these facts. Consecutive away days t
 are one occasion. State what the period was, not whether it was good. Episode and asset identifiers
 are private; use only the numeric episode aliases.
 
-Return JSON only:
+Return JSON only, at most 20 evidence rows, 12 tensions, 12 recurring threads.
+Each observation is at most 180 characters. Cite only the episodes needed to support it.
 {{"schema_version":"period-insight-text-v1","thesis":"at most 80 words",
 "evidence":[{{"observation":"what this shows about the period","episodes":[1,2]}}],
 "tensions":["at most 12 words"],"recurring_threads":["at most 8 words"]}}

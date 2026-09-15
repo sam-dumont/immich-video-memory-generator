@@ -18,6 +18,12 @@ attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
 
+Large period accounts page their episode evidence at 48,000 request characters. Story weighing
+also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
+candidates, and keeps join-compatible stories together. Both orders of every page must validate
+before any weights, titles or joins change; central confirmation must hold across pages. Smaller
+story tables retain their existing two requests and cache keys.
+
 ## Two Trees
 
 `src/immich_memories/` is the app. `services/inference/immich_memories_inference/` is a second

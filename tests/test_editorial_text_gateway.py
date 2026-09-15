@@ -210,6 +210,29 @@ def test_sync_prompt_requester_is_safe_when_called_inside_an_event_loop(
     assert asyncio.run(caller()) == "STILL SYNCHRONOUS"
 
 
+def test_production_period_requester_returns_overflow_to_the_paging_reader(monkeypatch):
+    from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
+    from immich_memories.config_loader import Config
+
+    budgets = []
+
+    # WHY: replace the external model transport with a truncated reply, then a
+    # timeout if a larger retry masks the overflow the period reader must handle.
+    async def query(*_args, **kwargs):
+        budgets.append(kwargs["max_tokens"])
+        if len(budgets) == 1:
+            raise gateway.LLMIncompleteResponse("incomplete period answer")
+        raise TimeoutError("oversized retry")
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    requester = EditorialRuntimePorts().period_requester_factory(Config())
+
+    with pytest.raises(gateway.LLMIncompleteResponse):
+        requester("Read this large period.")
+
+    assert budgets == [3000]
+
+
 def test_sync_prompt_requester_honors_a_smaller_budget_but_never_doubles_past_ceiling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
