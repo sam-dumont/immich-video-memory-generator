@@ -55,12 +55,6 @@ jobs:
           fetch-tags: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
       - name: Analyze commits and merged branches
         id: analyze
         env:
@@ -69,125 +63,9 @@ jobs:
           INFERENCE_ONLY: ${{ inputs.inference_only }}
         run: |
           if [[ "$INFERENCE_ONLY" == "true" ]]; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "next_version=0+g${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Get the latest version tag globally (not just reachable from HEAD)
-          # git describe only finds tags in commit ancestry — unreliable after merges
-          git fetch --tags --force 2>/dev/null || true
-          PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | head -1)
-
-          echo "All version tags (latest first):"
-          git tag --list 'v*' --sort=-version:refname | head -5
-
-          if [[ -z "$PREV_TAG" ]]; then
-            echo "No previous tag found, this will be the first release"
-            PREV_VERSION="0.0.0"
-            COMMIT_RANGE="HEAD"
+            python3 scripts/release_analyze.py --inference-only >> "$GITHUB_OUTPUT"
           else
-            PREV_VERSION=${PREV_TAG#v}
-            # Use merge-base to get commits since last tag, even if tag is on different branch
-            MERGE_BASE=$(git merge-base "$PREV_TAG" HEAD 2>/dev/null || echo "")
-            if [[ -n "$MERGE_BASE" ]]; then
-              COMMIT_RANGE="$PREV_TAG..HEAD"
-            else
-              COMMIT_RANGE="HEAD"
-            fi
-          fi
-          echo "Previous tag: $PREV_TAG"
-          echo "Previous version: $PREV_VERSION"
-          echo "Commit range: $COMMIT_RANGE"
-
-          # Initialize release type from commits
-          RELEASE_TYPE="none"
-
-          # Check merged branch names since last tag for version hints
-          echo "Checking merged branches..."
-          if [[ -n "$PREV_TAG" ]]; then
-            MERGED_BRANCHES=$(git log $COMMIT_RANGE --merges --pretty=format:"%s" 2>/dev/null || echo "")
-          else
-            MERGED_BRANCHES=$(git log --merges --pretty=format:"%s" 2>/dev/null || echo "")
-          fi
-
-          echo "Merged branches:"
-          echo "$MERGED_BRANCHES"
-
-          # Check branch names for version indicators
-          # breaking/* or major/* -> major
-          # feat/* or feature/* or minor/* -> minor
-          # fix/* or bugfix/* or patch/* -> patch
-          if grep -qiE "(breaking/|major/)" <<< "$MERGED_BRANCHES"; then
-            echo "Found breaking/major branch merge"
-            RELEASE_TYPE="major"
-          elif grep -qiE "(feat/|feature/|minor/)" <<< "$MERGED_BRANCHES"; then
-            echo "Found feature/minor branch merge"
-            if [[ "$RELEASE_TYPE" != "major" ]]; then
-              RELEASE_TYPE="minor"
-            fi
-          elif grep -qiE "(fix/|bugfix/|patch/|hotfix/)" <<< "$MERGED_BRANCHES"; then
-            echo "Found fix/patch branch merge"
-            if [[ "$RELEASE_TYPE" == "none" ]]; then
-              RELEASE_TYPE="patch"
-            fi
-          fi
-
-          # Read full squash messages: breaking-change footers live in the body.
-          if [[ -n "$PREV_TAG" ]]; then
-            COMMITS=$(git log $COMMIT_RANGE --pretty=format:"%B" 2>/dev/null || echo "")
-          else
-            COMMITS=$(git log --pretty=format:"%B" 2>/dev/null || echo "")
-          fi
-
-          # A grep -q pipeline can SIGPIPE its writer and fail under pipefail.
-          if grep -qE "^[a-z]+(\(.+\))?!:|^BREAKING[ -]CHANGE:" <<< "$COMMITS"; then
-            RELEASE_TYPE="major"
-          elif grep -qE "^feat(\(.+\))?:" <<< "$COMMITS"; then
-            if [[ "$RELEASE_TYPE" != "major" ]]; then
-              RELEASE_TYPE="minor"
-            fi
-          elif grep -qE "^(fix|perf)(\(.+\))?:" <<< "$COMMITS"; then
-            if [[ "$RELEASE_TYPE" == "none" ]]; then
-              RELEASE_TYPE="patch"
-            fi
-          fi
-
-          # Allow manual override
-          if [[ "$FORCE_VERSION" != "" && "$FORCE_VERSION" != "auto" ]]; then
-            echo "Forcing version bump: $FORCE_VERSION"
-            RELEASE_TYPE="$FORCE_VERSION"
-          fi
-
-          echo "Determined release type: $RELEASE_TYPE"
-
-          if [[ "$RELEASE_TYPE" == "none" ]]; then
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "No releasable changes found"
-          else
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-
-            # Calculate next version
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$PREV_VERSION"
-            MAJOR=${MAJOR:-0}
-            MINOR=${MINOR:-0}
-            PATCH=${PATCH:-0}
-
-            case "$RELEASE_TYPE" in
-              major)
-                NEXT_VERSION="$((MAJOR + 1)).0.0"
-                ;;
-              minor)
-                NEXT_VERSION="$MAJOR.$((MINOR + 1)).0"
-                ;;
-              patch)
-                NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-                ;;
-            esac
-
-            echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
-            echo "Next version: $NEXT_VERSION"
+            python3 scripts/release_analyze.py --force-version "${FORCE_VERSION:-auto}" >> "$GITHUB_OUTPUT"
           fi
 
   # Run CI before release
@@ -248,23 +126,6 @@ jobs:
           echo "Built packages:"
           ls -la dist/
           unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
-
-      - name: Push release tag
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
-        run: |
-          # Check if tag already exists (safety valve)
-          if git rev-parse "v$NEXT_VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag v$NEXT_VERSION already exists! Version calculation may be wrong."
-            echo "Existing tags:"
-            git tag --list 'v*' --sort=-version:refname | head -5
-            exit 1
-          fi
-          # Create tag
-          git tag -a "v$NEXT_VERSION" -m "Release v$NEXT_VERSION"
-          git push origin "v$NEXT_VERSION"
 
       - name: Attest build provenance
         id: attest
@@ -328,6 +189,31 @@ jobs:
             echo "### Initial Release" >> release_notes.md
             git log --pretty=format:"- %s (%h)" >> release_notes.md || true
             echo "" >> release_notes.md
+          fi
+
+      # The tag goes out only after every fallible pre-publication step has
+      # succeeded (#1010): a stranded tag must stay a resume signal, not the
+      # only evidence that a release completed.
+      - name: Push release tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          if git rev-parse "v$NEXT_VERSION" >/dev/null 2>&1; then
+            # Resuming an interrupted release finds the tag already in place;
+            # that is expected and idempotent. A tag that already has a GitHub
+            # Release is a genuine double-publication and stays an error.
+            if gh release view "v$NEXT_VERSION" --json tagName >/dev/null 2>&1; then
+              echo "::error::Tag v$NEXT_VERSION already exists and is published!"
+              echo "Existing tags:"
+              git tag --list 'v*' --sort=-version:refname | head -5
+              exit 1
+            fi
+            echo "Tag v$NEXT_VERSION already exists with no release; resuming the interrupted publication"
+          else
+            git tag -a "v$NEXT_VERSION" -m "Release v$NEXT_VERSION"
+            git push origin "v$NEXT_VERSION"
           fi
 
       - name: Create GitHub Release
