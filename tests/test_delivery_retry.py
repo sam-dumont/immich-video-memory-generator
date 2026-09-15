@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories import generate_render as generate_render_module
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.processing.output_contract import OutputProbe
@@ -1023,13 +1024,13 @@ def _prepare_generation(
         "immich_memories.cache.video_cache.VideoDownloadCache",
         lambda **_kwargs: MagicMock(),
     )
-    monkeypatch.setattr(generate_module, "_extract_clips", lambda *_args: [assembly_clip])
+    monkeypatch.setattr(generate_render_module, "_extract_clips", lambda *_args: [assembly_clip])
     monkeypatch.setattr(
-        generate_module,
+        generate_render_module,
         "_build_assembly_settings",
         lambda *_args: AssemblySettings(encoding_plan=plan),
     )
-    monkeypatch.setattr(generate_module, "_create_assembler", lambda *_args: Assembler())
+    monkeypatch.setattr(generate_render_module, "_create_assembler", lambda *_args: Assembler())
     monkeypatch.setattr(generate_module, "_run_music_phase", music_phase)
     monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
     monkeypatch.setattr(generate_module, "_cleanup_temp_clips", lambda _clips: None)
@@ -1048,7 +1049,6 @@ def test_deferred_generation_returns_exact_context_on_the_caller_owned_tracker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """UI post-processing receives the assembly contract without completing a shadow run."""
-    from immich_memories import generate as generate_module
     from immich_memories.generate import PreparedGeneration, generate_memory
     from immich_memories.processing.assembly_config import AssemblySettings
 
@@ -1061,7 +1061,7 @@ def test_deferred_generation_returns_exact_context_on_the_caller_owned_tracker(
     )
     exact_plan = _h264_plan()
     monkeypatch.setattr(
-        generate_module,
+        generate_render_module,
         "_build_assembly_settings",
         lambda *_args: AssemblySettings(encoding_plan=exact_plan),
     )

@@ -43,7 +43,7 @@ def _mock_extract(clips_with_paths: list[tuple[Path, str, float]]):
             for path, aid, dur in clips_with_paths
         ]
 
-    return patch("immich_memories.generate._extract_clips", side_effect=_extract)
+    return patch("immich_memories.generate_render._extract_clips", side_effect=_extract)
 
 
 class TestGenerateFlowHappyPath:
@@ -120,7 +120,7 @@ class TestGenerateFlowErrors:
         config = Config()
         config.title_screens.enabled = False
 
-        with patch("immich_memories.generate._extract_clips", return_value=[]):
+        with patch("immich_memories.generate_render._extract_clips", return_value=[]):
             params = GenerationParams(
                 clips=[clip],
                 output_path=tmp_path / "output" / "fail.mp4",
@@ -138,7 +138,7 @@ class TestGenerateFlowErrors:
         config.title_screens.enabled = False
 
         with patch(
-            "immich_memories.generate._extract_clips",
+            "immich_memories.generate_render._extract_clips",
             side_effect=RuntimeError("internal kaboom"),
         ):
             params = GenerationParams(

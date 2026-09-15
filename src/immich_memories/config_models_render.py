@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
+from immich_memories.config_models import expand_env_vars
 from immich_memories.processing.encoding_plan import HdrMode
 
 logger = logging.getLogger(__name__)
@@ -107,6 +109,54 @@ class OutputConfig(BaseModel):
             "4k": (3840, 2160),
         }
         return resolutions[self.resolution]
+
+
+class RenderWorkerConfig(BaseModel):
+    """An explicitly trusted worker that receives the selected cut and Immich key."""
+
+    worker_base_url: str = Field(
+        default="", description="Trusted render worker URL; blank renders on this machine"
+    )
+    worker_token: str = Field(default="", repr=False, description="Worker bearer token")
+    timeout_seconds: float = Field(default=3600, gt=0, le=86400)
+    fallback_to_local: bool = Field(
+        default=False, description="Render the same cut locally if the worker fails"
+    )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.worker_base_url)
+
+    @field_validator("worker_base_url", "worker_token", mode="before")
+    @classmethod
+    def expand_env(cls, value: str) -> str:
+        """Use the same credential placeholders as the Immich connection."""
+        return expand_env_vars(value) if isinstance(value, str) else value
+
+    @field_validator("worker_base_url")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        """Keep credentials out of URLs and resolve all routes under one origin."""
+        value = value.strip().rstrip("/")
+        if not value:
+            return ""
+        try:
+            url = urlsplit(value)
+            valid = (
+                url.scheme in {"http", "https"}
+                and bool(url.hostname)
+                and url.username is url.password is None
+                and not url.query
+                and not url.fragment
+            )
+            _ = url.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError(
+                "worker_base_url needs an HTTP(S) URL without credentials, query or fragment"
+            )
+        return value
 
 
 class TitleScreenConfig(BaseModel):

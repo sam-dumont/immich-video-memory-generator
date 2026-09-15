@@ -40,6 +40,7 @@ def _plan_record(artifact: RenderArtifact, probe) -> dict:
         "render_metrics": probe.render_metrics(plan),
         "encoder": plan.encoder,
         "music_mute_windows": artifact.music_mute_windows,
+        "clips": artifact.clips,
         "degradations": artifact.degradations,
     }
 
@@ -69,8 +70,12 @@ class RenderJobs:
         self.root = Path(self._session.name)
 
     def health(self) -> dict:
+        from immich_memories import __version__
+
         capabilities = self._pool.submit(self.renderer.health).result()
         return capabilities | {
+            "app_version": __version__,
+            "contract_version": 1,
             "worker_id": str(self.worker_id),
             "started_at": self.started_at.isoformat(),
         }

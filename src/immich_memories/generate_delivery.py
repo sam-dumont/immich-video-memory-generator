@@ -35,7 +35,7 @@ def _delivery_error(message: str) -> DeliveryError:
     return DeliveryError(message)
 
 
-def _safe_delivery_message(exc: Exception, config: Config) -> str:
+def _safe_delivery_message(exc: Exception | str, config: Config) -> str:
     """Sanitize one delivery error, including unlabelled configured secrets."""
     safe_message = sanitize_error_message(str(exc))
     for secret in configured_secret_values(config):

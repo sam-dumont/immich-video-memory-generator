@@ -194,7 +194,7 @@ def test_disabled_cache_prefetch_uses_run_owned_path_and_not_source_client(
     tmp_path: Path, monkeypatch
 ) -> None:
     from immich_memories.api.compatibility import ApiVersionPolicy
-    from immich_memories.generate import _build_download_coordinator
+    from immich_memories.generate_render import _build_download_coordinator
     from immich_memories.processing import download_coordinator
 
     created_clients: list[object] = []
@@ -234,7 +234,7 @@ def test_disabled_cache_prefetch_uses_run_owned_path_and_not_source_client(
 
 def test_build_coordinator_skips_opaque_caller_owned_client(tmp_path: Path) -> None:
     """Compatibility clients without connection metadata keep the serial path."""
-    from immich_memories.generate import _build_download_coordinator
+    from immich_memories.generate_render import _build_download_coordinator
 
     params = MagicMock()
     params.client = object()

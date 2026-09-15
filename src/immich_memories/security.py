@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 # Field names that hold a secret, wherever they appear in the config tree.
 CREDENTIAL_FIELD_NAMES = frozenset(
-    {"api_key", "caption_api_key", "password", "client_secret", "trigger_token"}
+    {"api_key", "caption_api_key", "password", "client_secret", "trigger_token", "worker_token"}
 )
 
 

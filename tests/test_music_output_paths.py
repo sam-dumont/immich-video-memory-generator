@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from immich_memories import generate_render as generate_render_module
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
 from tests.conftest import make_clip
@@ -875,13 +876,13 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
     with (
         patch("immich_memories.tracking.RunTracker", return_value=tracker),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
         patch.object(
-            generate_module,
+            generate_render_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=plan),
         ),
-        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
         patch(
             "immich_memories.generate_music.apply_music_file",
             side_effect=RuntimeError("music backend unavailable"),
@@ -944,13 +945,13 @@ def test_no_music_skips_core_music_phase_entirely(
     with (
         patch("immich_memories.tracking.RunTracker", return_value=MagicMock()),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
         patch.object(
-            generate_module,
+            generate_render_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=plan),
         ),
-        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
         patch.object(generate_module, "_run_music_phase") as music_phase,
         patch.object(generate_module, "_cleanup_temp_clips"),
     ):

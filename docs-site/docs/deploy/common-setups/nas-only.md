@@ -6,7 +6,9 @@ sidebar_label: "NAS + a model box"
 
 For Synology, QNAP, Unraid and TrueNAS users who already run Immich on the box.
 
-The app, the caches, image preparation and the render all run on the NAS. The one thing a tested
+The app, caches and image preparation run on the NAS. Rendering also runs there by default;
+a [GPU render worker](../running-modes.md#rendering-on-another-machine) can take that stage.
+The one thing a tested
 DS423+ cannot hold is the 30B vision reader (about 17 GB resident at 4-bit): that goes on a Mac
 with 32 GB or a box with a 24 GB GPU, or you skip it with `reader: rules`. This is the NAS-shaped
 version of the [self-hosting guide](../self-hosting.md).
@@ -45,6 +47,9 @@ Below `full` the family-viewing gate can refuse but never clear, so a `sendable`
 captions.
 
 ## Docker Compose
+
+If you have an NVIDIA box or cluster, you can also
+[let it render](#let-the-gpu-box-render).
 
 ```yaml
 services:
@@ -122,7 +127,31 @@ Moving the picture facts to a GPU box with the
 [inference service](../installation/inference-service.md) took this NAS from 1.4404 s a picture to
 1.0865 on the demo month.
 
-### A reader you do not host
+## Let the GPU box render
+
+Deploy the
+[render worker](https://github.com/sam-dumont/immich-video-memory-generator/tree/main/services/render-worker)
+on the GPU box, using the same app version. Add this to the NAS app's configuration:
+
+```yaml
+render:
+  worker_base_url: https://render.example.com
+  worker_token: ${RENDER_WORKER_TOKEN}
+  fallback_to_local: false
+```
+
+Pass the same worker token to both processes, then run `immich-memories preflight -v`.
+The NAS sends the selected cut and its scoped Immich key. The worker downloads
+the originals directly, renders and returns the film; the NAS checks the result
+before music or upload. Selection, speech-safe cuts and stitched Live durations
+stay intact.
+
+A real Synology-to-NVIDIA T1000 replay completed a 55-second, 15-clip 1080p H.265
+film in **9 min 26 s**, including transfer and full decode validation on the NAS.
+That used an existing February cut and made no model calls. Fresh preparation
+and selection are additional work; this is not a first-run estimate.
+
+## A reader you do not host
 
 With no second machine, the third option is a provider: same `model` reader, same contract, and
 800 px tiles of the few dozen candidates the edit asks about leave your network, along with their

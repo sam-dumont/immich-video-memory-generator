@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from immich_memories import generate_render as generate_render_module
 from immich_memories.config_loader import Config
 from immich_memories.generate import (
     GenerationError,
     GenerationParams,
-    _apply_final_content_budget,
     _build_assembly_settings,
     _report,
     _total_clip_duration,
@@ -22,6 +22,9 @@ from immich_memories.generate import (
 )
 from immich_memories.generate_music import music_config_available
 from immich_memories.generate_privacy import clip_location_name
+from immich_memories.generate_timeline import (
+    apply_final_content_budget as _apply_final_content_budget,
+)
 from immich_memories.generate_timeline import (
     validate_final_duration as _validate_final_duration,
 )
@@ -411,15 +414,15 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             return_value=video_cache,
         ),
         patch.object(
-            generate_module, "_extract_clips", side_effect=extract_at_download_ownership
+            generate_render_module, "_extract_clips", side_effect=extract_at_download_ownership
         ) as extract_clips,
         patch.object(
-            generate_module,
+            generate_render_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=encoding_plan),
         ) as build_settings,
         patch.object(
-            generate_module, "_create_assembler", return_value=Assembler()
+            generate_render_module, "_create_assembler", return_value=Assembler()
         ) as create_assembler,
         patch.object(generate_module, "_run_music_phase"),
         patch.object(generate_module, "_cleanup_temp_clips"),
@@ -523,13 +526,15 @@ def test_generation_validation_failure_preserves_old_final_and_stops_downstream_
         patch("immich_memories.tracking.generate_run_id", return_value="fixed-run"),
         patch("immich_memories.tracking.RunTracker", return_value=tracker),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
         patch.object(
-            generate_module,
+            generate_render_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=_h264_output_plan()),
         ),
-        patch.object(generate_module, "_create_assembler", return_value=WrongCodecAssembler()),
+        patch.object(
+            generate_render_module, "_create_assembler", return_value=WrongCodecAssembler()
+        ),
         patch.object(generate_module, "_run_music_phase", music_phase),
         patch("immich_memories.generate_delivery._upload_to_immich", upload),
         patch.object(generate_module, "_cleanup_temp_clips"),

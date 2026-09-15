@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md uv.lock ./
 COPY src/ ./src/
 COPY packages/ ./packages/
+COPY services/render-worker/ ./services/render-worker/
 COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
 COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
 
@@ -76,6 +77,9 @@ RUN pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt .
 
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
     pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --find-links=/torch-cpu --constraint /constraints.txt "${INSTALL_TARGET}"
+
+# The worker uses the app and HTTP dependencies already built above.
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir=/wheels ./services/render-worker
 
 
 # Stage 2: Runtime image

@@ -88,6 +88,20 @@ class NativeRenderer:
             plan,
             probe=probe,
             music_mute_windows=result.music_mute_windows,
+            clips=tuple(
+                {
+                    "asset_id": clip.asset_id,
+                    "duration": clip.duration,
+                    "is_photo": clip.is_photo,
+                    "date": clip.date,
+                    "llm_emotion": clip.llm_emotion,
+                    "latitude": clip.latitude,
+                    "longitude": clip.longitude,
+                    "location_name": clip.location_name,
+                }
+                for clip in result.assembly_clips
+                if not clip.is_title_screen
+            ),
             degradations=tuple(degradations),
         )
 

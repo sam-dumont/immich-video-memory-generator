@@ -34,6 +34,7 @@ from immich_memories.config_models_render import (
     DefaultsConfig,
     OutputConfig,
     PhotoConfig,
+    RenderWorkerConfig,
     TitleScreenConfig,
 )
 from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
@@ -317,6 +318,7 @@ class Config(BaseSettings):
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    render: RenderWorkerConfig = Field(default_factory=RenderWorkerConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     hardware: HardwareAccelConfig = Field(default_factory=HardwareAccelConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)

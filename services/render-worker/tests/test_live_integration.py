@@ -9,7 +9,12 @@ from test_native_integration import _serve
 
 
 @pytest.mark.integration
-def test_native_renders_live_sources_titles_and_audio(tmp_path):
+@pytest.mark.parametrize(
+    ("through_app", "fallback"),
+    [(False, False), (True, False), (True, True)],
+    ids=["native", "app-worker", "local-fallback"],
+)
+def test_native_renders_live_sources_titles_and_audio(tmp_path, through_app, fallback):
     from immich_memories_render_worker.models import RenderRequest
     from immich_memories_render_worker.native import NativeRenderer
 
@@ -47,7 +52,12 @@ def test_native_renders_live_sources_titles_and_audio(tmp_path):
         directory = tmp_path / "job"
         directory.mkdir()
         renderer = NativeRenderer()
-        artifact = renderer.render(RenderRequest.model_validate(body), directory, lambda *_: None)
+        if through_app:
+            artifact = _through_app(body, directory, fallback=fallback)
+        else:
+            artifact = renderer.render(
+                RenderRequest.model_validate(body), directory, lambda *_: None
+            )
         if renderer.health()["accelerated"]:
             assert artifact.encoding_plan.encoder == "h264_nvenc"
         decoded = subprocess.run(
@@ -80,3 +90,42 @@ def test_native_renders_live_sources_titles_and_audio(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def _through_app(body, directory, *, fallback):
+    from contextlib import nullcontext
+
+    from immich_memories_render_worker.models import RenderRequest
+    from immich_memories_render_worker.native_plan import generation_params
+    from immich_memories_render_worker.renderer import RenderArtifact
+
+    from conftest import WORKER_TOKEN, running_worker
+    from immich_memories.api.sync_client import SyncImmichClient
+    from immich_memories.config_models_render import RenderWorkerConfig
+    from immich_memories.generate import generate_memory
+    from immich_memories.processing.output_contract import validate_output
+    from immich_memories.tracking import RunTracker
+
+    worker = (
+        nullcontext("http://127.0.0.1:1")
+        if fallback
+        else running_worker(directory / "worker", body["immich"]["url"])
+    )
+    with SyncImmichClient(body["immich"]["url"], body["immich"]["api_key"]) as client:
+        params = generation_params(
+            RenderRequest.model_validate(body), directory, client, lambda *_: None
+        )
+        params.clips[0].audio_categories = ["speech", "music"]
+        tracker = RunTracker(
+            "app-live-test", db_path=params.config.cache.database_path, capture_system=False
+        )
+        with worker as url:
+            params.config.render = RenderWorkerConfig(
+                worker_base_url=url, worker_token=WORKER_TOKEN, fallback_to_local=fallback
+            )
+            result = generate_memory(params, run_tracker=tracker, defer_finalization=True)
+    assert result.assembly_clips[0].duration == 2.0
+    assert result.music_mute_windows == [(1.0, 3.0)]
+    return RenderArtifact(
+        result.path, result.encoding_plan, probe=validate_output(result.path, result.encoding_plan)
+    )

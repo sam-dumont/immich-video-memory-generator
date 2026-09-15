@@ -18,6 +18,7 @@ class RenderArtifact:
     # The assembler is the only place the final sequence and its transitions
     # coexist, so a caller mixing music later cannot work these out itself.
     music_mute_windows: list[tuple[float, float]] | None = None
+    clips: tuple[dict, ...] = ()
     degradations: tuple[str, ...] = field(default=())
 
 

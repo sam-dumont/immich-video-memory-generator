@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories import generate_render as generate_render_module
+
 
 def _probe_payload() -> dict[str, object]:
     return {
@@ -314,7 +316,7 @@ def test_hot_assembly_metadata_consumers_share_one_probe(tmp_path: Path, monkeyp
 def test_probe_cache_keyword_is_only_passed_to_compatible_callables(
     callable_factory, expected_kwargs
 ) -> None:
-    from immich_memories.generate import _call_with_optional_probe_cache
+    from immich_memories.generate_render import _call_with_optional_probe_cache
 
     seen: list[dict[str, object]] = []
     callable_under_test = callable_factory(seen)
@@ -325,7 +327,7 @@ def test_probe_cache_keyword_is_only_passed_to_compatible_callables(
 
 
 def test_optional_probe_cache_does_not_mask_internal_type_error() -> None:
-    from immich_memories.generate import _call_with_optional_probe_cache
+    from immich_memories.generate_render import _call_with_optional_probe_cache
 
     def broken(*_args, probe_cache=None):
         assert probe_cache == "cache"
@@ -336,8 +338,7 @@ def test_optional_probe_cache_does_not_mask_internal_type_error() -> None:
 
 
 def test_generation_probe_cache_seams_share_the_exact_cache(monkeypatch) -> None:
-    from immich_memories import generate as generate_module
-    from immich_memories.generate import (
+    from immich_memories.generate_render import (
         _build_settings_with_optional_probe_cache,
         _create_assembler_with_optional_probe_cache,
         _extract_clips_with_optional_prefetch,
@@ -348,10 +349,10 @@ def test_generation_probe_cache_seams_share_the_exact_cache(monkeypatch) -> None
     extract = MagicMock(return_value=[])
     build_settings = MagicMock(return_value="settings")
     create_assembler = MagicMock(return_value="assembler")
-    monkeypatch.setattr(generate_module, "_extract_clips", extract)
-    monkeypatch.setattr(generate_module, "_build_assembly_settings", build_settings)
-    monkeypatch.setattr(generate_module, "_create_assembler", create_assembler)
-    monkeypatch.setattr(generate_module, "_build_download_coordinator", lambda *_args: None)
+    monkeypatch.setattr(generate_render_module, "_extract_clips", extract)
+    monkeypatch.setattr(generate_render_module, "_build_assembly_settings", build_settings)
+    monkeypatch.setattr(generate_render_module, "_create_assembler", create_assembler)
+    monkeypatch.setattr(generate_render_module, "_build_download_coordinator", lambda *_args: None)
 
     _extract_clips_with_optional_prefetch(
         MagicMock(),
@@ -376,8 +377,7 @@ def test_generation_probe_cache_seams_share_the_exact_cache(monkeypatch) -> None
 
 
 def test_generation_probe_cache_seams_preserve_legacy_call_shapes(monkeypatch) -> None:
-    from immich_memories import generate as generate_module
-    from immich_memories.generate import (
+    from immich_memories.generate_render import (
         _build_settings_with_optional_probe_cache,
         _create_assembler_with_optional_probe_cache,
         _extract_clips_with_optional_prefetch,
@@ -399,13 +399,13 @@ def test_generation_probe_cache_seams_preserve_legacy_call_shapes(monkeypatch) -
         return "assembler"
 
     monkeypatch.setattr(
-        generate_module,
+        generate_render_module,
         "_extract_clips",
         MagicMock(side_effect=legacy_extract),
     )
-    monkeypatch.setattr(generate_module, "_build_assembly_settings", legacy_settings)
-    monkeypatch.setattr(generate_module, "_create_assembler", legacy_assembler)
-    monkeypatch.setattr(generate_module, "_build_download_coordinator", lambda *_args: None)
+    monkeypatch.setattr(generate_render_module, "_build_assembly_settings", legacy_settings)
+    monkeypatch.setattr(generate_render_module, "_create_assembler", legacy_assembler)
+    monkeypatch.setattr(generate_render_module, "_build_download_coordinator", lambda *_args: None)
     cache = ProbeCache()
 
     _extract_clips_with_optional_prefetch(MagicMock(), None, Path("/tmp/run"), probe_cache=cache)

@@ -348,13 +348,29 @@ measured, but no real month has run on it: [NAS + a model box](./common-setups/n
 
 The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
-## Title rendering
+## Rendering on another machine
 
 The experimental [render worker](https://github.com/sam-dumont/immich-video-memory-generator/tree/main/services/render-worker)
 can render certified stitched Live clips through its authenticated job API. A real NVIDIA T1000
 check passed with CUDA titles, NVENC, the selected Live duration and retained source audio.
-App-side handoff and NAS month timings are still being completed in #931; the setup timings above
-continue to describe rendering on the app's own host.
+Set [`render.worker_base_url`](../reference/config-reference.md#render-worker) and the shared
+worker token to use it from the CLI or web UI. Selection stays on the app; the worker downloads
+the selected sources and returns the base film. Music and upload finish on the app. The setup
+timings above continue to describe rendering on the app's own host; NAS worker timings are separate.
+
+Measured on 2026-09-15, replaying the existing February selection:
+
+| App and renderer | Film | Worker job | Whole render handoff |
+|---|---|---|---|
+| Synology NAS → NVIDIA T1000 | 15 clips, 55 s, 1080p, 10-bit PQ H.265 with audio | 7 min 15 s (`hevc_nvenc`, CUDA titles) | 9 min 26 s, including NAS retrieval, full decode validation and finalization |
+
+All selected clips and intervals passed the receiving app's validation. Local
+fallback was disabled. This replay made no model calls and did not repeat
+preparation or selection, so it is not a cold-run measurement or a direct speed
+comparison with a different cut. [NAS setup](./common-setups/nas-only.md#let-the-gpu-box-render)
+has the connection settings; `immich-memories preflight -v` reports worker health.
+
+## Title rendering
 
 Every mode above renders title screens the same way: on the GPU kernels where they exist, and with
 PIL where they do not. Which one your machine gets, and what the fallback loses, is on

@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories-render-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: immich-memories-render-worker
+  template:
+    metadata:
+      labels:
+        app: immich-memories-render-worker
+    spec:
+      automountServiceAccountToken: false
+      runtimeClassName: nvidia
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          # Pin to the same versioned image as the submitting app before applying.
+          image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+          command: [python, -m, immich_memories_render_worker]
+          ports:
+            - name: http
+              containerPort: 8093
+          env:
+            - name: IMMICH_MEMORIES_RENDER_WORKER_HOST
+              value: 0.0.0.0
+            - name: IMMICH_MEMORIES_RENDER_WORKER_DIRECTORY
+              value: /app/output/render-worker
+            - name: IMMICH_MEMORIES_RENDER_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: immich-memories-render-worker
+                  key: token
+            - name: IMMICH_MEMORIES_RENDER_WORKER_IMMICH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: immich-memories-render-worker
+                  key: immich-url
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,video,utility
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              nvidia.com/gpu: "1"
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: http
+          volumeMounts:
+            - name: scratch
+              mountPath: /app/output
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-memories-render-worker
+spec:
+  selector:
+    app: immich-memories-render-worker
+  ports:
+    - name: http
+      port: 8093
+      targetPort: http

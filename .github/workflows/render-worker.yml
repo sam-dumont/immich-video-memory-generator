@@ -35,3 +35,4 @@ jobs:
           SERVICE_TREES=services/render-worker
           SERVICE_PACKAGES=services/render-worker/immich_memories_render_worker
       - run: make -C services/render-worker coverage
+      - run: make -C services/render-worker package

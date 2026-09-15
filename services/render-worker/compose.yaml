@@ -1,0 +1,40 @@
+services:
+  render-worker:
+    image: ${IMMICH_MEMORIES_IMAGE:?Set the same versioned image as the app}
+    command: [python, -m, immich_memories_render_worker]
+    restart: unless-stopped
+    ports:
+      - "${RENDER_BIND_ADDRESS:-127.0.0.1}:8093:8093"
+    environment:
+      IMMICH_MEMORIES_RENDER_WORKER_HOST: 0.0.0.0
+      IMMICH_MEMORIES_RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:?Set a shared worker token}
+      IMMICH_MEMORIES_RENDER_WORKER_IMMICH_URL: ${IMMICH_URL:?Set the app's Immich URL}
+      IMMICH_MEMORIES_RENDER_WORKER_DIRECTORY: /app/output/render-worker
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    volumes:
+      - render-scratch:/app/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os, urllib.request;
+          request = urllib.request.Request('http://localhost:8093/health',
+          headers={'Authorization': 'Bearer ' + os.environ['IMMICH_MEMORIES_RENDER_WORKER_TOKEN']});
+          urllib.request.urlopen(request, timeout=5).close()
+      start_period: 60s
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  render-scratch:

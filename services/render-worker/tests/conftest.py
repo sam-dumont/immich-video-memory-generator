@@ -1,5 +1,6 @@
 """One place that builds a job envelope the way an app holding a certified cut would."""
 
+from contextlib import contextmanager
 from uuid import uuid4
 
 WORKER_TOKEN = uuid4().hex
@@ -117,3 +118,60 @@ def worker_app(tmp_path, renderer, **settings):
         ),
         renderer=renderer,
     )
+
+
+@contextmanager
+def running_worker(directory, immich_url):
+    """Run the real entry point: CUDA initialization belongs to its own process and lane."""
+    import os
+    import socket
+    import subprocess
+    import sys
+
+    directory.mkdir(parents=True)
+    with socket.socket() as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        port = reserved.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    environment = os.environ | {
+        "IMMICH_MEMORIES_RENDER_WORKER_TOKEN": WORKER_TOKEN,
+        "IMMICH_MEMORIES_RENDER_WORKER_IMMICH_URL": immich_url,
+        "IMMICH_MEMORIES_RENDER_WORKER_DIRECTORY": str(directory),
+        "IMMICH_MEMORIES_RENDER_WORKER_HOST": "127.0.0.1",
+        "IMMICH_MEMORIES_RENDER_WORKER_PORT": str(port),
+    }
+    with (directory / "worker.log").open("w") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "immich_memories_render_worker"],
+            env=environment,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            _wait_for_worker(process, url)
+            yield url
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+
+def _wait_for_worker(process, url):
+    import time
+
+    import httpx
+
+    with httpx.Client(trust_env=False, timeout=1) as client:
+        for _ in range(450):
+            if process.poll() is not None:
+                raise RuntimeError("Worker exited during startup; inspect worker.log")
+            try:
+                if client.get(f"{url}/health", headers=AUTH).status_code == 200:
+                    return
+            except httpx.HTTPError:
+                pass
+            time.sleep(0.1)
+    raise RuntimeError("Worker startup timed out; inspect worker.log")

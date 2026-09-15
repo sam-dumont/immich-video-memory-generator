@@ -862,17 +862,17 @@ class TestGenerateMemoryInner:
             "disk": patch("immich_memories.generate.check_disk_space"),
             # WHY: _extract_clips downloads from Immich + runs FFmpeg
             "extract": patch(
-                "immich_memories.generate._extract_clips",
+                "immich_memories.generate_render._extract_clips",
                 return_value=[assembly_clip],
             ),
             # WHY: validate_clips checks file existence on disk
             "validate": patch(
-                "immich_memories.generate.validate_clips",
+                "immich_memories.generate_render.validate_clips",
                 return_value=([assembly_clip], []),
             ),
             # WHY: _create_assembler creates VideoAssembler with FFmpeg deps
             "assembler": patch(
-                "immich_memories.generate._create_assembler",
+                "immich_memories.generate_render._create_assembler",
                 return_value=mock_assembler,
             ),
             # WHY: _run_music_phase calls external music generation APIs
@@ -995,15 +995,15 @@ class TestGenerateMemoryInner:
             {name: stack.enter_context(p) for name, p in patches.items()}
             anon_mock = stack.enter_context(
                 patch(
-                    "immich_memories.generate.anonymize_clips_for_privacy",
+                    "immich_memories.generate_render.anonymize_clips_for_privacy",
                     return_value=[assembly_clip],
                 )
             )
             preset_mock = stack.enter_context(
-                patch("immich_memories.generate.anonymize_preset_params", return_value={})
+                patch("immich_memories.generate_render.anonymize_preset_params", return_value={})
             )
             name_mock = stack.enter_context(
-                patch("immich_memories.generate.anonymize_name", return_value="Anon")
+                patch("immich_memories.generate_render.anonymize_name", return_value="Anon")
             )
             _generate_memory_inner(params)
 

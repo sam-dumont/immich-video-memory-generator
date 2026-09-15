@@ -562,14 +562,19 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		echo "   tests/test_ffmpeg_pipe.py for the pattern." && \
 		exit 1)
 
+.PHONY: test-integration-render-worker
+test-integration-render-worker:
+	$(MAKE) -C services/render-worker coverage
+
 integration-coverage-for-diff:  ## Run only the local integration suites the diff touches (used by CI before diff-cover)
-	@CHANGED=$$(git diff --name-only origin/main...HEAD -- 'src/immich_memories/**/*.py' 2>/dev/null); \
+	@CHANGED=$$(git diff --name-only origin/main...HEAD -- 'src/immich_memories/**/*.py' 'services/render-worker/**/*.py' 2>/dev/null); \
 	SUITES=""; \
 	case "$$CHANGED" in *src/immich_memories/titles/*) SUITES="$$SUITES titles";; esac; \
 	case "$$CHANGED" in *src/immich_memories/processing/*) SUITES="$$SUITES processing assembly";; esac; \
 	case "$$CHANGED" in *src/immich_memories/photos/*) SUITES="$$SUITES photos";; esac; \
 	case "$$CHANGED" in *src/immich_memories/audio/*) SUITES="$$SUITES audio-mixing";; esac; \
 	case "$$CHANGED" in *src/immich_memories/generate*) SUITES="$$SUITES assembly";; esac; \
+	case "$$CHANGED" in *src/immich_memories/processing/remote_render*|*services/render-worker/*) SUITES="$$SUITES render-worker";; esac; \
 	SUITES=$$(echo $$SUITES | tr ' ' '\n' | sort -u | tr '\n' ' '); \
 	if [ -z "$$(echo $$SUITES | tr -d ' ')" ]; then \
 		echo "No FFmpeg-reachable source changed -- skipping integration coverage."; \

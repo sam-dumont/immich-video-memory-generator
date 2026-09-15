@@ -3,7 +3,7 @@
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.config import Config
-from immich_memories.config_models_render import TitleScreenConfig
+from immich_memories.config_models_render import RenderWorkerConfig, TitleScreenConfig
 from immich_memories.generate import GenerationParams
 
 
@@ -14,6 +14,8 @@ def worker_config(request) -> Config:
     fields, so anything omitted here turns every job into a spurious 409.
     """
     config = Config()
+    config.render = RenderWorkerConfig()
+    config.output.format = "mp4"
     config.output.codec = request.output.codec
     config.output.codec_policy = request.output.codec_policy
     config.output.hdr_mode = request.output.hdr_mode
@@ -24,6 +26,8 @@ def worker_config(request) -> Config:
         request.titles.model_dump(exclude={"title", "subtitle"})
     )
     config.photos.duration = request.options.photo_duration
+    config.trips.homebase_latitude = request.options.homebase_latitude
+    config.trips.homebase_longitude = request.options.homebase_longitude
     return config
 
 
@@ -62,7 +66,7 @@ def generation_params(request, directory, client, progress) -> GenerationParams:
         output_resolution=request.output.resolution,
         output_orientation=request.output.orientation,
         output_crf=request.output.crf,
-        output_format="mp4",
+        output_format=None,
         no_music=True,
         upload_enabled=False,
         title=request.titles.title or None,

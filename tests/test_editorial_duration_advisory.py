@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from immich_memories import generate_render as generate_render_module
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
 from immich_memories.analysis.editorial_source_route import EditorialSourcePlan
 from immich_memories.operations.editorial_attempt import EditorialAttempt, read_editorial_attempt
@@ -217,13 +218,13 @@ def test_direct_generation_persists_advisory_without_changing_completed_artifact
     with (
         # WHY: VideoDownloadCache would otherwise fetch real Immich video bytes to assemble.
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_module, "_extract_clips", return_value=assembly),
+        patch.object(generate_render_module, "_extract_clips", return_value=assembly),
         patch.object(
-            generate_module,
+            generate_render_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=_h264_output_plan()),
         ),
-        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
         patch.object(generate_module, "_cleanup_temp_clips"),
     ):
         path = generate_memory(params, run_tracker=tracker)

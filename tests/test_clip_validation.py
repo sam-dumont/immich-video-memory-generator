@@ -78,12 +78,33 @@ class TestValidateClips:
 class TestGenerateMemoryValidation:
     """generate_memory should validate clips before assembly."""
 
-    def test_validate_clips_is_imported_in_generate(self):
-        """validate_clips is imported and used in generate.py."""
-        import immich_memories.generate as gen_mod
+    def test_generation_rejects_a_missing_extracted_file(self, tmp_path, monkeypatch):
+        import pytest
 
-        # validate_clips should be a top-level import in the module
-        assert hasattr(gen_mod, "validate_clips"), "validate_clips must be imported in generate.py"
+        from immich_memories import generate_render
+        from immich_memories.config import Config
+        from immich_memories.generate import GenerationError, GenerationParams, generate_memory
+        from immich_memories.tracking import RunTracker
+        from tests.conftest import make_clip
+
+        config = Config(cache={"directory": str(tmp_path / "cache"), "video_cache_enabled": False})
+        tracker = RunTracker(
+            "missing-source", db_path=tmp_path / "runs.sqlite", capture_system=False
+        )
+        clip = make_clip()
+        params = GenerationParams(
+            clips=[clip], output_path=tmp_path / "film.mp4", config=config, no_music=True
+        )
+        # WHY: simulate an extraction writer losing its file before assembly validates it.
+        monkeypatch.setattr(
+            generate_render,
+            "_extract_clips_with_optional_prefetch",
+            lambda *_args, **_kw: [_make_clip(tmp_path / "missing.mp4", asset_id=clip.asset.id)],
+        )
+        with pytest.raises(GenerationError, match="No clips could be processed"):
+            generate_memory(params, run_tracker=tracker)
+        assert not params.output_path.exists()
+        assert tracker.db.get_run(tracker.run_id).status == "failed"
 
     def test_validate_clips_filters_bad_clips_in_pipeline(self, tmp_path: Path):
         """Integration: validate_clips removes missing-file clips before assembly."""

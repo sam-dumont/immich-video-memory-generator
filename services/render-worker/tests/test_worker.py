@@ -33,6 +33,33 @@ def test_worker_health_requires_its_token_and_reports_renderer_capabilities(tmp_
     assert response.json()["started_at"]
 
 
+def test_health_remains_responsive_while_the_gpu_lane_is_rendering(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class Renderer:
+        def health(self):
+            return {"ready": True, "accelerated": True}
+
+        def render(self, request, directory, progress):
+            started.set()
+            release.wait(timeout=5)
+            return stub_artifact(directory)
+
+    with TestClient(worker_app(tmp_path, Renderer()), headers=AUTH) as client:
+        assert client.get("/health").status_code == 200
+        client.post("/jobs", json=render_request_body())
+        assert started.wait(timeout=2)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            health = pool.submit(client.get, "/health")
+            try:
+                assert health.result(timeout=1).json()["ready"] is True
+            finally:
+                release.set()
+
+
 def test_job_is_idempotent_validated_and_downloaded_only_once(tmp_path):
     class Renderer:
         calls = 0

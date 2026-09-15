@@ -1,9 +1,9 @@
-# Render worker (S1)
+# Render worker
 
 One GPU lane, an authenticated job API, and direct Immich downloads. The worker
 runs the existing extraction, title and assembly code. It does no selection,
-captioning, music generation or Immich upload. App-side handoff and deployment
-profiles are later slices of #931.
+model captioning, music generation or Immich upload. The CLI and web UI use it
+when `render.worker_base_url` is configured.
 
 Use the same application revision on the worker and its submitting client.
 Install this package into the app environment with
@@ -17,6 +17,56 @@ stage and about 15% of the whole render, because fetching the originals is
 roughly half of it. So a worker that cannot open NVENC renders the film anyway,
 about 15% slower, and reports the degradation on `/health` and in the job
 record. A dropped selected asset is still a failed job, never a different film.
+
+## Deploy and connect
+
+The app image includes the worker. Use the same versioned image for both roles;
+the client refuses a different app version before submitting footage.
+
+For Docker with the NVIDIA Container Toolkit installed, copy `compose.yaml` to
+an empty directory. Set these variables in that directory's `.env`:
+
+```dotenv
+IMMICH_MEMORIES_IMAGE=ghcr.io/sam-dumont/immich-video-memory-generator:YOUR_APP_TAG
+IMMICH_URL=https://photos.example.com
+RENDER_WORKER_TOKEN=replace-with-a-random-shared-token
+RENDER_BIND_ADDRESS=127.0.0.1
+```
+
+Generate a token with `openssl rand -hex 32`, then run `docker compose up -d`.
+For a NAS connecting across your private LAN, set `RENDER_BIND_ADDRESS` to the
+worker's LAN address. The loopback default is for a reverse proxy on the worker host.
+
+For Kubernetes, copy `kubernetes.yaml`, replace its image with the app's versioned
+image, and create the `immich-memories-render-worker` Secret in the same namespace.
+It needs two keys: `token` (the shared worker token) and `immich-url` (the same URL
+configured on the app). Apply the manifest. It requests one NVIDIA device and
+uses the `nvidia` runtime class; use the runtime class provided by your cluster.
+The Service is internal. A NAS outside the cluster needs your private ingress
+or load balancer pointing to its port 8093.
+
+On the app, add:
+
+```yaml
+render:
+  worker_base_url: https://render.example.com
+  worker_token: ${RENDER_WORKER_TOKEN}
+  timeout_seconds: 3600
+  fallback_to_local: false
+```
+
+Pass the shared token to the app process as `RENDER_WORKER_TOKEN`. Generation
+then follows the normal CLI or UI flow. The worker receives the selected cut
+and scoped Immich key, downloads its sources and returns the base film. The app
+checks the received bytes, canvas, cut duration and audio windows before music
+and upload. A worker failure fails the run unless `fallback_to_local` is enabled.
+That option renders the same selection locally and reports the fallback.
+Run `immich-memories preflight -v` to check worker reachability, version, CUDA
+title support and available encoders before generating.
+
+Manual video cuts, still holds and stitched Live carriers are supported.
+Output is H.264 or H.265 MP4. MOV and ProRes require local rendering. Selection
+and speech-safe cuts happen before the handoff; orientation changes the canvas.
 
 ## Settings
 
@@ -42,9 +92,9 @@ request body, never a URL. Access logs are disabled by the entry point.
 
 ## Job API, version 1
 
-`GET /health` returns `ready`, `accelerated`, `titles`, `encoders`, `worker_id`
-and `started_at`. `accelerated` is true only when the title kernels report CUDA
-and NVENC opened; a deployment that asked for a card and reads false has a
+`GET /health` returns `ready`, `accelerated`, `titles`, `encoders`, `worker_id`,
+`started_at`, `app_version` and `contract_version`. `accelerated` is true only
+when the title kernels report CUDA and NVENC opened; a deployment that asked for a card and reads false has a
 misconfigured `NVIDIA_DRIVER_CAPABILITIES`.
 
 `POST /jobs` accepts this shape and returns HTTP 202 with a status record:
@@ -99,9 +149,11 @@ The `titles` object accepts the full title configuration; `memory` accepts
 overlays, `privacy_mode` and `photo_duration`. These preserve the submitted film
 and source-audio decisions when the worker rebuilds generation parameters.
 
-A job is named after its cut, `(memory_key, plan_digest)`, not after a
-caller-chosen id: two callers holding the same cut get the same job, and a
-retried submission never renders twice. Re-submitting a cut whose job failed
+A job is named after `(memory_key, plan_digest, render_attempt)`. The app creates
+a fresh `render_attempt` UUID for each deliberate render, so changing output
+settings or rendering again after a download works. Repeating the same request
+keeps its job id and does not render twice. Without `render_attempt`, identity
+uses the memory key and timing digest alone. Re-submitting a cut whose job failed
 starts a fresh render. Changed content, including a changed scoped key, while
 that job is live returns 409. Full capacity returns 429. A mismatched Immich URL
 returns 422.
@@ -109,7 +161,7 @@ returns 422.
 `GET /jobs/{job_id}` returns the job record: `job_id`, `memory_key`,
 `plan_digest`, `worker_id`, `state`, `phase`, `progress`, `message`, `error`,
 `submitted_at`, `started_at`, `finished_at`, and once a film exists `encoder`,
-`encoding_plan`, `probe`, `render_metrics`, `music_mute_windows` and
+`encoding_plan`, `probe`, `render_metrics`, `clips`, `music_mute_windows` and
 `degradations`. States are `queued`, `running`, `ready`, `failed` and
 `consumed`. Messages and failures redact the scoped key. Feed `encoding_plan`
 back into `publish_validated_output` to re-run the same three gates on the bytes
@@ -158,5 +210,13 @@ one case renders a film end to end and asserts the software encoder is reported
 as a degradation, the other drops a selected asset and asserts the job fails
 naming it. The Live integration case also renders two certified source clips,
 checks the exact five-second title/content/ending timeline and decodes the retained
-audio. It passed on a real NVIDIA T1000 with CUDA titles and `h264_nvenc` on
-2026-09-15. Full app-to-worker handoff and NAS month measurements remain in #931.
+audio. The app-to-worker variant passed on a real NVIDIA T1000 with CUDA titles
+and `h264_nvenc` on 2026-09-15. Explicit local fallback preserves that same cut
+and audio window when the worker cannot be reached.
+
+The same day's real Synology-to-T1000 replay kept all 15 clips from a saved
+February cut: a 55-second, 1920×1080, 10-bit PQ H.265 film with audio. The worker
+used `hevc_nvenc` and finished its job in 435 seconds; the NAS completed retrieval,
+full decode validation and run finalization in 566 seconds overall. Local
+fallback was disabled. No model calls were made. This is frozen-cut render
+evidence; fresh preparation and reader measurements remain separate in #873.

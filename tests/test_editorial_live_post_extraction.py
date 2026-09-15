@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from immich_memories import generate
+from immich_memories import generate_render as generate_render_module
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationError, GenerationParams
@@ -135,12 +136,16 @@ def test_actual_generation_fails_before_assembly_on_lost_certified_content(
     if boundary == "validation":
         rendered.path.unlink()  # Real validate_clips will drop this missing file.
     else:
-        monkeypatch.setattr(generate, "_apply_final_content_budget", lambda *_args: [])
+        monkeypatch.setattr(
+            generate_render_module, "_apply_final_content_budget", lambda *_args: []
+        )
     monkeypatch.setattr(
-        generate, "_extract_clips_with_optional_prefetch", lambda *_args, **_kw: [rendered]
+        generate_render_module,
+        "_extract_clips_with_optional_prefetch",
+        lambda *_args, **_kw: [rendered],
     )
     assembly = MagicMock(side_effect=AssertionError("changed certified content reached assembly"))
-    monkeypatch.setattr(generate, "_create_assembler", assembly)
+    monkeypatch.setattr(generate_render_module, "_create_assembler", assembly)
     monkeypatch.setattr(generate, "_fail_run_if_running", lambda *args: tracker.fail_run(args[1]))
     with pytest.raises(GenerationError, match="Certified editorial Live source was lost"):
         generate.generate_memory(params, run_tracker=tracker)

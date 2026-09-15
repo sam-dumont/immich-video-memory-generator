@@ -14,7 +14,10 @@ class EnvelopeDrift(ValueError):
 
 def job_identity(request: RenderRequest) -> UUID:
     """Name the job after the cut, never after a caller-chosen correlation id."""
-    return uuid5(_JOBS, f"{request.memory_key}\n{request.timing.sha256}")
+    identity = f"{request.memory_key}\n{request.timing.sha256}"
+    if request.render_attempt is not None:
+        identity += f"\n{request.render_attempt}"
+    return uuid5(_JOBS, identity)
 
 
 def envelope_policy(request: RenderRequest):

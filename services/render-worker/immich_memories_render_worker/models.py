@@ -130,10 +130,13 @@ class RenderOptions(Contract):
     add_place_overlay: bool = False
     privacy_mode: bool = False
     photo_duration: float = Field(default=4.0, ge=1.0, le=10.0)
+    homebase_latitude: float = Field(default=0.0, ge=-90, le=90)
+    homebase_longitude: float = Field(default=0.0, ge=-180, le=180)
 
 
 class RenderRequest(Contract):
     version: Literal[1] = 1
+    render_attempt: UUID | None = None
     memory_key: str = Field(min_length=1, max_length=256)
     immich: ImmichAccess
     plan: RenderPlan
@@ -168,4 +171,5 @@ class JobStatus(Contract):
     probe: dict | None = None
     render_metrics: dict | None = None
     music_mute_windows: list[tuple[float, float]] | None = None
+    clips: tuple[dict, ...] = ()
     degradations: tuple[str, ...] = ()

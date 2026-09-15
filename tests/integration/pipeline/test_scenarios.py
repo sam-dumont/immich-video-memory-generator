@@ -347,7 +347,7 @@ class TestErrorWrapping:
         # WHY: force an error inside assembly to test the wrapping logic
         with (
             patch(
-                "immich_memories.generate._create_assembler",
+                "immich_memories.generate_render._create_assembler",
                 side_effect=RuntimeError("Simulated assembly crash"),
             ),
             pytest.raises(GenerationError, match="Generation failed"),

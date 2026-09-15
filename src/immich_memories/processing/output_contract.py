@@ -7,6 +7,7 @@ import json
 import math
 import os
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -239,6 +240,8 @@ def publish_validated_output(
     staged_path: Path,
     final_path: Path,
     plan: EncodingPlan,
+    *,
+    validate_probe: Callable[[OutputProbe], None] | None = None,
 ) -> OutputProbe:
     """Validate a staged sibling before atomically replacing the final path."""
     if staged_path == final_path:
@@ -251,6 +254,8 @@ def publish_validated_output(
             f"final suffix must be {expected_suffix}, got {final_path.suffix or 'missing'}"
         )
     probe = validate_output(staged_path, plan)
+    if validate_probe is not None:
+        validate_probe(probe)
     os.replace(staged_path, final_path)
     _fsync_directory(final_path.parent)
     return probe
