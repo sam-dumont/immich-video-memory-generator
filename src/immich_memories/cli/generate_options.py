@@ -183,7 +183,10 @@ def output_options(command: FC) -> FC:
             "-O",
             type=click.Path(),
             callback=output_path,
-            help="Output file path",
+            help=(
+                "Output file path. The run writes it inside its own directory and "
+                "adds a recipe hash to the name, so an identical rerun replaces itself"
+            ),
         ),
         click.option(
             "--music",
