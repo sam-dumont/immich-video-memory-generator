@@ -204,6 +204,7 @@ def write_plan_files(
     carriers: Sequence[dict],
     realization: dict,
     dropped: Sequence[tuple[str, str]] = (),
+    render_timing: dict | None = None,
 ) -> None:
     """Leave behind what the structure record and the projection leave after a real run."""
     from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
@@ -214,6 +215,10 @@ def write_plan_files(
         attempt_dir / "plan.private.json",
         json.dumps(
             {
+                # The structure record spreads its timing binding over the plan
+                # the same way, so a reader of this attempt sees the timeline the
+                # renderer was certified against.
+                **({"render_timing": render_timing} if render_timing else {}),
                 "story": {"thesis": _THESIS, "episodes": list(_EPISODES)},
                 "carriers": list(carriers),
                 "content_seconds": content,
@@ -392,7 +397,13 @@ class _FakeEditorialPipeline:
                 candidates = _candidates(kept, photo_seconds=self._app_config.photos.duration)
                 result = self._result(candidates, attempt.directory, len(sources))
                 realization = result.stats["editorial_duration_realization"]
-                write_plan_files(attempt.directory, _carrier_rows(candidates), realization, dropped)
+                write_plan_files(
+                    attempt.directory,
+                    _carrier_rows(candidates),
+                    realization,
+                    dropped,
+                    result.stats.get("editorial_render_timing"),
+                )
                 attempt.complete(
                     selected=len(result.editorial_selections),
                     outcome="selected",

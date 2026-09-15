@@ -5,7 +5,10 @@ plays in capture order, which is how the viewer sees it. This module reads the
 `plan.private.json` every attempt writes, lays the renderer's intervals from
 `render-projection.private.json` over it, and yields one shot per carrier in the
 order they will play: capture day, the story each was granted to, the moment it
-depicts, its length, and a running timecode. A month change gets a chapter
+depicts, its length, and a running timecode. Lengths and timecodes are the
+film's, not the plan's: the renderer squeezes the granted seconds into the
+timeline's content budget and the opening card plays before the first picture,
+so a shot is timed and placed the way it will be watched. A month change gets a chapter
 divider, the way the title planner puts one divider per month shown; a day change
 under one story title is marked so a loose grouping reads as one.
 
@@ -21,6 +24,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from immich_memories.processing.timeline_budget import TimelinePlan, estimate_film_duration
 
 PLAN_FILE = "plan.private.json"
 PROJECTION_FILE = "render-projection.private.json"
@@ -54,8 +59,7 @@ class Shot:
 
     @property
     def timecode(self) -> str:
-        whole = int(self.start)
-        return f"{whole // 60}:{whole % 60:02d}"
+        return _clock(self.start)
 
     @property
     def kind_label(self) -> str:
@@ -67,6 +71,7 @@ class Shot:
 class Storyboard:
     thesis: str
     shots: tuple[Shot, ...]
+    film_seconds: float | None = None
 
     @property
     def total_seconds(self) -> float:
@@ -74,15 +79,26 @@ class Storyboard:
 
     @property
     def total_label(self) -> str:
-        whole = int(self.total_seconds)
-        return f"{whole // 60}:{whole % 60:02d}"
+        return _clock(self.total_seconds)
 
     @property
     def summary_label(self) -> str:
-        """What the seconds are: pictures and video, before titles and transitions fill the film."""
+        """The pictures and video, and beside them the whole film the title cards make.
+
+        The film's length is an estimate while the file does not exist: smart
+        transitions draw their overlap boundary by boundary.
+        """
         count = len(self.shots)
         noun = "picture" if count == 1 else "pictures"
-        return f"{count} {noun}, {self.total_label} of pictures and video"
+        pictures = f"{count} {noun}, {self.total_label} of pictures and video"
+        if self.film_seconds is None:
+            return pictures
+        return f"{pictures}, about {_clock(self.film_seconds)} of film"
+
+
+def _clock(seconds: float) -> str:
+    whole = int(seconds)
+    return f"{whole // 60}:{whole % 60:02d}"
 
 
 def _month(taken: str) -> str:
@@ -103,37 +119,88 @@ def _interval_seconds(projection: Mapping[str, Any] | None, asset_id: str) -> fl
         return None
 
 
+def _recorded_timeline(plan: Mapping[str, Any]) -> TimelinePlan | None:
+    timeline = (plan.get("render_timing") or {}).get("timeline")
+    if not isinstance(timeline, Mapping):
+        return None
+    try:
+        return TimelinePlan(**timeline)
+    except TypeError:
+        # A record written against a timeline this version no longer knows: the
+        # shot order is still readable, so report it untimed rather than nothing.
+        return None
+
+
+def _content_budget(plan: Mapping[str, Any], timeline: TimelinePlan | None) -> float | None:
+    recorded = (plan.get("duration_realization") or {}).get(
+        "content_budget_seconds", plan.get("content_cap_seconds")
+    )
+    if recorded is not None:
+        return float(recorded)
+    return timeline.content_budget if timeline is not None else None
+
+
+def _film_timing(
+    plan: Mapping[str, Any], content_seconds: float, content_clips: int
+) -> tuple[float, float, float | None]:
+    """The renderer's content squeeze, the opening card's offset and the film's length.
+
+    The squeeze is what `apply_final_content_budget` will apply: a selection over
+    its content budget is scaled down to fit, so a shot is held for less than the
+    editor granted it.
+    """
+    timeline = _recorded_timeline(plan)
+    budget = _content_budget(plan, timeline)
+    squeeze = 1.0
+    if budget is not None and 0.0 < budget < content_seconds:
+        squeeze = budget / content_seconds
+    if timeline is None:
+        return squeeze, 0.0, None
+    policy = (plan.get("render_timing") or {}).get("policy") or {}
+    film = estimate_film_duration(
+        timeline,
+        content_seconds=content_seconds,
+        content_clips=content_clips,
+        transition_mode=policy.get("transition", "none"),
+        transition_duration=float(policy.get("transition_duration") or 0.0),
+    )
+    return squeeze, timeline.title_duration, film
+
+
+def _granted_seconds(projection: Mapping[str, Any] | None, row: Mapping[str, Any]) -> float:
+    seconds = _interval_seconds(projection, str(row.get("asset_id", "")))
+    return float(row.get("seconds") or 0.0) if seconds is None else seconds
+
+
 def storyboard_from_plan(
     plan: Mapping[str, Any], projection: Mapping[str, Any] | None
 ) -> Storyboard:
-    """Every carrier in capture order, timed the way the renderer will hold it."""
+    """Every carrier in capture order, timed and placed the way the renderer will play it."""
     story = plan.get("story") or {}
     titles = {
         str(episode.get("episode") or episode.get("key") or ""): str(episode.get("title") or "")
         for episode in story.get("episodes") or ()
     }
     rows = sorted(plan.get("carriers") or (), key=lambda row: str(row.get("taken") or ""))
+    granted = [_granted_seconds(projection, row) for row in rows]
+    squeeze, start, film_seconds = _film_timing(plan, sum(granted), len(rows))
     shots: list[Shot] = []
-    start = 0.0
     previous_day = previous_month = ""
-    for row in rows:
-        asset_id = str(row.get("asset_id", ""))
+    for row, seconds in zip(rows, granted, strict=True):
         taken = str(row.get("taken") or "")
         day, month = taken[:10], _month(taken)
         key = str(row.get("story_episode") or "")
         title = titles.get(key, key)
-        seconds = _interval_seconds(projection, asset_id)
-        if seconds is None:
-            seconds = float(row.get("seconds") or 0.0)
+        held = round(seconds * squeeze, 2)
         shots.append(
             Shot(
-                asset_id=asset_id,
+                asset_id=str(row.get("asset_id", "")),
                 taken=taken,
                 day=day,
                 story_key=key,
                 story_title=title,
                 moment=str(row.get("depicted_moment") or ""),
-                seconds=seconds,
+                seconds=held,
                 start=round(start, 2),
                 motion=str(row.get("kind", "")) in MOTION_KINDS,
                 new_day=day != previous_day,
@@ -141,9 +208,11 @@ def storyboard_from_plan(
                 reason=carrier_reason(row.get("why"), title),
             )
         )
-        start += seconds
+        start += held
         previous_day, previous_month = day, month
-    return Storyboard(thesis=str(story.get("thesis") or ""), shots=tuple(shots))
+    return Storyboard(
+        thesis=str(story.get("thesis") or ""), shots=tuple(shots), film_seconds=film_seconds
+    )
 
 
 def read_storyboard(attempt_dir: Path) -> Storyboard | None:

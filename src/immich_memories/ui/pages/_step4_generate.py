@@ -22,6 +22,7 @@ from immich_memories.ui.components import (
     im_separator,
 )
 from immich_memories.ui.nicegui_compat import io_bound_result, run_ui_observer
+from immich_memories.ui.pages.film_length import measured_film_label
 from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS, resolve_scale_mode_label
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ def _restore_completed_ui_state(state, completed, fallback_output_path: Path | N
         Path(completed.output_path) if completed.output_path else fallback_output_path
     )
     state.generation_warning = "\n".join(completed.warnings) or None
+    state.output_duration_seconds = completed.output_duration_seconds
     state.delivery_status = completed.delivery_status
 
 
@@ -339,7 +341,6 @@ async def execute_ui_generation(
 async def run_generation(
     state,
     selected_clips,
-    total_duration: float,
     output_dir: Path,
     output_path: Path,
     filename_input,
@@ -356,6 +357,7 @@ async def run_generation(
 
     state.delivery_status = DeliveryStatus.NOT_REQUESTED
     state.output_path = None
+    state.output_duration_seconds = 0.0
     run_tracker = None
     # Mutable ref so the lambda closure can access the button after creation
     cancel_ref: list[ui.button | None] = [None]
@@ -608,7 +610,7 @@ def _format_file_size(path: Path) -> str:
 
 
 def _show_output(output_container, result_path: Path, state) -> None:
-    """Display the generated video with success state."""
+    """Display the generated video with success state, and the length it actually runs."""
     ui.notify("Video generated successfully!", type="positive")
     output_container.clear()
     with output_container:
@@ -629,6 +631,8 @@ def _show_output(output_container, result_path: Path, state) -> None:
                     ui.label(f"Saved to: {result_path} ({file_size})").classes("text-sm").style(
                         "color: var(--im-text-secondary)"
                     )
+                if (length := measured_film_label(state)) is not None:
+                    ui.label(length).classes("text-sm").style("color: var(--im-text-secondary)")
                 if state.generation_warning:
                     ui.label(state.generation_warning).classes("text-sm").style(
                         "color: var(--im-warning)"

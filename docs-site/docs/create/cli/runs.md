@@ -61,6 +61,8 @@ budget, so a per-phase total would understate the bill.
 
 The cut of a run in the order it plays: one line per shot with its timecode, capture day, kind (photo or video), length, the story it was granted to and the reason the editor wrote. A month change prints as a chapter line. It is the same record the web UI's Storyboard tab draws.
 
+Timecodes and lengths are the film's, not the plan's: the renderer squeezes the selected seconds into the timeline's content budget and the opening title card plays before the first picture, and both are applied here. The header line gives the pictures and video, then about how long the whole film runs. That last number is an estimate while the file does not exist, because smart transitions decide fade or cut at each boundary and the overlap they take moves a second either way. `runs show` prints the duration measured from a finished render.
+
 ```bash
 immich-memories runs story              # the most recent completed run
 immich-memories runs story 20260913_08  # a run id or a unique prefix

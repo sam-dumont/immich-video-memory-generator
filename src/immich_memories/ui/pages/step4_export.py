@@ -15,16 +15,10 @@ from immich_memories.ui.components import (
     im_separator,
     im_stat_card,
 )
+from immich_memories.ui.pages.film_length import film_length_stat, measured_film_label
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
-
-
-def format_duration(seconds: float) -> str:
-    """Format duration in human-readable form."""
-    minutes = int(seconds // 60)
-    secs = int(seconds % 60)
-    return f"{minutes}:{secs:02d}"
 
 
 def _render_existing_result(state) -> None:
@@ -37,6 +31,8 @@ def _render_existing_result(state) -> None:
 
     im_section_header("Result", icon="check_circle")
     ui.label(f"Saved to: {output_path}").classes("text-sm").style("color: var(--im-text-secondary)")
+    if (length := measured_film_label(state)) is not None:
+        ui.label(length).classes("text-sm").style("color: var(--im-text-secondary)")
     if state.generation_warning:
         ui.label(state.generation_warning).classes("text-sm").style("color: var(--im-warning)")
     delivery_label = state.delivery_status.value.replace("_", " ").title()
@@ -135,12 +131,6 @@ def render_step4() -> None:
         )
         return
 
-    total_duration = sum(
-        end - start
-        for clip in selected_clips
-        for start, end in (state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5)),)
-    )
-
     options = state.generation_options
 
     # Summary
@@ -156,7 +146,7 @@ def render_step4() -> None:
         im_stat_card("Clips", str(len(selected_clips)), icon="movie")
         if photos_count:
             im_stat_card("Photo Pool", str(photos_count), icon="photo_library")
-        im_stat_card("Duration", format_duration(total_duration), icon="timer")
+        im_stat_card(*film_length_stat(state, selected_clips), icon="timer")
         im_stat_card("Format", options.get("format", "MP4"), icon="video_file")
 
     # Photo preview (if included)
@@ -213,7 +203,6 @@ def render_step4() -> None:
         await run_generation(
             state=state,
             selected_clips=selected_clips,
-            total_duration=total_duration,
             output_dir=output_dir,
             output_path=output_dir / default_filename,
             filename_input=filename_input,

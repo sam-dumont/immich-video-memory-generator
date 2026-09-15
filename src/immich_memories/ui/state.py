@@ -78,6 +78,9 @@ class AppState:
     # that finished, or is still running, while the browser page was gone.
     active_run_id: str | None = None
     generation_warning: str | None = None
+    # The artifact's own duration, as the run tracker ffprobed it. Step 4 shows
+    # this instead of its pre-render estimate once the file exists.
+    output_duration_seconds: float = 0.0
     delivery_status: DeliveryStatus = DeliveryStatus.NOT_REQUESTED
 
     # Music preview (generated in Step 3, used in Step 4)

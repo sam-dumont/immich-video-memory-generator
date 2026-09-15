@@ -204,6 +204,29 @@ def _with_transition_budget(
     )
 
 
+def estimate_film_duration(
+    plan: TimelinePlan,
+    *,
+    content_seconds: float,
+    content_clips: int,
+    transition_mode: Any,
+    transition_duration: float,
+) -> float:
+    """How long the rendered file will run: titles, the content that fits, less the overlap.
+
+    An estimate, and it must be shown as one. ``_pick_transition`` draws an
+    unseeded random number at every boundary in smart mode, so the overlap the
+    assembler actually takes moves from run to run: the demo cut took 6.27 s
+    over 19 boundaries where this expects 6.65 s. Only a finished file has a
+    duration; ffprobe it and show that instead as soon as it exists.
+    """
+    content = min(max(0.0, content_seconds), max(0.0, plan.content_budget))
+    cards = int(plan.title_duration > 0.0) + plan.max_dividers + int(plan.ending_duration > 0.0)
+    boundaries = max(0, max(0, content_clips) + cards - 1)
+    overlap = boundaries * max(0.0, transition_duration) * _transition_ratio(transition_mode)
+    return max(0.0, plan.title_budget + content - overlap)
+
+
 def _selected_month_divider_count(clips: list[Any]) -> int:
     months = list(
         dict.fromkeys(

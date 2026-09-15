@@ -103,7 +103,7 @@ When the cut finishes the page opens on the **Storyboard**: the cut in the order
 <ThemedScreenshot name="memory-story" alt="The storyboard: the thesis, then one shot per picture in capture order with its day, story and running timecode" />
 
 - the **thesis**, above both tabs: the editor's one-paragraph reading of the period;
-- one line with the number of pictures and the seconds of pictures and video they add up to; titles and transitions make up the rest of the film;
+- one line with the number of pictures, the seconds of pictures and video they add up to, and about how long the whole film runs; titles and transitions make up the difference. The film's length is an estimate until the file exists: smart transitions decide fade or cut boundary by boundary, so the overlap they take moves a second either way from one render to the next;
 - a **chapter** label each time the month changes, the way the finished video gets one divider per month shown;
 - one row per picture, in capture order: the running timecode where it starts, a small thumbnail, the capture day (in bold when the day changes), a **Video** or **Still** badge, the seconds it holds, the story it was granted to, the moment it depicts when the editor recorded one, and the editor's one-line reason.
 
@@ -149,9 +149,9 @@ and `immich-memories runs why ASSET_ID --run RUN_ID`.
 
 <ThemedScreenshot name="memory-export" alt="Export: summary, output filename, upload switch" />
 
-**Preview & Export** opens with stat cards (Clips, Photo Pool, Duration, Format) and the **Output** card: the **Output filename** (built from the type, the people and the range, as in `everyone_jan-apr_2025_memories.mp4`), the "Will be saved to" line (`output.directory`, `~/Videos/Memories` by default; the file lands in a per-run subfolder there, `<name>_<YYYYMMDD_HHMMSS_xxxx>/`), and **Upload after generation** with an **Album name** (off by default); nothing in your library is modified either way.
+**Preview & Export** opens with stat cards (Clips, Photo Pool, Film length, Format) and the **Output** card: the **Output filename** (built from the type, the people and the range, as in `everyone_jan-apr_2025_memories.mp4`), the "Will be saved to" line (`output.directory`, `~/Videos/Memories` by default; the file lands in a per-run subfolder there, `<name>_<YYYYMMDD_HHMMSS_xxxx>/`), and **Upload after generation** with an **Album name** (off by default); nothing in your library is modified either way.
 
-**Generate Video** starts the render. A progress bar and status line follow the run (downloading and trimming the chosen segments, rendering photos, assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", "Complete"), and during assembly a preview frame updates as the video takes shape. **Cancel** stops after the current phase. When it finishes: "Your memory video is ready!", **Saved to: path (size)**, an **Immich delivery** line and an inline player. There is no download button: open the path shown, or find the video in the album you chose.
+**Generate Video** starts the render. A progress bar and status line follow the run (downloading and trimming the chosen segments, rendering photos, assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", "Complete"), and during assembly a preview frame updates as the video takes shape. **Cancel** stops after the current phase. When it finishes: "Your memory video is ready!", **Saved to: path (size)**, a **Length** line measured from the finished file, an **Immich delivery** line and an inline player. There is no download button: open the path shown, or find the video in the album you chose.
 
 The export bar moves forward across extraction, assembly, music and upload. Finishing
 extraction cannot fill it: 100% is reserved for the completed export.

@@ -31,6 +31,7 @@ def test_step4_rerender_keeps_warning_delivery_truth_and_video_link(
     state = AppState(
         output_path=output_path,
         generation_warning=warning,
+        output_duration_seconds=52.73,
         delivery_status=DeliveryStatus.PENDING,
     )
     labels: list[str] = []
@@ -53,6 +54,8 @@ def test_step4_rerender_keeps_warning_delivery_truth_and_video_link(
     assert f"Saved to: {output_path}" in labels
     assert warning in labels
     assert "Immich delivery: Pending" in labels
+    # The measured length of the file, not the estimate the summary card showed.
+    assert "Length: 0:52" in labels
     # The element is handed the file, not a pre-registered URL: NiceGUI owns
     # the route's lifetime that way.
     assert shown_videos == [output_path]

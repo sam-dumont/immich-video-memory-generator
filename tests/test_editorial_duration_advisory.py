@@ -150,6 +150,7 @@ def test_reopening_completed_run_keeps_shortfall_with_other_warnings(tmp_path):
         status="completed",
         output_path=str(tmp_path / "memory.mp4"),
         warnings=[WARNING, "Music was unavailable."],
+        output_duration_seconds=0.0,
         delivery_status="not_requested",
     )
     _restore_completed_ui_state(state, completed)

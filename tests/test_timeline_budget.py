@@ -405,3 +405,53 @@ def test_a_continuous_multi_year_memory_still_skips_its_opening_year() -> None:
     plan = plan_timeline(clips, titles, 120.0, "year_in_review")
 
     assert plan.eligible_dividers == 2
+
+
+def test_estimated_film_length_removes_the_overlap_the_assembler_will_take() -> None:
+    """The demo cut: 3.5s title, 7s ending, 49.5s of content over 18 pictures, smart at 0.5s."""
+    from immich_memories.processing.timeline_budget import TimelinePlan, estimate_film_duration
+
+    plan = TimelinePlan(
+        target_duration=60.0,
+        content_budget=49.5,
+        title_budget=10.5,
+        title_duration=3.5,
+        ending_duration=7.0,
+        divider_duration=2.0,
+        max_dividers=0,
+    )
+
+    estimate = estimate_film_duration(
+        plan,
+        content_seconds=79.0,
+        content_clips=18,
+        transition_mode="smart",
+        transition_duration=0.5,
+    )
+
+    assert estimate == pytest.approx(53.35)
+
+
+def test_estimated_film_length_does_not_stretch_a_short_selection() -> None:
+    """Under budget the content plays at its own length; nothing pads it to the target."""
+    from immich_memories.processing.timeline_budget import TimelinePlan, estimate_film_duration
+
+    plan = TimelinePlan(
+        target_duration=60.0,
+        content_budget=49.5,
+        title_budget=10.5,
+        title_duration=3.5,
+        ending_duration=7.0,
+        divider_duration=2.0,
+        max_dividers=0,
+    )
+
+    estimate = estimate_film_duration(
+        plan,
+        content_seconds=20.0,
+        content_clips=5,
+        transition_mode="cut",
+        transition_duration=0.5,
+    )
+
+    assert estimate == pytest.approx(30.5)
