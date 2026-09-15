@@ -131,7 +131,7 @@ Real selection evidence demonstrates the intended fallback behavior:
 | Child A — June 2026 | `child-a-june-2026-xl-music.mp4` | 59.917s | 1280×720 H.264 + stereo AAC; full decode passed |
 | Child A — July 2026 | `child-a-july-2026-xl-music.mp4` | 62.633s | 1280×720 H.264 + stereo AAC; full decode passed |
 | Child A — 2026 yearly | `child-a-yearly-2026-180s-xl-music.mp4` | 181.333s | 1280×720 H.264 + stereo AAC; full decode passed |
-| coastal-trip — July 25 to August 5 | `trip_somme,_france_2026-07-25.mp4` | 155.533s | 1280×720 H.264 + stereo AAC; full decode passed |
+| coastal-trip — dates withheld | filename withheld (carries private travel details) | 155.533s | 1280×720 H.264 + stereo AAC; full decode passed |
 
 The final post-fix repository gate passed 4,334 tests with 7 skipped and 662 deselected. Ruff and
 `git diff --check` were clean. The LaunchAgent remained unloaded throughout this validation.

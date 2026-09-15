@@ -16,6 +16,13 @@ complexipy_results_*.json
 .eggs/
 .env
 .env.local
+.env.*
+!.env.example
+*.private.*
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 .hypothesis/
 .idea/
 .installed.cfg
@@ -152,3 +159,6 @@ special-days*.json
 
 # people graph: the names of everyone in a real library, never repo data
 people*.yaml
+
+# Local screenshots from real-library UI checks do not belong in a release.
+/*.jpeg

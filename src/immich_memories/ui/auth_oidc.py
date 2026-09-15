@@ -78,18 +78,28 @@ def extract_user_from_token(token: dict[str, Any]) -> tuple[str, str]:
     return (username, email)
 
 
-def is_user_allowed(email: str, auth_config: AuthConfig) -> bool:
+def is_user_allowed(email: str, auth_config: AuthConfig, *, email_verified: object = None) -> bool:
     """Whether an authenticated account may actually sign in.
 
     An empty allow-list admits anyone, which is what a single-user tenant wants
     and is the behaviour this had before the option existed. Once either list is
     set, an account with no email claim is refused rather than exempt -- an IdP
     that omits the claim must not become a way past the list.
+
+    The list matches on an address, so the IdP has to attest that the account
+    owns it. OpenID Connect Core 1.0 section 5.1 (Standard Claims) makes `email`
+    a self-asserted profile field and `email_verified` the separate boolean that
+    says the provider checked it; on a tenant with open sign-ups, anyone can put
+    an allowed address in the first one. Only the literal `True` passes: a string
+    or a 1 means the claim was never the boolean the standard defines.
     """
     emails = {e.strip().casefold() for e in auth_config.allowed_emails}
     domains = {d.strip().lstrip("@.").casefold() for d in auth_config.allowed_domains}
     if not emails and not domains:
         return True
+
+    if email_verified is not True:
+        return False
 
     address = email.strip().casefold()
     if not address or "@" not in address:
