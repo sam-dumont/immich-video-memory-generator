@@ -186,46 +186,41 @@ only NAS render number that exists.
 
 ### What a first run costs, end to end
 
-Three walk-throughs of the same real month, each a sum of the measured phases of one cell. Nothing
-here is a single stopwatch over the whole thing: preparation, selection and render were timed
-separately and added.
+Three walk-throughs of the same real month, each a **sum** of the measured phases of one cell:
+preparation, selection and render were timed separately and added. Nothing here is a single
+stopwatch over the whole thing. The totals are in
+[the configuration table](#the-three-configurations-that-ran-a-real-month); what follows is where
+each one's time went.
 
-**Mac, local reader, `full` tier.** 53 min of preparation, then 19 min of reading, then 81 s of
-render. Call it **1 h 14 min** from an empty cache to a film. 61 % of the preparation is captions,
-one 400 px tile per picture to the caption server. The two detectors took 540 s of the rest, the
-encoder and its six heads 300 s, previews 240 s, pixels 120 s. Every second of that preparation is
-a one-off: the second memory over the same month prepares in 1 s, so a repeat run is **21 min**,
-almost all of it the reader. The rules cell paid 4,860 s for the same preparation in its own cache,
-so the same work on the same host measured 53 min once and 81 min the other time.
+**Mac, local reader, `full` tier.** 61 % of the preparation is captions, one 400 px tile per picture
+to the caption server. The two detectors took 540 s of the rest, the encoder and its six heads 300 s,
+previews 240 s, pixels 120 s. Every second of that is a one-off: the second memory over the same
+month prepares in 1 s, so a repeat run is almost all reader. The rules cell paid 4,860 s for the same
+preparation in its own cache, so the same work on the same host measured 53 min once and 81 min the
+other time.
 
-**Cluster, rules reader, facts on the inference service, `no_captions`.** 64 min of preparation,
-17 s of selection, 6 min of render: **1 h 10 min** cold, **6 min** warm. Preparation is 87 % facts
-requests at 0.2445 s a picture, with the classifiers on a T1000 behind the service. Swap the rules
-reader for a hosted one and the same cell is 66 min of preparation, 31 min of reading and 6 min of
-render: **1 h 43 min** cold, **37 min** warm, EUR 0.143 of tokens per cut.
+**Cluster, rules reader, facts on the inference service, `no_captions`.** Preparation is 87 % facts
+requests at 0.2445 s a picture, with the classifiers on a T1000 behind the service. Swapping the
+rules reader for a hosted one adds 31 min of reading and EUR 0.143 of tokens per cut.
 
 **NAS on compose, `no_captions`.** Not run on this month, and the honest version is arithmetic
-rather than a measurement. Preparation on the fixture month cost 1.4404 s a picture, so 13,552
-pictures is **5 h 25 min**. The render is the part a warm cache never helps: 1,483 s for a
-54-second film on four Celeron cores, against 81 s for the same length on the Mac. Selection with
-the rules reader was 5 s. So a first NAS run over a month that size is most of a night, and every
-run after it is about 25 min of render. Moving the picture facts to a cluster service took that
-box from 1.4404 to 1.0865 s a picture on the fixture month, which is a 25 % cut and not a rescue.
+rather than a measurement: preparation on the fixture month cost 1.4404 s a picture, so 13,552
+pictures **multiplies out** to 5 h 25 min. The render is the part a warm cache never helps, 1,483 s
+for a 54-second film on four Celeron cores against 81 s for the same length on the Mac, so a first
+NAS run over a month that size is most of a night and every run after it is about 25 min of render.
+Moving the picture facts to a cluster service took that box from 1.4404 to 1.0865 s a picture on the
+fixture month, a 25 % cut and not a rescue.
 
 ### What dominates, per host
 
-**Mac: the captions.** 61 % of the cold preparation, and the only reason `full` costs what it does.
-
-**NAS: the render.** 1,483 s for 54 seconds of film. Preparation at `no_captions` cost 1.4404 s per
-picture, 0.6930 s of it the two detectors and 0.5963 s the encoder and its six heads, so about 90 %
-of a NAS preparation is the classifiers.
-
-**Cluster: the render again, at a quarter of the NAS.** 362 s to 380 s per film on February, CPU
-encode and GPU title kernels. The facts service is what makes the preparation cheap: on the fixture
-month the same pod paid 0.6083 s a picture to a CPU-backed service and 0.1957 s to a GPU-backed
-one, and on February the GPU-backed service ran at 0.2445 s. A pod deriving its own facts in
-process managed 0.2555 s on the fixture month, so the service does not pay for itself on a box
-that quick. It is there for hosts like the NAS, and for putting the classifiers on a card.
+**Mac: the captions**, 61 % of the cold preparation and the only reason `full` costs what it does.
+**NAS: the render**, 1,483 s for 54 seconds of film, with about 90 % of its preparation in the
+classifiers (0.6930 s a picture for the two detectors and 0.5963 s for the encoder and its six
+heads, out of 1.4404 s). **Cluster: the render again, at a quarter of the NAS.** The facts service is
+what makes the cluster's preparation cheap: on the fixture month the same pod paid 0.6083 s a picture
+to a CPU-backed service and 0.1957 s to a GPU-backed one. A pod deriving its own facts in process
+managed 0.2555 s there, so the service does not pay for itself on a box that quick. It is for hosts
+like the NAS, and for putting the classifiers on a card.
 
 ### What overlap means
 
@@ -301,11 +296,11 @@ consent step; nothing asks twice. The complete list, with the switch for each de
 The rules reader is a degraded mode, not an equal-quality alternative. Review the cut before you
 share it.
 
-## The configurations that ran a real month end to end
+## The three configurations that ran a real month
 
-Three of them. Other layouts work and are documented; these are the ones with a measurement behind
-every column. Four seats decide what you have to stand up: who reads the period, who captions the
-pictures, where the encoder and its heads and the two detectors run, and what encodes the film.
+Other layouts work and are documented; these are the ones with a measurement behind every column.
+Four seats decide what you have to stand up: who reads the period, who captions the pictures, where
+the encoder and its heads and the two detectors run, and what encodes the film.
 
 ```mermaid
 flowchart LR
@@ -333,8 +328,7 @@ flowchart LR
     mac ~~~ rules ~~~ hosted
 ```
 
-The only line that leaves your network is the hosted reader's. What each configuration costs and
-what its cut carries is the table below.
+The only line that leaves your network is the hosted reader's.
 
 | Configuration | Hardware | First run over a 13,552-picture month | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|
@@ -355,27 +349,6 @@ The whole stand-up, in order, is the [self-hosting guide](./self-hosting.md).
 
 ## Title rendering
 
-Every mode above renders title screens the same way: on the GPU kernels where they exist, and with PIL where they do not. GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./hardware.md#title-kernels).
-
-
-## Render worker: service contract available
-
-The first slice of the render worker is an isolated job service under
-`services/render-worker/`. It accepts an already selected cut with the timing
-binding that certified it, downloads the sources directly from Immich, and uses
-the existing renderer. It validates the finished MP4, serves it once, and hands
-back the encoding plan, the ffprobe facts and the music mute windows so the
-submitting app can validate the bytes it received and mix its own soundtrack.
-
-NVENC is preferred, not required. On one cluster node, same cut and same reader,
-NVENC finished in 219 s against 258 s for libx264: the card is worth about 1.65x
-on the assembly stage and about 15% of the whole render, because fetching the
-originals from Immich is 48 to 59% of it. A worker that cannot open NVENC
-therefore renders about 15% slower and says so in `/health` and in the job
-record, instead of refusing the film. The full split is on
-[the hardware overview](./hardware.md#what-the-card-is-actually-worth).
-
-This slice does not change CLI or web rendering. App-side handoff, NAS setup and
-cluster deployment are still pending. The service README documents its
-versioned API, bearer authentication, bounded queue and temporary storage.
-There is no new matrix timing claim yet.
+Every mode above renders title screens the same way: on the GPU kernels where they exist, and with
+PIL where they do not. Which one your machine gets, and what the fallback loses, is on
+[Title kernels](./hardware.md#title-kernels).
