@@ -415,6 +415,14 @@ def test_the_media_pool_loads_its_pictures_through_the_media_route(
     expect(routed.first).to_be_visible(timeout=30_000)
     assert page.locator("img[src^='data:']").count() == 0
     assert routed.count() >= len(_POOL_FILES)
+    # The count above is DOM entries; the entries themselves finish decoding
+    # asynchronously, so wait for the last one instead of sampling the instant
+    # the first one is visible.
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll(\"img[src^='/media/thumb/']\"))"
+        ".every(img => img.complete && img.naturalWidth > 0)",
+        timeout=30_000,
+    )
     loaded = page.evaluate(
         "() => Array.from(document.querySelectorAll(\"img[src^='/media/thumb/']\"))"
         ".filter(img => img.complete && img.naturalWidth > 0).length"
