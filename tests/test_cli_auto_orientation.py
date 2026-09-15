@@ -13,15 +13,21 @@ from immich_memories.timeperiod import DateRange
 from tests.conftest import make_clip
 
 
-def test_cli_offers_auto_but_still_defaults_to_landscape():
-    option = next(p for p in main.commands["generate"].params if p.name == "orientation")
-    assert "auto" in option.type.choices
-    assert option.default == "landscape"
+def test_cli_defaults_to_auto():
+    with main.commands["generate"].make_context("generate", [], resilient_parsing=True) as ctx:
+        assert ctx.params["orientation"] == "auto"
 
 
 @pytest.mark.parametrize("no_render", [False, True])
 @pytest.mark.parametrize(
-    "orientation,width,height", [("auto", 1080, 1920), ("landscape", 1920, 1080)]
+    "orientation,width,height",
+    [
+        (None, 1080, 1920),
+        ("auto", 1080, 1920),
+        ("landscape", 1920, 1080),
+        ("portrait", 1080, 1920),
+        ("square", 1080, 1080),
+    ],
 )
 def test_canvas_uses_selected_portrait_in_a_landscape_pool(
     tmp_path, no_render, orientation, width, height
@@ -68,5 +74,8 @@ def test_canvas_uses_selected_portrait_in_a_landscape_pool(
         generate.assert_not_called()
         canvas = preview.call_args.args[0].canvas
     else:
-        canvas = generate.call_args.args[0].output_canvas
+        params = generate.call_args.args[0]
+        canvas = params.output_canvas
+        assert [clip.asset.id for clip in params.clips] == ["kept-portrait"]
+        assert params.clip_segments == {"kept-portrait": (0, 4)}
     assert (canvas.width, canvas.height) == (width, height)

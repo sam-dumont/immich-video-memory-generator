@@ -54,7 +54,7 @@ def handle_album_generation(
     upload_to_immich: bool,
     album: str | None,
     duration: float | int | None = None,
-    orientation: str = "landscape",
+    orientation: str = "auto",
     source: str = "manual",
     memory_key: str | None = None,
     memory_category: str | None = None,

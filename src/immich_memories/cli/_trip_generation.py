@@ -182,7 +182,7 @@ def handle_trip_generation(
     memory_key: str | None = None,
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
-    orientation: str = "landscape",
+    orientation: str = "auto",
     dry_run: bool = False,
     no_render: bool = False,
     accept_any_provenance: bool = False,

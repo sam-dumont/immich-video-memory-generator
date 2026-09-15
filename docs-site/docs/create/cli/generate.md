@@ -32,6 +32,10 @@ what the flags do not tell you.
 the command uses `output.resolution`, 1080p by default. `--quality` changes the effective CRF,
 mapped onto each hardware encoder's own scale.
 
+`--orientation` defaults to `auto`, which follows the majority orientation of the final kept clips.
+Use `landscape`, `portrait` or `square` to set the canvas yourself. Orientation changes rendering
+only; it does not change which pictures or video intervals are selected.
+
 Opening titles name the people or the occasion, never the query that produced them. `--title` and
 `--subtitle` override all of it. See [titles](../titles-and-music.md).
 

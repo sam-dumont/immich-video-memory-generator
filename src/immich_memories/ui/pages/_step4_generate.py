@@ -168,6 +168,12 @@ _RESOLUTION_MAP = {
     "Auto (match clips)": "auto",
 }
 
+_ORIENTATION_MAP = {
+    "Landscape (16:9)": "landscape",
+    "Portrait (9:16)": "portrait",
+    "Square (1:1)": "square",
+}
+
 _FORMAT_MAP = {
     "MP4 (H.264)": "mp4",
     "MP4 (H.265)": "h265",
@@ -223,6 +229,7 @@ def _build_generation_params(state, selected_clips, output_path):
             gen_options.get("transition", "Smart (mix of fades & cuts)"), "crossfade"
         ),
         output_resolution=_RESOLUTION_MAP.get(gen_options.get("resolution", "Auto (match clips)")),
+        output_orientation=_ORIENTATION_MAP.get(gen_options.get("orientation"), "auto"),
         scale_mode=SCALE_MODE_OPTIONS[
             resolve_scale_mode_label(state.config, gen_options.get("scale_mode"))
         ],

@@ -132,7 +132,7 @@ def output_options(command: FC) -> FC:
         click.option(
             "--orientation",
             type=click.Choice(["landscape", "portrait", "square", "auto"]),
-            default="landscape",
+            default="auto",
             help="Output orientation (auto follows the final selected cut)",
         ),
         click.option(

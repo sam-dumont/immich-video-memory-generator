@@ -448,7 +448,7 @@ def run_pipeline_and_generate(
             no_music=no_music,
             should_upload=resolved.should_upload,
             album_name=album or config.upload.album_name,
-            canvas_provisional=output_orientation == "auto",
+            canvas_provisional=output_orientation in {None, "auto"},
         )
 
     thumbnail_cache = ThumbnailCache(
@@ -484,7 +484,7 @@ def run_pipeline_and_generate(
         print_error("Pipeline selected no clips")
         sys.exit(1)
 
-    if output_orientation == "auto":
+    if output_orientation in {None, "auto"}:
         output_canvas = _configure_output_canvas(
             clips=selected_clips,
             photo_assets=None,
