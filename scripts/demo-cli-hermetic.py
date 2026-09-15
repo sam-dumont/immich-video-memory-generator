@@ -12,6 +12,7 @@ VHS records the terminal (`make demo-cli`); the Remotion `CliScene` plays it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -32,9 +33,16 @@ os.environ.update(
         "USERPROFILE": str(_HOME),
         "IMMICH_MEMORIES_AUTH__ENABLED": "false",
         "IMMICH_MEMORIES_STORAGE_SECRET": "demo-recording-storage-secret",
-        "TI_LOG_LEVEL": "error",
+        "IMMICH_MEMORIES_LOG_LEVEL": "error",
     }
 )
+
+# httpx logs a line per request at INFO and answers to its own logger, not the
+# root level the line above sets, so a hermetic run that talks to the fake
+# Immich a hundred times fills the recording with "HTTP Request: POST
+# http://127.0.0.1:.../api/search/metadata". Nothing in the demo is about that.
+for noisy in ("httpx", "httpcore"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 import yaml  # noqa: E402
 from tests.e2e.fake_editorial import install_fake_editorial_route  # noqa: E402
@@ -69,7 +77,13 @@ def main() -> None:
     try:
         cache = root / "cache"
         cache.mkdir()
-        # Where a person would put it: the recording prints ~/Videos/june-2024.mp4.
+        # Where a person would put it. --output names the directory and the base
+        # name, not the final file: the run adds the recipe hash that makes an
+        # identical rerun replace itself, and writes inside its own run
+        # directory. So the recording ends on
+        # ~/Videos/june-2024_<recipe>_<run>/june-2024_<recipe>.mp4, which is what
+        # the last line below prints -- it reads the file the run actually wrote
+        # rather than repeating what was asked for.
         out = _HOME / "Videos"
         out.mkdir()
         (root / "state").mkdir()

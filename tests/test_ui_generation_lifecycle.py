@@ -648,7 +648,6 @@ async def test_run_generation_does_not_restore_stale_pending_delivery_after_ambi
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),
@@ -954,7 +953,6 @@ async def test_run_generation_constructs_one_tracker_and_uses_the_lifecycle_seam
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),
@@ -1032,7 +1030,6 @@ async def test_post_completion_ui_error_cannot_downgrade_artifact_or_leak_config
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),
@@ -1123,7 +1120,6 @@ async def test_ui_observer_after_completion_recovers_persisted_session_truth(
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),
@@ -1225,7 +1221,6 @@ async def test_ui_observer_failure_keeps_saved_classification_when_recovery_read
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),

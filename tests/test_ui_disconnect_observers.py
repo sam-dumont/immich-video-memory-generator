@@ -267,7 +267,6 @@ async def test_completion_disconnect_preserves_pending_delivery_truth(
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),
@@ -328,7 +327,6 @@ async def test_completion_disconnect_logs_where_the_finished_run_went(
         await step4_generate.run_generation(
             state,
             [make_clip("clip-1")],
-            total_duration=5.0,
             output_dir=tmp_path,
             output_path=output_path,
             filename_input=_Element("memory.mp4"),
@@ -385,7 +383,6 @@ async def test_failure_notification_disconnect_preserves_failed_run(
     await step4_generate.run_generation(
         state,
         [make_clip("clip-1")],
-        total_duration=5.0,
         output_dir=tmp_path,
         output_path=output_path,
         filename_input=_Element("memory.mp4"),

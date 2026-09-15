@@ -5,12 +5,12 @@ sidebar_label: Config Reference
 
 # Config Reference
 
-These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override. Values shown below are the built-in defaults (placeholders like URLs and example schedules aside).
+Every key with its built-in default. Add the ones you want to `~/.immich-memories/config.yaml`.
 
 :::tip Config tiers
 Tier 2 sections (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`,
-`automation`, `notifications`, `triage`, `editorial`) are
-written under an `advanced:` key when the app saves the file:
+`automation`, `notifications`, `triage`, `editorial`, `inference`) go under an `advanced:` key when
+the app saves the file:
 
 ```yaml
 advanced:
@@ -20,24 +20,15 @@ advanced:
     encoder_preset: "quality"
 ```
 
-When reading, both placements work; if a section appears in both places the top-level one wins.
-Everything else stays at the top level: `immich`, `defaults`, `output`, `audio`, `title_screens`,
-`cache`, `upload`, `trips`, `photos`, `preset`, and the two the loader calls internal rather than
-Tier 1, `scheduler` and `title_llm`. The rule is mechanical: anything outside the Tier 2 set is
-left where it is.
-Unknown keys *inside* a section are silently ignored, with one exception: the thirty keys of the
-removed clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, `description_llm`, the
-whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, and the rest of
-that family). A file that still sets one is refused at startup with a message naming the key,
-because a setting that loads and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
-validation at startup.
+Both placements are read; if a section appears in both, the top-level one wins. Everything else
+stays top level. Unknown keys inside a section are ignored; unknown top-level keys and invalid
+values fail validation at startup.
 :::
 
 ## Preset
 
 One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
-Anything you set yourself (a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
-choice in the web UI) wins over the preset.
+Anything you set yourself wins over the preset.
 
 ```yaml
 preset: null                       # null | fast
@@ -49,14 +40,12 @@ preset: null                       # null | fast
 off by default and stays wherever you put it.
 
 Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --preset fast generate …`
-(root option, before the subcommand). The settings page names the active preset; the options page defaults
-its resolution to the preset's and says so.
+(root option, before the subcommand).
 
-Caveat: **the Memory page's "Save Config"** (under Advanced) writes every value to `config.yaml`, not just the connection
-fields it appears to be about, after which they all count as "set by you", and the preset has
-nothing left to fill in. Remove the keys you want the preset to own again. (`server.host` is the
-single exception; see [Server (UI)](#server-ui).) The `/settings/config` page is read-only and
-does not save; see [Settings](../create/web-ui/settings.mdx).
+Caveat: the Memory page's **Save Config** (under Advanced) writes every value to `config.yaml`, not
+just the connection fields it appears to be about. They then all count as set by you and the preset
+has nothing left to fill in. Remove the keys you want the preset to own again. `server.host` is the
+single exception; see [Server (UI)](#server-ui).
 
 ## Immich connection
 
@@ -74,10 +63,8 @@ each runtime client; you do not choose it for each generation. Explicit `v2` or 
 troubleshooting escape hatch for a proxy or unusual deployment that prevents correct detection.
 An override forces that API contract.
 
-The compatibility boundary normalizes v2 duration strings and v3 millisecond durations to
-seconds, chooses the matching upload fields before any file upload, and emits timezone-aware
-search dates accepted by v3. Run the read-only `immich-memories config test` command to check
-credentials and see the resolved API contract without generating or uploading a memory.
+Run the read-only `immich-memories config test` to check credentials and see the resolved API
+contract without generating or uploading a memory.
 
 ## Video analysis
 
@@ -110,14 +97,12 @@ analysis:
   live_photo_min_clip_seconds: 3.5       # Below this a burst ships as a photo (0-30s)
 ```
 
-Any Live Photo cluster of two or more within the merge window is treated as a burst; the count
-is not configurable. Where a clip is cut, and how long it runs, is the editor's decision per
-carrier; there is no pacing preset any more.
+Any Live Photo cluster of two or more within the merge window is treated as a burst; the count is
+not configurable. Where a clip is cut, and how long it runs, is the editor's decision per carrier.
 
 `max_album_assets` applies per media type, so the default reads up to 10,000 videos and 10,000
-photos from one album. Smart albums reach tens of thousands; Immich returns newest first, so a
-bigger album is truncated to its most recent assets and you get a warning naming it. Narrow the
-album, raise the cap, or use a date range instead.
+photos from one album. Immich returns newest first, so a bigger album is truncated to its most
+recent assets, with a warning naming it.
 
 ## Generation defaults
 
@@ -128,16 +113,11 @@ defaults:
   transition_duration: 0.5       # 0-2 seconds
 ```
 
-Target duration and orientation are chosen per run: the UI slider / `--duration` (seconds) and
-`--orientation`, with the memory type preset supplying the default duration; there is no config
-default for either. The target duration describes the finished video, not just the selected source
-clips. The planner budgets opening/title/ending cards, then adds back the time the fades overlap
-away, so the content budget ends up larger than the timeline left over, not smaller. Month
-dividers use an all-or-none policy, and trip location cards are counted only after the final media
-selection. There is no backfill: if the stories the editor funded do not fill the budget, the run
-reports the shortfall instead of padding it with material it had already decided against.
-Treat the target as a target: frame and transition boundaries mean the encoded file lands near the
-requested duration, not exactly on it.
+Target duration and orientation are per run (`--duration`, `--orientation`, or the UI), with the
+memory type preset supplying the default duration; there is no config default for either. The
+target covers the finished video, title and ending cards included, and the encoder lands near it
+rather than exactly on it. There is no backfill: if the stories the editor funded do not fill the
+budget, the run reports the shortfall.
 
 ## Output
 
@@ -153,15 +133,14 @@ output:
   crf: null                      # unset = derived from quality; 0-51 overrides (lower = better)
 ```
 
-CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted;
-an explicit `crf` wins. The number is on **libx265's CRF scale**, which is the reference every
-other encoder is calibrated against: each backend gets whatever setting reproduces the same
-picture, measured by SSIM, rather than the same integer. See
-[the hardware overview](../deploy/hardware/overview.md#quality-one-dial-calibrated-per-encoder)
-for the measured table. Lower CRF still means higher quality everywhere.
+CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted; an
+explicit `crf` wins. The number is on **libx265's CRF scale**, and every other encoder is
+calibrated against it: each backend gets whatever setting reproduces the same picture, measured by
+SSIM, rather than the same integer. Lower CRF means higher quality everywhere. The measured table
+per encoder is on
+[the hardware overview](../deploy/hardware.md#quality-one-dial-calibrated-per-encoder).
 
-The presets are points on that curve, measured on 1080p60 film and (for `balanced`) judged by
-eye on gradients:
+The presets are points on that curve, measured on 1080p60 film:
 
 | `quality` | reference CRF | SSIM | software bitrate | per minute |
 |---|---|---|---|---|
@@ -169,32 +148,28 @@ eye on gradients:
 | `balanced` (default) | 24 | 0.98451 | 1.6 Mbps | ~12 MB |
 | `fast` | 24 | 0.98451 | 1.6 Mbps | ~12 MB, encoded as fast as the backend can |
 
-`high` used to mean CRF 12, which is past SSIM 0.999: quality nobody can see, at several times
-the bits, and the reason exports were hundreds of megabytes.
-
-There is deliberately no tier below `balanced`: around 0.980 gradients start to band, and a preset
-that visibly breaks up a sky is not worth a few megabytes. `fast` keeps the balanced picture and
-buys its speed from the encoder effort preset instead, overriding `hardware.encoder_preset`.
-`medium` and `low` are retired names that still load, resolving to `balanced` and `fast`.
+There is no tier below `balanced`: around SSIM 0.980 gradients start to band. `fast` keeps the
+balanced picture and buys its speed from the encoder effort preset instead, overriding
+`hardware.encoder_preset`. `medium` and `low` are retired names that still load, resolving to
+`balanced` and `fast`.
 
 `codec_policy` decides what happens when the machine has no hardware encoder for the codec you
 asked for but does have one for the other. `prefer_hardware` (the default) switches codec and says
 so in the log and the run record, which on a chip like Intel Gemini Lake (H.264 encode entrypoint,
-no HEVC one) is the difference between a film finishing and the CPU doing all of it. The file is
-bigger and plays on more things. `strict` always honours `output.codec` and accepts the CPU cost.
-The switch never applies to ProRes, and never to an HDR output, because H.264 carries no HDR.
+no HEVC one) is the difference between a film finishing and the CPU doing all of it. `strict`
+always honours `output.codec` and accepts the CPU cost. The switch never applies to ProRes, and
+never to an HDR output.
 
-The final encoding plan permits only `mp4` and `mov` containers with `h264`, `h265`, or `prores`
-codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,
-H.265/MP4, and ProRes/MOV respectively. Config can select compatible codec/container pairs;
-internal and UI overrides also represent `h264_mov` and `h265_mov`, but `h264_mov` and `h265_mov`
-are not CLI choices. ProRes requires MOV; H.264 and ProRes do not support HDR output.
+Containers and codecs pair up: `mp4` and `mov` with `h264`, `h265` or `prores`, and ProRes requires
+MOV. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,
+H.265/MP4, and ProRes/MOV respectively. Internal and UI overrides also represent `h264_mov` and
+`h265_mov`, but `h264_mov` and `h265_mov` are not CLI choices.
 
-`hdr_mode: auto` preserves detected HLG or PQ sources when `codec: h265` is selected. It converts
-SDR clips, photos, and title screens into the chosen HDR transfer before blending, so intermediate
-files do not all need to carry HDR metadata. H.264 is always SDR: with `codec: h264`, `auto`
-tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR is intentional, or
-`hdr_mode: hdr` with H.265 to force an HDR output even when every source is SDR.
+`hdr_mode: auto` preserves detected HLG or PQ sources when `codec: h265` is selected, converting
+SDR clips, photos and title screens into the chosen HDR transfer before blending. H.264 is always
+SDR: with `codec: h264`, `auto` tone-maps detected HDR sources and logs the reason. Use
+`hdr_mode: sdr` when SDR is intentional, or `hdr_mode: hdr` with H.265 to force an HDR output from
+SDR sources.
 
 ## Photos
 
@@ -206,12 +181,12 @@ photos:
   burst_hash_threshold: 8        # Hash bits two photos may differ by and still be one burst (0-64)
 ```
 
-The animation per photo (Ken Burns, face pan, blurred background) is picked automatically from the
-photo's content; it is not configurable.
+The animation per photo (Ken Burns, face pan, blurred background) is picked from the photo's
+content and is not configurable.
 
-Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so the
-fifteen shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` all but turns
-it off: photos sharing an identical timestamp still group.
+Burst de-duplication keeps only the best-scored frame of a run of near-identical photos, so fifteen
+shots of the same jump do not become fifteen clips. `burst_window_seconds: 0` all but turns it off:
+photos sharing an identical timestamp still group.
 
 ## Hardware acceleration
 
@@ -223,29 +198,24 @@ hardware:
   gpu_decode: true               # Hardware video decoding
 ```
 
-`auto` detects the backend for you (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first hit
-wins), and it is what almost everyone wants. `hardware.enabled: false` is the only way to force CPU.
-On multi-GPU Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`.
+`auto` detects the backend (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first hit wins).
+`hardware.enabled: false` is the only way to force CPU. On multi-GPU Linux hosts pick the card with
+`CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`.
 
-Naming a backend probes that one and nothing else, and it is for measuring rather than for running:
-on a box with two encode paths, first hit wins can hand the render the other chip and the timing you
-publish is then about hardware you did not mean to test. A named backend that cannot encode here
-logs a warning and falls back to software. `backend` covers the video render; the burst merge during
-download still detects for itself.
+Naming a backend probes that one and nothing else, which is for measuring rather than for running.
+A named backend that cannot encode here logs a warning and falls back to software. `backend` covers
+the video render; the burst merge during download still detects for itself.
 
-`encoder_preset` controls encoder speed/effort; it does not replace `output.crf`. On Apple,
+`encoder_preset` controls encoder speed and effort; it does not replace `output.crf`. On Apple,
 `fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.
-Image quality still comes from the CRF translation described above.
 
 ## Audio and music
 
-Background music needs `ace_step.enabled` or `musicgen.enabled`. With neither, the pipeline refuses
-to build rather than running silent. With both on, ACE-Step generates, and MusicGen is both the
-fallback generator and the stem separator used for ducking. With MusicGen off, stems come from a
-local Demucs install if there is one. Per run you can still override that: `--music PATH` uses your
-own file, `--no-music` skips music, and the options page in the UI offers None / Upload file / AI Generated,
-plus Bundled when the `music` extra is installed. Music volume is a per-run setting too
-(`--music-volume` or the UI slider); ducking under speech and the 2 s / 3 s fades are fixed.
+Background music needs `ace_step.enabled` or `musicgen.enabled`. With both on, ACE-Step generates
+and MusicGen is the fallback generator and the stem separator used for ducking; with MusicGen off,
+stems come from a local Demucs install if there is one. Per run, `--music PATH` uses your own file
+and `--no-music` skips music. Music volume is per run too (`--music-volume`); the ducking and the
+2 s / 3 s fades are fixed.
 
 ```yaml
 musicgen:
@@ -277,7 +247,8 @@ picks music from it on its own: pass the file with `--music`.
 
 ## LLM (vision model)
 
-Used by content analysis and title generation. Any OpenAI-compatible endpoint works: mlx-vlm, Ollama, vLLM, Groq, OpenAI itself.
+Used by the reader and by title generation. Any OpenAI-compatible or Anthropic-compatible endpoint
+works: mlx-vlm, oMLX, Ollama, vLLM, Groq, OpenAI, Claude, z.ai.
 
 ```yaml
 llm:
@@ -301,171 +272,56 @@ llm:
   #     enable_thinking: false
 ```
 
-**The goal of this product is a fully local process**: your photos analyzed
-on your own hardware, nothing leaving your network. A local server (mlx,
-vLLM, Ollama) is the intended setup. The cloud providers below exist for one
-reason: so that people without the means (or the desire) to run a local
-model can still use the product. Using one sends each analyzed clip's frames
-or thumbnails and the derived descriptions to that provider; see the
-"data leaving your network" page before choosing this route.
+**The goal of this product is a fully local process**: your photos analyzed on your own hardware,
+nothing leaving your network. A local server (mlx, vLLM, Ollama) is the intended setup. The cloud
+providers exist so that people without the means to run a local model can still use the product.
+Using one sends each analyzed clip's frames or thumbnails and the derived descriptions to that
+provider.
 
-Two adapters cover every provider: `openai-compatible` speaks
-`/chat/completions` (vLLM, mlx, Ollama's `/v1`, aggregators, OpenAI itself),
-and `anthropic` speaks the native `/v1/messages` API with its own reasoning
-dialect handled natively. That second one is generic: Claude serves it at
-`https://api.anthropic.com`, which is the preset's default, and any other host
-that copied the Messages API is reached by naming it in `base_url`.
+`openai`, `anthropic` and `zai` are presets: the right adapter with the vendor's URL and reasoning
+dialect filled in. An explicit `base_url` always wins, and under `zai` it also picks the adapter (a
+`.../api/anthropic` base takes the Messages route). Which dialect goes where, what `thinking` does
+on each host, how `thinking_params` and `no_thinking_params` differ, and what batching pays are all
+on [The reader](../deploy/readers.md), with the measured comparison of ten models.
 
-`openai`, `anthropic` and `zai` are named presets: the adapter with the
-provider's URL and reasoning dialect pre-filled; set `provider: anthropic`,
-`model: claude-sonnet-5` and an API key, and reasoning works with nothing else
-to configure. The `anthropic` preset also drops `temperature`, because Claude
-answers a request carrying one with a 400 from the 4.7 line on. An explicit
-`base_url` always wins over a preset, and under `provider: zai` it also picks
-the adapter: a `.../api/anthropic` base takes the Anthropic route, anything
-else the OpenAI-compatible one. An explicit
-`thinking_params`/`no_thinking_params` is kept too, with the provider's own
-reasoning switch filled in beside it, and a key you named yourself wins over
-the preset's. On the Messages route only the `thinking` and `output_config`
-fields of those blocks go out, because the rest of that dialect is not one a
-Messages host understands; `extra_params` carries anything else.
+`thinking` has five settings. `disabled` never asks for reasoning. `low`, `high` and `max` run the
+model in reasoning mode for two calls: title generation, and the special-day question in
+`discover-days`. `auto` sends no reasoning field and takes the host's default, which is where to
+start on a host whose dialect you do not know. `true` and `false` still parse, as `high` and
+`disabled`. Reasoning is refused alongside images whatever this is set to: reasoning over several
+pictures is a measured runaway. Measured on the live endpoint, a thinking call ran 30-134 s where
+the same model answered in 4-7 s without it, and needs a 4000-token ceiling to finish.
 
-`thinking` is one control with five settings. `disabled` never asks for
-reasoning. `low`, `high` and `max` run the model in reasoning mode for two
-calls: title generation, and the special-day question in `discover-days`.
-`auto` sends no reasoning field in either direction and takes the host's own
-default, which is the setting to start from on a host whose dialect you do not
-know. The old `true` and `false` still parse, as `high` and `disabled`.
+The `openai` preset sends `reasoning_effort: none` for `gpt-5.6-luna` and its dated snapshots
+on non-thinking calls. Older GPT-5 models keep `minimal`. An explicit setting wins over the preset.
+A provider that rejects a reasoning value reports that error; it does not silently remove the
+control and fall back to default reasoning. Only rejection of the parameter itself permits that
+fallback.
 
-The level reaches the hosts that take one: Claude gets
-`thinking: {"type": "adaptive"}` with the level as `output_config.effort`, and
-z.ai gets its own level word. Everywhere else the setting is on or off and
-`thinking_params` carries the dialect. Measured on the live endpoint, a
-thinking call ran 30-134 s where the same model answered in 4-7 s without it,
-and it needs a 4000-token ceiling to finish reasoning, which matters on a paid
-API. Everything else runs fast, and reasoning is refused outright alongside
-images: reasoning over multiple pictures is a measured runaway, so the
-editor's picture passes never see it whatever this is set to.
+`always_reasons` covers a reasoning model that bills its private thinking inside `max_tokens`, so
+the budget the reader asked for its answer is the budget the thinking spends first. Measured on one
+hosted API with the same 17 KB monthly read: 245 thinking tokens on the lightest model, 4,126 and
+6,256 on two others and 13,469 on the heaviest, all returning HTTP 200 and an empty answer at the
+reader's 4,000-token ask. Such calls now ask for the cheapest reasoning the host sells and add
+16,384 tokens of room on top of the caller's cap, so the cap keeps meaning what it says about the
+answer. The room is a ceiling, not a bill. It is learned from the first reply that reports reasoning
+tokens and remembered per server and model; set `always_reasons: true` to spare that first call,
+which otherwise comes back empty.
 
-`thinking_params` is merged verbatim into a thinking request, so the switch
-matches your server's dialect: the default is Qwen's
-`chat_template_kwargs: {"enable_thinking": true}` (vLLM, mlx, SGLang); for
-the OpenAI API use `{"reasoning_effort": "medium"}`. Leave `thinking` off
-unless you know the server supports your chosen switch: some
-OpenAI-compatible servers reject unknown request fields.
+`reader_concurrency` limits independent reader jobs in flight (1 to 16). Independent episode-evidence
+packs, event inventories and worthiness/standing blocks can overlap. Pages within an event,
+story-episode pages and later dependent picks remain sequential. Scheduling preserves prompt text,
+judgment keys and source ordering; batch delivery is configured separately.
 
-`no_thinking_params` is the other half, and it matters on servers whose chat
-template reasons by default: not asking for reasoning is not the same as
-asking for none, so bulk analysis reasons anyway, at the small token budget
-those calls ask for, and comes back truncated mid-thought with nothing
-parseable in it. This field is sent on every non-thinking call: it hangs off
-the switch, not off `thinking`, because a server that reasons by default does
-so whether or not you turned reasoning on. The default is Qwen's
-`chat_template_kwargs: {"enable_thinking": false}`; set it to `{}` for servers
-that reason only when asked.
+Left unset, concurrency is read from `base_url`: 1 for a loopback, private address or bare service
+name, 4 for a public host. See
+[Reader concurrency](../deploy/configuration/config-file.md#reader-concurrency). A provider that
+answers 429 pauses every reader in the run, each waiting a slightly different span.
 
-The `openai` preset sends `reasoning_effort: none` for `gpt-5.6-luna` and its
-dated snapshots. Older GPT-5 models keep `minimal`. An explicit setting wins
-over the preset. A provider that rejects a reasoning value now reports that
-error; it does not silently remove the control and fall back to default
-reasoning. Only a rejection of the parameter itself permits that fallback.
+`send_image_detail` sends OpenAI's optional `image_url.detail` field. Set it to `false` for strict
+vision schemas that reject anything beyond `image_url.url`; the `zai` preset already does.
 
-z.ai takes a level rather than an on and off, so the `zai` preset sends
-`thinking: {"type": ...}` with one of `disabled`, `low`, `high` or `max`. The
-GLM-5 line reasons unconditionally and answers `disabled` with HTTP 400 code
-1210, "This model always engages in thinking and cannot be disabled", so the
-preset sends `low` there and `disabled` on the lines that take it. Write the
-key yourself to ask for `high` or `max`. A model the preset has never heard of
-that refuses `disabled` the same way is retried once at `low`, with a warning
-naming the code and what changed. A server that rejects the field outright is
-detected from its 400 and asked without it from then on.
-
-Those refusals are the OpenAI-compatible endpoint's. z.ai's `/api/anthropic`
-route takes every level without complaint and reasons when it wants to, so
-there the level is a request rather than a setting: a non-thinking call gets
-1024 tokens on top of `max_tokens` for the reasoning that may arrive anyway,
-the first `text` block is the answer, and a reply that is all reasoning is
-reported with its `stop_reason` instead of read as an empty answer.
-
-`always_reasons` is the same problem on the `/chat/completions` side, and it
-bites hardest on hosted endpoints. A reasoning model bills its private
-thinking inside `max_tokens`, so the budget a reader asks for its answer is
-the budget the thinking spends first. Measured on one hosted API with the same
-17 KB monthly read: 245 thinking tokens on the lightest model, 4,126 and 6,256
-on two others and 13,469 on the heaviest, all of them returning HTTP 200 and an
-empty answer at the reader's 4,000-token ask. Every such call now asks for the
-cheapest reasoning the host sells and adds 16,384 tokens of room on top of the
-caller's cap, so
-the cap keeps meaning what it says about the answer. The room is a ceiling and
-not a bill: a model that does not think that long is not charged for it, and
-an endpoint that never reasons is left exactly at the cap. It is learned from
-the first reply that reports reasoning tokens and remembered per server and
-model; set `always_reasons: true` to spare that first call, which otherwise
-comes back empty. A reply that still hits the ceiling without writing a word
-is retried once with more room, and the error then names the split:
-"reasoning used 12,192 of 12,192 tokens, no answer". A host that needs that
-second try is usually also worth a longer `timeout_seconds`: the retry spends
-what is left of the first call's read budget, not a fresh one.
-
-On Ollama the same ledger applies, through Ollama's own switch rather than a
-chat dialect. `thinking` at any level other than `disabled` puts a top-level
-`think: true` on a load-bearing call; a bulk call is sent no switch at all,
-because a model with no thinking mode answers `think` with a 400. An Ollama
-server that reasons anyway is learned from the first reply that carries a
-thinking block, and every later call gets the same 16,384 tokens of room, added
-to `num_predict` instead of `max_tokens`. An explicit
-`extra_params.options.num_predict` now wins over that computed budget rather
-than being silently overwritten, so a ceiling you set yourself is the one that
-is sent.
-
-`reader_concurrency` limits independent story-reader jobs in flight (range 1 to
-16). Independent episode-evidence packs, event inventories and
-worthiness/standing blocks can overlap.
-Pages within an event, story-episode pages and later dependent picks remain
-sequential. Left unset it is read from `base_url`: 1 for a loopback or private
-address, or a bare service name, all of which mean a model sharing one machine
-or one network with this run and serving one request at a time; 4 for a public
-host, which is a fleet. Set it yourself for a local server that does take
-concurrent requests, or for a hosted provider that needs a lower request rate.
-This changes scheduling only: prompts, judgment keys and source ordering stay
-the same. Batch delivery is configured separately.
-
-A provider that answers 429 pauses every reader in the run, not just the call it
-refused, and each waits a slightly different span so they do not all come back in
-the same millisecond.
-
-`send_image_detail` covers one more dialect gap: OpenAI's optional
-`image_url.detail` field is sent by default, and some strict vision schemas
-accept only `image_url.url` and reject requests carrying anything more. Set it
-to `false` for those servers: the `zai` preset already does.
-
-Queued OpenAI-compatible requests use the same reasoning headroom as live
-calls: the answer budget plus 16,384 tokens for a host declared or learned to
-reason, or its larger learned allowance. This is room to finish, not a fixed
-charge. Non-reasoning hosts keep the answer budget alone.
-
-Batch result records retain each reply's finish reason, completion tokens and
-reasoning tokens, including empty replies. A queued line the provider cut short,
-or one that stopped with nothing in the answer channel, is not handed back as an
-answer: it is recorded as it arrived, counted under `llm_truncated`, and asked
-again in real time, where the ceiling can still grow. Run metrics count a
-batch's reasoning inside `llm_reasoning_tokens`, and `llm_batch_reasoning_tokens`
-names the batched share of it; both are subsets of `llm_completion_tokens` and
-neither is added to it a second time. Reasoning reported by a batch also teaches
-the live caller that this server and model need reasoning headroom.
-
-Parameter dialects are otherwise handled automatically: OpenAI's reasoning
-models (gpt-5 family) reject `max_tokens` and non-default temperatures, and
-the query layer reads those 400s, adapts the request, and remembers the
-answer per server and model, validated against the live OpenAI API. Every 4xx
-and 5xx an LLM provider returns carries the body's own `code` and `message`,
-bounded to 300 characters, into the error the run logs, so a refused call says
-why instead of only naming its status. One
-provider note: z.ai's OpenAI-compatible endpoint accepts image content only
-on its dedicated vision models, so point `llm.model` at one of those if you
-use it for content analysis.
-
-A provider's dialect can also be declared up front instead of negotiated:
+A provider's dialect can be declared up front instead of negotiated:
 
 ```yaml
 llm:
@@ -474,15 +330,14 @@ llm:
   extra_params: {}                         # fields merged into every call
 ```
 
-`max_tokens_param` and `drop_params` describe the OpenAI dialect and are read
-only there. `extra_params` applies on the Ollama provider too, where anything
-you put under `options` (`num_ctx`, `num_predict`) is merged into Ollama's own
-options block rather than replacing it: content analysis already asks for a
-4096-token window that way, since Ollama's 2048 default does not hold the
-prompt plus several frames.
+`max_tokens_param` and `drop_params` are read only on the OpenAI dialect, where the query layer
+otherwise learns them from the provider's 400s and remembers the answer per server and model.
+`extra_params` also applies on Ollama, where anything under `options` (`num_ctx`, `num_predict`) is
+merged into Ollama's own options block rather than replacing it, and a `num_predict` you set there
+wins over the reasoning room the run would otherwise compute.
 
-A separate `title_llm` section can point title generation at a different model than the one used for
-content analysis. It applies to the CLI and the web UI alike:
+A separate `title_llm` section can point title generation at a different model, for the CLI and the
+web UI alike:
 
 ```yaml
 title_llm:
@@ -496,9 +351,8 @@ title_llm:
 ```
 
 The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
-used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
-`base_url: http://localhost:8080/v1`, empty `api_key`); it is not inherited from `llm`. When
-`title_llm.model` is empty, `llm` is used. Both entry points resolve it the same way.
+used, and any field you leave out takes the *built-in* default, not the one from `llm`. When
+`title_llm.model` is empty, `llm` is used.
 
 ## Triage heads
 
@@ -511,24 +365,18 @@ triage:
   provider: auto                 # ONNX Runtime provider for the encoder: auto, cpu, cuda, coreml
 ```
 
-`provider: auto` takes CUDA where that provider is present and CPU everywhere else. It never
-takes CoreML. Measured on the pinned export, the CoreML provider claims 274 of its 513 nodes and
-splits the graph into 87 partitions, so a tensor crosses the accelerator boundary dozens of times
-per image: it runs 6 to 8 times slower than the CPU provider, holds 9 times the resident memory,
-and gets worse as the batch grows while the CPU provider gets better. Set `provider: coreml` to
-re-measure it. The choice is operational, never identity: it does not enter the encoder key, so
-changing it invalidates no banked fact and re-derives nothing.
+`provider: auto` takes CUDA where that provider is present and CPU everywhere else. It never takes
+CoreML: measured on the pinned export, CoreML claims 274 of the 513 nodes and splits the graph into
+87 partitions, so it runs 6 to 8 times slower than the CPU provider and holds 9 times the resident
+memory. Set `provider: coreml` to re-measure it. The choice is operational: it does not enter the
+encoder key, so changing it re-derives nothing.
 
-Editorial preparation uses `triage.encoder` with the public six-head bundle configured under
-`editorial.preparation.head_bundle`. Install the `editorial` extra and provide the pinned
-DINOv2-small ONNX export. Its digest is checked on load. Missing required head facts stop
-selection; `triage.enabled: false` does not bypass preparation.
+Editorial preparation uses `triage.encoder` with the public six-head bundle from
+`editorial.preparation.head_bundle`, and checks its digest on load. Missing required head facts
+stop selection; `triage.enabled: false` does not bypass preparation.
 
-Only `encoder` and `encoder_url` are read. `enabled` and `bundle` are left over from the
-standalone triage hook and nothing looks at them: they load, they validate, they do nothing.
-
-The public heads provide context. They do not train on your library or independently decide
-whether a picture is suitable for the audience.
+Only `encoder` and `encoder_url` are read. `enabled` and `bundle` are left over from the standalone
+triage hook: they load, they validate, they do nothing.
 
 ## Editorial planner
 
@@ -563,30 +411,24 @@ editorial:
     allow_model_downloads: false
 ```
 
-Tier 2: lives under `advanced:` when the app writes the file. Story-first selection is the
-production route for UI, CLI and scheduled runs. Old `enabled` and `story_first` keys are
-ignored; there is no opt-in flag or environment switch.
+Tier 2: lives under `advanced:` when the app writes the file.
 
-Docling uses `det-v2` to avoid incorrect document labels from ONNX layout optimization on
-the Celeron J4125. Saved `doc_docling: det-v1` settings upgrade on load. The next run
-recomputes that head's facts and refreshes dependent readings; other head facts remain reusable.
+Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
+Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts
+and refreshes dependent readings; other head facts stay reusable.
 
-`reader: auto` uses the model when `llm.model` is set and rules when it is blank.
-`reader: model` requires a model; `reader: rules` skips model editing and reranking even
-when a model is configured. Rules support the ten standard memory products, including
-albums and recurring dates. Custom free-text subjects require the model reader: rules
-cannot interpret a request such as "pictures about perseverance".
+`reader: auto` uses the model when `llm.model` is set and rules when it is blank. `reader: model`
+requires a model; `reader: rules` skips model editing and reranking even when a model is
+configured. Rules cover the ten standard memory products, including albums and recurring dates,
+from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
+the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
+Photos as stills, and write no semantic model banks. Saved plans identify the producer as
+`rules-v1`. A custom free-text subject ("pictures about perseverance") needs the model reader.
 
-Rules use dates, places, favourites, people metadata and available preparation facts.
-They reuse the normal allocation, spacing, audience and timing checks, omit a thesis,
-keep unsampled Live Photos as stills, and do not write semantic model banks. Saved plans
-identify the producer as `rules-v1`; the dedicated UI disclosure remains outside this slice.
-
-Preparation remains a separate choice: `rules` plus `no_captions` retains image
-classifiers; `rules` plus `metadata_only` produces only previews and pixel measurements.
-For a **no-inference comparison**, use `metadata_only` with a fresh annotation database;
-changing the tier does not erase model facts already stored there. The default `full`
-tier still requires its caption producer, even with rules editing.
+Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
+plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,
+use `metadata_only` with a fresh annotation database; changing the tier does not erase model facts
+already stored.
 
 ### Preparation tiers
 
@@ -611,21 +453,15 @@ Use it only on a machine that cannot run ONNX at all.
 Captions are banked per picture, so a `no_captions` deployment can add them later and switch
 the tier to `full` when it finishes.
 
-The planner reads the whole source period, identifies its stories and distinct moments,
-then allocates duration and picks representations of those moments. A longer target can
-show more of a story without inventing more events from near-duplicate pictures.
+Every run uses the **FAMILY** audience. Ordinary family material, including a shirtless baby, bath
+time, breastfeeding or a parent holding a newborn in hospital, can be considered; graphic medical
+procedures, sexual content, exposed adult changing and identifying records are excluded.
 
-New runs use the **FAMILY** audience. Ordinary family material, including a shirtless baby,
-baby bath time, breastfeeding or a parent holding a newborn in hospital, can be considered.
-Graphic medical procedures, sexual content, exposed adult changing and identifying records
-remain excluded.
-
-Preparation fills missing descriptions, public heads, detectors and pixel measurements in
-the annotation database. Complete facts skip provider calls. Missing previews or providers
-stop selection with an explicit incomplete result. Two verified invalid caption completions
-can be recorded as `caption unavailable`, counted separately from successful descriptions.
-See [Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the
-runtime extra, exact model artifacts and caption endpoint requirements.
+Preparation fills missing descriptions, public heads, detectors and pixel measurements in the
+annotation database, and skips provider calls where the facts are complete. Missing previews or
+providers stop selection with an explicit incomplete result. See
+[Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the runtime
+extra, the exact model artifacts and the caption endpoint requirements.
 
 ## Inference service
 
@@ -647,24 +483,19 @@ producers and the key is computed over the model artifact, never over where it r
 provider or the host and nothing is re-derived.
 
 `producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
-to the service and keeps the two detectors in the app, on whatever provider the app's ONNX Runtime
-has; the detectors are the cheap half.
+and keeps the two cheaper detectors in the app.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
 cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of
-it is the round trip rather than the classifiers: 3,709 pictures took 42.7 minutes, and a
-13,552-picture month would have taken 2.6 hours. The answers are banked in the order the pictures
-were asked for whatever order they come back in, so raising this re-derives nothing and changes no
-row. Raise it until the service is the slow half, then stop: the ceiling is 32, and the service's
-own `REQUEST_THREADS` is what decides how many it can actually decide at once.
+it is the round trip: 3,709 pictures took 42.7 minutes, and a 13,552-picture month would have taken
+2.6 hours. Answers are banked in the order the pictures were asked for, so raising this re-derives
+nothing. Raise it until the service is the slow half; the ceiling is 32, and the service's own
+`REQUEST_THREADS` decides how many it can answer at once.
 
-When the service does not answer, the run does not stop and does not pretend: the failure is
-recorded against the endpoint in the preparation report, which the CLI prints and the cut's
-failure detail carries, and with `fallback_to_local: true` the in-process producers take over for the pictures still
-missing facts (which needs the model files from `models fetch` on the app box). With it off, the
-facts stay missing and the cut refuses until the service is back.
-
-`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` is the environment form, like every other key.
+When the service does not answer, the failure is recorded against the endpoint in the preparation
+report, and with `fallback_to_local: true` the in-process producers take over for the pictures
+still missing facts (which needs the model files from `models fetch` on the app box). With it off,
+the cut refuses until the service is back.
 
 ## Title screens
 
@@ -702,8 +533,6 @@ trips:
 
 ## Cache
 
-Controls where analysis results and downloaded videos are stored. The video cache avoids re-downloading from Immich on repeated runs.
-
 ```yaml
 cache:
   directory: "~/.immich-memories/cache"
@@ -716,11 +545,11 @@ cache:
   preview_cache_max_size_mb: 2000.0    # Max disk for clip previews (100 MB-100 GB)
 ```
 
-The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
+Tight on disk: lower `video_cache_max_size_gb`, or turn it off with `video_cache_enabled: false`.
 
-### Size the thumbnail cache by your library, not by taste
+### Size the thumbnail cache by your library
 
-`thumbnail_cache_max_size_mb` is the one cache budget that scales with how big your library is. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times: sharpness and exposure, the DINOv2 heads, the contact sheets, the caption. Measured on a real library, one preview is about **315 KB**, so:
+`thumbnail_cache_max_size_mb` is the one cache budget that scales with the library. Every candidate asset in a memory's scope gets an Immich preview fetched and read back several times. Measured on a real library, one preview is about **315 KB**, so:
 
 ```
 budget in MB ≈ 0.35 × (assets a memory's scope can reach)
@@ -728,11 +557,9 @@ budget in MB ≈ 0.35 × (assets a memory's scope can reach)
 
 A scope of ten thousand candidates wants about 3.4 GB; the `0.35` leaves a little headroom over the measured 0.315 MB. The 10 GB default holds roughly 31,000 previews, which covers three scopes that size.
 
-If the run's working set does not fit, nothing is lost mid-run: previews this run is still using are never deleted, so the cache temporarily overflows the limit instead. But the *next* run reclaims them, so the next overlapping memory re-downloads every preview and re-captions the assets whose banked caption failure no longer matches the bytes. You get one `WARNING` per run saying how far over you are and naming this setting. Raise it rather than ignoring it.
+If the run's working set does not fit, nothing is lost mid-run: previews still in use are never deleted and the cache overflows the limit instead. The *next* run reclaims them, so the next overlapping memory re-downloads every preview. You get one `WARNING` per run saying how far over you are. Raise it rather than ignoring it.
 
-The other two budgets are not library-sized and need no such rule: `preview_cache_max_size_mb` holds the video renditions the wizard's player streams (one cut's clips), and the video cache holds the originals being assembled (also one cut's clips). Both are tens of files per run, however big your library is.
-
-It is the full Immich preview that is cached, not a smaller derived tile, even though no single consumer needs 1440 px. Those bytes are the image the model sees in the contact sheets, and their SHA-256 is that sheet's identity; the DINOv2 transform wants a 256 px short side that a 400 px caption tile does not have on 16:9; and both the duplicate-hash bank and the banked caption failures are keyed on them. Caching something smaller would re-derive all of that and change graded output, so it is a re-grade rather than a setting.
+The other two budgets are not library-sized: `preview_cache_max_size_mb` holds the video renditions the wizard's player streams, and the video cache holds the originals being assembled. Both are tens of files per run, however big your library is.
 
 ## Server (UI)
 
@@ -755,20 +582,16 @@ of the section is config-only.
 
 `trigger_token` turns on the HTTP trigger: one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
-[Trigger from Immich or anything else](../create/recipes/trigger-endpoint.md). Keep it out of
-`config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` is not one of the sections
-that expand a `${VAR}` reference, so writing one here stores the six literal characters `${VAR}`
-as your token. Either way the value is redacted from `/health`, the config viewer, and the logs.
-Log redaction is armed at config
-load, so the handful of lines printed before the config exists (startup, a config file that
-fails to parse) cannot be covered by it.
+[Trigger from Immich or anything else](../create/recipes/automated-generation.md#trigger-it-over-http).
+Keep it out of `config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` does not expand
+a `${VAR}` reference, so writing one here stores the six literal characters as your token. Either
+way the value is redacted from `/health`, the config viewer and the logs, from config load onwards.
 
-`host` is the one value "save" leaves out of `config.yaml` when you never set it. Writing the
-`0.0.0.0` default would make the next load treat it as your decision and quietly retire the
-localhost bind, which is exactly what older versions did, so a `server.host: 0.0.0.0` already
-sitting in your file is ignored with a warning and disappears the next time the file is saved.
-Any other address is yours and is kept; so are `--host` and `IMMICH_MEMORIES_SERVER__HOST`, which
-nothing but a human ever wrote. To keep a LAN bind with authentication off, use
+`host` is the one value "save" leaves out of `config.yaml` when you never set it: writing the
+`0.0.0.0` default would make the next load treat it as your decision and retire the localhost bind.
+A `server.host: 0.0.0.0` already in your file is ignored with a warning and disappears the next
+time the file is saved. Any other address is kept, and so are `--host` and
+`IMMICH_MEMORIES_SERVER__HOST`. To keep a LAN bind with authentication off, use
 `allow_unauthenticated_lan: true`.
 
 ## Upload to Immich

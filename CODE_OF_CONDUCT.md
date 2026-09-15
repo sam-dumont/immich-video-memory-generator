@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the maintainer: email the address on the [GitHub profile](https://github.com/sam-dumont), or, for anything with a security dimension, use [GitHub's private vulnerability reporting](https://github.com/sam-dumont/immich-video-memory-generator/security/advisories/new). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately through [GitHub's private reporting form](https://github.com/sam-dumont/immich-video-memory-generator/security/advisories/new), which only the maintainer can read. If you would rather not use GitHub, the contact routes in [SECURITY.md](SECURITY.md) reach the same person. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

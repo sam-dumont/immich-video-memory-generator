@@ -1,8 +1,8 @@
 ---
-sidebar_label: "Health, Logs & Cache"
+sidebar_label: "Health, logs and caches"
 ---
 
-# Health, Logs & Cache
+# Health, logs and caches
 
 ## Health endpoints
 
@@ -10,11 +10,14 @@ sidebar_label: "Health, Logs & Cache"
 |---|---|---|
 | `GET /health/live` | `200` while the web process answers, `{"status": "alive", "version": …}`. Never contacts Immich | liveness probe |
 | `GET /health/ready` | `200` with `status: ready` when configuration and authenticated Immich access work; `503` with `status: degraded` otherwise | readiness probe, Uptime Kuma, blackbox exporter |
-| `GET /health` | always `200`; a ready payload is rewritten to `ok` | compatibility only, not a probe |
+| `GET /health` | always `200`: a ready payload is rewritten to `ok`, a degraded one passes through as `degraded` with the same `200` | compatibility only, never a probe |
 
-`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`; a
-degraded one is passed through as `degraded` with the same `200`, which is what makes it useless as
-a probe.
+`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`,
+which is what makes it useless as a probe.
+
+The two detailed endpoints reuse a snapshot for up to ten seconds to avoid repeating Immich
+and database reads on every poll. Polling `/health` does not change the status returned by
+`/health/ready`; both can be used at the same time.
 
 All three are unauthenticated, on purpose and even with login turned on: a container runtime has no
 session. They carry the version, whether config is present and whether Immich answered, and nothing
@@ -26,9 +29,9 @@ An abridged readiness payload:
 {"status": "ready", "immich_reachable": true, "last_successful_run": "2025-12-15T10:30:00", "version": "0.77.2"}
 ```
 
-The readiness payload also carries `immich_reachable`, `last_successful_run` (from the run
-database), `version`, and the automation, pending-delivery and scheduler blocks. The Immich probe
-is bounded at 5 seconds. A degraded status does not stop the app: the UI still serves.
+The full one adds the automation, pending-delivery and scheduler blocks; `last_successful_run`
+comes from the run database. The Immich probe is bounded at 5 seconds, and a degraded status does
+not stop the app: the UI still serves.
 
 ## Logging
 

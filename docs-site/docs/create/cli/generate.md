@@ -5,38 +5,28 @@ title: generate
 
 # generate
 
-`immich-memories generate` pulls pictures and video from your Immich library, reads the period
-as a story, keeps the pictures that carry it, and renders a cut. It prepares missing facts for the
-whole period first (previews, pixel facts, detectors, captions when the tier asks for them), so the
-first run over a period is the slow one: the second is mostly the render. The audience is always
-"family": that is a fixed part of the request, not a setting.
+`immich-memories generate` pulls pictures and video from your Immich library, reads the period as a
+story, keeps the pictures that carry it, and renders a cut. It prepares missing facts for the whole
+period first, so the first run over a period is the slow one: the second is mostly the render. The
+audience is always "family", which is part of the request rather than a setting.
 
 ```bash
 immich-memories generate [OPTIONS]
 ```
 
 Every flag, with its default, is in the generated
-[CLI reference](../../reference/cli-reference.md#generate), which comes out of the same Click tree
-`--help` does and is checked against it on every PR. `immich-memories generate --help` prints the
-same thing in your terminal. This page is what the flags do not tell you.
+[CLI reference](../../reference/cli-reference.md#generate), or in `generate --help`. This page is
+what the flags do not tell you.
 
 `--resolution` takes the config value; `auto` matches source clips. When `--resolution` is omitted,
-the command uses `output.resolution`, which is 1080p by default. `--quality` changes the effective
-CRF, mapped onto each hardware encoder's own scale.
+the command uses `output.resolution`, 1080p by default. `--quality` changes the effective CRF,
+mapped onto each hardware encoder's own scale.
 
-Opening titles name the people or occasion, rather than printing a Boolean query or the
-span between recurring dates. A holiday opens with its name and "Through the Years";
-On This Day shows the month and day. Wordy titles from a new special-day scan are asked
-for again instead of cut off mid-sentence. Existing catalogue entries keep their saved titles.
-
-Trip templates follow `title_screens.locale` and count both the first and last day.
-`--title` and `--subtitle` still override the templates. Date and place captions stay
-clear of dissolves, so the outgoing and incoming labels cannot overlap. A clip too short
-to hold a window keeps its caption for its whole length instead of losing it.
+Opening titles name the people or the occasion, never the query that produced them. `--title` and
+`--subtitle` override all of it. See [titles](../titles-and-music.md).
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
-`--preset fast` for the CPU-only profile (1080p, H.264, medium quality, static title backgrounds)
-on every knob you did not set. See [Health, logs and cache](../../deploy/maintenance/health-logs-cache.md).
+`--preset fast` for the CPU-only profile on every knob you did not set.
 
 ## Examples
 
@@ -53,10 +43,6 @@ immich-memories generate --year 2025 --birthday --person "Emma" --duration 900
 # A child with either adult
 immich-memories generate --memory-type multi_person --year 2025 \
   --people-expression '("Alex Smith" OR "Morgan Smith") AND "Riley Smith"'
-
-# Any preset with your own dates
-immich-memories generate --memory-type person_spotlight --person "Riley" \
-  --start 2025-02-01 --end 2025-03-31
 
 # This day across the years, pinned so the run is repeatable
 immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
@@ -83,17 +69,10 @@ Three things the examples hide:
 
 ## Trips
 
-Set your home in `config.yaml` and the tool finds clusters of GPS-tagged pictures at least
-50 km away, spanning at least 2 nights, split when the gap between pictures passes 2 days:
-
-```yaml
-trips:
-  homebase_latitude: 50.8468
-  homebase_longitude: 4.3525
-  min_distance_km: 50
-  min_duration_days: 2
-  max_gap_days: 2
-```
+With `trips.homebase_latitude` and `trips.homebase_longitude` set, the tool finds clusters of
+GPS-tagged pictures at least 50 km away spanning at least 2 nights, split when the gap between
+pictures passes 2 days. The thresholds are in the
+[config reference](../../reference/config-reference.md#trip-detection).
 
 ```bash
 immich-memories generate --memory-type trip --year 2024                  # a table of trips, no video
@@ -105,31 +84,16 @@ A trip over New Year is one trip, not two.
 
 ## What the terminal shows while it runs
 
-One line per stage, the same record the web UI draws its rows from. A stage that counts its
-work (previews, pixel facts, detectors, the reader's requests) turns the spinner into a bar with
-an estimate:
+One line per stage, the same record the web UI draws its rows from. A stage that counts its work
+gets a bar with an estimate for that stage, not for the whole cut:
 
 ```text
 ⠿ Preparing previews: 352/9814 · ~19m left in this stage ━━━━━━━━━━━   3%
   ⏱ 0:41 elapsed
 ```
 
-The estimate uses the items completed since this stage's first update. It appears after
-another update advances the count and resets when the stage changes. It estimates this pass,
-not the whole cut; slow items can change it. The page reads the same saved estimate, including
-after a reload. Stages with nothing to count keep the spinner and elapsed time.
-
-If the reader stops answering, the line says so instead of going quiet:
-
-```text
-⠿ Waiting for the reader at omlx.local:9999: connection dropped, retry 1 of 3
-  ⏱ 0:14 elapsed
-```
-
-Three drops, two then four seconds apart, and the last line says what to do: `Gave up on the
-reader at omlx.local:9999 after 3 dropped connections: fix the server and cut again`. The run then
-fails naming the same endpoint. A model
-server that is restarting survives that; one that is off is named within a second.
+A reader that stops answering is named on the line rather than going quiet. Three drops, two then
+four seconds apart, and the run fails naming the endpoint.
 
 ## What a run leaves behind
 
@@ -148,11 +112,9 @@ Memory generated in 42s
   why any picture is in or out: immich-memories runs why <asset id> --run 20260913_083421_9dcb
 ```
 
-The two timings are wall-clock around the calls as they happen. `runs story <run>` prints the
-whole cut again later, `runs why <asset id>` says where one picture passed or where it was
-dropped and why, and `runs show <run>` has the model spend (calls, cache hits, tokens). See
-[runs](./runs.md). The reasons are written for every run; `--trace-selection` only adds a copy of
-the funnel at a path you choose.
+The two timings are wall-clock around the calls as they happen. [`runs`](./runs.md) reads all of it
+back later. The reasons are written for every run; `--trace-selection` only adds a copy of the
+funnel at a path you choose.
 
 ## Output
 
@@ -164,26 +126,18 @@ immich-memories generate --year 2025 --output ~/Videos/summer.mp4
 # writes ~/Videos/summer_20260105_143052_a7b3/summer.mp4
 ```
 
-Without `--output` the file lands in the configured output directory (`~/Videos/Memories/` by
-default) as `{person}_{memory-type}_{date}.mp4`. Nothing prunes those folders; `runs delete`
-removes a run and its output.
+Without `--output` the file lands in `output.directory` (`~/Videos/Memories/`) as
+`{person}_{memory-type}_{date}.mp4`. Nothing prunes those folders; `runs delete` removes a run and
+its output.
 
-## Upload
-
-```bash
-immich-memories generate --year 2024 --upload-to-immich --album "2024 Memories"
-```
-
-The album is created if it does not exist. Without `--album` the video is a standalone asset.
-The persistent form is `upload.enabled: true` and `upload.album_name` in the config.
+`--upload-to-immich --album "2024 Memories"` creates the album if it does not exist; the
+persistent form is `upload.enabled: true` and `upload.album_name`.
 
 ## Two ways to skip the video
 
-`--dry-run` is the cheap preview: it discovers the inputs and reports what preparation the
-period still needs (which producers are missing, how many pictures have no facts). Nothing is
-selected, so there is nothing to trace.
+`--dry-run` is the cheap preview: it discovers the inputs and reports what preparation the period
+still needs. Nothing is selected, so there is nothing to trace.
 
 `--no-render` selects for real, with every reading and every gate, and stops at the encode. The
-pictures it lists are the pictures it would have shipped, and the run is on record like any
-other. Use it to compare settings, or to time selection without paying for an encode you will
-delete.
+pictures it lists are the pictures it would have shipped, and the run is on record like any other.
+Use it to compare settings, or to time selection without paying for an encode you will delete.

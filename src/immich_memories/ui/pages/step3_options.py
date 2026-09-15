@@ -15,6 +15,7 @@ from immich_memories.ui.components import (
     im_separator,
     im_stat_card,
 )
+from immich_memories.ui.pages.film_length import film_length_stat
 from immich_memories.ui.state import get_app_state
 
 OUTPUT_FORMAT_OPTIONS = [
@@ -392,14 +393,6 @@ def render_step3() -> None:
     im_section_header("Summary", icon="summarize")
 
     selected_clips = state.get_selected_clips()
-    total_duration = sum(
-        end - start
-        for clip in selected_clips
-        for start, end in (state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5)),)
-    )
-
-    minutes = int(total_duration // 60)
-    secs = int(total_duration % 60)
     music_str = "None"
     current_music = options.get("music_source", "None")
     if current_music == "AI Generated":
@@ -413,7 +406,7 @@ def render_step3() -> None:
         .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
     ):
         im_stat_card("Clips", str(len(selected_clips)), icon="movie")
-        im_stat_card("Duration", f"{minutes}:{secs:02d}", icon="timer")
+        im_stat_card(*film_length_stat(state, selected_clips), icon="timer")
         im_stat_card("Resolution", options.get("resolution", "Auto"), icon="hd")
         im_stat_card("Music", music_str, icon="music_note")
 

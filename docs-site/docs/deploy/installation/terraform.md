@@ -3,18 +3,13 @@ sidebar_position: 4
 title: Terraform
 ---
 
-# Terraform Deployment
+# Terraform
 
-Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deploy/terraform/` and
-uses the `hashicorp/kubernetes` provider. CPU only by default; NVIDIA GPU scheduling is a variable.
-
-:::note Less travelled than Docker Compose
-Docker Compose is the primary self-hosting path. What the test suite pins is the module's
-contract: writable state volume, `/health/live` + `/health/ready` probes, `gpu_enabled = false` by
-default, and that the examples only set variables the module declares. Nothing runs
-`terraform validate`, and nothing applies the module to a live cluster. Read the plan before you
-apply it, and open an issue if something does not boot.
-:::
+The module lives in `deploy/terraform/` and drives the `hashicorp/kubernetes` provider. CPU only by
+default; NVIDIA scheduling is a variable. Docker Compose is the primary self-hosting path, and what
+CI pins here is the module's contract: writable state volume, `/health/live` and `/health/ready`
+probes, `gpu_enabled = false` by default. Nothing runs `terraform validate` and nothing applies the
+module to a live cluster, so read the plan before you apply it.
 
 :::caution Before enabling Ingress
 Authentication is disabled by default. An enabled Ingress exposes the UI to every client that can
@@ -26,52 +21,46 @@ single-user, single-replica; do not scale the deployment beyond one pod.
 ## What it creates
 
 Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
-
-:::caution The module has no models claim
-The Kustomize base grew a third PVC (`immich-memories-models`) and a `fetch-models` init
-container; this module has neither. On any tier but `metadata_only` the first cut therefore stops
-at prepare with `public heads need the pinned DINOv2 ONNX export at ...`, `nsfw_marqo has no
-model` and `doc_docling ... is not in /models/huggingface`. Until the module catches up
-([#928](https://github.com/sam-dumont/immich-video-memory-generator/issues/928)), either run the
-fetch in the pod once, into the cache PVC, and point the three paths at it:
-
-```bash
-kubectl exec -n immich-memories deploy/immich-memories -- immich-memories models fetch
-```
-
-with `env` carrying `IMMICH_MEMORIES_TRIAGE__ENCODER`,
-`IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX` and
-`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR` under
-`/home/immich/.immich-memories/models`, or use [Kubernetes](./kubernetes.md) instead, which does
-this for you.
-:::
-
-The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` (`run_as_user` / `fs_group`
-1000, all capabilities dropped, `RuntimeDefault` seccomp, `read_only_root_filesystem = true`).
-These three mounts are the only writable paths:
+The image runs as `immich`, UID/GID 1000 (`run_as_user` / `fs_group` 1000, all capabilities
+dropped, `RuntimeDefault` seccomp, `read_only_root_filesystem = true`). Three writable mounts:
 
 | Mount | Backed by | Holds |
 |-------|-----------|-------|
-| `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache/annotations.sqlite` (the editor's banks), `cache.db` (run history and automation state), video cache, projects |
+| `/home/immich/.immich-memories` | cache PVC | `config.yaml`, `cache/annotations.sqlite` (the editor's banks), `cache.db` (run history and automation state), video cache, projects |
 | `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
 | `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates: 8Gi for 4K |
 
 There is no ConfigMap. `immich_url` / `immich_api_key` (plus `llm_api_key`, `musicgen_api_key` and
 anything in `secret_env`) land in the Secret and reach the pod through `envFrom`; every other
 setting is an `IMMICH_MEMORIES_<SECTION>__<KEY>` env var (`env`). Settings saved from the UI go to
-`config.yaml` on the PVC; env vars override them.
+`config.yaml` on the PVC; env vars override them. Probes are `/health/live` for liveness and
+`/health/ready` for readiness, which stays `503` until config is present and Immich answers.
 
-Probes: `/health/live` (liveness) and `/health/ready` (readiness: `503` until config is present
-and Immich answers, which keeps the pod out of the Service while Immich is down).
+:::caution The module has no models claim
+The Kustomize base has a third PVC (`immich-memories-models`) and a `fetch-models` init container;
+this module has neither, so on any tier but `metadata_only` the first cut stops at prepare with
+`public heads need the pinned DINOv2 ONNX export at ...`. Either run the fetch in the pod once,
+into the cache PVC:
+
+```bash
+kubectl exec -n immich-memories deploy/immich-memories -- immich-memories models fetch
+```
+
+with `env` pointing `IMMICH_MEMORIES_TRIAGE__ENCODER`,
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX` and
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR` under
+`/home/immich/.immich-memories/models`, or use [Kubernetes](./kubernetes.md) instead, which does
+this for you
+([#928](https://github.com/sam-dumont/immich-video-memory-generator/issues/928)).
+:::
 
 ## Prerequisites
 
-1. **Terraform** >= 1.0 and the `hashicorp/kubernetes` provider >= 2.20
-2. **Kubernetes cluster** with a storage class for PVCs and Immich reachable from it (port 2283
-   by default). For `gpu_enabled = true`: NVIDIA GPU Operator and the `nvidia` RuntimeClass
-3. **kubeconfig** configured and pointing at your cluster
+Terraform >= 1.0, the `hashicorp/kubernetes` provider >= 2.20, a kubeconfig pointing at a cluster
+with a storage class, and Immich reachable from it (port 2283 by default). For
+`gpu_enabled = true`, the NVIDIA GPU Operator and the `nvidia` RuntimeClass.
 
-## Quick Start
+## Quick start
 
 ```bash
 cd deploy/terraform/examples/basic        # CPU, no ingress, port-forward
@@ -87,7 +76,7 @@ terraform apply
 $(terraform output -raw port_forward_command)   # http://localhost:8080
 ```
 
-## Module Usage
+## Module usage
 
 ```hcl
 module "immich_memories" {
@@ -97,116 +86,50 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # Editorial model connection (model services are deployed separately)
-  # The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit served by oMLX; nothing on this route
-  # has been run on Ollama. Whatever serves it must take images and hold 32k of context.
-  # `llm_model` is the tag that server reports at /v1/models.
+  # The reader, a separate deployment. It must take images and hold 32k of context; `llm_model`
+  # is the tag that server reports at /v1/models.
   llm_base_url = "http://your-model-host:8000/v1"
   llm_model    = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 
-  # Optional: anything else, e.g. the in-pod daily automation
+  # Optional: the in-pod daily run, NVIDIA nodes, bigger claims
   env = {
     IMMICH_MEMORIES_AUTOMATION__ENABLED  = "true"
     IMMICH_MEMORIES_AUTOMATION__DAILY_AT = "09:00"
   }
-
-  # Optional: NVIDIA GPU nodes
-  gpu_enabled = true
-
-  # Storage
+  gpu_enabled         = true
   output_storage_size = "100Gi"
   cache_storage_size  = "50Gi"
 }
 ```
 
-Also configure [editorial annotation preparation](../configuration/editorial-preparation.md)
-through the module's `env` map. Its compact-caption endpoint and pinned encoder/detector artifacts
-are separate from `llm_base_url`; an uncached generation requires both preparation and story
-providers.
-
-Unlike the Kustomize manifests, this module creates **no models PVC and no `/models` mount**, and
-the root filesystem is read-only. The encoder and the Hugging Face detector cache therefore have
-to land under `/home/immich/.immich-memories`, which is where their defaults already point. If you
-override `IMMICH_MEMORIES_TRIAGE__ENCODER` or the detector cache directory to a path outside that
-mount, `models fetch` fails and so does the first cut.
+Which model to serve at `llm_base_url` is on [Readers](../readers.md). Preparation goes through the
+same `env` map: [editorial annotation setup](../configuration/editorial-preparation.md).
 
 ## Variables
 
-### Required
+`immich_url` and `immich_api_key` are required. Everything else has a default:
 
-| Name | Description | Type |
-|------|-------------|------|
-| `immich_url` | URL of your Immich instance | `string` |
-| `immich_api_key` | Immich API key | `string` |
+| Name | Description | Default |
+|------|-------------|---------|
+| `namespace`, `create_namespace` | Kubernetes namespace, and whether to create it | `"immich-memories"`, `true` |
+| `image_repository`, `image_tag` | Container image. No `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `ghcr.io/sam-dumont/immich-video-memory-generator`, `"latest"` |
+| `replicas` | Keep at 1; the UI is single-replica | `1` |
+| `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `2Gi/1000m` to `8Gi/4000m` |
+| `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `"4Gi"` |
+| `env`, `secret_env` | Extra env vars, the second stored in the Secret | `{}` |
+| `labels` | Extra labels on every resource | `{}` |
+| `gpu_enabled`, `gpu_count` | Schedule on NVIDIA GPU nodes: RuntimeClass, `nvidia.com/gpu`, node selector, toleration, `NVIDIA_*` env | `false`, `1` |
+| `gpu_node_selector`, `runtime_class_name` | how GPU nodes are found | `{"nvidia.com/gpu.present": "true"}`, `"nvidia"` |
+| `output_storage_size`, `cache_storage_size` | PVC sizes | `"50Gi"`, `"20Gi"` |
+| `storage_class_name` | Storage class for both PVCs | `null` (cluster default) |
+| `ingress_enabled`, `ingress_class_name`, `ingress_host` | Ingress, off by default | `false`, `"nginx"`, `"memories.example.com"` |
+| `ingress_tls_enabled`, `ingress_tls_secret_name`, `ingress_annotations` | TLS and extras for it | `false`, `"immich-memories-tls"`, `{}` |
+| `llm_base_url`, `llm_model`, `llm_api_key` | The reader (Ollama: append `/v1`). Empty leaves the editor without a model | `""` |
+| `musicgen_enabled`, `musicgen_base_url`, `musicgen_api_key` | AI music through a MusicGen server | `false`, the in-cluster service, `""` |
+| `output_resolution` | `720p`, `1080p` or `4k` | `"1080p"` |
 
-### Deployment
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
-| `create_namespace` | Create the namespace | `bool` | `true` |
-| `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
-| `image_tag` | Image tag, no `v` prefix, so release `vX.Y.Z` is tag `X.Y.Z` | `string` | `"latest"` |
-| `replicas` | Replica count: keep at 1; the UI is single-replica | `number` | `1` |
-| `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
-| `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |
-| `env` | Extra env vars, typically `IMMICH_MEMORIES_<SECTION>__<KEY>` (plain names like `TZ` work too) | `map(string)` | `{}` |
-| `secret_env` | Extra env vars stored in the Secret (auth password, storage secret) | `map(string)` | `{}` |
-| `labels` | Extra labels on every resource | `map(string)` | `{}` |
-
-### GPU Configuration
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `gpu_enabled` | Schedule on NVIDIA GPU nodes (RuntimeClass, `nvidia.com/gpu`, node selector, toleration, `NVIDIA_*` env) | `bool` | `false` |
-| `gpu_count` | Number of GPUs to request | `number` | `1` |
-| `gpu_node_selector` | Node selector for GPU nodes | `map(string)` | `{"nvidia.com/gpu.present": "true"}` |
-| `runtime_class_name` | RuntimeClass for NVIDIA | `string` | `"nvidia"` |
-
-### Storage
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `output_storage_size` | Size of the output PVC | `string` | `"50Gi"` |
-| `cache_storage_size` | Size of the cache/state PVC | `string` | `"20Gi"` |
-| `storage_class_name` | Storage class for PVCs | `string` | `null` (cluster default) |
-
-### Ingress
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `ingress_enabled` | Enable ingress | `bool` | `false` |
-| `ingress_class_name` | Ingress class | `string` | `"nginx"` |
-| `ingress_host` | Ingress hostname | `string` | `"memories.example.com"` |
-| `ingress_tls_enabled` | Enable TLS | `bool` | `false` |
-| `ingress_tls_secret_name` | TLS secret name | `string` | `"immich-memories-tls"` |
-| `ingress_annotations` | Extra ingress annotations | `map(string)` | `{}` |
-
-### LLM and music
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `llm_base_url` | OpenAI-compatible endpoint (Ollama: append `/v1`). Sets `llm.base_url`; empty leaves the editor without a model | `string` | `""` |
-| `llm_model` | Vision model name served at `llm_base_url` | `string` | `""` |
-| `llm_api_key` | API key for `llm_base_url` (stored in the Secret) | `string` | `""` |
-| `musicgen_enabled` | Generate AI music with a MusicGen server | `bool` | `false` |
-| `musicgen_base_url` | MusicGen server URL | `string` | `"http://musicgen.musicgen.svc.cluster.local:8000"` |
-| `musicgen_api_key` | MusicGen API key (stored in the Secret) | `string` | `""` |
-| `output_resolution` | Video resolution (`720p`, `1080p`, `4k`) | `string` | `"1080p"` |
-
-## Outputs
-
-| Name | Description |
-|------|-------------|
-| `namespace` | Kubernetes namespace |
-| `service_name` | Service name for internal access |
-| `service_endpoint` | Internal service endpoint (FQDN) |
-| `ingress_host` | Ingress hostname (if enabled) |
-| `port_forward_command` | Ready-to-run kubectl port-forward command |
-| `deployment_name` | Deployment name |
-| `pvc_output` | Name of the output PVC |
-| `pvc_cache` | Name of the cache/state PVC |
-| `gpu_enabled` | Whether GPU support is enabled |
+`terraform output` gives the namespace, service name and endpoint, the ingress host, the deployment
+and PVC names, whether GPU is on, and a ready-to-run `port_forward_command`.
 
 ## Troubleshooting
 
@@ -225,5 +148,5 @@ kubectl get nodes -L nvidia.com/gpu.present
 kubectl get runtimeclass nvidia
 ```
 
-Common causes of a Pending pod: the storage class doesn't exist, resource requests exceed the
-cluster, or `gpu_enabled = true` without GPU nodes.
+A Pending pod is usually a storage class that does not exist, resource requests the cluster cannot
+meet, or `gpu_enabled = true` without GPU nodes.

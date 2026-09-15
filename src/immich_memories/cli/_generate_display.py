@@ -65,6 +65,27 @@ def _has_music_backends(config: Config) -> bool:
     return music_config_available(config)
 
 
+def _add_music_rows(
+    table: Table,
+    *,
+    config: Config,
+    music: str | None,
+    music_volume: float,
+    no_music: bool,
+) -> None:
+    """What the run will do about music: a file, a generated track, or nothing."""
+    if no_music:
+        table.add_row("Music", "Disabled")
+        return
+    if music and music != "auto":
+        table.add_row("Music", music)
+    elif music == "auto" or _has_music_backends(config):
+        table.add_row("Music", "Auto (AI-generated)")
+    else:
+        return
+    table.add_row("Music Volume", f"{int(music_volume * 100)}%")
+
+
 def _build_params_table(
     *,
     config: Config,
@@ -78,7 +99,7 @@ def _build_params_table(
     orientation: str,
     scale_mode: str | None,
     transition: str,
-    resolution: str,
+    resolution: str | None,
     output_format: str | None,
     output_path: Path,
     add_date: bool,
@@ -109,7 +130,7 @@ def _build_params_table(
     table.add_row("Orientation", orientation)
     table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
     table.add_row("Transition", transition)
-    table.add_row("Resolution", resolution)
+    table.add_row("Resolution", resolution or config.output.resolution)
     table.add_row("Format", output_format or config.output.codec)
     table.add_row("Output", display_path(output_path))
     if add_date:
@@ -126,14 +147,7 @@ def _build_params_table(
         table.add_row("Subtitle Override", subtitle_override)
     if use_live_photos:
         table.add_row("Live Photos", "Enabled")
-    if no_music:
-        table.add_row("Music", "Disabled")
-    elif music and music != "auto":
-        table.add_row("Music", music)
-        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
-    elif music == "auto" or _has_music_backends(config):
-        table.add_row("Music", "Auto (AI-generated)")
-        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
+    _add_music_rows(table, config=config, music=music, music_volume=music_volume, no_music=no_music)
 
     return table
 

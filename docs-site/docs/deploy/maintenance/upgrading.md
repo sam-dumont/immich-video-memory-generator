@@ -11,9 +11,9 @@ docker compose pull
 docker compose up -d
 ```
 
-That's it. The container image includes all dependencies.
+Everything is in the image, so that is the whole upgrade.
 
-## uv (recommended for native install)
+## uv
 
 ```bash
 uv tool upgrade immich-memories
@@ -27,28 +27,25 @@ pip install --upgrade immich-memories
 
 ## Before upgrading
 
-Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memory-generator/releases) before upgrading (the `CHANGELOG.md` in the repo is a stub that points there). Look for:
-
-- **Breaking changes**: config fields that were renamed or removed
-- **New defaults**: behavior changes that might affect your output
-- **New dependencies**: system-level requirements (FFmpeg version, etc.)
+Read the [GitHub release notes](https://github.com/sam-dumont/immich-video-memory-generator/releases)
+first; the repo's `CHANGELOG.md` is a stub that points there. What bites: config fields renamed or
+removed, changed defaults that move your output, and new system requirements such as an FFmpeg
+version.
 
 ## Upgrading Immich from v2 to v3
 
-Immich Memories supports Immich v2 and v3, see
-[Immich API compatibility](../configuration/config-file.md#immich-api-compatibility) for what that
-covers and what is actually tested. Keep the default automatic runtime policy during the server
-upgrade:
+Both majors work. [Immich API compatibility](../configuration/config-file.md#immich-api-compatibility)
+says what is actually tested. Leave this alone through the server upgrade:
 
 ```yaml
 immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-You do not need to switch this setting for each run. On the next client start, `auto` detects the
-server major and uses its API contract. Explicit `v2` and `v3` are manual troubleshooting escape
-hatches for unusual proxies or deployments that prevent correct detection; they force the selected
-contract. They are the escape hatch if detection is wrong, not an upgrade ritual.
+On the next client start, `auto` detects the server major and uses its API contract. Explicit `v2`
+and `v3` are manual troubleshooting escape hatches for unusual proxies or deployments that prevent
+correct detection; they force the selected contract. They are the escape hatch when detection is
+wrong, not an upgrade step.
 
 The client handles the three v3 wire changes that affect generation:
 
@@ -57,35 +54,41 @@ The client handles the three v3 wire changes that affect generation:
   `deviceAssetId` and `deviceId` fields. The schema is selected before bytes are uploaded.
 - **Search dates:** date bounds include a UTC offset, which v3 requires.
 
-After upgrading Immich, run:
+After upgrading Immich:
 
 ```bash
 immich-memories config test
 ```
 
-This is a read-only authentication and compatibility check. It does not search assets, generate
-a video, create an album, or upload anything. A successful result includes the resolved `v2` or
-`v3` contract.
+This is a read-only authentication and compatibility check. It does not search assets, generate a
+video, create an album, or upload anything. It prints the `v2` or `v3` contract it resolved.
 
 ## Config compatibility
 
-There is no automatic config migration. Unknown keys **inside** a known section are silently ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid values fail at startup. Renames are documented in the release notes: check them when a setting seems to have stopped taking effect.
+There is no automatic config migration. Unknown keys **inside** a known section are silently
+ignored, so a renamed field simply stops doing anything; unknown *top-level* keys and invalid
+values fail at startup. Renames are in the release notes: check them when a setting seems to have
+stopped taking effect.
 
-The removed clip scorer's keys are named rather than merely ignored: `content_analysis`, `audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`, `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`, `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and `hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing every one it found, with what each used to do. Delete them to silence it; leaving them changes nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras went with it.
-
-In practice, most config fields have been stable since v0.1. Breaking config changes are rare and always called out in the release notes.
+The removed clip scorer's keys are named rather than merely ignored: `content_analysis`,
+`audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`,
+`analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`,
+`photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and
+`hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing
+every one it found, with what each used to do. Delete them to silence it; leaving them changes
+nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras
+went with it.
 
 ## Data compatibility
 
-**Analysis database** (`cache.db`, `annotations.sqlite`): forward-compatible. Both have schema migrations that run automatically on startup. Upgrading never loses the run history or the editor's banks.
+`cache.db` and `annotations.sqlite` migrate forward when they are opened, so upgrading never loses
+the run history or the editor's banks.
 
-**Video cache** (downloaded clips): can be cleared safely at any time. If a new version changes the download format or caching structure, the old cache files are still valid but you can clear them without loss by deleting `~/.immich-memories/cache/video-cache` (or via the UI Cache page).
-
-**Generated videos**: output MP4 files are standalone. They don't depend on any version of Immich Memories.
+The video cache is safe to delete at any time (`~/.immich-memories/cache/video-cache`, or the UI's
+Cache page); the only cost is downloading the clips again. Generated MP4s stand alone and depend on
+no version of anything.
 
 ## Rollback
-
-If something goes wrong:
 
 **Docker:** edit the `image:` line in your compose file to a specific tag (all
 tags: [GitHub releases](https://github.com/sam-dumont/immich-video-memory-generator/releases)),

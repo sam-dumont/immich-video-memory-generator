@@ -341,6 +341,7 @@ src/immich_memories/
 │       ├── clip_pipeline.py        # The blocking cut worker and its editorial context
 │       ├── pipeline_title.py       # Pipeline title display
 │       ├── step3_options.py        # Assembly options
+│       ├── film_length.py         # The length card: estimated before the render, measured after
 │       ├── _step3_music_preview.py # Music preview controls
 │       ├── step4_export.py         # Export & download
 │       ├── _step4_generate.py      # Generation logic

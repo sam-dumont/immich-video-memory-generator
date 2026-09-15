@@ -36,8 +36,8 @@ The editor has two independent settings: who reads the period, and how much imag
 | Setup | What you need | What you get |
 |---|---|---|
 | **Rules only** (`reader: rules`, `tier: metadata_only`) | The app alone. A 4-core NAS is enough | All ten memory types from dates, places, favourites and people. No model, $0 in API fees. Measured on a Celeron NAS: 279 s for a month cold, 11 s warm. Simpler cuts: it can skip an occasion or spend time on a mundane object |
-| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus the pinned models fetched with one command: an 88 MB encoder, a 22.5 MB detector export and a document classifier snapshot | The sensitive-content and document detectors, so the family-viewing gate has evidence. First pass over a library of about ten thousand pictures on a Celeron: 3 h 41 min, then banked |
-| **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the [caption server](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server) for a description under every picture. What that first pass costs depends entirely on where it runs: 0.16 s a picture on an Apple Silicon Mac with the MLX server, 30.9 s on a four-core Celeron |
+| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus the pinned models fetched with one command: an 88 MB encoder, a 22.5 MB detector export and a document classifier snapshot | The sensitive-content and document detectors, so the family-viewing gate has evidence. A month of 13,552 pictures prepared in 64 min on a cluster pod with the classifiers on a card; the same work on a Celeron NAS multiplies out to 5 h 25 min |
+| **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the [caption server](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server) for a description under every picture. Reading that same month took 19 min on the graded local reader, 14 min and EUR 0.054 on the quickest hosted one |
 
 Title screens are GPU-rendered on Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 (Python 3.11 to 3.13). On an Intel Mac or Python 3.14 there is no kernel wheel and titles fall back to the PIL renderer: same text and timing, static instead of animated. `immich-memories preflight` tells you which one you get.
 
@@ -57,17 +57,17 @@ docker compose exec immich-memories immich-memories preflight      # Immich, mod
 
 The compose file publishes port 8080 on localhost only, and authentication is disabled by default. The UI is single-user, single-replica: run one instance. The app holds an API key to your whole library, so turn on [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication) before you expose the port.
 
-### Supported Immich Versions
+### Immich v2 and v3
 
-Immich v2 and v3, detected at runtime:
+Both majors are supported, and Immich v2 and v3 are detected at runtime:
 
 ```yaml
 immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-Leave this on `auto`. The app detects the server major version and uses the matching API contract;
-you do not choose a version for each run. The explicit `v2` and `v3` values are manual
+Leave this on `auto`. The app detects the server major version and uses the matching API
+contract; you do not choose a version for each run. The explicit `v2` and `v3` values are manual
 troubleshooting overrides: escape hatches for proxies or unusual deployments that hide or rewrite
 the version endpoint. They force that contract, so don't use them as upgrade flags.
 
@@ -92,11 +92,11 @@ Start with one month, not a year: preparation scales with the width of the date 
 - Daily automation: one scheduled `auto run` either retries a pending upload or generates one eligible memory, then notifies. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
 - Privacy mode blurs every frame and moves the map to a fake city, for showing the app over your own library.
 
-How the editor decides is written up in [The Curator](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/the-curator).
+How the editor decides is written up in [How a memory gets cut](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline).
 
 ## About the demo
 
-The hero above is `make demo-hero`, a 15-second cut of the Remotion demo (`make demo-ui`), which recreates the UI in React over a CC0 fixture library: 136 stock pictures that tell one household's June, a birthday, a Saturday in the woods and a week by a lake. The CLI demo inside it is a VHS recording (`make demo-cli`). Docs screenshots come from a hermetic run over the same fixture library (`make screenshots`).
+The hero, the demo and the docs screenshots all run over a CC0 fixture library: 136 stock pictures that tell one household's June. The hero is `make demo-hero`, a 15-second cut of the Remotion demo (`make demo-ui`) that recreates the UI in React; the terminal inside it is a VHS recording (`make demo-cli`); the screenshots come from a hermetic run (`make screenshots`).
 
 ## Development
 

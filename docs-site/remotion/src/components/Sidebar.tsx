@@ -3,38 +3,24 @@ import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 import { MaterialIcon } from "./MaterialIcon";
 
-type StepStatus = "completed" | "active" | "upcoming";
-
 type Props = {
-  activeStep: number; // 1-4
-  completedSteps?: number[];
+  /** The nav entry the page belongs to, as the app highlights it. */
+  active?: string;
 };
 
-const NAV_STEPS = [
+// `_NAVIGATION` in src/immich_memories/ui/app.py, in its order. It is plain
+// navigation, not a wizard: no step numbers, no completion ticks.
+const NAV = [
   { icon: "auto_awesome", label: "Memory" },
+  { icon: "lightbulb", label: "Suggestions" },
+  { icon: "history", label: "Runs" },
   { icon: "video_library", label: "Media pool" },
-  { icon: "tune", label: "Options" },
-  { icon: "download", label: "Export" },
-];
-
-const BOTTOM_NAV = [
-  { icon: "description", label: "Config" },
-  { icon: "groups", label: "People" },
-  { icon: "cached", label: "Cache" },
+  { icon: "settings", label: "Settings" },
 ];
 
 const THEME_ICONS = ["light_mode", "brightness_auto", "dark_mode"];
 
-export const Sidebar: React.FC<Props> = ({
-  activeStep,
-  completedSteps = [],
-}) => {
-  const getStatus = (step: number): StepStatus => {
-    if (completedSteps.includes(step)) return "completed";
-    if (step === activeStep) return "active";
-    return "upcoming";
-  };
-
+export const Sidebar: React.FC<Props> = ({ active = "Memory" }) => {
   return (
     <div
       style={{
@@ -70,13 +56,10 @@ export const Sidebar: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* Main nav steps */}
+      {/* Main nav */}
       <div style={{ padding: "8px 0" }}>
-        {NAV_STEPS.map((step, i) => {
-          const num = i + 1;
-          const status = getStatus(num);
-          const isActive = status === "active";
-          const isCompleted = status === "completed";
+        {NAV.map((step) => {
+          const isActive = step.label === active;
 
           return (
             <div
@@ -97,13 +80,7 @@ export const Sidebar: React.FC<Props> = ({
               <MaterialIcon
                 name={step.icon}
                 size={20}
-                color={
-                  isActive
-                    ? COLORS.primary
-                    : isCompleted
-                      ? COLORS.textSecondary
-                      : COLORS.textSecondary
-                }
+                color={isActive ? COLORS.primary : COLORS.textSecondary}
               />
               <span
                 style={{
@@ -116,13 +93,6 @@ export const Sidebar: React.FC<Props> = ({
               >
                 {step.label}
               </span>
-              {isCompleted && (
-                <MaterialIcon
-                  name="check_circle"
-                  size={16}
-                  color={COLORS.success}
-                />
-              )}
             </div>
           );
         })}
@@ -130,47 +100,6 @@ export const Sidebar: React.FC<Props> = ({
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
-
-      {/* Bottom nav separator */}
-      <div
-        style={{
-          height: 1,
-          backgroundColor: COLORS.border,
-          margin: "0 14px",
-        }}
-      />
-
-      {/* Bottom nav items */}
-      <div style={{ padding: "8px 0" }}>
-        {BOTTOM_NAV.map((item) => (
-          <div
-            key={item.label}
-            style={{
-              padding: "9px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              borderLeft: "3px solid transparent",
-            }}
-          >
-            <MaterialIcon
-              name={item.icon}
-              size={20}
-              color={COLORS.textSecondary}
-            />
-            <span
-              style={{
-                fontSize: 13,
-                fontFamily,
-                fontWeight: 400,
-                color: COLORS.textSecondary,
-              }}
-            >
-              {item.label}
-            </span>
-          </div>
-        ))}
-      </div>
 
       {/* Theme toggle buttons */}
       <div

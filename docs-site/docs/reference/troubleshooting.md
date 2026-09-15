@@ -9,8 +9,8 @@ Immich, the model files and every configured server in one go.
 
 ## Cannot connect to Immich
 
-Run the read-only check first. It checks authentication and reports the resolved API contract
-without searching, generating or uploading:
+The read-only check comes first: authentication and the resolved API contract, nothing searched,
+generated or uploaded.
 
 ```bash
 immich-memories config test
@@ -19,42 +19,33 @@ immich-memories config test
 It prints one line and exits 1 on failure. `URL not configured` and `API key not configured` mean
 the setting never reached the process.
 
-- The URL needs its protocol (`https://`). A trailing slash is tidied up rather than refused, so it is a style preference, not a requirement.
+- The URL needs its protocol (`https://`). A trailing slash is tidied up, not refused.
 - A `403 Forbidden` means the key exists but lacks rights: recreate it with **All**, or the read
   plus upload plus album scopes the quick start lists.
 - Immich must be v2 or v3. Immich 1.x is refused at connect time.
 - In Docker, `localhost` is the container. Use the host's IP or the Docker network name.
 
-## Immich v2/v3 Version Mismatch
-
-Immich Memories supports Immich v2 and v3. The normal configuration is:
+## Immich v2/v3 version mismatch
 
 ```yaml
 immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-`auto` detects the server major at runtime; you do not pick one for each run. If a reverse proxy
-hides or rewrites `/api/server/version`, use `v2` or `v3` as a manual troubleshooting escape hatch.
-The override forces that contract, so match the real server major (an explicit `v3` override on a
-v3 server) and return to `auto` once detection works.
+`auto` detects the server major at runtime; you do not pick one for each run. So a v2-to-v3
+upgrade needs no change here. If a reverse proxy hides or rewrites `/api/server/version`, use `v2`
+or `v3` as a manual troubleshooting escape hatch. The override forces that contract, so go back to
+`auto` once detection works.
 
-Do not flip the override as part of a routine v2-to-v3 upgrade. `auto` is runtime detection; the
-manual values exist to diagnose broken version discovery.
-
-The compatibility layer handles the known v2-to-v3 differences: duration strings versus integer
-milliseconds, version-specific upload fields, and the UTC offset on search dates. The read-only
-`immich-memories config test` reports the server version and authentication errors; it does not test
-uploads. If a v3 upload
-fails, keep the error shown by the command doing the upload and check the relevant Immich server
-logs. API keys are redacted.
+The read-only
+`immich-memories config test` reports the server version and authentication errors; it does not
+test uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check
+the relevant Immich server logs. API keys are redacted.
 
 ## The cut stops with "Waiting for the reader at host:port"
 
-The model server is not answering. The run retries three times, two then four seconds apart,
-and fails naming the endpoint. Start the server (or fix `llm.base_url`), then **Cut again** or
-rerun the command; everything already read is banked. Without a model, set `reader: rules` to cut
-anyway.
+The model server is not answering. Start it (or fix `llm.base_url`), then **Cut again** or rerun
+the command; everything already read is banked. Without a model, set `reader: rules` to cut anyway.
 
 ## A picture I expected is not in the cut
 
@@ -62,12 +53,12 @@ anyway.
 immich-memories runs why <asset id> --run <run id>
 ```
 
-says where it passed and where it was dropped, with the reason. On the Memory page, tick it on
-the pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include <asset id>`.
-Neither overrides the audience gate or conjures media that is not there: a picture the gate holds
-at family-only, or one whose file Immich cannot serve, stays out however you ask for it.
+says where it passed and where it was dropped, with the reason. On the Memory page, tick it on the
+pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include <asset id>`.
+Neither overrides the audience gate: a picture the gate holds at family-only, or one whose file
+Immich cannot serve, stays out however you ask for it.
 
-## No Videos Found
+## No videos found
 
 - The person name must match Immich's, case-insensitive, nothing else fuzzy.
 - Photos are in the pool by default (`photos.enabled: true`); with `--no-photos` the period needs
@@ -78,10 +69,10 @@ at family-only, or one whose file Immich cannot serve, stays out however you ask
 
 The first cut over a period prepares every eligible picture once (previews, pixel facts, heads,
 detectors, and on the `full` tier one caption each), then the reader reads the period. The levers,
-in order: put the caption server and the reader on the fastest box you have, prepare a library a
-month at a time with [`prepare`](../create/cli/prepare.md) and read its cost table, pick a lower
-[tier](../deploy/running-modes.md), and keep the cache (facts and readings are banked; clearing
-the directory makes the next cut cold again). Measured numbers per host are on Running modes.
+in order: put the caption server and the reader on the fastest box you have, prepare a month at a
+time with [`prepare`](../create/cli/prepare.md), pick a lower
+[tier](../deploy/running-modes.md), and keep the cache. Measured numbers per host are on Running
+modes.
 
 ## Out of memory
 
@@ -91,8 +82,8 @@ before a music-heavy run, or move them to their own machine. With ACE-Step's lan
 (`ace_step.use_lm`, off by default), set `lm_model_size: "0.6B"` or switch it off.
 
 If audio mixing dies at the end of a long album on a small container, that is the memory limit.
-Update to the newest release: the mixer runs one FFmpeg process per clip and merges in bounded
-groups, and a failure names the clip and the exit reason.
+The mixer runs one FFmpeg process per clip and merges in bounded groups; the failure names the clip
+and the exit reason.
 
 ## FFmpeg not found
 
@@ -105,7 +96,7 @@ encoded. `brew install ffmpeg`, `apt install ffmpeg`, or use the Docker image, w
 The log says `No hardware acceleration detected, using software encoding` and `preflight` reports
 no GPU. `immich-memories hardware` shows what it sees. For NVIDIA, `nvidia-smi` must work; in
 Docker you need `--gpus all` and the NVIDIA Container Toolkit. Hardware encoders only speed up the
-encode; nothing in the app runs inference on them.
+encode, never inference.
 
 ## Music generation fails
 

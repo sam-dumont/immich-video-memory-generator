@@ -11,23 +11,26 @@ Every config field can be set via environment variable. The pattern is:
 IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
-The one exception is the top-level `preset`, which has no section and is `IMMICH_MEMORIES_PRESET`.
-
-Note the **double underscore** between section and field. Case does not matter, but uppercase is
-the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never
-`ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
-
-List- and dict-valued fields must be given as JSON. That includes `auth.trusted_proxies`,
-`auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
-`analysis.exclude_filename_patterns`, `llm.drop_params`, `llm.extra_params`,
-`llm.thinking_params` and `editorial.head_versions`:
+Note the **double underscore** between section and field, and that `<SECTION>` is always the flat
+runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never `ADVANCED__LLM`, even for sections that live under
+`advanced:` in the YAML file. A nested field takes another double underscore. The one exception is
+the top-level `preset`: `IMMICH_MEMORIES_PRESET`. Field names are in the
+[config reference](../../reference/config-reference.md).
 
 ```bash
-export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
-export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_FILENAME_PATTERNS='["RingVideo_*", "Screenshot*"]'
+export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
+export IMMICH_MEMORIES_OUTPUT__RESOLUTION="4k"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
 ```
 
-## Examples
+List- and dict-valued fields must be given as JSON: `auth.trusted_proxies`, `auth.allowed_emails`,
+`auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
+`analysis.exclude_filename_patterns`, `llm.drop_params`, `llm.extra_params`, `llm.thinking_params`
+and `editorial.head_versions`.
+
+```bash
+export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_FILENAME_PATTERNS='["RingVideo_*", "Screenshot*"]'
+```
 
 ### Immich connection
 
@@ -38,90 +41,30 @@ export IMMICH_MEMORIES_IMMICH__API_VERSION="auto"
 ```
 
 `auto` detects v2 or v3 at runtime; set `v2`/`v3` only to diagnose a proxy that breaks detection.
-See [Immich API compatibility](./config-file.md#immich-api-compatibility) for what is supported and
-what is tested. `immich-memories config test` is read-only and prints the resolved API version.
+`immich-memories config test` is read-only and prints the resolved API version. Background:
+[Immich API compatibility](./config-file.md#immich-api-compatibility).
 
-### Source admission
+## The ones that do not follow the pattern
 
-```bash
-export IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS="3"
-export IMMICH_MEMORIES_ANALYSIS__MIN_SOURCE_SHORT_SIDE="1080"
-export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
-```
+**Retired keys are ignored in silence.** The scene-detection and segment-length knobs that went
+with the clip scorer are dropped by name from a config file with one warning; the
+environment-variable form gets no warning at all. Delete both.
 
-The scene-detection and segment-length knobs that used to live here went with the clip scorer.
-A config file that still names one starts normally and logs one warning naming every key it
-dropped; the environment-variable form is ignored in silence. Delete both.
+**The captioner has its own credential.** `OPENAI_API_KEY` does not reach it: it is a second
+endpoint, so give it `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY`, or leave it blank
+for a server that needs none.
 
-### LLM provider
+**The encoder backend.** `IMMICH_MEMORIES_HARDWARE__BACKEND` names one instead of probing them all:
+`auto` (the default), `none`, `nvidia`, `apple`, `vaapi` or `qsv`. Naming one is for a benchmark,
+where a silent fall to software would otherwise look like a GPU run.
 
-```bash
-export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
-export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
-export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
-export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
-```
-
-### Editorial annotation preparation
-
-Story-first selection runs by default. These variables configure its preparation providers:
-
-```bash
-export IMMICH_MEMORIES_EDITORIAL__ANNOTATION_DATABASE="/mnt/cache/annotations.sqlite"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY="only-if-the-server-wants-one"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR="/mnt/models/huggingface/hub"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__ALLOW_MODEL_DOWNLOADS="false"
-export IMMICH_MEMORIES_TRIAGE__ENCODER="/mnt/models/triage/dinov2-small.onnx"
-```
-
-Nested preparation fields use another double underscore. `OPENAI_API_KEY` does not reach the
-captioner: it is a second endpoint with a second credential, so give it
-`CAPTION_API_KEY` of its own or leave it blank for a server that needs none.
-There is no editorial opt-in environment variable. New runs use the FAMILY audience. See
-[Editorial annotation setup](editorial-preparation.md) before the first uncached run.
-
-### Hardware
-
-```bash
-export IMMICH_MEMORIES_HARDWARE__ENABLED="true"       # false = CPU-only encoding
-export IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET="quality"
-export IMMICH_MEMORIES_HARDWARE__GPU_DECODE="true"
-```
-
-`IMMICH_MEMORIES_HARDWARE__BACKEND` names one instead of probing them all: `auto` (the default),
-`none`, `nvidia`, `apple`, `vaapi` or `qsv`. Leave it on `auto` for normal use. Naming one is for
-a benchmark, where a silent fall to software would otherwise look like a GPU run: a host where the
-named backend cannot encode logs a warning and encodes in software anyway.
-
-### Output
-
-```bash
-export IMMICH_MEMORIES_OUTPUT__DIRECTORY="/mnt/nas/memories"
-export IMMICH_MEMORIES_OUTPUT__RESOLUTION="4k"
-export IMMICH_MEMORIES_OUTPUT__CODEC="h265"
-export IMMICH_MEMORIES_OUTPUT__CRF="20"
-```
-
-`DIRECTORY` defaults to `~/Videos/Memories`. The Docker image overrides it to `/app/output` in the
-Dockerfile, so you only set it in a container to write somewhere else, and because it is an
-environment variable it beats `output.directory` in `config.yaml`.
-
-### Music generation
-
-```bash
-export IMMICH_MEMORIES_MUSICGEN__ENABLED="true"
-export IMMICH_MEMORIES_MUSICGEN__BASE_URL="http://gpu-server:8000"
-export IMMICH_MEMORIES_MUSICGEN__API_KEY="your-key"
-
-export IMMICH_MEMORIES_ACE_STEP__ENABLED="true"
-export IMMICH_MEMORIES_ACE_STEP__MODE="api"
-export IMMICH_MEMORIES_ACE_STEP__API_URL="http://gpu-server:8000"
-```
+**The output directory in Docker.** The image sets `IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`
+in the Dockerfile, and an environment variable beats the config file: to write somewhere else in a
+container, set that variable, not `output.directory`.
 
 ## Shorthand overrides
 
-A few common variables are also supported without the full prefix, for convenience:
+A few common variables are also supported without the full prefix:
 
 | Variable | Overrides |
 |----------|-----------|
@@ -139,15 +82,12 @@ A few common variables are also supported without the full prefix, for convenien
 | `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
 
 :::caution Shorthand vars are skipped with an explicit config path, except in the UI
-The shorthand table is applied only when the app loads its default config path
+The table above applies only when the app loads its default config path
 (`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` and a scheduler
-daemon started with an explicit config file ignore every row above, including the basic-auth
-shortcut.
-
-`immich-memories --config PATH ui` is the exception, and it cuts the other way: the server reloads
-the default config path for everything except host and port, so the shorthand *does* apply there
-and the `auth:` block in `PATH` does not. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always
-works.
+daemon started with an explicit config file ignore every row, including the basic-auth shortcut.
+`immich-memories --config PATH ui` cuts the other way: it reloads the default config path for
+everything except host and port, so the shorthand *does* apply there and the `auth:` block in
+`PATH` does not. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
 :::
 
 ## Other environment variables
@@ -166,14 +106,12 @@ Not config fields, but read by the app:
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
 | `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set. See [Authentication](authentication.mdx). |
 
-
 :::caution Scheduled jobs do not inherit your shell
 A launchd or cron job starts from a login-less environment, so nothing you `export` interactively
 reaches it. `auto install` copies `PATH`, `ACESTEP_CHECKPOINTS_DIR`, `ACESTEP_MLX_VAE_CHUNK`,
-`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32`, and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` from the shell you
-install from into the plist or unit, and nothing else, since `IMMICH_MEMORIES_*` also holds
-credentials. Change one of them and re-run `auto install`. See
-[`auto install`](../../create/cli/auto.md#auto-install).
+`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` and `PYTORCH_MPS_HIGH_WATERMARK_RATIO` into the plist or
+unit, and nothing else, since `IMMICH_MEMORIES_*` also holds credentials. Change one of them and
+re-run [`auto install`](../../create/cli/auto.md#auto-install).
 :::
 
 ## Precedence
@@ -181,7 +119,7 @@ credentials. Change one of them and re-run `auto install`. See
 Highest wins:
 
 1. CLI flags (`--duration`, `--output`, …) for the options they cover
-2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair), applied last, on top of everything below
+2. Shorthand environment variables (the whole table above)
 3. `IMMICH_MEMORIES_<SECTION>__<FIELD>` environment variables
 4. Config file (`~/.immich-memories/config.yaml`)
 5. Built-in defaults

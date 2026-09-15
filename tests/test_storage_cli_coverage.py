@@ -900,6 +900,47 @@ class TestGenerateBuildParamsTable:
         )
         assert table.title == "Generation Parameters"
 
+    def test_resolution_falls_back_to_the_config(self):
+        """No --resolution is the config's resolution, never a blank row."""
+        import io
+
+        from rich.console import Console
+
+        from immich_memories.cli._generate_display import _build_params_table
+        from immich_memories.timeperiod import DateRange
+
+        config = Config()
+        config.output.resolution = "720p"
+        table = _build_params_table(
+            config=config,
+            memory_type="monthly_highlights",
+            date_range=DateRange(start=datetime(2024, 6, 1), end=datetime(2024, 6, 30)),
+            person_names=[],
+            duration=None,
+            orientation="landscape",
+            scale_mode=None,
+            transition="smart",
+            resolution=None,
+            output_format=None,
+            output_path=Path("/out/video.mp4"),
+            add_date=False,
+            add_place=False,
+            keep_intermediates=False,
+            privacy_mode=False,
+            title_override=None,
+            subtitle_override=None,
+            use_live_photos=False,
+            music=None,
+            music_volume=0.5,
+            no_music=True,
+        )
+        rendered = io.StringIO()
+        Console(file=rendered, width=120).print(table)
+        resolution_row = next(
+            line for line in rendered.getvalue().splitlines() if "Resolution" in line
+        )
+        assert "720p" in resolution_row
+
 
 class TestMusicCommandHelp:
     """Music CLI subcommands are registered and have help."""

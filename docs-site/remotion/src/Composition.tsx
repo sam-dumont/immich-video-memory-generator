@@ -16,13 +16,19 @@ import { GeneratingScene } from "./scenes/GeneratingScene";
 import { CompleteScene } from "./scenes/CompleteScene";
 import { OutputPreviewScene } from "./scenes/OutputPreviewScene";
 import { CliScene } from "./scenes/CliScene";
+import { RunsScene } from "./scenes/RunsScene";
+import { SuggestionsScene } from "./scenes/SuggestionsScene";
 
 const FADE = 15; // 0.5s
 const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
 // transition's length, so the video runs sum(D) - sum(transitions):
-// 1544 - 141 = 1403 frames, which is TOTAL_FRAMES in theme.ts.
+// 1664 - 168 = 1496 frames, which is TOTAL_FRAMES in theme.ts.
+//
+// The ceiling is demo-music.wav: 49.97 s, or 1499 frames. A demo that outruns
+// its own track ends on an audible cut, which is why the terminal and the film
+// tail are cut to the frame rather than rounded up.
 //
 // Every length is cut to the frame its own scene stops moving on.
 const D = {
@@ -34,9 +40,14 @@ const D = {
   storyboardAgain: 75, // 2.5s — the second cut, one picture fewer; click Export
   export: 100, // 3.3s — summary lands, cursor arrives, click Generate
   generating: 140, // 4.7s — progress + live preview
-  cli: 180, // 6.0s — the real terminal at 8x: the bar, the cut, runs story, runs why
+  // The recording runs 62.56s and CliScene starts it at 15s, so 178 frames at
+  // 8x is the whole rest of it: one more and the terminal freezes on its last
+  // line, one fewer and the `open` that ends it never arrives.
+  cli: 178, // 5.9s — the real terminal at 8x: the bar, the cut, runs story, runs why
+  runs: 90, // 3.0s — the history runs why reads from, in the browser
+  suggestions: 90, // 3.0s — the same month, as automation would have proposed it
   complete: 60, // 2.0s — ready; the cursor presses Play
-  output: 270, // 9.0s — the film it made, the last nine seconds, full bleed
+  output: 212, // 7.1s — the film it made, ending on its last picture, full bleed
 };
 
 export const DemoVideo: React.FC = () => {
@@ -158,7 +169,27 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 10. Complete — ready; the cursor presses Play */}
+        {/* 10. Runs — every run kept, with its cut and its timings */}
+        <TransitionSeries.Sequence durationInFrames={D.runs}>
+          <RunsScene bassIntensity={bass} />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={slide({ direction: "from-right" })}
+          timing={linearTiming({ durationInFrames: SLIDE })}
+        />
+
+        {/* 11. Suggestions — what it would make next, on its own */}
+        <TransitionSeries.Sequence durationInFrames={D.suggestions}>
+          <SuggestionsScene bassIntensity={bass} />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 12. Complete — ready; the cursor presses Play */}
         <TransitionSeries.Sequence durationInFrames={D.complete}>
           <CompleteScene bassIntensity={bass} playAt={44} />
         </TransitionSeries.Sequence>
@@ -168,7 +199,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 11. The film it made, last: full bleed, real time */}
+        {/* 13. The film it made, last: full bleed, real time */}
         <TransitionSeries.Sequence durationInFrames={D.output}>
           <OutputPreviewScene frames={D.output} />
         </TransitionSeries.Sequence>

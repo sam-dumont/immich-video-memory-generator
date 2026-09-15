@@ -103,3 +103,37 @@ def test_an_attempt_directory_is_read_only_when_it_holds_a_plan(tmp_path: Path) 
     (tmp_path / "render-projection.private.json").write_text(json.dumps(_projection()))
     board = read_storyboard(tmp_path)
     assert board is not None and board.total_seconds == 13.5
+
+
+def _timed_plan() -> dict:
+    """A plan the way a certified run writes it: with the timeline it will be rendered to."""
+    return _plan() | {
+        "render_timing": {
+            "policy": {"transition": "smart", "transition_duration": 0.5},
+            "timeline": {
+                "target_duration": 30.0,
+                "content_budget": 6.75,
+                "title_budget": 10.5,
+                "title_duration": 3.5,
+                "ending_duration": 7.0,
+                "divider_duration": 2.0,
+                "max_dividers": 0,
+            },
+            "source_ids": ["photo-first", "video-second", "photo-late"],
+            "sha256": "the reader never re-binds, so it never checks this",
+        },
+        "duration_realization": {
+            "content_budget_seconds": 6.75,
+            "selected_content_seconds": 13.5,
+        },
+    }
+
+
+def test_shots_are_timed_and_placed_the_way_the_renderer_will_play_them() -> None:
+    """The renderer trims the content to its budget and the opening card plays first."""
+    board = storyboard_from_plan(_timed_plan(), _projection())
+
+    assert [shot.seconds for shot in board.shots] == [2.0, 2.75, 2.0]
+    assert [shot.start for shot in board.shots] == [3.5, 5.5, 8.25]
+    assert board.shots[-1].timecode == "0:08"
+    assert board.summary_label == "3 pictures, 0:06 of pictures and video, about 0:15 of film"
