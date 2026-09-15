@@ -304,7 +304,37 @@ share it.
 ## The configurations that ran a real month end to end
 
 Three of them. Other layouts work and are documented; these are the ones with a measurement behind
-every column.
+every column. Four seats decide what you have to stand up: who reads the period, who captions the
+pictures, where the encoder and its heads and the two detectors run, and what encodes the film.
+
+```mermaid
+flowchart LR
+    subgraph mac["Mac, everything local"]
+        direction TB
+        m1["the app"] ~~~ m2["reader: Qwen3-VL-30B<br/>at 4-bit on oMLX"] ~~~ m3["captions: mlxcel"]
+        m3 ~~~ m4["facts: in process"] ~~~ m5["encode: on the Mac"]
+    end
+
+    subgraph rules["Cluster, rules reader"]
+        direction TB
+        r1["the app, in a Kubernetes Job"] ~~~ r2["no reader at all"]
+        r2 ~~~ r3["no captions: the no_captions tier"] ~~~ r4["encode: CPU.<br/>Title kernels: GPU"]
+        r4 ~~~ r5[["facts on the inference service, on a T1000:<br/>the encoder, its six heads, the two detectors"]]
+    end
+
+    subgraph hosted["Cluster, hosted reader"]
+        direction TB
+        h1["the app, the same Job"] ~~~ h2["no captions: the no_captions tier"]
+        h2 ~~~ h3["encode: CPU.<br/>Title kernels: GPU"]
+        h3 ~~~ h4[["facts on the same inference service"]]
+        h1 -.->|"800 px tiles leave<br/>your network"| h5(["reader: a provider URL and a key"])
+    end
+
+    mac ~~~ rules ~~~ hosted
+```
+
+The only line that leaves your network is the hosted reader's. What each configuration costs and
+what its cut carries is the table below.
 
 | Configuration | Hardware | First run over a 13,552-picture month | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|

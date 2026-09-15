@@ -9,8 +9,8 @@ Immich, the model files and every configured server in one go.
 
 ## Cannot connect to Immich
 
-Run the read-only check first. It checks authentication and reports the resolved API contract
-without searching, generating or uploading:
+The read-only check comes first: it tests authentication and reports the resolved API contract
+without searching, generating or uploading.
 
 ```bash
 immich-memories config test
@@ -25,29 +25,23 @@ the setting never reached the process.
 - Immich must be v2 or v3. Immich 1.x is refused at connect time.
 - In Docker, `localhost` is the container. Use the host's IP or the Docker network name.
 
-## Immich v2/v3 Version Mismatch
-
-Immich Memories supports Immich v2 and v3. The normal configuration is:
+## Immich v2/v3 version mismatch
 
 ```yaml
 immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-`auto` detects the server major at runtime; you do not pick one for each run. If a reverse proxy
-hides or rewrites `/api/server/version`, use `v2` or `v3` as a manual troubleshooting escape hatch.
-The override forces that contract, so match the real server major (an explicit `v3` override on a
-v3 server) and return to `auto` once detection works.
-
-Do not flip the override as part of a routine v2-to-v3 upgrade. `auto` is runtime detection; the
-manual values exist to diagnose broken version discovery.
+`auto` detects the server major at runtime; you do not pick one for each run. So a v2-to-v3
+upgrade needs no change here. If a reverse proxy hides or rewrites `/api/server/version`, use `v2`
+or `v3` as a manual troubleshooting escape hatch. The override forces that contract, so go back to
+`auto` once detection works.
 
 The compatibility layer handles the known v2-to-v3 differences: duration strings versus integer
 milliseconds, version-specific upload fields, and the UTC offset on search dates. The read-only
-`immich-memories config test` reports the server version and authentication errors; it does not test
-uploads. If a v3 upload
-fails, keep the error shown by the command doing the upload and check the relevant Immich server
-logs. API keys are redacted.
+`immich-memories config test` reports the server version and authentication errors; it does not
+test uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check
+the relevant Immich server logs. API keys are redacted.
 
 ## The cut stops with "Waiting for the reader at host:port"
 
@@ -67,7 +61,7 @@ the pool page and **Cut again**: a tick outranks the editor. On the CLI, `--incl
 Neither overrides the audience gate or conjures media that is not there: a picture the gate holds
 at family-only, or one whose file Immich cannot serve, stays out however you ask for it.
 
-## No Videos Found
+## No videos found
 
 - The person name must match Immich's, case-insensitive, nothing else fuzzy.
 - Photos are in the pool by default (`photos.enabled: true`); with `--no-photos` the period needs

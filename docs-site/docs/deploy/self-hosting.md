@@ -79,9 +79,7 @@ other ONNX conversion passes, because ONNX exports are not byte-reproducible acr
 Skip with `reader: rules`.
 
 Any OpenAI-compatible `/chat/completions` endpoint that takes images, honours
-`response_format: json_schema` and has at least a 32k-token context. Requests are bounded before
-they are sent: episode reads at 24,000 characters and 90 assets a page, story synthesis at 32,000,
-the period account at 96,000 characters split into pages. The graded configuration is
+`response_format: json_schema` and has at least a 32k-token context. The graded configuration is
 `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on [oMLX](https://github.com/jundot/omlx), Apple
 Silicon:
 
@@ -99,10 +97,10 @@ priced on one real month, three of which stopped before producing a cut: [Reader
 
 `full` tier only. The endpoint must advertise the alias `smolvlm2-500m-base-public` at `/models`;
 the client checks the inventory and three synthetic schema controls before it sends a single
-preview. Two artifacts are accepted: `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` at revision
-`fa57db46` on Apple Silicon, and the GGUF build of the same model under llama.cpp everywhere else.
-The app enforces the alias and the schema controls, not the revision. Copy-paste recipes for both,
-a compose profile and a Kubernetes overlay are on
+preview. Two artifacts are accepted, the MLX build of SmolVLM2-500M on Apple Silicon and the GGUF
+build of the same model under llama.cpp everywhere else; the app enforces the alias and the schema
+controls, not the revision. Copy-paste recipes for both, a compose profile and a Kubernetes
+overlay are on
 [Caption server](./installation/caption-server.md); the full contract is on
 [Editorial annotation setup](./configuration/editorial-preparation.md).
 
@@ -204,5 +202,5 @@ scale and encode; none of them runs inference.
 
 - [Your first memory](../create/first-memory.mdx): the same thing through the web UI
 - [Editorial annotation setup](./configuration/editorial-preparation.md): every pin and contract
-- [Title kernels](./hardware/cpu-only.md#title-kernels): GPU title rendering runs on Quadrants (Linux x86_64, Linux aarch64, macOS arm64, Windows AMD64, Python 3.11-3.13). An Intel Mac or Python 3.14 has no wheel and renders titles with PIL instead: same text and timing, an animated gradient still, no kernel effects and no SDF text. `immich-memories preflight` prints which one your machine will use.
+- [Title kernels](./hardware/cpu-only.md#title-kernels): an Intel Mac or Python 3.14 has no Quadrants wheel and falls back to PIL titles. `immich-memories preflight` prints which renderer your machine will use
 - [CPU-only](./hardware/cpu-only.md): why the title screens, not the encoder, decide render time

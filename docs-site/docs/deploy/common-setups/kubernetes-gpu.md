@@ -2,49 +2,20 @@
 sidebar_label: "Kubernetes + GPU"
 ---
 
-# Kubernetes + GPU Setup
+# Kubernetes + GPU
 
-For Kubernetes clusters with GPU nodes. This is the most advanced setup: if you're not already running K8s, start with [Docker](../installation/docker.md) instead.
-
-## Who this is for
-
-You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). You want Immich Memories as a scheduled workload with GPU-accelerated encoding and optional music generation pods.
+You already run a cluster with NVIDIA GPU nodes and want this on it as a workload: a Deployment
+for the UI, a Job for batch generation, NVENC and the GPU title kernels on the card. If you are
+not already running K8s, start with [Docker](../installation/docker.md) instead.
 
 ## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│ Kubernetes Cluster                                  │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ namespace: immich-memories                    │   │
-│  │                                               │   │
-│  │  ┌────────────┐  ┌────────────┐              │   │
-│  │  │ Deployment  │  │ Job        │              │   │
-│  │  │ (UI/API)    │  │ (batch     │              │   │
-│  │  │ port 8080   │  │  generate) │              │   │
-│  │  │ GPU: 1      │  │ GPU: 1     │              │   │
-│  │  └────────────┘  └────────────┘              │   │
-│  │                                               │   │
-│  │  Secret: IMMICH_URL, IMMICH_API_KEY           │   │
-│  │  PVCs: cache 20Gi, output 50Gi, models 5Gi    │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                     │
-│  ┌─────────────────┐                                │
-│  │ GPU Operator     │  (manages nvidia.com/gpu)     │
-│  └─────────────────┘                                │
-└─────────────────────────────────────────────────────┘
-         │
-    ┌────┴─────────┐
-    │ Immich server │ (same cluster or external)
-    └──────────────┘
-```
 
 ![Kubernetes setup diagram](/img/diagrams/setup-k8s.png)
 
 ## Prerequisites
 
-1. **NVIDIA GPU Operator** installed:
+A storage class for the PersistentVolumeClaims, an Immich the cluster can reach (same namespace,
+another namespace, or external), and the NVIDIA GPU Operator:
 
 ```bash
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
@@ -53,9 +24,6 @@ helm install gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --create-namespace
 ```
-
-2. **Storage class** available for PersistentVolumeClaims
-3. **Immich** accessible from the cluster (same namespace, different namespace, or external)
 
 ## Deploy with Kustomize
 
@@ -81,6 +49,14 @@ of whenever someone last bumped it, so check it against the
 [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) before you
 apply.
 
+Don't commit a plain Secret. [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets), or
+whatever your cluster already uses:
+
+```bash
+kubeseal --format=yaml < base/secret.yaml > base/sealed-secret.yaml
+kubectl apply -f base/sealed-secret.yaml
+```
+
 ## Access the UI
 
 ```bash
@@ -91,7 +67,7 @@ Open [http://localhost:8080](http://localhost:8080). No Ingress is shipped: enab
 [authentication](../configuration/authentication.mdx) first, then copy
 `base/ingress.yaml.example` into place.
 
-## GPU resource requests
+## GPU requests and node selection
 
 `overlays/gpu/deployment-gpu.yaml` requests one `nvidia.com/gpu`, sets `runtimeClassName: nvidia`
 and the `NVIDIA_*` env vars. Adjust there:
@@ -106,19 +82,14 @@ resources:
 
 The base Deployment keeps `2Gi/1000m` requests and `8Gi/4000m` limits.
 
-## Node selection
-
-The overlay schedules on nodes with `nvidia.com/gpu.present=true` (set by the GPU Operator) and
-tolerates the `nvidia.com/gpu` taint. If your cluster uses different labels:
+The overlay schedules on nodes labelled `nvidia.com/gpu.present=true` (the GPU Operator sets that
+one) and tolerates the `nvidia.com/gpu` taint. If your cluster labels GPU nodes differently,
+change the `nodeSelector`:
 
 ```yaml
 nodeSelector:
   nvidia.com/gpu.present: "true"
-  # Or your custom label:
-  # gpu-node: "true"
 ```
-
-For music generation pods (MusicGen/ACE-Step), you might want separate node affinity rules to schedule on nodes with more VRAM.
 
 ## Batch jobs
 
@@ -152,15 +123,6 @@ reading the editor has banked. That is the valuable data: losing it means re-rea
 library. Back up the PVC. Do not use `immich-memories cache backup` for this: it copies
 `cache.db`, which holds run history and the retired scorer's table, not the banks.
 
-## Secrets management
-
-Don't commit plain secrets to git. Use [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets) or your cluster's secret management:
-
-```bash
-kubeseal --format=yaml < base/secret.yaml > base/sealed-secret.yaml
-kubectl apply -f base/sealed-secret.yaml
-```
-
 ## Health monitoring
 
 `/health/ready` returns `200` when config is present and Immich is reachable, `503` otherwise, with a JSON body like:
@@ -177,24 +139,22 @@ kubectl apply -f base/sealed-secret.yaml
 
 `/health/live` only says the process is up. `/health` returns the same JSON as `/health/ready` but
 always with HTTP `200` (`status: ok`), so it is useless as a probe: the manifests use
-`/health/live` for liveness and `/health/ready` for readiness.
+`/health/live` for liveness and `/health/ready` for readiness. Point Uptime Kuma, a Prometheus
+blackbox exporter or whatever you run at `/health/ready` on port 8080.
 
-Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/health/ready` on port 8080.
+## What the card does here
 
-## What works / what doesn't
+NVENC encoding and the GPU title kernels, same as [Linux + NVIDIA](./linux-nvidia.md), and nothing
+else in this pod. The Kubernetes layer adds scheduling and PVC-backed storage, not scaling: the UI
+is single-replica.
 
-Same as the [Linux + NVIDIA](./linux-nvidia.md) setup: the card does NVENC encoding and GPU titles, and nothing else in this pod runs on it. The Kubernetes layer adds scheduling and PVC-based storage, not scaling: the UI is single-replica.
-
-## Performance
-
-Same as bare-metal Linux + NVIDIA.
-
-Do not size the cluster around the encoder. Once NVENC is doing the encode, what you wait for is
+So do not size the cluster around the encoder. Once NVENC has the encode, what you wait for is
 preparation and the editor's readings: a caption, six heads and two detectors per candidate
-picture, then the text model over the period. None of that runs on this card, and none of it has
-been measured here: the [NAS numbers](./nas-only.md#preparation-tiers-what-the-nas-pays) are the only ones
-there are. Immich API throughput and reader
-latency are the numbers to watch.
+picture, then the text model over the period. None of that runs on this card unless you put the
+picture facts behind the [inference service](../installation/inference-service.md), which is how
+the measured cluster ran its classifiers on a GPU. What each host spent on a real month is on
+[Running modes](../running-modes.md). Immich API throughput and reader latency are the numbers to
+watch.
 
 ## Further reading
 

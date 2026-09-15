@@ -64,7 +64,7 @@ the vulnerability.
 ## Verifying a release
 
 Releases carry SLSA build provenance, signed through Sigstore by the GitHub
-Actions workflow that produced them — nothing is built on a laptop. A release
+Actions workflow that produced them: nothing is built on a laptop. A release
 that carries it has a `.sigstore.json` asset alongside the wheel.
 
 Wheels and sdists carry the attestation as a release asset:

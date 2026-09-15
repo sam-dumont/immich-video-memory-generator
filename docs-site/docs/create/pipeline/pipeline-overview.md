@@ -11,12 +11,32 @@ complete** (`OperationalPhase` in `operations/phases.py`). This page says where 
 which stages have to run on this box.
 
 ```mermaid
-flowchart LR
-    source["Source metadata and previews"] --> facts["Preparation: facts per picture"]
-    facts --> stories["Readings: episodes and the period account"]
-    stories --> choose["Planners: stories, moments, pictures, timing"]
-    choose --> render["Render, music and delivery"]
+flowchart TD
+    immich[("Immich")] -->|"every eligible asset,<br/>with its exclusion reason"| prep
+
+    subgraph prep["Preparation: once per picture, then banked"]
+        direction LR
+        previews["previews"] ~~~ pixels["pixel facts"] ~~~ heads["encoder + six heads"]
+        heads ~~~ detectors["two detectors"] ~~~ caption["caption<br/>(full tier only)"]
+    end
+
+    prep --> episodes["Reading event evidence: i/n"]
+    episodes --> period["Reading the period account: page n"]
+    period --> cards["Building editorial cards"]
+    cards --> edit["Editing the memory"]
+    edit --> timing["Validating selected source timing"]
+    timing --> render["Render: originals, photos,<br/>title screens, assembly, encode"]
+    render --> music["Music"]
+    music --> deliver["Upload back to Immich"]
+
+    caption -.->|"a 400 px tile per picture"| captioner(["caption server"])
+    episodes -.-> reader(["the reader"])
+    period -.-> reader
+    edit -.->|"800 px tiles and annotation lines"| reader
 ```
+
+Solid arrows are this box. The two dotted ones are the only seats that can live somewhere else, and
+the only things a picture is ever sent to.
 
 UI, CLI and scheduled memories use the one route. It prepares facts for the whole period, reads
 it, weighs its stories, picks the moments, then allocates duration. Missing required facts stop
@@ -67,6 +87,48 @@ cannot weigh. The levers: put the caption server and the reader where they are f
 library ahead with [`prepare`](../cli/prepare.md), and keep the cache. If the render is the slow
 part, none of that helps: that is decode, scale, blend and encode, and the levers are a hardware
 encoder, a lower resolution and fewer clips.
+
+### What overlaps, and what cannot
+
+Reading is mostly a queue of one. Each page of the period account carries the episodes still open
+from the pages before it, so page 5 cannot be asked until page 4 has answered, and every pick below
+reads the stages above. Two places do hold independent questions: the moment inventory of one event
+knows nothing about the next event's, and the worthiness and standing gates ask in blocks of twelve
+that do not see each other. Those are what `advanced.llm.reader_concurrency` overlaps. Nothing else
+in the reading can be made to overlap by raising it.
+
+```mermaid
+flowchart TB
+    packs["Event evidence, pack by pack"]
+    packs --> pages["The period account, page by page:<br/>each page carries the episodes still open"]
+    pages --> synthesis["The synthesis: one thesis over every episode"]
+
+    synthesis --> worthy
+    subgraph worthy["Memory-worthy gate: happenings in blocks of 12, each block asked in two orders"]
+        direction LR
+        w1["block 1"] ~~~ w2["block 2"] ~~~ wn["block n"]
+    end
+
+    worthy --> weigh["Story weighing"]
+    weigh --> inventories
+    subgraph inventories["Moment inventories: one job per event"]
+        direction LR
+        i1["event 1"] ~~~ i2["event 2"] ~~~ iN["event n"]
+    end
+
+    inventories --> standing
+    subgraph standing["Standing gate: pictures in blocks of 12, two orders again"]
+        direction LR
+        s1["block 1"] ~~~ sn["block n"]
+    end
+
+    standing --> picks["Picture picks, audience checks, duration"]
+```
+
+Everything on the spine waits for the box above it. Only the boxes holding several jobs run at
+once, and only up to the concurrency limit: unset, it is 1 for a model on your own machine or your
+own network and 4 for a public host, because a local server is one process in front of one
+accelerator and four requests there queue instead of overlapping.
 
 ## Render
 

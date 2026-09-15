@@ -5,45 +5,38 @@ title: NVIDIA
 
 # NVIDIA
 
-NVIDIA GPUs with NVENC move video encoding off the CPU and onto dedicated silicon. If you have a GTX 1050 or newer, you've got NVENC. The encode is not the phase that dominates a run, though: see [Encoding quality](#encoding-quality) for what the card actually buys you.
+NVENC moves the encode onto dedicated silicon on the card: `h264_nvenc` and `hevc_nvenc`, NVDEC on
+the way in, `scale_cuda` for the resizes, and the title kernels on the CUDA backend. A GTX 1050 or
+newer has NVENC; you need the CUDA drivers and an FFmpeg built with NVENC support, which most
+distro packages include. NVIDIA is probed first, so if NVENC opens, it is used.
 
-## What you get
+The encode is not the phase that dominates a run. It is worth about 15 % of the render, against a
+download phase the card does nothing for: [what the card is actually
+worth](./overview.md#what-the-card-is-actually-worth).
 
-- **NVENC encoding**: h264_nvenc, hevc_nvenc. Offloads encoding to dedicated hardware on the GPU.
-- **NVDEC decoding**: hardware-accelerated decode, keeps the full pipeline on GPU.
-- **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
-- **GPU title rendering**: the title kernels pick the CUDA backend (Vulkan second) for animated title screens. This is the phase that costs the most on a CPU-only box.
+## The image does not do CUDA inference
 
-What the card does *not* get you: the Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The two annotation detectors are ONNX graphs and want no torch at all (the only thing left in the image that does is local Demucs stem separation) so the CUDA wheels are pure weight: on arm64 they cost 3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports `cuda_available: False` inside the container. To run the ONNX seats against the CUDA execution provider, install `pip install "immich-memories[editorial-cuda]"` on the host instead of using the image; it replaces `editorial` rather than joining it.
+The Docker image installs the CPU build of PyTorch on purpose, on both published architectures. The
+two annotation detectors are ONNX graphs and want no torch at all (the only thing left in the image
+that does is local Demucs stem separation), so the CUDA wheels are pure weight: on arm64 they cost
+3.3 GB of `nvidia` libraries plus 818 MB of triton, and the CUDA torch they come with still reports
+`cuda_available: False` inside the container.
 
-GPU inference also has a separate [inference service image](../installation/inference-service.md). Its `-cuda` variant uses the same device extra; attach the GPU with the device reservation that ships commented out on the inference service in `docker-compose.yml`. The app image remains usable for NVENC without running model inference.
+To run the ONNX seats against the CUDA execution provider, install
+`pip install "immich-memories[editorial-cuda]"` on the host instead of using the image. It replaces
+`editorial` rather than joining it, so do not install the CPU extra beside it, and it pins ONNX
+Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9 (1.27 and newer require CUDA 13, see the
+[official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)).
 
-## Requirements
-
-- NVIDIA GPU (GTX 1050+ / any RTX)
-- CUDA drivers installed
-- FFmpeg built with NVENC support (most distro packages include this)
-
-Check if everything's working:
-
-```bash
-immich-memories hardware
-```
-
-If NVENC is available, you'll see it listed with the specific encoders found.
+GPU inference also has a separate [inference service image](../installation/inference-service.md).
+Its `-cuda` variant uses the same device extra; attach the GPU with the device reservation that
+ships commented out on the inference service in `docker-compose.yml`. The app image remains usable
+for NVENC without running model inference.
 
 ## Configuration
 
-```yaml
-hardware:
-  enabled: true
-  encoder_preset: "balanced"   # fast | balanced | quality
-  gpu_decode: true
-```
-
-Nothing to select: NVIDIA is probed first, so if NVENC works it is used. On a multi-GPU host pick
-the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`: there is no `device_index` in
-the config.
+Nothing to select. On a multi-GPU host pick the card with `CUDA_VISIBLE_DEVICES` /
+`NVIDIA_VISIBLE_DEVICES`: there is no `device_index` in the config.
 
 `hardware.backend: nvidia` probes NVENC and nothing else. Leave it on `auto` for normal use. It is
 there for a benchmark: detection treats software as no backend at all, so a box missing the `video`
@@ -111,10 +104,8 @@ Set `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` on the container, plus th
 class. In Docker that is the block under [In Docker](#in-docker); in Kubernetes,
 `kubectl apply -k overlays/gpu`, which sets both. The usual way to hit this is a pod that never got
 the overlay: a hand-written Job dropped onto a shared GPU node inherits the node's default
-`compute,utility` and nothing else.
-
-`immich-memories preflight` says the same thing on its Hardware row, before you spend a render
-finding out.
+`compute,utility` and nothing else. `immich-memories preflight` says the same thing on its Hardware
+row, before you spend a render finding out.
 
 ## When the image is newer than the driver
 
@@ -142,21 +133,14 @@ Matching libx264 costs about **1.2x the bits**, the cheapest of the three hardwa
 to Intel's 2.2x and Apple's 2.9x. The configured CRF is translated onto NVENC's quantiser scale
 automatically; see [the overview](./overview.md#quality-one-dial-calibrated-per-encoder).
 
-Just don't buy the card for the encode alone. Measured on a T1000 with the same cut and the same
-node, only the encoder changed: NVENC finished the pipeline in 218.6 s against 257.8 s for libx264.
-The encode itself went from 95.1 s to 53.8 s, which is 1.77x, but downloading the originals from
-Immich was 48 to 59 % of both runs and the card does nothing for it. Net effect on the render:
-about 15 %. The full table is on [the overview](./overview.md#what-the-card-is-actually-worth).
-
-Preparation moved further than the render did. Put the ONNX encoder, the six heads and both detectors
-behind the [inference service](../installation/inference-service.md) on CUDA and the same cluster
-pod went from 0.6083 s a picture to 0.1957 s on the fixture month. On a real month the GPU-backed
-service ran at 0.2445 s a picture, which was 87 % of the preparation.
-
-Encoding is the larger half of a CPU-only assembly again: title rendering was ~263 s of a ~339 s assembly at `--cpus=2` until the blur fix cut a 1080p title frame from 578 ms to 64 ms. On the cluster run above, CPU assembly split 95.1 s of encode against 17.4 s of title and ending screens. An NVIDIA card takes work off both halves. It does not run the editor's models: see the [self-hosting guide](../self-hosting.md#one-machine-or-two) for where those go. See [CPU-Only Mode](./cpu-only.md#title-rendering-used-to-be-the-bottleneck) for the measured split.
-
-The `editorial-cuda` extra pins ONNX Runtime GPU to the 1.26 series for CUDA 12 and cuDNN 9. Version 1.27 and newer require CUDA 13; see the [official compatibility table](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html). Do not install the CPU `editorial` extra beside it.
+Just don't buy the card for the encode alone. Preparation moves further than the render does: put
+the ONNX encoder, the six heads and both detectors behind the
+[inference service](../installation/inference-service.md) on CUDA and the same cluster pod went
+from 0.6083 s a picture to 0.1957 s on the fixture month. What the card will not run is the
+editor's reader, which lives on its own box or its own server: see the
+[self-hosting guide](../self-hosting.md#one-machine-or-two).
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+CUDA, Vulkan second. What happens on a machine with neither is on
+[Title kernels](./cpu-only.md#title-kernels).

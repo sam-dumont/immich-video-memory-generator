@@ -73,23 +73,21 @@ hour.
 A day that was all one thing has nothing to trim and gets no window, which is the right
 answer for a wedding that ran fifteen hours in one place.
 
-## Fast eyes, then a considered answer
+## Why it costs two calls
 
-With `llm.thinking` at `low`, `high` or `max` the question runs in two steps: one fast call that
-looks at the sampled thumbnails and writes a line per picture, then a
-text-only call that reasons over those lines together with the times, places
-and recognised names. With `thinking: disabled`, it stays the single vision call it
-has always been, so nothing changes on a server that cannot reason.
-
-Measured across 14 candidate days, one vision call said "special" to all fourteen, and one call
+Measured across 14 candidate days: one vision call said "special" to all fourteen, and one call
 that both looked and reasoned truncated 6 of them past parsing. Two calls was the only shape that
-told an occasion from an ordinary Tuesday, and it invents less: the two-step title describes what
-is in the pictures. With thinking on, a day costs two calls plus at most one retitle, and the scan
-asks about a handful of days per year.
+told an occasion from an ordinary Tuesday, and it invents less, because the title then describes
+what is in the pictures.
 
-The per-picture lines the judgement read are the record to check first when a day you
-expected comes back ordinary. They are logged at `DEBUG`: run `immich-memories -v discover-days`
-to see them.
+So with `llm.thinking` at `low`, `high` or `max` the question splits: a fast call writes a line per
+sampled picture, then a text-only call reasons over those lines together with the times, places
+and recognised names. `thinking: disabled` keeps the single vision call, so nothing changes on a
+server that cannot reason. A day costs two calls plus at most one retitle, on the handful of days
+a year the scan asks about.
+
+Those per-picture lines are the record to check first when a day you expected comes back ordinary.
+They are logged at `DEBUG`: run `immich-memories -v discover-days` to see them.
 
 ## Running it
 
@@ -132,8 +130,7 @@ immich-memories days-due
 ```
 
 Prints the discovered days whose anniversary falls within three days of today, roundest
-first: ten years reads louder than nine, which is the whole appeal of arriving
-unannounced.
+first: ten years reads louder than nine.
 
 ```
 10 years ago  2015-06-12  A long evening out  18:40-23:55  9h
@@ -141,11 +138,10 @@ unannounced.
 
 The clock times are the day's window, when it found one. The `9h` is how many hours of
 the clock the day put pictures in: the number the scan measured to decide the day was
-worth asking about at all, now kept in the catalogue with the times the day's run started
-and ended. A run is grouped by the date it began and ends when the pictures stop for five
-hours, so a night that ran to three in the morning ends on the following date, and its
+worth asking about at all, now kept in the catalogue along with when the day's run started
+and ended. A night that ran to three in the morning ends on the following date, and its
 extent says so where the date alone cannot. Catalogues written before any of this existed
-simply have none of it, and still read.
+have none of it, and still read.
 
 `--on YYYY-MM-DD` checks a different date, and `--catalogue PATH` reads a different file.
 Anniversaries either side of New Year are found: a day at the end of December is due in
@@ -153,8 +149,7 @@ early January.
 
 ## What happens to a day once it is found
 
-The catalogue is not the point; it is what the point is made of. A day sitting in it
-becomes a video three ways:
+A day sitting in the catalogue becomes a video three ways:
 
 - **Automation proposes it on its anniversary.** `auto run` reads the catalogue like any
   other detector and puts a due day in the queue, scored by how round the anniversary is,
@@ -178,20 +173,18 @@ A vision model is worth having: with pictures the model sees the day, and withou
 reasons from times, places and recognised names alone. That is the difference between
 "Driving through somewhere" and knowing what was being driven.
 
-Titles are checked against what the day actually recorded before they are kept. A title
-naming a place the day was never in is dropped rather than shown, and so is one claiming a
-distance or a race ("the 10K") that nothing the model was shown mentions. A title card is
-the wrong place for a plausible invention, and a number reads exactly as true as a real one.
+Titles are checked against what the day actually recorded before they are kept. A title naming a
+place the day was never in is dropped, and so is one claiming a distance or a race ("the 10K")
+that nothing the model was shown mentions: a number on a title card reads exactly as true as a
+real one.
 
-A dropped title is asked for once more, with the claim it just made quoted back and the
-rule stated as what a title *may* say rather than as another prohibition. That is usually
-enough (the model can generally write a grounded title on the second try), and it costs
-one extra call on the handful of days a year where it happens. Never a third.
+A dropped title is asked for once more, with the claim it just made quoted back and the rule
+stated as what a title *may* say rather than as another prohibition. That is usually enough, and
+it costs one extra call on the handful of days a year where it happens. Never a third.
 
-If the second attempt is no better, the day falls back to the plainest true thing left:
-`A day in <place>` where its pictures recorded one, or what the model said the day was
-where that reads as a title ("Children's camp activities") rather than as a description of
-it. A day where neither is available is left out of the catalogue rather than written down
-with an empty title, because every reader of the file falls back to the description when
-the title is empty, which is how "Six images captured between 07:32 and 16:06, tracing a
-route from weathered apar" ended up on a card in place of a name.
+If the second attempt is no better, the day falls back to the plainest true thing left: `A day in
+<place>` where its pictures recorded one, or what the model said the day was where that reads as a
+title ("Children's camp activities"). A day where neither is available is left out of the
+catalogue rather than written down with an empty title, because every reader of the file falls
+back to the description when the title is empty: that is how "Six images captured between 07:32
+and 16:06, tracing a route from weathered apar" ended up on a card in place of a name.

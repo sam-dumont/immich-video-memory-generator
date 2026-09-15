@@ -5,10 +5,9 @@ title: Caption server
 
 # The caption server
 
-`tier: full` writes one sentence under every picture before any editing happens. It needs an
-OpenAI-compatible endpoint that nothing in this project ships. The docs used to say "your own
-caption server" and leave it there, which is how a first run on `full` stops at prepare with no
-idea what to install. This page is the missing half.
+`tier: full` writes one sentence under every picture before any editing happens. That sentence comes
+from an OpenAI-compatible endpoint nothing in this project ships, so you run one yourself. This page
+is the recipes: Apple Silicon, Docker, Kubernetes, with and without a card.
 
 ## What it does
 
@@ -19,12 +18,13 @@ One 400 px JPEG tile per picture, one request, one 140-token answer, banked fore
 ```
 
 Two fields, both capped (120 and 32 characters), at temperature 0 with a repetition penalty of 1.1
-and a JSON schema the server has to honour. The picture never leaves as a full preview: the tile is
-400 px on its long edge, which is a privacy contract and a speed one at the same time. The same
-picture sent whole costs 519 prompt tokens against the tile's 188, and takes three times as long.
+and a JSON schema the server has to honour. The whole contract is on
+[editorial annotation setup](../configuration/editorial-preparation.md#captions). The picture never
+leaves as a full preview: the tile is 400 px on its long edge, which is a privacy contract and a
+speed one at the same time. The same picture sent whole costs 519 prompt tokens against the tile's
+188, and takes three times as long.
 
-Captions are banked per picture in the annotation store. A library is captioned once. A second
-memory over the same month sends nothing.
+A library is captioned once. A second memory over the same month sends nothing.
 
 ## Why the alias
 
@@ -48,7 +48,7 @@ behind a URL.
 | MLX | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` | `fa57db46815177fbdfd65cc85a2b3416a8332268` | Apple Silicon |
 | GGUF | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF` | `ccd7aae53bcb1997355c2f094959e72b3642ce17` | Anything llama.cpp runs on |
 
-Both are the same 500M model. Pick the one your hardware runs.
+Same 500M model either way. Pick what your hardware runs.
 
 The GGUF files this page pins, with their digests:
 
@@ -159,8 +159,7 @@ than a `--n-gpu-layers` flag because the flag would go in the service's `command
 where the alias, the projector path and the context size live: llama-server reads
 `LLAMA_ARG_N_GPU_LAYERS` for the same setting and that list stays written once.
 
-On a GPU, raise the concurrency too. Four requests in flight is what the default was sized for
-before the CPU measurement below moved it to one:
+On a GPU, raise the concurrency with it:
 
 ```yaml
 IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "4"
@@ -213,7 +212,7 @@ schema controls, first attempt, no changes to the request the app sends. The non
 `repetition_penalty` field is accepted rather than rejected. Grammar-constrained decoding honours
 the schema's length caps. On 136 CC0 fixture pictures, 136 of 136 answers validated.
 
-### Speed, and the one setting that matters
+### Speed, and what to set `caption_concurrency` to
 
 Measured on the same 136 pictures, same server, warm:
 
@@ -330,39 +329,36 @@ and repointing it is not the fix.
 
 On `no_captions` and `metadata_only` the row reads `SKIPPED`, and no endpoint is contacted.
 
-## What a missing captioner costs, per tier
+## What a missing captioner costs
 
-| Tier | No caption server means |
-|---|---|
-| `full` | prepare stops. The description producer stays outstanding, the failure names `caption_base_url`, and the run does not reach editing |
-| `no_captions` | nothing. The endpoint is never contacted, and an absent description is not a missing fact |
-| `metadata_only` | nothing, and the models are not fetched either |
+On `full`, prepare stops: the description producer stays outstanding, the failure names
+`caption_base_url`, and the run never reaches editing. On `no_captions` and `metadata_only` nothing
+happens at all, because the endpoint is never contacted and an absent description is not a missing
+fact.
 
-Dropping from `full` to `no_captions` is a real loss and worth knowing before you make it. The
-family-viewing gate has eight findings that only a description can name, so without captions the
-gate can refuse a unit but can never clear one. It matches `full` on what it refuses and holds the
-rest. Details are on [Editorial annotation setup](../configuration/editorial-preparation.md).
+Dropping from `full` to `no_captions` is a real loss, and worth knowing before you make it: the
+family-viewing gate has eight findings only a description can name, so without captions it refuses
+what `full` refuses and can never clear a unit. What each tier costs and keeps is on
+[Running modes](../running-modes.md).
 
 ## Switching servers later
 
 The bank keys on the producer name, `description:smolvlm2-500m-base-public@envelope-v3-compact`,
-and that string carries no format, no quantisation and no weights digest. The app records nothing
-about which server answered.
+and that string carries no format, no quantisation and no weights digest. So swapping MLX for GGUF,
+or the reverse, re-captions nothing: every picture already banked keeps the wording the old server
+gave it, and only new pictures get the new one. Short of clearing the description rows there is no
+way to ask for a re-caption, and the app will not refuse the second artifact, because it never
+learned about the first.
 
-So swapping MLX for GGUF, or the reverse, re-captions nothing. Every picture already banked stays
-banked with the wording the old server gave it, and only new pictures get the new one. There is no
-way to ask for a re-caption short of clearing the description rows, and the app will not refuse the
-second artifact, because it never learned about the first.
-
-That is a deliberate trade, and the cost is the section above: the two builds word `setting`
-differently, and a bank filled by both holds a mix with nothing marking the seam. If that matters
-for your library, pick one server and keep it. For most people it does not: the descriptions feed
-an editor that reads them as evidence, not a catalogue anyone diffs.
+The cost is the section above: the two builds word `setting` differently, and a bank filled by both
+holds a mix with nothing marking the seam. If that matters for your library, pick one server and
+keep it. For most people it does not, since the descriptions feed an editor that reads them as
+evidence rather than a catalogue anyone diffs.
 
 ## Related
 
-- [Editorial annotation setup](../configuration/editorial-preparation.md) for the whole caption
-  contract, the API key, and what the tiers change
+- [Editorial annotation setup](../configuration/editorial-preparation.md) for the caption contract
+  and the API key
 - [Running modes](../running-modes.md) for measured timings per tier
-- [The inference service](./inference-service.md), which is a different service on the same port
-  number and does not caption
+- [The inference service](./inference-service.md), a different service on the same port number that
+  does not caption

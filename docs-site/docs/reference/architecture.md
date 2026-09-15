@@ -22,7 +22,7 @@ Now the four main orchestrators compose smaller service objects via constructor 
 
 Each service is a standalone class you can test in isolation. The orchestrator wires them together in `__init__` and delegates work.
 
-The editorial route has its own seams rather than services: `EditorialRuntimePorts` (the production providers and the people loader), `ProductionPostCardBackend` (the structure planner behind the text orchestration), `StructurePlannerPorts` (the judges the structure planner calls out to; the bank directory and the audience come in on `StructurePlanningInput` beside it), and `EditorialAttempt` in `operations/` (the durable attempt tree with its OS lease). Every attempt lives under `<cache>/editorial-runs/<key>/attempts/<id>/`; the annotation store is `<cache>/annotations.sqlite`.
+The editorial route has Protocol-typed ports rather than services: the providers and the people loader, the structure planner behind the text orchestration, the judges that planner calls out to, and `EditorialAttempt` in `operations/` for the durable attempt tree and its OS lease. On disk each attempt is `<cache>/editorial-runs/<key>/attempts/<id>/` and the annotation store is `<cache>/annotations.sqlite`. [ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md) names every port and the file it lives in, with the full module map.
 
 ## CI Pipeline Structure
 
@@ -61,9 +61,9 @@ in this job.
 **Tier 2: Tests** (runs after both quality and security pass):
 - Full test suite (Ubuntu on 3.11/3.12/3.13; macOS on 3.13 for a pull request, all three on main)
 - `make test-extras`: only the tests marked `extras`, which are what the torch family
-  (demucs/editorial) unlocks. Note that the CI job installs `dev,audio` on Linux and
-  `dev,mac,audio` on macOS, neither of which pulls torch, so what runs there is the subset that
-  survives without it; the rest is a local target
+  (demucs/editorial) unlocks. The CI job installs `dev,audio` on Linux and `dev,mac,audio` on
+  macOS, neither of which pulls torch, so what runs there is the subset that survives without it;
+  the rest is a local target
 
 **Tier 3: Build + Docker** (runs after tests pass):
 - Package build verification

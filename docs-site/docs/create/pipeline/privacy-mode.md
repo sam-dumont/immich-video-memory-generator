@@ -5,32 +5,26 @@ title: Privacy Mode
 
 # Privacy Mode
 
-Privacy mode (also called demo mode) blurs every frame of every clip, makes the audio unintelligible, and replaces person names with fake ones. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
+Privacy mode (also called demo mode) blurs every frame of every clip, makes the audio
+unintelligible, and replaces person names with fake ones. What survives is the timing, the
+transitions, the music and the structure: enough to show someone how the app edits, with none of
+your pictures in it.
 
-The demos and screenshots on this site no longer use it. They run the real product over a CC0 stock library that tells one made-up household's June, so nothing needs blurring ([how the demo assets are made](../../contribute/demo-assets.md)). Privacy mode stays for the case it was built for: showing the app over your own library to someone who should not see your pictures.
+The demos and screenshots on this site no longer use it. They run the real product over a CC0 stock
+library that tells one made-up household's June, so nothing needs blurring
+([how the demo assets are made](../../contribute/demo-assets.md)). Privacy mode stays for the case
+it was built for: showing the app over your own library to someone who should not see your
+pictures.
 
-The result is a video that demonstrates the timing, transitions, music, and structure of the memory without revealing any personal content. [What gets anonymized](#what-gets-anonymized) is the full list.
-
-## How to enable
-
-### UI toggle
-
-If `server.enable_demo_mode` is true in your config, the sidebar shows a "Demo mode" switch. Toggling it on also blurs every image and video the UI renders, on every page, not just the clip review screen (a CSS class on `<body>`), so no preview shows your footage.
-
-### CLI flag
-
-Pass `--privacy-mode` to the `generate` command:
+## Turning it on
 
 ```bash
 immich-memories generate --privacy-mode --year 2024
 ```
 
-### Config
-
-```yaml
-server:
-  enable_demo_mode: true    # Show the Demo mode switch in the sidebar (off by default)
-```
+For the UI, set `server.enable_demo_mode: true` (off by default) and the sidebar shows a "Demo
+mode" switch. Toggling it on also blurs every image and video the UI renders, on every page, not
+just the clip review screen (a CSS class on `<body>`), so no preview shows your footage.
 
 ## What gets anonymized
 

@@ -5,16 +5,15 @@ title: Quick Start
 
 # Quick Start
 
-The app installs in a couple of minutes. How much longer the rest takes is a choice you make in
-step 2. The rules reader on the `metadata_only` tier needs nothing but the app and cuts the ten
-standard memory types. The model editor needs two model services on hardware you own plus three
-model files on disk, and that is the long road: [Running modes](../deploy/running-modes.md) has
-what each choice costs and loses, and the [self-hosting guide](../deploy/self-hosting.md) is the
-honest version of the long one, in order, on one page.
+Install the app, point it at Immich, cut one month. Step 2 decides how much else you stand up: the
+rules reader on `tier: metadata_only` needs nothing but the app and cuts the ten standard memory
+types, while everything richer wants model files on disk and one or two model services you host.
+[Running modes](../deploy/running-modes.md) has what each choice costs and loses, and the
+[self-hosting guide](../deploy/self-hosting.md) stands the pieces up in order.
 
 ## 1. Install
 
-The fastest way: no clone needed:
+No clone needed:
 
 ```bash
 uv tool install "immich-memories[editorial]"     # or [all-mac] on Apple Silicon
@@ -50,9 +49,9 @@ immich:
   api_key: your-api-key-here
 ```
 
-Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All**. For a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back to Immich. Your originals are never touched; the delete permission is for one narrow case, where a re-render of the same memory trashes the copy it replaces in its own album.
+Get your API key from Immich: **Account Settings > API Keys > New API Key**, and pick **All** when it asks for permissions. A minimal key needs read on assets, people, albums, timeline and search, plus **asset upload**, **album create/update** and **asset delete** if you turn on upload-back. Your originals are never touched; the delete right covers one narrow case, where a re-render of the same memory trashes the copy it replaces in its own album.
 
-Then pick the mode, because that is what decides whether you stand anything else up at all:
+Then pick the mode:
 
 ```yaml
 advanced:
@@ -64,16 +63,15 @@ advanced:
 
 Those two values need nothing but the app: no vision reader, no caption server, nothing to fetch.
 It is the degraded mode, so custom free-text subjects are refused and the cut is simpler, but the
-ten standard memory types all come out. Set neither key and you get `reader: auto`, which is the
-rules reader while `llm.model` is blank, on `tier: full`, which does want a caption server. The
-shipped `docker-compose.yml` pins `no_captions` instead, so the Docker path already needs no second
-service; it only wants `immich-memories models fetch` run once inside the container.
+ten standard memory types all come out. Each step up costs a piece: `tier: no_captions` wants
+three model files on the app's disk, `tier: full` adds a caption server, `reader: model` adds a
+vision reader.
 
-Each step up costs a piece: `tier: no_captions` wants three model files on the app's disk (the
-pinned ONNX encoder, the pinned sensitive-content ONNX export and the document classifier's
-snapshot, all fetched by `immich-memories models fetch`), `tier: full` adds a caption server, and
-`reader: model` adds a vision reader. The [self-hosting guide](../deploy/self-hosting.md) walks all
-of it in order. A cut with a configured piece missing stops and says which.
+Set neither key and you get `reader: auto`, which is the rules reader while `llm.model` is blank,
+on `tier: full`, which does want that caption server. The shipped `docker-compose.yml` pins
+`no_captions` instead, so the Docker path needs no second service; it only wants
+`immich-memories models fetch` run once inside the container. A cut with a configured piece
+missing stops and says which.
 
 ## 3. Fetch and check
 

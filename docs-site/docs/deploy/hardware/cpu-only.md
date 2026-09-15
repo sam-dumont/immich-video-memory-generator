@@ -24,7 +24,6 @@ is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 |---------|----------|-------------|--------|
 | Title screens | GPU kernels: bokeh particles, SDF text, the animated deblur of a content-backed card | PIL: the same animated gradient and text, without the kernel effects | Simpler visuals, same text and timing |
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | Slower encoding: the smaller half of a run |
-| SDF text rendering | GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
 
 **What runs on this CPU, identically to a GPU box:**
@@ -41,7 +40,9 @@ is 3 h 41 min for a library of about ten thousand pictures instead of four days.
 
 ## Configuration
 
-No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. A hardware encoder (NVENC, Quick Sync, VAAPI) is only used if it passes a one-frame test encode at startup: FFmpeg builds such as Debian's list those encoders on every machine, so the listing alone is not trusted. On a box without the matching GPU or driver you get a single `Hardware encoder probe failed for …` log line and software encoding. To force software encoding and skip the encoder probe:
+Nothing to set. A hardware encoder is used only if it passes a one-frame test encode at startup, so
+a box without the matching GPU or driver gets one `Hardware encoder probe failed for …` line in the
+log and software encoding. To skip the probe as well:
 
 ```yaml
 hardware:
@@ -173,15 +174,11 @@ The practical consequences:
   the memory has: a 12-clip memory and a 40-clip memory pay nearly the same title bill.
 - Hardware encoding helps the encode, which is now the larger half again on a CPU-only box.
 
-## Preflight check
-
-Run the hardware check to see what the pipeline detects:
+## What the hardware check prints
 
 ```bash
 immich-memories hardware
 ```
-
-If no GPU is found, you will see:
 
 ```
 No hardware acceleration detected
@@ -189,4 +186,4 @@ No hardware acceleration detected
 Video encoding will use CPU (libx264).
 ```
 
-This is a warning, not an error. The pipeline will work fine.
+On this box that is the expected output, not something to fix.

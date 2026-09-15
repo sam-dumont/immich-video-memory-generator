@@ -65,9 +65,8 @@ There is no "Birthday" memory type. Two paths get you a birthday-anchored range:
 
 See [the Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters).
 
-## Tips
+## Before the party
 
-- **10 minutes** (600 seconds) is a good target duration for a party slideshow. Long enough to feel complete, short enough that people don't lose interest.
-- **Enable music** if you've set up a backend. A soundtrack makes birthday videos way more watchable.
-- **Run analysis ahead of time** so you're not waiting at the party. Generate the video the night before.
-- If the person has a common name in your Immich library, double-check the face recognition is matching the right person before generating.
+Cut it the night before. A year of one person's life is a cold run: every eligible picture gets its description and facts prepared once, and that is the slow part. See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
+
+And check the face before you cut. If two people in your library share a name, the filter is only as good as Immich's tagging, and you find out at the party.

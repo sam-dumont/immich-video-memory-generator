@@ -30,8 +30,8 @@ encode: they do not run inference, and that stays true on every page here.
 
 The card accelerates the **DINOv2 encoder and its six heads** and both detectors. All three are
 ONNX graphs, and all three open on the provider the deployment chose, so the `-cuda` image moves
-every producer onto the GPU rather than one of three. If the card turns a graph down, that seat
-falls back to the CPU and logs a WARNING saying so.
+every producer onto the GPU rather than one of three. A graph the card turns down falls back to the
+CPU.
 
 Both are published by the release, so you pull rather than build:
 
@@ -79,10 +79,9 @@ INFERENCE_TAG=latest-cuda docker compose --profile inference up -d
 curl -s localhost:8092/health | grep CUDAExecutionProvider
 ```
 
-The published file names no `extends:`, because it is downloaded on its own and compose resolves
-an `extends:` when the file loads, whatever profiles are on. The CPU backend reserves nothing, so
-there is nothing to write for it, and the CUDA one is the block above. From a checkout you can use
-`docker/hwaccel.inference.yml` instead, which holds both as `extends:` targets.
+The published file names no `extends:`: it is downloaded on its own, and compose resolves an
+`extends:` when the file loads, whatever profiles are on. From a checkout,
+`docker/hwaccel.inference.yml` holds both backends as `extends:` targets instead.
 
 `/health` names the provider a session is on, or the one it would open on if nothing is loaded yet.
 `CPUExecutionProvider` on a GPU host means one of four things: the image is the CPU one, the device
@@ -123,25 +122,16 @@ kubectl -n immich-memories port-forward svc/inference 8092:8092
 curl -s localhost:8092/health
 ```
 
-`CUDAExecutionProvider` on the CUDA overlay, `CPUExecutionProvider` on the other. If the CUDA one
-says CPU, the card did not reach the pod or the tag is not the `-cuda` one.
+`CUDAExecutionProvider` on the CUDA overlay, `CPUExecutionProvider` on the other; the four reasons
+the CUDA one can still say CPU are above.
 
-Then point the app at it, in `config.yaml` or as an env var on the app Deployment:
-
-```yaml
-advanced:
-  inference:
-    facts_base_url: http://inference.immich-memories.svc.cluster.local:8092
-```
-
-In the same namespace `http://inference:8092` does. As an env var it is
-`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two underscores: that one is the app's setting, while
-the service's own settings above take one. The base NetworkPolicy already allows the app egress on
-8092, so there is nothing to open.
+Then [point the app at it](#point-the-app-at-it). Across namespaces that is
+`http://inference.immich-memories.svc.cluster.local:8092`, in the same one `http://inference:8092`.
+The base NetworkPolicy already allows the app egress on 8092, so there is nothing to open.
 
 ### A cold cache volume
 
-A fresh PVC is empty, and that is all right. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
+A fresh PVC is empty, which is fine. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and on
 that setting the service fetches what it is missing the first time something asks for it: the
 pinned DINOv2 export (88 MB), the pinned Marqo export (22.5 MB) and the Docling snapshot. The two
 ONNX exports are checked against the same SHA-256 `immich-memories models fetch` pins; the Docling
@@ -264,36 +254,36 @@ advanced:
     facts_base_url: http://inference:8092
 ```
 
-That is the whole switch (`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` in the environment). From
-then on `prepare` and `generate` send each picture's preview to `/facts` once, ask for every
-producer the tier demands that is still missing, and bank the answer verbatim. `producers:` limits
-what goes over the wire (`[heads]` keeps the two detectors local), `timeout_seconds` bounds one
-request, and `fallback_to_local` says what happens when the service is down: the failure is named
-against the endpoint either way, and with the fallback on the app's own producers take over. The
-keys are in the [config reference](../../reference/config-reference.md#inference-service).
+That is the whole switch (`IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` in the environment, two
+underscores; the service's own settings take one). From then on `prepare` and `generate` send each
+picture's preview to `/facts` once, ask for every producer the tier demands that is still missing,
+and bank the answer verbatim. The other four keys, `producers`, `timeout_seconds`,
+`facts_concurrency` and `fallback_to_local`, are in the
+[config reference](../../reference/config-reference.md#inference-service).
 
 ### How many pictures at once
 
-`facts_concurrency` (default 8, 1 to 32) is how many `/facts` requests the app keeps in flight.
+`facts_concurrency` (default 8, 1 to 32) is how many `/facts` requests the app keeps in flight, and
+it decides whether the card behind the service is worth anything.
 
-One at a time is what the client used to do, and it is slow for a reason that has nothing to do
-with the card: measured on a cluster Job against a T1000 on `no_captions`, 3,709 pictures took 42.7
-minutes, 0.69 s each, the same rate a 133-picture demo got. A rate that does not move with the size
-of the scope is per-request latency, not throughput, and the service was sitting on
-`REQUEST_THREADS` seats with nothing in them. A 13,552-picture month would have taken 2.6 hours of
-facts alone, against 23 to 40 ms a picture for the same work computed in process on a Mac.
+One at a time is what the client used to do. Measured on a cluster Job against a T1000 on
+`no_captions`, 3,709 pictures took 42.7 minutes, 0.69 s each, the same rate a 133-picture demo got.
+A rate that does not move with the size of the scope is per-request latency, not throughput: the
+service was sitting on `REQUEST_THREADS` seats with nothing in them, and a 13,552-picture month
+would have cost 2.6 hours of facts alone, against 23 to 40 ms a picture for the same work computed
+in process on a Mac.
 
 At the default of 8, that month was measured: **0.2445 s a picture, 87 % of a 64-minute
 preparation**, with the classifiers on a T1000 behind the service. The card is most of that
 difference. On the fixture month the same pod paid 0.6083 s a picture to a CPU-backed service and
-0.1957 s to a GPU-backed one, while a pod computing its own facts in process managed 0.2555 s. The
-gap between a CPU-backed service and a fast pod's own facts is about 2.4x in the pod's favour; the
-gap between a CPU-backed and a GPU-backed service is about 3.1x the other way.
+0.1957 s to a GPU-backed one, while a pod computing its own facts in process managed 0.2555 s. A
+CPU-backed service loses to a fast pod's own facts by about 2.4x; a GPU-backed service beats a
+CPU-backed one by about 3.1x.
 
-Raising it re-derives nothing and moves no row: the answers are banked in the order the pictures
-were asked for, whatever order they come back in, and a fact's identity is still the artifact that
-produced it. Match it to the service's `REQUEST_THREADS` and give the pod the CPU to go with them;
-past that point the requests queue inside the service instead of on the wire, which buys nothing.
+Match it to the service's `REQUEST_THREADS` and give the pod the CPU to go with them; past that
+point the requests queue inside the service instead of on the wire, which buys nothing. Raising it
+re-derives nothing and moves no row: the answers are banked in the order the pictures were asked
+for, whatever order they come back in.
 
 `prepare` says which number it ran at, and the summary's `remote_facts` row gains a
 `service s/pic` column next to the wall clock:

@@ -40,16 +40,6 @@ Everything else has a default. With `codec: h265` and `hdr_mode: auto`, HLG or P
 10-bit HDR video and SDR clips, photos and titles are converted to the same transfer; H.264 is
 always SDR and tone-maps HDR sources.
 
-The target duration you pick per run (slider or `--duration`) applies to the whole result, titles
-and fade overlap included. The editor grants seconds to the stories it weighed; if that adds up
-short, the run says so rather than padding with pictures it had decided against.
-
-Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app
-detects the server major and selects the matching API contract. You do not choose a version for
-each run. Explicit `v2` and `v3` values are manual troubleshooting escape hatches for proxies or
-unusual deployments that break version detection. An override forces that contract; it is not a
-normal upgrade step.
-
 ## Tiers
 
 Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`, `title_screens`,
@@ -127,17 +117,21 @@ analysed, and `discover-days` applies them before it counts a day's photographs.
 
 ## Immich API compatibility
 
-The compatibility layer converts v2 duration strings and v3 millisecond durations to seconds,
-uses version-specific upload fields, and sends timezone-aware search dates. Both majors have run
-against live servers: v2 day to day until the v3 migration in mid-2026, v3 day to day since, plus
-the hermetic end-to-end suite and the release smoke test on a faithful v3 service. An unknown major
-stops the run with `UnsupportedImmichVersion` rather than sending requests of the wrong shape.
+Immich v2 and v3 both work. `auto` is the default runtime policy: the app detects the server
+major and selects the matching API contract. You do not choose a version for each run. Explicit
+`v2` and `v3` values are manual troubleshooting escape hatches for proxies or unusual deployments
+that break version detection. An override forces that contract; it is not a normal upgrade step. The compatibility layer converts v2 duration strings and v3 millisecond
+durations to seconds, uses version-specific upload fields, and sends timezone-aware search dates.
+Both majors have run against live servers: v2 day to day until the v3 migration in mid-2026, v3 day
+to day since, plus the hermetic end-to-end suite and the release smoke test on a faithful v3
+service. An unknown major stops the run with `UnsupportedImmichVersion` rather than sending
+requests of the wrong shape.
 
 ```bash
 immich-memories config test
 ```
 
-This check is read-only: it reports the connection and the resolved contract and does nothing else.
+Read-only: it reports the connection and the resolved contract and does nothing else.
 
 ## Environment variable substitution
 
@@ -171,23 +165,13 @@ upload:
   album_name: "2024 Memories"
 ```
 
-
 ## Reader concurrency
 
-The reader overlaps independent event inventories and worthiness/standing
-blocks, while keeping each chain of pages sequential.
-
-`advanced.llm.reader_concurrency` is unset by default, and the number is then
-read from `llm.base_url`:
-
-| endpoint | jobs in flight |
-| --- | --- |
-| `localhost`, a loopback or private address, a bare service name | 1 |
-| a public host such as `https://api.openai.com/v1` | 4 |
-
-A model on your own machine or your own network is one process in front of one
-accelerator, so four requests there queue instead of overlapping. A hosted
-endpoint is a fleet and answers four as easily as one. Set the key yourself to
-override the rule: any value from 1 to 16, with 1 keeping the reader
-sequential. Changing it keeps existing judgment banks usable. The rules reader
-makes no model calls and is unaffected.
+`advanced.llm.reader_concurrency` is unset by default, and the number is then read from
+`llm.base_url`: 1 for a loopback or private address or a bare service name, 4 for a public host. A
+model on your own machine or your own network is one process in front of one accelerator, so four
+requests there queue instead of overlapping; a hosted endpoint is a fleet. Set the key yourself
+(1 to 16) for a local server that does take concurrent requests, or a hosted provider that wants a
+lower rate. Changing it keeps existing judgment banks usable, and the rules reader makes no model
+calls at all. What overlaps and what cannot is
+[drawn on the pipeline overview](../../create/pipeline/pipeline-overview.md#what-overlaps-and-what-cannot).

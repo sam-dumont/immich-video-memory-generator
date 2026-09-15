@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PRIMARY_MANUAL_CONTRACTS = [
     pytest.param(
         "README.md",
-        "### Supported Immich Versions",
+        "### Immich v2 and v3",
         "### Optional: an LLM for clip analysis",
         "Leave this on `auto`. The app detects the server major version and uses the matching "
         "API contract; you do not choose a version for each run.",
@@ -219,8 +219,8 @@ def test_troubleshooting_documents_the_exact_version_probe_and_upload_diagnostic
     """Troubleshooting must match the real version route and upload error surface."""
     section = _normalized_section(
         "docs-site/docs/reference/troubleshooting.md",
-        "## Immich v2/v3 Version Mismatch",
-        "## No Videos Found",
+        "## Immich v2/v3 version mismatch",
+        "## No videos found",
     )
 
     _assert_troubleshooting_contract(section)
@@ -253,8 +253,8 @@ def test_troubleshooting_contract_rejects_diagnostic_mutations(
     """Route and upload-diagnostic mutations must fail the troubleshooting contract."""
     section = _normalized_section(
         "docs-site/docs/reference/troubleshooting.md",
-        "## Immich v2/v3 Version Mismatch",
-        "## No Videos Found",
+        "## Immich v2/v3 version mismatch",
+        "## No videos found",
     )
     mutated = section.replace(documented, weakened, 1)
 

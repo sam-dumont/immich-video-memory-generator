@@ -2,33 +2,14 @@
 sidebar_label: "Mac + Local LLM"
 ---
 
-# Mac + Local LLM Setup
+# Mac + Local LLM
 
-For Mac users running everything locally: the reader, the caption server, Apple Silicon hardware acceleration, and a native install without Docker.
-
-## Who this is for
-
-You have a Mac with Apple Silicon (M1/M2/M3/M4) and enough unified memory to hold the models: 32 GB is the tested floor. You want the whole editor running on your own machine, no cloud APIs. You're comfortable with the terminal.
+One Apple Silicon Mac running the whole editor: the app native, the reader and the caption server
+as local services, VideoToolbox for the encode, nothing leaving the machine. This is the
+configuration the project is graded on. 32 GB of unified memory is the tested floor, because the
+reader alone holds about 17 GB of weights for as long as its server is up.
 
 ## Architecture
-
-```
-┌───────────────────────────────────────────────────┐
-│ Mac (Apple Silicon)                               │
-│                                                   │
-│  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │  oMLX        │  │   Immich Memories         │  │
-│  │  reader model│←─│   (native Python)         │  │
-│  │  port 8000   │  │   VideoToolbox encoding   │  │
-│  │              │  │   GPU titles on Metal     │  │
-│  └──────────────┘  └──────────────────────────┘  │
-│                             │                     │
-│                    ┌────────┴─────────┐           │
-│                    │  Immich server   │           │
-│                    │  (local or remote)│           │
-│                    └──────────────────┘           │
-└───────────────────────────────────────────────────┘
-```
 
 ![Mac setup diagram](/img/diagrams/setup-mac.png)
 
@@ -42,33 +23,27 @@ uv tool install "immich-memories[all-mac]"
 immich-memories ui
 ```
 
+Open [http://localhost:8080](http://localhost:8080).
+
 The bare `immich-memories` package works too, but title screens are then PIL-rendered and the
 context heads and detectors have no runtime: `all-mac` is what installs the editorial
 stack described below. Note it does not include the `auth` extra; add that separately if you want
 OIDC login.
 
-Open [http://localhost:8080](http://localhost:8080).
-
-Also complete [editorial annotation setup](../configuration/editorial-preparation.md): the
-public context encoder, detector weights and compact-caption service are separate from the
-general model connection below. New runs use story-first selection and the FAMILY audience.
+Then work through [editorial annotation setup](../configuration/editorial-preparation.md): the
+public context encoder, the detector weights and the caption service are separate from the reader
+connection below.
 
 ## Set up the reader
 
-The reader groups the period's days into stories, weighs them and picks the pictures, and it is
-what *looks* at some of them: the candidates whose facts the edit demands, a few dozen per
-memory, reach this endpoint as 800 px tiles. So the seat needs vision and at least a 32k context,
-and a text-only model cannot take it.
+The reader needs vision and at least a 32k context. It groups the period's days into stories,
+weighs them and picks the pictures, and the candidates whose facts the edit demands reach it as
+800 px tiles, a few dozen per memory. A text-only model cannot take this seat.
 
 The graded configuration, the one whose cuts have been approved, is
 **`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`** served by
-[oMLX](https://github.com/jundot/omlx). Anything else that speaks the OpenAI
-`/v1/chat/completions` contract, accepts images and honours `response_format: json_schema` will
-work; it just has not been graded. The older Qwen3.6 pair was exercised against the retired
-per-clip scorer, not this route.
-
-oMLX is a menu-bar app that serves MLX models over an OpenAI-compatible API. macOS 15+, Python
-3.11-3.13:
+[oMLX](https://github.com/jundot/omlx), a menu-bar app that serves MLX models over an
+OpenAI-compatible API. macOS 15+, Python 3.11-3.13:
 
 ```bash
 brew tap jundot/omlx https://github.com/jundot/omlx
@@ -84,24 +59,12 @@ or drop it into the model directory yourself. The weights are on Hugging Face:
 | Reader | `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` | ~17 GB |
 | Captions | `mlx-community/SmolVLM2-500M-Video-Instruct-mlx` (revision `fa57db46`) | 1–2 GB |
 
-The weights stay resident while the servers are up: read them as the floor for how much unified
-memory the models alone take.
+Both stay resident while their servers are up: read the table as the floor for what the models
+alone take out of your unified memory.
 
-The caption server is a second service on its own port (8092 by default), and the app checks one
-thing before it sends a picture to it: that `GET /models` advertises `smolvlm2-500m-base-public`.
-Whatever you serve has to answer to that name. On a Mac that is mlxcel, which is two commands:
-
-```bash
-brew install lablup/tap/mlxcel
-hf download mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
-  --revision fa57db46815177fbdfd65cc85a2b3416a8332268
-mlxcel serve --model <the snapshot path hf printed> \
-  --alias smolvlm2-500m-base-public --port 8092
-```
-
-oMLX cannot load SmolVLM2 at all, so the reader you started above is not it: these are two
-processes on two ports. [Caption server](../installation/caption-server.md) has the rest, and the
-[self-hosting guide](../self-hosting.md) stands both of them up in order.
+Anything else that speaks the OpenAI `/v1/chat/completions` contract, accepts images and honours
+`response_format: json_schema` will work; it just has not been graded. Ten readers were pointed at
+one real month and three of them stopped: [Readers](../readers.md).
 
 Then point Immich Memories at it in `~/.immich-memories/config.yaml`:
 
@@ -128,13 +91,25 @@ Mac and works the same way from this side of the wire. Its README lists Qwen sup
 so check it covers whatever you load before you count on it.
 :::
 
+## Set up the captions
+
+On the `full` tier, a second service on its own port (8092 by default) writes one sentence under
+every picture. oMLX cannot load SmolVLM2 at all, so this is a separate process from the reader you
+just started. On a Mac it is mlxcel and two commands, and the app checks one thing before it sends
+a picture: that `GET /models` advertises `smolvlm2-500m-base-public`. The recipe, the alias and
+what happens when either is wrong are on
+[Caption server](../installation/caption-server.md#apple-silicon-with-mlxcel).
+
 ## What works
 
 - **A local editor**: the model reads the period's pictures and edits the memory on your machine; nothing leaves it.
-- **VideoToolbox encoding**: H.264/H.265 encoding on the chip's media engine instead of the CPU cores.
-- **GPU title renderer**: particle effects and gradient backgrounds rendered on the Apple GPU.
-- **AI music generation**: ACE-Step runs in-process on Apple Silicon via MLX, no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time: see below.
-- **All memory types and features**: everything works natively on Mac.
+- **VideoToolbox encoding**: H.264/H.265 on the chip's media engine instead of the CPU cores.
+- **GPU title renderer**: particle effects and gradient backgrounds on the Apple GPU.
+- **ACE-Step music in-process**: no server involved. A 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on. What it costs is memory, not time.
+
+MusicGen is the exception: that backend only talks to an API server, so it needs an NVIDIA host or
+a hosted endpoint. You do not need it if ACE-Step is running: set `musicgen.enabled: false` and
+local Demucs handles the stem separation that ducking uses.
 
 ## Local music generation
 
@@ -155,38 +130,25 @@ being killed mid-render.
 
 The config, the pinned install commands and the full memory notes are in [Fully Local Setup](../../create/pipeline/audio-and-music.md#running-it-in-process-on-apple-silicon).
 
-## What doesn't work locally
+## What to expect
 
-- **MusicGen**: this backend only talks to an API server, so it needs an NVIDIA host or a hosted endpoint. You do not need it if ACE-Step is running: set `musicgen.enabled: false` and local Demucs handles the stem separation that ducking uses.
+A Mac is one of the three hosts the setup matrix measured end to end, cold and warm, on a real
+month: [Running modes](../running-modes.md).
 
-## Performance expectations
+The shape does not change: the model passes are the slow phase, they scale with how many candidate
+pictures the period holds rather than with how long the video is, and they are banked. A second
+cut over the same period skips them.
 
-On an M2 Pro (12-core, 32 GB):
-
-There is no table here. The one that used to be was keyed on clip count and measured a per-clip
-scorer that no longer exists, which makes it worse than nothing to calibrate against. Preparation
-on the current route has been measured [on a NAS](./nas-only.md#preparation-tiers-what-the-nas-pays) and not
-on this hardware.
-
-What has not changed is the shape: the model passes are the slowest phase, they scale with how
-many candidate pictures the period holds rather than with how long the video is, and they are
-banked. A second cut over the same period skips them entirely.
-
-Memory is the constraint, not time. Immich Memories itself wants 2-4 GB; the models want their
-weights resident for as long as their servers are up: ~17 GB for the reader, 1-2 GB for the
-captions.
-
-That is what makes local music generation tighter here than on a machine doing nothing else: a
-reader holding 17 GB is exactly the situation where an ACE-Step XL profile stops fitting.
-Stopping the model servers before a music-heavy run buys all of it back.
+Memory is the constraint here, not time. The app wants 2-4 GB; the reader holds ~17 GB and the
+captioner 1-2 GB for as long as their servers are up. That is what makes local music generation
+tighter on this machine than on one doing nothing else: a reader holding 17 GB is exactly the
+situation where an ACE-Step XL profile stops fitting. Stopping the model servers before a
+music-heavy run buys all of it back.
 
 ## Tips
 
-- **Start the required model services before generating.** Missing annotation or story providers
-  stop an uncached editorial run with an incomplete result. Matching cached facts are reused.
+- **Start the model services before generating.** A missing annotation or story provider stops an uncached editorial run with an incomplete result. Facts already banked are reused.
 - **The graded reader is the 4-bit one.** A higher-precision build of the same model will run if the memory is there; it is not what the approved sheets came from.
 - **Smaller vision models will run** on tighter machines. None of them has been graded on this route: treat the output as your own experiment rather than a supported configuration.
 - **Ollama speaks the same contract**, so it works as a transport. Nothing on this route has been run on it, and whatever you serve there still has to accept images.
-- **Preparation covers the whole source period.** There is no depth knob and no shortlist: every
-  eligible picture is read once, because one the editor never saw is one it cannot weigh. Exact
-  producer/input cache hits are reused.
+- **Preparation covers the whole source period.** There is no depth knob and no shortlist: every eligible picture is read once, because one the editor never saw is one it cannot weigh.

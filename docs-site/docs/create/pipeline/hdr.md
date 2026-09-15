@@ -16,9 +16,12 @@ and an HDR photograph is reconstructed from its gain map rather than flattened.
   `HDR = SDR × (1 + (headroom - 1) × gain)`, and ships it as 10-bit PQ, BT.2020. That is Apple's
   own shape, and it never darkens a pixel; the exponential `2^(gain × headroom)` this page used to
   print is the ISO 21496-1 form, which belongs to Ultra HDR and lifted mid-tones about twice as far
-  as CoreImage does. When the
-  MakerNote does not parse it falls back to `exiftool` if that is installed, and a photograph
-  whose headroom cannot be read renders at the brightness of its base image instead of black.
+  as CoreImage does. It takes both tags because `0x0021` alone gave 2.01x on a photograph whose
+  real headroom was 5.955x. Checked against CoreImage's own `kCIImageExpandToHDR` on 11 photographs
+  across headrooms 3.50 to 6.91: median error 1 to 2 %, 10 % on the worst that converged. When the
+  MakerNote does not parse it falls back to `exiftool` if that is installed
+  (`brew install exiftool`, or `apt install libimage-exiftool-perl`), and a photograph whose
+  headroom cannot be read renders at the brightness of its base image instead of black.
 - **Android Ultra HDR.** A JPEG with an MPF gain map and `hdrgm` XMP metadata, reconstructed with
   its per-channel gamma and offsets.
 - HEIC decoding uses `pillow-heif`; FFmpeg reads only the thumbnail tiles of a HEIC.

@@ -6,35 +6,29 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Monthly, Person, Season & On This Day
 
-Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope.
+Five memory types with the same shape: pick a time range, optionally filter by person, cut. They differ in scope. Every duration below is an editable default rather than a cap, and the web UI and the CLI read the same preset for it.
 
 ## Monthly Highlights
 
-Best moments from a single month. Good for regular check-ins or when one month had a lot going on.
+One month, 60 seconds by default. The title screen shows the month and year ("July 2025"), and there are no month dividers because there is only one month.
 
 ```bash
 immich-memories generate --memory-type monthly_highlights --month 7 --year 2025
 ```
 
-Default duration: 60 seconds. The title screen shows the month and year (e.g., "July 2025"). No monthly dividers since it's already a single month.
-
-**Best for:** a month you actually shot in. A vacation, a birthday, a holiday: one minute, tight.
+Use it on a month you actually shot in. A month of commutes gives it nothing to work with.
 
 <ThemedScreenshot name="memory-brief" alt="Monthly Highlights on the Memory page" />
 
 ## Person Spotlight
 
-A year focused on one person. Filters the pool to what contains the named person (requires face recognition enabled in Immich). Every memory type is edited the same way: see [The Curator](../pipeline/the-curator.md). What makes this one a spotlight is the filter, not a different editor.
+A year narrowed to the pictures containing one person, which needs Immich face recognition set up and the person tagged. Every memory type is edited the same way (see [The Curator](../pipeline/the-curator.md)); what makes this one a spotlight is the filter, not a different editor.
 
 ```bash
 immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025
 ```
 
-Narrow to a single month with `--month`:
-
-```bash
-immich-memories generate --memory-type person_spotlight --person "Riley" --year 2025 --month 7
-```
+Default duration: about 60 seconds per month, capped at 10 minutes, so a full calendar year asks for 10 minutes on both the CLI and the web UI. `--month` narrows it to one month; `--start/--end` replaces the range outright.
 
 Anchor it on the person's birthday instead, reading the birth date from Immich:
 
@@ -43,10 +37,6 @@ immich-memories generate --memory-type person_spotlight --person "Riley" --year 
 ```
 
 That is a different memory: the year **ending** on the 2025 birthday, plus each of the five previous birthdays as a ±1 day cutaway. It asks for 10 minutes on both surfaces. See [Birthday Compilations](../recipes/birthday-compilations.md).
-
-Default duration: about 60 seconds per month, capped at 10 minutes. A full calendar year therefore asks for 10 minutes on both the CLI and web UI. You can also override the date range entirely with `--start/--end`.
-
-**Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
 ## Multi-Person
 
@@ -89,8 +79,6 @@ Default duration: the same one-minute-per-month rule as Person Spotlight, capped
 at 10 minutes. Title screens and default filenames say whether the people are
 joined by AND or OR, so the two runs cannot overwrite one another.
 
-**Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
-
 The same AND default applies wherever you name several people. Repeating
 `--person` on any CLI memory type can be changed to a union with
 `--person-match or`, and the Memory page's ordinary **Only with** picker offers
@@ -102,36 +90,36 @@ immich-memories generate --memory-type season --season summer --year 2025 --pers
 
 ## Season
 
-Highlights from a specific season (spring, summer, fall, winter).
+One season out of one year, 2 minutes 15 seconds by default (the preset's own `default_duration_seconds`, about 45 seconds a month).
 
 ```bash
 immich-memories generate --memory-type season --season summer --year 2025
 ```
 
-Default duration: 2 minutes 15 seconds, which is the preset's own `default_duration_seconds`, about 45 seconds a month. The hemisphere flag controls which calendar months map to which season:
+The hemisphere flag controls which calendar months map to which season:
 
 ```bash
 # Southern hemisphere: summer = December-February
 immich-memories generate --memory-type season --season summer --year 2025 --hemisphere south
 ```
 
-**Best for:** when the best content clusters in a season rather than spread across the year. Summer vacations, winter holidays, fall foliage trips.
+Worth it when the material clusters in a season rather than spreading over the year: summer holidays, autumn walks.
 
 ## On This Day
 
-Looks back across all previous years for content near today's date. Creates ±1 day date ranges for each previous year.
+Every previous year, ±1 day around today's date, in one 45-second cut. No `--year`: it looks back from today, over all years that have data, up to 30 years.
 
 ```bash
 immich-memories generate --memory-type on_this_day
 ```
 
-Limit to the last 3 years with `--years-back`:
+Limit the reach with `--years-back`:
 
 ```bash
 immich-memories generate --memory-type on_this_day --years-back 3
 ```
 
-Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date. By default, it searches all years with data (up to 30 years back).
+It wants three or more years of library behind it, and it is the obvious one to put on a daily schedule.
 
 ### Pinning the day
 
@@ -146,8 +134,3 @@ immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back
 Same day, same years, same cut, so the run can be repeated, compared against an earlier
 one, or handed to someone else. Without the flag nothing changes: the run covers the day
 it fires.
-
-**Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
-
-Every duration on this page is an editable default, not a cap, and the web UI and the CLI read the
-same preset for it.

@@ -5,19 +5,23 @@ title: Title Screens & Maps
 
 # Title Screens & Maps
 
-This is where the output stops looking like "FFmpeg concat" and starts looking like something you'd actually want to show people.
+An intro card, a divider at every month change, a satellite fly-over for a trip, location cards
+between segments, an ending. This is the structure around the clips, and it is the difference
+between a memory and an FFmpeg concat of your footage.
 
-Title screens are the structural connective tissue: animated intro cards, month dividers, satellite map fly-overs, and ending sequences. Same kind of polish as Relive, but running on your own hardware with your own data.
+Which of them a memory gets depends on its type:
 
-## What gets generated
-
-Depending on the memory type, title screens include some or all of:
-
-- **Intro card**: content-backed background (blurred + darkened frame from your footage), white title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
-- **Month dividers**: a divider card at every month change, for any single-year range spanning four or more months. The first month's divider is skipped: the intro card already said it. `month_divider_threshold` does not gate insertion; it sizes a budget cap, and when the cap binds it keeps the *first* N month changes chronologically. So a one-clip January can get a card while a dense November loses one.
-- **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories. The further apart the two points, the further the camera pulls out mid-flight.
-- **Location cards**: city name + map thumbnail between trip segments.
-- **Ending sequence**: a fade-to-white card. No text: every ending path renders with an empty title.
+- **Intro card**: content-backed background (a blurred, darkened frame from your footage), white
+  title text with an entrance animation, optional subtitle (person name, date range). 3.5 seconds.
+- **Month dividers**: at every month change, for any single-year range spanning four or more months.
+  The first month's divider is skipped: the intro card already said it. `month_divider_threshold`
+  does not gate insertion; it sizes a budget cap, and when the cap binds it keeps the *first* N
+  month changes chronologically. So a one-clip January can get a card while a dense November loses
+  one.
+- **Trip map animation**: a satellite fly-over from home to destination, replacing the generic intro
+  for trip memories.
+- **Location cards**: city name and map thumbnail between trip segments.
+- **Ending**: a fade-to-white card. No text: every ending path renders with an empty title.
 
 ## Two rendering backends
 
@@ -34,9 +38,9 @@ off. It does not send you to PIL.
 
 ## Content-backed backgrounds
 
-By default, title screens use a frame from your actual footage as the background: the first second
-of the first clip, blurred and darkened, with white text over it. So every title screen looks like
-it belongs to the video it introduces rather than to a generic gradient.
+By default a title screen's background is the first second of the first clip, blurred and darkened,
+with white text over it. So every card looks like it belongs to the video it introduces rather than
+to a generic gradient.
 
 How hard it is blurred and dimmed depends on the renderer. The GPU path blurs by a tenth of the frame
 height and dims proportionally to how much blur it applied; PIL uses a fixed Gaussian and a flat
@@ -48,7 +52,7 @@ frame when the clip cannot be decoded or yields fewer than five frames.
 
 ## Visual styles
 
-All styles use dark cinematic palettes with white text. No pastel or bright backgrounds. Five named styles are available:
+All styles use dark cinematic palettes with white text. No pastel or bright backgrounds.
 
 | Style | Palette | Character |
 |-------|---------|-----------|
@@ -58,9 +62,7 @@ All styles use dark cinematic palettes with white text. No pastel or bright back
 | `playful_bright` | Deep teal | Energetic, semibold. Teal accents. |
 | `soft_romantic` | Dark amber-tinted | Gentle scale-in. Warm amber accents. |
 
-### Mood-based selection (default)
-
-By default (`style_mode: auto`), the system picks the style based on the video's detected mood. Each mood maps to a color palette, font family, animation preset, and font weight:
+On `style_mode: auto`, the default, the style comes from the memory's detected mood:
 
 | Mood | Palette | Animation |
 |------|---------|-----------|
@@ -76,46 +78,37 @@ By default (`style_mode: auto`), the system picks the style based on the video's
 There is no font column because there is no font choice: every title is Montserrat. The style
 definitions carry a `preferred_fonts` list that nothing reads.
 
-Four color palettes are available: `cinematic_dark` (deep navy), `warm_dark` (warm stone/charcoal), `deep_teal` (ocean blue/teal), `midnight` (slate). All use white or near-white text.
+Four palettes exist: `cinematic_dark` (deep navy), `warm_dark` (warm stone/charcoal), `deep_teal`
+(ocean blue/teal), `midnight` (slate). Set `style_mode: random` to pick a named style at random
+instead, or pass `--style elegant_minimal` to the titles CLI to force one.
 
-Set `style_mode: random` to pick a named style at random instead of using mood detection. Or pass `--style elegant_minimal` to the titles CLI to force a specific style.
+## The map fly-over
 
-## Map Animation
+A trip memory opens on your home location at city-level zoom, flies out and across to the
+destinations, and settles at a zoom that shows every pin. It runs for `title_duration`, 3.5 seconds
+by default. Each endpoint gets a pin (red circle, white outline) and a city label; the title text
+fades in over the imagery in the lower third, where it doesn't block the map.
 
-Trip memories start with an animated satellite fly-over from your home location to the destination. It's a Google Earth-style zoom that gives context before the clips start.
+Two animations, picked on the distance between departure and destination:
 
-### What it does
+- **Van Wijk zoom**, for long distances. Zooms out to show the route, then back in. The maths is the
+  d3 `interpolateZoom` algorithm: it picks the smoothest path through zoom-space rather than
+  interpolating linearly. The further apart the two points, the further the camera pulls out
+  mid-flight.
+- **Linear pan**, for short hops. When the mid-transit zoom would stay at level 10 or above (metro
+  scale), it pans at fixed zoom instead of zooming out for nothing.
 
-The animation starts at city-level zoom on your home location, flies out and across to the destination(s), then settles at a zoom level that shows all the destination pins. It runs for `title_duration`, 3.5 seconds by default.
+Imagery is ArcGIS World Imagery, no API key, cached in memory during rendering so adjacent frames
+don't refetch the same tiles.
 
-Each endpoint gets a pin (red circle with white outline) and a city label. The title text fades in over the satellite imagery, sitting in the lower third so it doesn't block the map.
+The static map renderer also knows `osm` (OpenStreetMap, clean street map) and `topo`
+(OpenTopoMap, useful for hiking trips), used for the pin-and-label frames rather than the fly-over.
+Both are internal today: `map_style` is a parameter on the renderer functions in
+`titles/map_renderer.py`, not a `title_screens` key, so a generate run always gets satellite.
 
-### Zoom vs. pan selection
+## Trip classification
 
-Two animation modes get picked automatically based on how far apart departure and destination are:
-
-- **Van Wijk zoom**: for long distances. Zooms out to show the route, then zooms back in. The math is the d3 `interpolateZoom` algorithm: it picks the smoothest path through zoom-space rather than just linearly interpolating.
-- **Linear pan**: for short hops. When the destination is close enough that the mid-transit zoom would stay at zoom level 10 or above (metro scale), it just pans at fixed zoom instead of zooming out unnecessarily.
-
-### Tile source
-
-Satellite imagery comes from ArcGIS World Imagery tiles: no API key required. Tiles are cached in-memory during rendering to avoid redundant fetches across adjacent frames.
-
-### Map styles
-
-The static map renderer supports three styles, used for pin-and-label map frames (not the fly-over animation):
-
-| Key | Source | Notes |
-|-----|--------|-------|
-| `satellite` | ArcGIS World Imagery | Default. Used for the fly-over. |
-| `osm` | OpenStreetMap | Clean street map, good for city-level |
-| `topo` | OpenTopoMap | Topographic, useful for hiking trips |
-
-`osm` and `topo` are internal options today. `map_style` is a parameter on the renderer functions in `titles/map_renderer.py`, not a `title_screens` key, so a generate run always gets satellite.
-
-## Trip Classification
-
-The LLM looks at which locations repeat across days:
+The model reads which locations repeat across days and names the pattern:
 
 | Pattern | Classification | Example |
 |---------|---------------|---------|
@@ -124,9 +117,10 @@ The LLM looks at which locations repeat across days:
 | Different town each day, big distances | `road_trip` | Two weeks driving through three regions, a new town every night |
 | Daily moves but short distances, progressive | `hiking_trail` | A hut-to-hut trail: three villages a day's walk apart |
 
-The model also returns a `map_mode` (`excursions`, `overnight_stops` or `title_only`) alongside
-the classification. Nothing in the renderer reads it: today it is shown as a badge in the UI and
-changes no pixels.
+It returns a `map_mode` (`excursions`, `overnight_stops` or `title_only`) alongside the
+classification. Nothing in the renderer reads it: today it is a badge in the UI and changes no
+pixels. What the model is handed, and what else comes back with the classification, is on
+[LLM titles and mood](./llm-content-analysis.md).
 
 ## Configuration
 
@@ -137,7 +131,7 @@ about: `enabled` turns the whole thing off, including the map fly-over and its t
 
 ## Previewing before a full render
 
-The `titles test` CLI command generates standalone title cards so you can dial in the look without running a full pipeline:
+`titles test` renders standalone cards, so you can dial in the look without running a pipeline:
 
 ```bash
 # Quick preview

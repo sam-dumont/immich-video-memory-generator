@@ -2,15 +2,11 @@
 sidebar_label: "Year in Review"
 ---
 
-import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
-
 # Year in Review
 
-Covers an entire calendar year and creates a video with monthly title dividers: a chronological run through the moments the editor thought the year was about.
+A whole calendar year, chronological, with a title card wherever the month changes. The default target is 10 minutes, and a thin year will not reach it: the cut reports how much it found and how far short it landed rather than padding. `--duration 300` asks for five minutes instead.
 
-## What it does
-
-Covers a calendar year and reads it as a story: the editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each the pictures its weight earns, capped by the moments it actually holds. The year is partitioned by month, and a plan that leaves a month with worthy material silent is reported back as incomplete. The default target duration is 10 minutes.
+The editor prepares a description and facts for every eligible picture in the year, weighs the year's stories against each other in words, and grants each one the pictures its weight earns, capped by the moments it actually holds. The year is partitioned by month, and a plan that leaves a month with worthy material silent comes back as incomplete.
 
 ## CLI
 
@@ -18,14 +14,11 @@ Covers a calendar year and reads it as a story: the editor prepares a descriptio
 immich-memories generate --memory-type year_in_review --year 2025
 ```
 
-With person filter:
+The date range is exactly 1 January to 31 December. `--month` narrows it to one month, `--start`/`--end` replaces it outright. `--person "Riley"` turns it into a "Your year with Riley" cut: the same monthly structure, only pictures holding that person. Two names means pictures holding both, unless you pass `--person-match or`.
 
-```bash
-immich-memories generate --memory-type year_in_review --year 2025 --person "Riley"
-```
+`--birthday` does **not** apply here. It is read only for `--memory-type person_spotlight` (and for a bare `--year --birthday` with no memory type). See [Person Spotlight](./monthly-person-season.mdx).
 
-Photos are in the pool already: `photos.enabled` defaults to true. The flag that matters is the
-one that takes them out:
+Photos are in the pool already (`photos.enabled` defaults to true). The flag that matters is the one that takes them out:
 
 ```bash
 immich-memories generate --memory-type year_in_review --year 2025 --no-photos
@@ -41,15 +34,16 @@ condition is neither a flat AND nor a flat OR, **Advanced people condition**
 under the picker takes `'"Riley" AND ("Casey" OR "Bob")'`, the same string as
 `--people-expression`.
 
-## What makes it special
+## Monthly dividers
 
-- **Monthly title dividers**: a divider screen (e.g., "January", "February") is inserted wherever the month changes between clips, so the video is split into sections. Dividers only appear when the range spans four or more months: `get_divider_mode()` returns "none" for anything shorter, so a February-to-March video has no dividers at all.
-- **Every month has to have a voice**: the year is partitioned by month, and the plan is checked against those partitions afterwards. A month with worthy material that ends up with nothing raises an uncovered-partition violation and the run's verdict becomes `coverage_incomplete`. There is no per-month reservation doing this up front; it is a requirement in the brief and a check on the result.
-- **Full year coverage**: the date range is exactly January 1 through December 31. You can narrow to a single month with `--month` or override the date range entirely with `--start/--end`. `--birthday` does **not** apply here: it is read only for `--memory-type person_spotlight` (and for a bare `--year --birthday` with no memory type). See [Person Spotlight](./monthly-person-season.mdx).
+A divider screen ("January", "February") goes in wherever the month changes between clips. They only appear when the range spans four or more months: `get_divider_mode()` returns "none" for anything shorter, so a February-to-March video has no dividers at all.
 
-## Tips
+## Every month has to have a voice
 
-- It wants a year that actually spans a year. If everything you have is one summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory fits the material better, and the coverage check will stop complaining.
-- The first cut over a year is the slow one: every eligible picture gets its description and facts prepared once. The second cut reuses them: see [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).
-- The default target is 10 minutes. A thin year will not fill it: the cut reports how much it found and how far short it landed rather than padding. `--duration 300` asks for five instead.
-- Combining `--person` with Year in Review creates a "Your Year With Riley" style video: only pictures containing that person, but still with monthly structure. Naming two people narrows it to the pictures holding both unless the CLI explicitly uses `--person-match or`.
+The year is partitioned by month and the plan is checked against those partitions afterwards. A month with worthy material that ends up with nothing raises an uncovered-partition violation and the run's verdict becomes `coverage_incomplete`. Nothing reserves a slot per month up front; it is a requirement in the brief and a check on the result.
+
+That check is also the tell that you picked the wrong type. If everything you have is one summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory fits the material, and the complaining stops.
+
+## The first cut is the slow one
+
+Every eligible picture in the year gets its description and facts prepared once. The second cut reuses them, so put the cold run on a night you are not watching. See [Editorial annotation setup](../../deploy/configuration/editorial-preparation.md).

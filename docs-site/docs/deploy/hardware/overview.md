@@ -74,8 +74,9 @@ usually 17 GB of weights: [Running modes](../running-modes.md) and [Readers](../
 
 The backend is probed in the order NVIDIA, Apple, Intel QSV, VAAPI, and the first one whose
 one-frame test encode succeeds is used. An FFmpeg that merely lists a backend (Debian's does,
-inside the image too) does not send a GPU-less box down the hardware path. There is no switch to
-pick a backend; `hardware.enabled: false` forces software encoding.
+inside the image too) does not send a GPU-less box down the hardware path. `hardware.enabled: false`
+forces software encoding, and `hardware.backend` names one backend to probe instead of walking the
+list, which is there for a benchmark rather than for running ([NVIDIA](./nvidia.md#configuration)).
 
 ```yaml
 hardware:
@@ -157,4 +158,7 @@ one-frame probe catches it and the run falls back to software, naming the cause.
 
 ## Title rendering
 
-GPU title rendering runs on Quadrants, which has wheels for Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 on Python 3.11-3.13. On macOS x86_64 and on Python 3.14 there is none, and title screens fall back to the PIL renderer, which still animates its gradient but loses the kernel effects (bokeh particles, the slow-motion deblur of a content-backed card) and the SDF text path; `immich-memories preflight` says which you will get. See [Title kernels](./cpu-only.md#title-kernels).
+The kernels also need a wheel, and Quadrants publishes none for macOS x86_64 or for Python 3.14.
+Those two fall back to the PIL renderer the same way an AVX-less CPU does.
+`immich-memories preflight` says which you will get; [Title kernels](./cpu-only.md#title-kernels)
+has the platform table.

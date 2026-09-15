@@ -122,10 +122,9 @@ What crosses is preparation: the captions, the head facts, the pixel facts, the 
 is anything a reader decided. The copy is followed by a delete over every table in the annotation
 store that holds a model's answer (`judgments`, the two completion-failure tables, the visual
 judgments, the banked episode readings, the period insights, the cull verdicts) and the separate
-`judgments.db` beside it is removed outright. The per-cell cache rule that produced this matrix is
-intact: it exists because the first real Mac run shared one cache and `mac-rules` published
-`mac-local`'s verdicts as its own losses, and seeding a reader's answers into cells that exist to
-compare readers would be that failure with extra steps.
+`judgments.db` beside it is removed outright. The per-cell cache rule that produced this matrix
+([One cache per cell](#one-cache-per-cell)) is intact: seeding a reader's answers into cells that
+exist to compare readers would be that same failure with extra steps.
 
 The seed is resolved per library, and nothing has to name a path. `--out` is one run of one library,
 so its parent directory holds that library's other runs and nothing else: a run that prepares
@@ -144,26 +143,27 @@ the preparation for this host, tier and facts source.
 `hosted_usage.tokens_in` and `tokens_out` come from `llm-usage.json`, which every run that asked a
 model leaves in its attempt directory beside the plan. It carries the counts unrounded, plus the
 reasoning tokens the model billed on its own account and a per-model split for the runs that ask
-more than one. `hosted_usage.usage_source` says `record` when the row was read from that file. A run
-made before this file existed is added back up out of its own artifacts instead: the planner block
-in `plan.private.json` plus the pre-planner outcomes, which between them hold every reply the run
-was billed for. Such a row says `reconstructed`, keeps `counted_exactly` false, and carries the
+more than one. `hosted_usage.usage_source` says `record` when the row was read from that file, and
+`counted_exactly` is then true.
+
+A run made before that file existed is added back up out of its own artifacts instead: the planner
+block in `plan.private.json` plus the pre-planner outcomes, which between them hold every reply the
+run was billed for. Such a row says `reconstructed`, keeps `counted_exactly` false, and carries the
 prompt tokens of the preparation reads in `estimated_prompt_tokens` rather than in `tokens_in`,
-because nothing recorded them and they are worked out from the size of the request the run kept.
-`picture_facts_metrics` is not added to any of this: the facts are read inside the scope that wrote
-`llm_metrics`, so adding it would bill a cell twice for the same tiles. `reasoning_tokens` on a
-reconstructed row is a floor rather than a total, because those runs recorded a reasoning count for
-the preparation reads and for nothing else. It costs the estimate nothing: every provider here
-reports reasoning inside `completion_tokens`, which is exact. Failing all of that, the row
-falls back to the end-of-run block the CLI prints, which rounds anything at or above 1000, and says
-`log` instead.
-`pricing:` in the manifest holds a list price per reader and model
-id, with the page it came from and the date it was read. Where a row has both halves, the summary
-publishes `est_cost_eur` and a `## Cost` section under the table shows the arithmetic: the euro
-figure, the model, `hosted_usage.calls`, the tokens in and out, the tiles the reader was sent, and
-the page the price came from.
-Where either half is missing the column stays empty and the cell earns a line under `unmeasured`,
-because a price with no token count is a price list and a token count with no price is not money.
+because nothing recorded them and they are worked out from the size of the request the run kept. Its
+`reasoning_tokens` is a floor rather than a total, which costs the estimate nothing: every provider
+here reports reasoning inside `completion_tokens`, and that number is exact. `picture_facts_metrics`
+is never added to any of this: the facts are read inside the scope that wrote `llm_metrics`, so
+adding it would bill a cell twice for the same tiles. Failing all of that, the row falls back to the
+end-of-run block the CLI prints, which rounds anything at or above 1000, and says `log` instead.
+
+`pricing:` in the manifest holds a list price per reader and model id, with the page it came from
+and the date it was read. Where a row has both halves, the summary publishes `est_cost_eur` and a
+`## Cost` section under the table shows the arithmetic: the euro figure, the model,
+`hosted_usage.calls`, the tokens in and out, the tiles the reader was sent, and the page the price
+came from. Where either half is missing the column stays empty and the cell earns a line under
+`unmeasured`, because a price with no token count is a price list and a token count with no price is
+not money.
 
 The table is keyed by reader as well as by model id, because `glm-5.3-flash` is sold by two shops at
 two prices. Only the Melious one has a page in the manifest, so the two zai cells stay unpriced and
@@ -172,8 +172,8 @@ euro row and a dollar row stay two numbers.
 
 A row read from the log carries that block's rounding with it: a run that reported 125.4k prompt
 tokens is 125,400 in the arithmetic and somewhere between 125,350 and 125,449 in fact, so read its
-euro figure at two digits rather than four. A row whose `usage_source` is `record` has the digits the
-provider reported and `counted_exactly` is true.
+euro figure at two digits rather than four. A row whose `usage_source` is `record` carries the digits
+the provider reported.
 
 ## The contract column
 

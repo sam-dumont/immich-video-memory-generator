@@ -4,7 +4,7 @@ sidebar_label: "Discovery & utility"
 
 # Discovery and utility commands
 
-Four small commands that exist mostly to answer questions before you generate anything. They were reachable only through `--help` and the generated [CLI reference](../../reference/cli-reference.md) until now.
+Four small commands for answering questions before you generate anything.
 
 ## `people`: who Immich knows
 
@@ -12,11 +12,11 @@ Four small commands that exist mostly to answer questions before you generate an
 immich-memories people
 ```
 
-Lists every named person in your Immich library. Useful because `--person` matches on the name Immich holds, and "Emma" versus "Emma S." is the difference between a memory and an empty pool.
+Lists every named person in your Immich library. `--person` matches on the name Immich holds, and
+"Emma" versus "Emma S." is the difference between a memory and an empty pool.
 
-`people` also has subcommands now: `people scan` and `people show` build and read the
-[people graph](./people.md), which works out who is who from counts and dates. Calling
-`immich-memories people` on its own still does exactly what it did before.
+`people scan` and `people show` are a separate thing: they build and read the
+[people graph](./people.md). The bare command still does only the listing.
 
 ## `years`: where the material is
 
@@ -24,7 +24,8 @@ Lists every named person in your Immich library. Useful because `--person` match
 immich-memories years
 ```
 
-Lists the years that actually contain video, so you are not guessing at `--year`. On a library imported from old backups this is often surprising.
+Lists the years that actually contain video, so you are not guessing at `--year`. On a library
+imported from old backups this is often surprising.
 
 ## `analyze`: counts videos, nothing more
 
@@ -35,8 +36,7 @@ immich-memories analyze --year 2024
 It fetches the videos for a year and prints how many there are. It does not prepare annotations,
 it does not warm any bank, and it never looks at photos. `--force` is accepted and ignored.
 
-To pre-warm the editor's banks without rendering anything, use [`prepare`](./prepare.md). That is
-the command for "do the expensive half overnight, a month at a time".
+To pre-warm the editor's banks without rendering anything, use [`prepare`](./prepare.md).
 
 ## `export-project`: a snapshot of what a scope contains
 
@@ -54,4 +54,4 @@ selection and feeding it back in. Treat "for later editing" in its help text as 
 aspiration rather than a description.
 :::
 
-If you want to see how a selection was actually *reached* (including which stage dropped what), use [`generate --trace-selection`](./generate.md#what-a-run-leaves-behind) instead. That reports on a real run.
+To see how a selection was actually *reached*, including which stage dropped what, use [`generate --trace-selection`](./generate.md#what-a-run-leaves-behind). That reports on a real run.

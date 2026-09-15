@@ -143,26 +143,16 @@ face crop, tier and evidence, a role select, notes, and the links the scan found
 each. Everything the page writes lands in `people.yaml`; everything you edit by hand shows up
 there. See [Settings](../web-ui/settings.mdx#people-confirming-whos-who).
 
-## Options
-
-`people scan`
-
-| flag | default | what it does |
-|---|---|---|
-| `--min-assets` | `25` | pictures a named person needs before the graph has an opinion |
-| `--owner` | `$IMMICH_MEMORIES_OWNER` | the name of the person whose library this is |
-| `--out` | `~/.immich-memories/people.yaml` | where to write |
-
-`people show`
-
-| flag | default | what it does |
-|---|---|---|
-| `--file` | `~/.immich-memories/people.yaml` | the file to read |
-| `--tier` | all | show only `inner`, `recurring`, `episodic` or `event` |
+## What the commands print
 
 `people scan` prints tier counts and the file path, not the roster: a terminal may be a log.
-`people show` prints it because you asked. Unnamed faces are skipped; naming them is work that
+`people show` prints the roster because you asked, and `--tier` narrows it to `inner`,
+`recurring`, `episodic` or `event`. Unnamed faces are skipped either way; naming them is work that
 belongs in Immich.
+
+The scan flag worth setting is `--min-assets` (25): how many pictures a named person needs before
+the graph has an opinion about them. The rest is in the
+[CLI reference](../../reference/cli-reference.md#people-scan).
 
 ## What uses it
 

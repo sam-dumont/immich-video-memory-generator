@@ -5,34 +5,33 @@ title: Automated Generation
 
 # Automated Generation
 
-Once you know your preferred settings, automate the whole thing. The recommended path is one daily
-decision; the scheduler daemon and hand-written cron are advanced/legacy alternatives.
+Three ways to get memories without asking for them, in the order you should try them: `auto run`
+on a host scheduler, the same decision inside the web UI process when you run Docker, or the old
+scheduler daemon when you need a named memory type on a named date.
 
-## Automation (Recommended)
+## auto run
 
-The `auto` system scans your library, detects what's worth turning into a memory video, and generates one candidate a day. It runs nine detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs, and the special-days catalogue), five of which are behind toggles. The highest scorer wins, but only after variety rules have rejected repeats and per-type caps have applied.
+`immich-memories auto run` is the single daily entry point: it scans the library, decides which
+one memory is worth making today, and exits. One invocation does exactly one thing: retry a pending delivery, generate one eligible memory, or
+return a typed skip or dry-run result.
 
 ```bash
-# See what it would generate
+# What would it generate?
 immich-memories auto suggest
 
-# The single daily entry point: decide and perform one action
+# Decide and perform one action
 immich-memories auto run
 
-# Set up daily automatic runs (launchd on macOS, systemd on Linux)
+# Schedule it daily (launchd on macOS, systemd on Linux)
 immich-memories auto install --hour 9
 ```
 
-`immich-memories auto run` is the recommended single daily entry point. Each invocation performs
-exactly one action: retry one pending delivery, generate one eligible memory, or return a typed
-skip/dry-run result. Variety rules keep the outputs from becoming a monthly-highlight vending
-machine: only the latest completed month is eligible, monthly runs are capped at one per calendar
-month, categories cannot repeat back-to-back, and each category is capped at two of the last six
-completed automatic runs.
+Variety rules stop it from becoming a monthly-highlight vending machine: only the latest completed
+month is eligible, monthly runs are capped at one per calendar month, a category cannot repeat
+back-to-back, and no category may take more than two of the last six completed automatic runs. The
+nine detectors, their scores and the rest of the rotation rules are in [auto](../cli/auto.md).
 
-See [auto CLI docs](../cli/auto.md) for the full reference including detector details and scoring.
-
-### Docker and the web UI: built-in daily timer
+### Docker and the web UI: the built-in timer
 
 `auto install` needs a host scheduler and the binary on the host. In Docker the container's only
 process is the web UI, so the timer lives there instead: one config toggle makes the UI process
@@ -64,14 +63,14 @@ To fire the same decision on demand instead of on a clock (from an Immich workfl
 another machine, a phone shortcut), see
 [Trigger from Immich or Anything Else](./trigger-endpoint.md).
 
-## Scheduler daemon (advanced/legacy)
+## Scheduler daemon
 
 :::tip Use the `auto` system instead
-Most users should use the `auto` system above; it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
+The scheduler is for the case `auto` cannot express: a specific memory type on a specific date.
 :::
 
-The advanced/legacy scheduler daemon runs inside immich-memories and handles timezone-aware cron,
-auto-resolved date parameters, and upload-back. No shell scripting required.
+It runs inside immich-memories and handles timezone-aware cron, auto-resolved date parameters and
+upload-back, so there is no shell scripting around it.
 
 ```yaml
 # config.yaml
@@ -104,63 +103,40 @@ immich-memories scheduler list
 immich-memories scheduler status
 ```
 
-Date parameters are auto-resolved from fire time: `year_in_review` firing in January generates for the previous year, `monthly_highlights` firing on the 1st generates for the previous month, `on_this_day` uses the current date. Override with explicit `params` in the schedule config if you need something specific.
+Date parameters are resolved from fire time: `year_in_review` firing in January generates the
+previous year, `monthly_highlights` firing on the 1st generates the previous month, `on_this_day`
+uses the current date. Explicit `params` in the schedule override that. Full reference:
+[scheduler CLI docs](../cli/scheduler.md).
 
-Full reference: [scheduler CLI docs](../cli/scheduler.md).
+## Hand-written cron
 
-## CLI One-Liner
-
-If you just need a one-off:
-
-```bash
-immich-memories generate \
-  --person "Emma" \
-  --year 2024 \
-  --duration 600 \
-  --orientation landscape \
-  --resolution 1080p
-```
-
-## Cron Job (Legacy)
-
-Old-school but works. Consider `auto install` instead: it generates the right cron/launchd/systemd config for you. Generate a yearly memory video every January 1st:
+`auto install` writes the cron, launchd or systemd config for you, so hand-written entries are
+mostly a way to get the date arithmetic wrong. The CLI is headless, so any of this works over SSH,
+in a container, or in CI.
 
 ```bash
-# crontab -e
+# crontab -e: a yearly recap every 1 January at 3 AM
 0 3 1 1 * immich-memories generate --person "Emma" --year $(date -d 'last year' +\%Y) --duration 600
 ```
 
-Runs at 3 AM on January 1st. Uses last year as the period so you get a complete year of content.
-
-## Multiple People
-
-Shell script that generates for everyone:
+For everyone in the house at once, loop over the names:
 
 ```bash
-#!/bin/bash
-PEOPLE=("Emma" "Lucas" "Sophie")
-YEAR="2024"
-
-for person in "${PEOPLE[@]}"; do
-  echo "Generating for $person..."
-  immich-memories generate \
-    --person "$person" \
-    --year "$YEAR" \
-    --duration 600 \
-    --output "/videos/memories/${person}_${YEAR}.mp4"
+for person in "Emma" "Lucas" "Sophie"; do
+  immich-memories generate --person "$person" --year 2024 --duration 600 \
+    --output "/videos/memories/${person}_2024.mp4"
 done
 ```
 
-## Kubernetes Batch Job
+## Kubernetes
 
-There's a job manifest in the repo at `deploy/kubernetes/base/job.yaml` (one-off `generate` Job plus monthly and `auto run` CronJobs). It reads the Immich connection from the `immich-memories-secrets` Secret and shares the PVCs of the [Kubernetes deployment](../../deploy/installation/kubernetes.md):
+`deploy/kubernetes/base/job.yaml` holds a one-off `generate` Job plus monthly and `auto run`
+CronJobs. It reads the Immich connection from the `immich-memories-secrets` Secret and shares the
+PVCs of the [Kubernetes deployment](../../deploy/installation/kubernetes.md):
 
 ```bash
 kubectl apply -f deploy/kubernetes/base/job.yaml
 ```
 
-The job runs to completion and writes the output video to the output volume (`/app/output`). Good for running generation in your cluster without tying up your local machine.
-
-## Headless Mode
-
-The CLI runs fully headless: no display needed. Works fine in Docker containers, SSH sessions, and CI pipelines. All configuration comes from `config.yaml` and CLI flags.
+The Job runs to completion and writes the video to the output volume (`/app/output`), which keeps
+the render off your laptop.

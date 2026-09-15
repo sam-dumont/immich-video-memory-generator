@@ -8,7 +8,7 @@ Two suites: fast unit tests that run everywhere, and integration and E2E tests t
 services (FFmpeg, Immich, a browser). `uv run pytest tests/ --collect-only -q` prints the current
 split. No count is written down here, because it moves with every PR.
 
-## Testing Tiers
+## Testing tiers
 
 | Tier | Where it runs | Command | What it needs |
 |------|--------------|---------|---------------|
@@ -28,7 +28,7 @@ make test-fast     # Skip slow tests
 
 ### Integration tests
 
-Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They **read** from Immich (no writes) and skip gracefully if services aren't available.
+Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They read from Immich and never write to it: upload-back is the one mutation and it is mocked. A suite skips rather than fails when its services aren't there.
 
 ```bash
 make test-integration            # Every suite except cli, audio and automation
@@ -37,49 +37,26 @@ make test-integration-assembly   # One suite: assembly, audio, audio-mixing, aut
 
 Each suite is a folder under `tests/integration/`, and most have their own `make test-integration-<suite>` target with a rough runtime (see the table in `CLAUDE.md`). Three are not in the aggregate target: `cli`, because it re-runs the full pipeline that `pipeline` already covers and is the slowest suite in the tree (`make help` prints its estimate); `audio`, because it wants the demucs and ACE-Step packages; and `automation`, which has no target at all. Run it with `pytest tests/integration/automation` until one exists.
 
-**What's tested:**
-- Real FFmpeg assembly (single clip, crossfade, smart transitions)
-- Real Immich API reads (asset fetching, video download)
-- `generate_memory()` end-to-end pipeline
-- Music file mixing into assembled video
-- Clip segment trimming (custom start/end times)
-- Upload-back to Immich (mocked write, real everything else)
-- CLI `generate` command with real Immich
-- Selection over real video frames
-
-**What's needed:**
-- FFmpeg installed (`brew install ffmpeg` or `apt install ffmpeg`)
-- Immich server reachable (configured in `~/.immich-memories/config.yaml`)
-- At least 2 short video clips (under 30s) in your Immich library
-
-Tests skip gracefully if services aren't available: you won't get failures, just skips.
+What they need: FFmpeg on the `PATH` (`brew install ffmpeg` or `apt install ffmpeg`), an Immich server reachable from `~/.immich-memories/config.yaml`, and at least two clips under 30s in that library.
 
 ## Coverage and diff-cover
 
-### How coverage works
-
 CI runs unit tests and uploads `coverage.xml` to Codecov under the `unittests` flag. The self-hosted GPU runner runs the integration suites and uploads its coverage under the `integration-linux` flag; Codecov merges the two. The per-suite XMLs that `make test-integration` writes locally (`tests/*-coverage.xml`, `tests/*-junit.xml`) are gitignored: they are for your own inspection, not for committing.
 
-### Workflow when you change code
+A PR needs 80% coverage on the lines it changes. Not 95%, which forces tests for trivial code, and not 50%, which is too lenient. The gate skips itself with a warning when the diff is under 10 source lines or over 1000, rather than pretend a threshold means anything there, and `analysis/apple_vision*.py` is excluded outright.
 
-1. Write your code
-2. Run `make test` (unit tests, always)
-3. If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`, run the matching integration suite locally (`make test-integration-processing`, `make test-integration-titles`, ...) so you catch FFmpeg regressions before the GPU runner does
-4. Commit and push: CI runs unit tests + diff-cover, the GPU runner runs integration
-
-### Check coverage locally before pushing
+Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it. To reproduce locally exactly what CI will see:
 
 ```bash
-make diff-cover-local   # Runs unit tests + checks diff coverage at 80%
+make integration-coverage-for-diff   # runs only the suites your diff touches
+make diff-cover-local                # merges them with unit coverage, same as CI
 ```
 
-### Why 80% threshold?
+If diff-cover still fails after that, the uncovered lines are not reachable from an integration suite and do need unit tests. Subprocess boundaries can be stubbed rather than run for real: `tests/test_ffmpeg_pipe.py` shows the pattern.
 
-We require 80% coverage on changed lines. Not 95% (forces testing trivial code) and not 50% (too lenient). The remaining 20% covers error handling, CLI glue, and code paths that need real external services.
+If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`, run the matching integration suite locally (`make test-integration-processing`, `make test-integration-titles`, ...) before pushing, so you catch FFmpeg regressions before the GPU runner does.
 
 ## Writing integration tests
-
-### Rules
 
 1. **Mock WRITES, not READS**: use real Immich for fetching assets, real FFmpeg for encoding. Only mock upload/mutation operations.
 2. **Use short clips**: filter to clips under 30s, limit to 2-3 per test. Full pipeline tests should complete in under 2 minutes.
@@ -138,6 +115,28 @@ A red `Test (Python 3.12, ubuntu-latest)` usually reads as *your code broke on
 Linux*. Often it means the runner was taken away mid-suite. The two look
 identical on the PR page and are easy to separate one API call down.
 
+### A reclaimed job is an unverified job
+
+A cancelled job is a scheduling artefact, and it is tempting to treat it as
+noise to re-run at leisure. It is not noise. **It is a job that did not run**, so
+merging while one is outstanding means merging on the strength of whichever jobs
+happened to survive.
+
+That is not hypothetical. `TestPhotoPlaceCaption` reached `main` broken and
+stayed there through two PRs:
+
+| PR | macOS job | merged |
+|---|---|---|
+| introduced the test | **failure** | yes |
+| shortened the test | **all three cancelled, never ran** | yes |
+| next merge | n/a | failure finally surfaced on main |
+
+The test had never once passed on a macOS runner. Nothing reported it, because
+the job was either red-and-ignored or reclaimed, and every branch cut from main
+afterwards inherited a red macOS job that was nobody's own change.
+
+Before merging, check that each job **ran**, not just that nothing is red.
+
 ### Read the step, not the log
 
 ```bash
@@ -178,7 +177,7 @@ concluding from the pattern.
 
 This settled a real case: a photo-caption test appeared to fail on Python 3.12
 with `Error 137` (SIGKILL/OOM), and passed on 3.11 and 3.13 in the *same run* on
-the *same image*. The test was correct. It was simply the slowest thing running
+the *same image*. The test was correct. It was the slowest thing running
 when the runner was killed.
 
 ### Heavy tests attract the blame
@@ -199,30 +198,6 @@ cancels superseded runs. That is safe: a runner death produces
 reads `cancelled`. So an OOM still fails the gate, and only genuinely superseded
 runs pass through. Check `gh run list --branch <branch>` to confirm a newer run
 covered the cancelled one.
-
-### A reclaimed job is an unverified job
-
-This is the one that costs real time, so it goes before the mechanics.
-
-A cancelled job is a scheduling artefact, and it is tempting to treat it as
-noise to re-run at leisure. It is not noise. **It is a job that did not run**, so
-merging while one is outstanding means merging on the strength of whichever jobs
-happened to survive.
-
-That is not hypothetical. `TestPhotoPlaceCaption` reached `main` broken and
-stayed there through two PRs:
-
-| PR | macOS job | merged |
-|---|---|---|
-| introduced the test | **failure** | yes |
-| shortened the test | **all three cancelled, never ran** | yes |
-| next merge | n/a | failure finally surfaced on main |
-
-The test had never once passed on a macOS runner. Nothing reported it, because
-the job was either red-and-ignored or reclaimed, and every branch cut from main
-afterwards inherited a red macOS job that was nobody's own change.
-
-Before merging, check that each job **ran**, not just that nothing is red.
 
 ### Hardware encoders are absent on CI
 

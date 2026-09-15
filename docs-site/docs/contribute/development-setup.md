@@ -4,7 +4,7 @@ sidebar_label: "Development Setup"
 
 # Development Setup
 
-Get the project running locally for development. The full contribution guidelines are in [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).
+The full contribution guidelines are in [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md).
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ Other install targets, when you need them:
 | `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, the editorial stack) | Apple Silicon, full feature set |
 | `make dev` | every declared extra (torch, demucs, editorial), slow | Only if you work across all optional backends |
 
-## Verify everything works
+## Check the install
 
 ```bash
 make check
@@ -64,24 +64,11 @@ make ci
 
 If `make ci` passes locally, CI will pass too. Use [conventional commit](https://www.conventionalcommits.org/) messages: `feat(scope): description`, `fix(scope): description`, etc.
 
-## Testing tiers
+## Testing
 
-**Unit tests** (`make test`): pure logic, no external dependencies. Run in CI on every PR.
-
-**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `audio_mixing`, `auth`, `automation`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored: do not try to commit them.
-
-### If diff-cover fails on your PR
-
-A PR needs 80% coverage on the lines it changes, unless the diff is under 10 source lines or over 1000, where the gate skips itself with a warning rather than pretend a threshold means anything. `analysis/apple_vision*.py` is excluded outright. Before checking, CI runs the FFmpeg-only integration suites covering the paths your diff touches, and only those, then merges their coverage into the diff-cover run. So code reachable only through FFmpeg is covered for you: you do not need to write unit tests for it.
-
-To reproduce locally exactly what CI will see:
-
-```bash
-make integration-coverage-for-diff   # runs only the suites your diff touches
-make diff-cover-local                # merges them with unit coverage, same as CI
-```
-
-If diff-cover still fails after that, the uncovered lines are not reachable from an integration suite and do need unit tests. Subprocess boundaries can be stubbed rather than run for real: `tests/test_ffmpeg_pipe.py` shows the pattern.
+`make test` is the unit suite, `make test-integration` the ones that need FFmpeg and Immich. The
+tiers, what each needs, and what to do when diff-cover fails on your PR are in the
+[Testing guide](testing.md).
 
 ## Private terms gate
 

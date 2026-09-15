@@ -7,13 +7,16 @@ import Video from '@site/src/components/Video';
 
 # Live Photos
 
-Every iPhone photo secretly records ~3 seconds of video. Most people have thousands of these clips sitting in their library without knowing it. immich-memories can pull them from Immich and use them in your memory videos.
+Every iPhone photo records about 3 seconds of video alongside it. Most people have thousands of
+these clips in their library without knowing it, and a rapid-fire burst of them is several seconds
+of continuous footage nobody meant to shoot.
 
-## Demo: What burst merging looks like
+## What burst merging looks like
 
-Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Live Photo is ~3 seconds. They overlap. The merger stitches them into one continuous clip:
+Three photos of an Italian hilltop, fired off in a row. Each Live Photo is about 3 seconds and they
+overlap, so the merger stitches them into one clip:
 
-**Individual source clips (3 separate Live Photos):**
+**The three source clips:**
 
 <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
   <Video src="/demos/live-photos/italian_hilltop/source_1.mp4" width={240} controls muted />
@@ -21,7 +24,7 @@ Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Liv
   <Video src="/demos/live-photos/italian_hilltop/source_3.mp4" width={240} controls muted />
 </div>
 
-**Merged result (4.5 seconds of continuous footage):**
+**Merged, 4.5 seconds of continuous footage:**
 
 <Video src="/demos/live-photos/italian_hilltop/merged.mp4" width={720} controls />
 
@@ -74,9 +77,10 @@ tagged frame without enough tagged neighbours to render as motion; it remains
 selectable as a photograph instead of widening the memory to unrelated assets.
 :::
 
-## Burst merging: spectrogram-aligned shutter-centered cuts
+## Burst merging
 
-When you rapid-fire photos, each Live Photo's video overlaps with the next. The merger uses **audio spectrogram fingerprinting** to find the exact overlap, then cuts at the midpoint between consecutive shutter presses.
+Each Live Photo's video overlaps with the next one's. The merger fingerprints the audio to find the
+exact overlap, then cuts at the midpoint between consecutive shutter presses.
 
 ### How the merged file is encoded
 
@@ -89,11 +93,15 @@ gets re-encoded during assembly, and an HLG burst in a memory you asked to outpu
 be tone-mapped here: before anything had decided to. So HDR bursts stay H.265 10-bit with their
 transfer intact, and the assembler decides what to do with them later.
 
-### Why audio alignment?
+### Why audio and not timestamps
 
-Timestamps alone aren't precise enough: each clip's video doesn't start at exactly `shutter_time - 1.5s`, and the drift is tens of milliseconds. On rapid bursts, that's enough to cause audible clicks and gaps.
+Each clip's video does not start at exactly `shutter_time - 1.5s`, and the drift is tens of
+milliseconds. On a rapid burst that is enough for audible clicks and gaps.
 
-The spectrogram (Short-Time Fourier Transform) creates a unique frequency fingerprint at every 5ms window. Even with repetitive beat-heavy music, the exact mix of frequencies is unique at each moment. Cross-correlating these fingerprints between clips gives an offset accurate to the hop size, about 5 ms. There is no confidence value: the best correlation wins.
+A Short-Time Fourier Transform gives a frequency fingerprint every 5 ms, and the exact mix of
+frequencies is unique at each moment even under repetitive beat-heavy music. Cross-correlating
+those fingerprints between clips gives an offset accurate to the hop size, about 5 ms. There is no
+confidence value: the best correlation wins.
 
 ### The algorithm
 
@@ -116,11 +124,14 @@ The spectrogram (Short-Time Fourier Transform) creates a unique frequency finger
 
 Non-overlapping clips (gap > clip duration) are NOT merged: they stay as separate clips.
 
-### Works for any phone with audio
+### Any phone with audio
 
-The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+Audio fingerprinting, not Apple metadata. iPhone, Samsung, or any camera that records audio with
+video works; the requirement is overlapping clips with shared ambient audio.
 
-Alignment is skipped when there is no audio to correlate, and also when the material is strict, when shutter timestamps are missing, or when there is only one clip. Nothing here keys on the device: a Pixel Motion Photo skips alignment because it carries no audio track, not because it is a Pixel. See [Device support](#device-support).
+Alignment is skipped when there is no audio to correlate, when the material is strict, when shutter
+timestamps are missing, or when there is only one clip. Nothing here keys on the device: a Pixel
+Motion Photo skips alignment because it carries no audio track, not because it is a Pixel.
 
 ## Configuration
 
@@ -146,18 +157,17 @@ Samsung Motion Photos take the Apple path and appear to work; nobody here owns o
 
 ### Google Pixel (Motion Photos)
 
-Google Pixel Motion Photos are fundamentally different: very short clips (0.7-1.3 seconds), no audio track, and no temporal overlap between consecutive shots. immich-memories detects Pixel clips via EXIF and:
-
-1. **Uses a shorter assumed clip duration** (1.5s instead of 3.0s) for overlap detection. This is
-   the only branch in the code that reads the device.
-2. **Skips spectrogram alignment**: no audio means no spectral fingerprint to correlate, and the
-   no-audio case is what the skip actually tests.
+A Pixel Motion Photo is a different animal: 0.7 to 1.3 seconds, no audio track, and no temporal
+overlap between consecutive shots. Pixel clips are detected from EXIF, and that detection does
+exactly one thing: it assumes 1.5s instead of 3.0s for overlap detection. Alignment is skipped
+because there is no audio, which is the no-audio case, not a Pixel case.
 
 There is no force-merge path anywhere, for any device, so nothing is being switched off for Pixel:
 4 rapid-fire Pixel photos become 4 individual clips because no rule was ever going to join them.
 
-## When to enable
+## When it's worth turning on
 
-Live Photos are most useful when your library has lots of photos and relatively few videos. Burst merging is particularly effective for events where you took rapid-fire photos (birthdays, travel, kids playing): those bursts become one continuous clip, capped at 6 seconds in the cut, which carries the moment better than any single frame of it.
-
-If your library already has plenty of video, live photos won't add much.
+A library with lots of photos and few videos. Burst merging pays where you fired off rapid shots
+(birthdays, travel, kids playing): the burst becomes one continuous clip, capped at 6 seconds in the
+cut, which carries the moment better than any single frame of it. If your library already has plenty
+of video, Live Photos won't add much.

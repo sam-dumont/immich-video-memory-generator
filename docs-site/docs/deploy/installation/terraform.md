@@ -3,10 +3,10 @@ sidebar_position: 4
 title: Terraform
 ---
 
-# Terraform Deployment
+# Terraform
 
-Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deploy/terraform/` and
-uses the `hashicorp/kubernetes` provider. CPU only by default; NVIDIA GPU scheduling is a variable.
+The module lives in `deploy/terraform/` and drives the `hashicorp/kubernetes` provider. CPU only by
+default; NVIDIA scheduling is a variable.
 
 :::note Less travelled than Docker Compose
 Docker Compose is the primary self-hosting path. What the test suite pins is the module's
@@ -71,7 +71,7 @@ and Immich answers, which keeps the pod out of the Service while Immich is down)
    by default). For `gpu_enabled = true`: NVIDIA GPU Operator and the `nvidia` RuntimeClass
 3. **kubeconfig** configured and pointing at your cluster
 
-## Quick Start
+## Quick start
 
 ```bash
 cd deploy/terraform/examples/basic        # CPU, no ingress, port-forward
@@ -87,7 +87,7 @@ terraform apply
 $(terraform output -raw port_forward_command)   # http://localhost:8080
 ```
 
-## Module Usage
+## Module usage
 
 ```hcl
 module "immich_memories" {
@@ -97,10 +97,8 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # Editorial model connection (model services are deployed separately)
-  # The reader is graded on Qwen3-VL-30B-A3B-Instruct-4bit served by oMLX; nothing on this route
-  # has been run on Ollama. Whatever serves it must take images and hold 32k of context.
-  # `llm_model` is the tag that server reports at /v1/models.
+  # The reader, which is a separate deployment. Whatever serves it must take images and hold
+  # 32k of context; `llm_model` is the tag that server reports at /v1/models.
   llm_base_url = "http://your-model-host:8000/v1"
   llm_model    = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
 
@@ -119,16 +117,9 @@ module "immich_memories" {
 }
 ```
 
-Also configure [editorial annotation preparation](../configuration/editorial-preparation.md)
-through the module's `env` map. Its compact-caption endpoint and pinned encoder/detector artifacts
-are separate from `llm_base_url`; an uncached generation requires both preparation and story
-providers.
-
-Unlike the Kustomize manifests, this module creates **no models PVC and no `/models` mount**, and
-the root filesystem is read-only. The encoder and the Hugging Face detector cache therefore have
-to land under `/home/immich/.immich-memories`, which is where their defaults already point. If you
-override `IMMICH_MEMORIES_TRIAGE__ENCODER` or the detector cache directory to a path outside that
-mount, `models fetch` fails and so does the first cut.
+Which model to serve at `llm_base_url` is on [Readers](../readers.md). Preparation goes through the
+same `env` map: its caption endpoint and pinned artifacts are separate from the reader, and the
+contract is on [editorial annotation setup](../configuration/editorial-preparation.md).
 
 ## Variables
 
@@ -154,7 +145,7 @@ mount, `models fetch` fails and so does the first cut.
 | `secret_env` | Extra env vars stored in the Secret (auth password, storage secret) | `map(string)` | `{}` |
 | `labels` | Extra labels on every resource | `map(string)` | `{}` |
 
-### GPU Configuration
+### GPU
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|

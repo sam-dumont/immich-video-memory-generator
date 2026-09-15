@@ -2,12 +2,11 @@
 sidebar_label: "Trip Memories"
 ---
 
-import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 import Video from '@site/src/components/Video';
 
 # Trip Memories
 
-Automatically detects trips from GPS data in your photos and videos, then generates a video for each one with animated satellite maps showing your route.
+Nothing declares a trip. The GPS on your own pictures decides where one starts and where it ends, and each trip gets its own video, opening on a satellite map of the route.
 
 <Video
   src="/demo/trip-preview.mp4"
@@ -22,7 +21,7 @@ Automatically detects trips from GPS data in your photos and videos, then genera
 
 That film came out of the real renderer, over the CC0 test library in `tests/e2e/fixtures/library`:
 a week camped by a lake in Upper Savoy, 590 km from the test home, cut by `immich-memories
-generate --memory-type trip`. It opens on the map. The view starts wide over home, travels down
+generate --memory-type trip`. The view starts wide over home, travels down
 to where you went, and drops a pin on every distinct GPS cluster in the cut, each one labelled
 with the place name your library already has for it. The tiles are ArcGIS World Imagery, fetched
 while the title renders, which makes the opening the one part of the pipeline that wants the
@@ -41,10 +40,10 @@ Three stages, no clustering:
    trip.
 3. **Discard the short ones**: a group survives if the number of *nights* it spans, the difference
    between its first and last calendar date, is at least `min_duration_days` (default: 2). At the
-   default that means three calendar days. Set it to `1` for a weekend and `0` to keep single-day
-   excursions.
+   default that means three calendar days. `1` catches a weekend away, and it is the floor: the
+   field is `ge=1`, so `0` fails validation.
 
-The trip's location name comes from reverse geocoding the centroid of all GPS coordinates in the cluster (via Nominatim/OpenStreetMap).
+The trip's name comes from reverse geocoding the centroid of all GPS coordinates in the cluster (via Nominatim/OpenStreetMap), and that name is what the title screen shows.
 
 ## CLI
 
@@ -70,6 +69,8 @@ immich-memories generate --memory-type trip --year 2025 --month 7
 immich-memories generate --memory-type trip --year 2025 --near-date 2025-07-15
 ```
 
+`--person` narrows trip **detection**, not the finished video. `--person "Their Name"` looks for trips among the assets that person appears in, which helps when one person's phone is the one carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.
+
 ## Web UI
 
 Pick **Trip** on the [Memory page](../web-ui/memory.mdx) and a year; the page runs trip detection
@@ -79,15 +80,11 @@ One difference from the CLI worth knowing: the page detects trips from **videos 
 CLI reads every asset type. A trip you only photographed will not appear here. Use the CLI for
 those.
 
-## What you get
+## Duration
 
-- **Animated satellite map**: the video opens with a satellite map that zooms between your trip locations. If you visited multiple cities, the map animates the route.
-- **Location-aware title**: the title screen shows the trip destination name, pulled from reverse geocoding.
-- **Auto duration stays watchable**: Auto starts at 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when there is enough material. Seven dense days produce about 1:40; 12 dense days produce 2:30. It then checks the selected media's usable excerpts and shortens sparse trips instead of promising time it cannot fill. Turn off the **Auto duration** switch on the Memory page (or pass `--duration` on the CLI) when you want an exact runtime.
+Auto starts at 30 seconds plus 10 seconds per active day, bounded to 60-300 seconds when there is enough material. Seven dense days produce about 1:40; 12 dense days produce 2:30. It then checks the selected media's usable excerpts and shortens sparse trips instead of promising time it cannot fill. Turn off the **Auto duration** switch on the Memory page, or pass `--duration`, when you want an exact runtime.
 
 ## Configuration
-
-Trip detection settings live in the `trips` section of `config.yaml`:
 
 ```yaml
 trips:
@@ -98,12 +95,8 @@ trips:
   max_gap_days: 2               # Max gap before splitting trips
 ```
 
-The homebase coordinates are required. Without them, the algorithm can't determine what counts as "away."
+The homebase coordinates are required: without them nothing counts as away. Get them wrong and you either collect your own neighbourhood or lose real trips. Lower `min_distance_km` to about 20 km if you want weekend drives to the next city to register.
 
-## Tips
+## When it finds nothing
 
-- **GPS data is required.** If your videos don't have GPS metadata (some cameras strip it, screen recordings never have it), trip detection won't find anything. iPhones and Android phones embed GPS by default.
-- **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
-- **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
-- **`min_duration_days` counts nights, not days.** The default of 2 needs a trip spanning three calendar dates. `1` catches a weekend away, and it is the floor: the field is `ge=1`, so `0` fails validation rather than keeping single-day excursions.
-- **`--person` narrows trip *detection*, not the finished video.** `--person "Their Name"` looks for trips among the assets that person appears in: useful when one person's photos are the ones carrying GPS. Each video is then built from everything shot in that window, so the rest of the group is still in it.
+GPS is the whole input. Some cameras strip it and screen recordings never had it, so a library shot on a camera rather than a phone can come back with nothing while looking full of holidays. Phones embed GPS by default.

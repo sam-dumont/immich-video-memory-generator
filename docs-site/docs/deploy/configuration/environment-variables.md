@@ -11,11 +11,21 @@ Every config field can be set via environment variable. The pattern is:
 IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
-The one exception is the top-level `preset`, which has no section and is `IMMICH_MEMORIES_PRESET`.
-
 Note the **double underscore** between section and field. Case does not matter, but uppercase is
 the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `EDITORIAL`…), never
-`ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
+`ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file. A nested field
+takes another double underscore. The one exception to the pattern is the top-level `preset`, which
+has no section and is `IMMICH_MEMORIES_PRESET`. Field names are in the
+[config reference](../../reference/config-reference.md).
+
+```bash
+export IMMICH_MEMORIES_IMMICH__URL="https://photos.example.com"
+export IMMICH_MEMORIES_IMMICH__API_KEY="your-api-key-here"
+export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
+export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
+export IMMICH_MEMORIES_OUTPUT__RESOLUTION="4k"
+export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
+```
 
 List- and dict-valued fields must be given as JSON. That includes `auth.trusted_proxies`,
 `auth.allowed_emails`, `auth.allowed_domains`, `notifications.urls`, `scheduler.schedules`,
@@ -27,8 +37,6 @@ export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
 export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_FILENAME_PATTERNS='["RingVideo_*", "Screenshot*"]'
 ```
 
-## Examples
-
 ### Immich connection
 
 ```bash
@@ -38,90 +46,35 @@ export IMMICH_MEMORIES_IMMICH__API_VERSION="auto"
 ```
 
 `auto` detects v2 or v3 at runtime; set `v2`/`v3` only to diagnose a proxy that breaks detection.
-See [Immich API compatibility](./config-file.md#immich-api-compatibility) for what is supported and
-what is tested. `immich-memories config test` is read-only and prints the resolved API version.
+See [Immich API compatibility](./config-file.md#immich-api-compatibility) for what is tested.
+`immich-memories config test` is read-only and prints the resolved API version.
 
-### Source admission
+## The ones that do not follow the pattern
 
-```bash
-export IMMICH_MEMORIES_ANALYSIS__DOWNLOAD_WORKERS="3"
-export IMMICH_MEMORIES_ANALYSIS__MIN_SOURCE_SHORT_SIDE="1080"
-export IMMICH_MEMORIES_ANALYSIS__EXCLUDE_STILLS_WITHOUT_CAMERA_EXIF="true"
-```
+**Keys that no longer exist.** The scene-detection and segment-length knobs that used to live under
+`analysis` went with the clip scorer. A config file that still names one starts normally and logs
+one warning naming every key it dropped; the environment-variable form is ignored in silence.
+Delete both.
 
-The scene-detection and segment-length knobs that used to live here went with the clip scorer.
-A config file that still names one starts normally and logs one warning naming every key it
-dropped; the environment-variable form is ignored in silence. Delete both.
+**The captioner has its own credential.** `OPENAI_API_KEY` does not reach it: it is a second
+endpoint, so give it `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY` of its own, or leave
+it blank for a server that needs none. There is no editorial opt-in variable, and new runs use the
+FAMILY audience; see [Editorial annotation setup](editorial-preparation.md) before the first
+uncached run.
 
-### LLM provider
+**The encoder backend.** `IMMICH_MEMORIES_HARDWARE__BACKEND` names one instead of probing them all:
+`auto` (the default), `none`, `nvidia`, `apple`, `vaapi` or `qsv`. Leave it on `auto` for normal
+use. Naming one is for a benchmark, where a silent fall to software would otherwise look like a GPU
+run: a host where the named backend cannot encode logs a warning and encodes in software anyway.
 
-```bash
-export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
-export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
-export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
-export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
-```
-
-### Editorial annotation preparation
-
-Story-first selection runs by default. These variables configure its preparation providers:
-
-```bash
-export IMMICH_MEMORIES_EDITORIAL__ANNOTATION_DATABASE="/mnt/cache/annotations.sqlite"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL="http://localhost:8092/v1"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_API_KEY="only-if-the-server-wants-one"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR="/mnt/models/huggingface/hub"
-export IMMICH_MEMORIES_EDITORIAL__PREPARATION__ALLOW_MODEL_DOWNLOADS="false"
-export IMMICH_MEMORIES_TRIAGE__ENCODER="/mnt/models/triage/dinov2-small.onnx"
-```
-
-Nested preparation fields use another double underscore. `OPENAI_API_KEY` does not reach the
-captioner: it is a second endpoint with a second credential, so give it
-`CAPTION_API_KEY` of its own or leave it blank for a server that needs none.
-There is no editorial opt-in environment variable. New runs use the FAMILY audience. See
-[Editorial annotation setup](editorial-preparation.md) before the first uncached run.
-
-### Hardware
-
-```bash
-export IMMICH_MEMORIES_HARDWARE__ENABLED="true"       # false = CPU-only encoding
-export IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET="quality"
-export IMMICH_MEMORIES_HARDWARE__GPU_DECODE="true"
-```
-
-`IMMICH_MEMORIES_HARDWARE__BACKEND` names one instead of probing them all: `auto` (the default),
-`none`, `nvidia`, `apple`, `vaapi` or `qsv`. Leave it on `auto` for normal use. Naming one is for
-a benchmark, where a silent fall to software would otherwise look like a GPU run: a host where the
-named backend cannot encode logs a warning and encodes in software anyway.
-
-### Output
-
-```bash
-export IMMICH_MEMORIES_OUTPUT__DIRECTORY="/mnt/nas/memories"
-export IMMICH_MEMORIES_OUTPUT__RESOLUTION="4k"
-export IMMICH_MEMORIES_OUTPUT__CODEC="h265"
-export IMMICH_MEMORIES_OUTPUT__CRF="20"
-```
-
-`DIRECTORY` defaults to `~/Videos/Memories`. The Docker image overrides it to `/app/output` in the
-Dockerfile, so you only set it in a container to write somewhere else, and because it is an
-environment variable it beats `output.directory` in `config.yaml`.
-
-### Music generation
-
-```bash
-export IMMICH_MEMORIES_MUSICGEN__ENABLED="true"
-export IMMICH_MEMORIES_MUSICGEN__BASE_URL="http://gpu-server:8000"
-export IMMICH_MEMORIES_MUSICGEN__API_KEY="your-key"
-
-export IMMICH_MEMORIES_ACE_STEP__ENABLED="true"
-export IMMICH_MEMORIES_ACE_STEP__MODE="api"
-export IMMICH_MEMORIES_ACE_STEP__API_URL="http://gpu-server:8000"
-```
+**The output directory in Docker.** It defaults to `~/Videos/Memories`, and the image overrides it
+to `/app/output` in the Dockerfile. That override is an environment variable, so it beats
+`output.directory` in `config.yaml`: to write somewhere else in a container, set
+`IMMICH_MEMORIES_OUTPUT__DIRECTORY`, not the config file.
 
 ## Shorthand overrides
 
-A few common variables are also supported without the full prefix, for convenience:
+A few common variables are also supported without the full prefix:
 
 | Variable | Overrides |
 |----------|-----------|

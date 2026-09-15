@@ -5,9 +5,9 @@ title: Docker
 
 # Install with Docker
 
-Pull the image, set two env vars, done, for the app. The editor's models are not in this image:
-which ones you need, and what each one costs, is on [Running modes](../running-modes.md). The
-container itself wants 2 to 4 GB.
+Pull the image, set two env vars, done. The editor's models are not in this image: which ones you
+need, and what each one costs, is on [Running modes](../running-modes.md). The container itself
+wants 2 to 4 GB.
 
 ## Quick start
 
@@ -87,11 +87,10 @@ hardening below (`/home/immich/.cache` on a tmpfs) after every restart.
 
 The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, so `models
 fetch` is part of the first run: that tier wants the encoder and both detectors. It is the richest
-tier the app serves on its own, and what it gives up against `full` is the caption under every
-picture, which means the audience gate refuses what `full` refuses but can never clear a unit. Drop
-the key to `metadata_only` and nothing needs fetching; raise it to `full` once a caption server
-answers, and set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` with it. See
-[Running modes](../running-modes.md).
+tier the app serves on its own. Drop the key to `metadata_only` and nothing needs fetching; raise it
+to `full` once a [caption server](./caption-server.md) answers, and set
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` with it. What each tier costs and gives
+up is on [Running modes](../running-modes.md).
 
 Model endpoints must be reachable from inside the container, and `localhost` there is the
 container: give them real hostnames.
@@ -115,8 +114,7 @@ add `cpuset: "0-3"` to the service, which pins them without a quota, or put `cpu
 `deploy.resources.limits` on a host that has the controller.
 
 The image is 2.37 GB on disk with `INSTALL_EXTRAS=all` on arm64, down from 7.08 GB, because
-torch comes from the CPU wheel index and the detectors are ONNX graphs. The reader and the caption
-server run outside it, on whatever host `llm.base_url` and `caption_base_url` point to.
+torch comes from the CPU wheel index and the detectors are ONNX graphs.
 
 ## Standalone `docker run`
 
@@ -225,9 +223,9 @@ docker inspect --format='{{.State.Health.Status}}' immich-memories
 The expensive file is `~/.immich-memories/cache/annotations.sqlite`: every caption, head answer,
 detector verdict and reading the editor has banked. Lose it and the next cut re-reads the library.
 `cache.db` beside it holds run history and automation state. Both sit on the config volume, so
-moving to a new host means copying that volume. Do not use `immich-memories cache backup|export|import`
-for it: those three commands move the retired per-clip scorer's table, which nothing writes any
-more, and leave the banks behind.
+moving to a new host means copying that volume.
+[`immich-memories cache backup|export|import` will not do it](../maintenance/health-logs-cache.md#the-cli-cache-commands-are-not-for-the-banks):
+those three move the retired scorer's table and leave the banks behind.
 
 ## Custom music
 

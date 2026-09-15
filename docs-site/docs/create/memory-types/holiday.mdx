@@ -4,9 +4,7 @@ sidebar_label: "Holiday"
 
 # Holiday
 
-A memory type that does **not** cover one continuous stretch of time. It builds a separate window per year, and the pipeline queries every one of them: a Holiday memory across five years asks Immich for five windows around that holiday, not for the five years between them.
-
-That is the whole reason it exists. A year in review is a period; this is a **recurrence**: the same occasion, across the years. Christmas 2022, 2023, 2024, 2025 and 2026 in one video.
+The one memory type that does **not** cover a continuous stretch of time. It builds a separate window per year and the pipeline queries every one of them, so a Holiday memory across five years asks Immich for five windows around that holiday and never for the five years between them. A year in review is a period; this is a **recurrence**. Christmas 2022, 2023, 2024, 2025 and 2026 in one video.
 
 ```bash
 immich-memories generate --memory-type holiday --holiday christmas --years-back 5
@@ -62,11 +60,11 @@ immich-memories generate --memory-type holiday --holiday christmas --years-back 
 
 ## When to use it
 
-When the material exists **because** of the date. A holiday is the day a library reliably has something every single year, which is what makes it worth spanning years rather than covering one occasion. If a year is missing photos, that year simply contributes nothing.
+When the material exists **because** of the date. A holiday is the day a library reliably has something in it every single year, which is what makes spanning years worth doing at all. A year with no photos contributes nothing and costs nothing.
 
 ## In the web UI
 
-Pick **Holiday** on the [Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters). It takes the holiday, the most recent year to include, how many years to span, and an optional **Only with** people filter. The editor reads every window as part of one period, so a year with nothing in it costs nothing.
+Pick **Holiday** on the [Memory page](../web-ui/memory.mdx#memory-types-and-their-parameters). It takes the holiday, the most recent year to include, how many years to span, and an optional **Only with** people filter.
 
 ## Titles
 

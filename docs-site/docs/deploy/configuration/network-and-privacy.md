@@ -30,43 +30,10 @@ that is not here, [open an issue](https://github.com/sam-dumont/immich-video-mem
 
 Three provider names fill in a vendor URL when `llm.base_url` is left at its default: `openai`
 (`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`) and `zai`
-(`https://api.z.ai/api/anthropic`). `preflight` asks whatever the reader URL is for its model list,
-and sends one small test call when the host does not publish one.
-
-`provider: anthropic` is the Messages API and reaches any host that serves it, Claude included:
-`POST {base_url}/v1/messages` with `x-api-key`, `anthropic-version: 2023-06-01`, the prompt and the
-reader's 800 px tiles as base64 `image` blocks. The key comes from `ANTHROPIC_API_KEY` as well as
-`OPENAI_API_KEY`, and the provider you configured decides which of the two wins when both are set.
-
-z.ai serves two dialects on one host, so `provider: zai` routes on the path of the `base_url` you
-set: `.../api/anthropic` takes the Anthropic adapter and its `/v1/messages`, and `.../api/paas/v4`
-takes the OpenAI-compatible one. Send the OpenAI path to the Anthropic base and the reply is an
-HTTP 200 carrying `{"code":500,"msg":"404 NOT_FOUND"}`, which the reader reports by its code and
-message instead of a bare `KeyError`.
-
-A named provider's own reasoning switch fills in beside whatever else you put in
-`thinking_params` or `no_thinking_params`: replacing the block with a Qwen-shaped one used to drop
-that switch, and GLM then reasoned through the whole bulk pass. A `thinking` key you write
-yourself wins over the preset's, because z.ai's switch is a level rather than an on and off:
-`disabled`, `low`, `high` or `max`. The GLM-5 line reasons unconditionally and answers `disabled`
-with HTTP 400 code 1210, so the preset sends `low` there and `disabled` on the lines that take it.
-A model neither list has heard of that refuses the same way is retried once at `low`, and the log
-says what changed.
-
-That refusal only ever comes from `/api/paas/v4`. The `.../api/anthropic` route answers HTTP 200
-to every setting, including `disabled` and levels it has never heard of, and then reasons or does
-not on its own terms. Measured on 2026-09-14 with `glm-5.3-flash`, a caption-shaped ask at the
-140-token cap the readers use spent all 140 tokens inside a `thinking` block and came back with no
-answer in it at all. So on that route the reader reads the first `text` block and skips the
-reasoning in front of it, asks for 1024 tokens on top of the cap the caller set so the cap keeps
-meaning the length of the answer, and turns a reply with no `text` block into an error naming the
-`stop_reason` rather than an empty string. The level still goes out with the request, and `low`
-measured clean where `disabled` did not.
-
-Every refusal an LLM provider sends now carries that provider's own `code` and `message`, bounded
-to 300 characters, into the line the reader logs. Before, a 400 or a 429 reached the operator as
-the bare status and a link to MDN, so `1210` and `1113 Insufficient balance` both read as "Client
-error".
+(`https://api.z.ai/api/anthropic`). Set `base_url` yourself and the request goes where you point it,
+whichever provider is named; which dialect each one speaks is on
+[LLM Titles and Mood](../../create/pipeline/llm-content-analysis.md). `preflight` asks whatever the
+reader URL is for its model list, and sends one small test call when the host does not publish one.
 
 ## The two picture seats
 
@@ -80,8 +47,7 @@ Special-day scans prefer the configured producer's prepared captions, and only f
 captions actually cover. The described pictures have to clear the same bar the day itself had to
 clear to be worth asking about: 20 of them across 6 hours of the clock. Below that the day keeps
 the frame fallback. Above it the day's tiles are never downloaded at all. Once a day takes the
-caption route, a failed text call never switches it to vision. Both new text calls have separate
-bank keys; existing reader questions are unchanged.
+caption route, a failed text call never switches it to vision.
 
 | Seat | Setting | What it is shown |
 |---|---|---|
@@ -109,11 +75,9 @@ thumbnail from the cached preview on first request. Privacy-mode blur applies to
 
 ## Privacy mode
 
-`--privacy-mode` (or `server.enable_demo_mode: true`) is a demo and screenshot feature: it blurs
-every frame of every clip, makes clip audio unintelligible, replaces person names, and moves home
-base and destination onto a fake city while keeping the spacing so the map still reads as a trip.
-It does not reach the geocoding, which already ran, nor the output file name, which is built
-first. See [Privacy mode](../../create/pipeline/privacy-mode.md).
+`--privacy-mode` (or `server.enable_demo_mode: true`) changes what the film shows, not what the app
+sends. Trip detection and its geocoding have already run by then, and the map still fetches its
+tiles. See [Privacy mode](../../create/pipeline/privacy-mode.md).
 
 ## CI only
 

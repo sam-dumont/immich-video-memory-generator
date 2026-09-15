@@ -9,8 +9,7 @@ Authentication is off by default. If the UI binds beyond loopback, anyone who ca
 can use it, so turn auth on before exposing it. The UI is single-user and single-replica: run one
 instance.
 
-The walkthrough itself lives on the docs site, where it is versioned with the code and gated
-against drift. This page is the index.
+The walkthrough itself lives on the docs site, versioned with the code and gated against drift.
 
 ## The web UI
 

@@ -165,28 +165,24 @@ services, and the [inference service](./inference-service.md) has its own CUDA i
 
 ## Inference service
 
-`overlays/inference` deploys the [inference service](./inference-service.md) on its own: the
-encoder, the six heads and the two detectors behind one port, a ClusterIP Service named
-`inference` on 8092, a 10Gi cache PVC and its own NetworkPolicy. It does not include `base/`, so
-it builds with no Secret at all, and the two overlays are applied separately:
+`overlays/inference` deploys the [inference service](./inference-service.md) on its own: a
+Deployment, a ClusterIP Service named `inference` on 8092, a 10Gi cache PVC and its own
+NetworkPolicy. It does not include `base/`, so it builds with no Secret at all.
 
 ```bash
 kubectl apply -k deploy/kubernetes/overlays/inference        # CPU
 kubectl apply -k deploy/kubernetes/overlays/inference-cuda   # NVIDIA nodes
 ```
 
-`inference-cuda` adds `runtimeClassName: nvidia`, one `nvidia.com/gpu`, the `NVIDIA_*` env, the
-node selector and the toleration, and pins the `-cuda` image tag.
-
 Point the app at it with `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL`, two underscores, set to
 `http://inference:8092` in the same namespace or
 `http://inference.immich-memories.svc.cluster.local:8092` from another. The base NetworkPolicy
-already allows egress on 8092. `curl /health` through a port-forward names the execution provider
-the service opened.
+already allows egress on 8092.
 
 `overlays/inference-lan` adds a second Service of type LoadBalancer on the same pods, for callers
-that are not in the cluster. It needs a load-balancer controller, and nothing behind that port
-checks a credential.
+that are not in the cluster; nothing behind that port checks a credential. What each overlay
+patches, how a cold cache volume fills and how to read the execution provider back are on
+[the inference service](./inference-service.md).
 
 ## Caption server
 
@@ -201,15 +197,12 @@ kubectl apply -k deploy/kubernetes/overlays/captioner-cuda   # NVIDIA nodes
 ```
 
 `captioner-cuda` is the same Deployment with the `server-cuda` image and `--n-gpu-layers 99`
-appended, plus the `nvidia` RuntimeClass, the node selector and the toleration. It requests no
-`nvidia.com/gpu` on purpose: a time-sliced card has one allocatable slot and the inference
-Deployment holds it, and the 546 MB of weights share happily. A CPU pod with two cores costs 3.5 s
-a picture, so one month of the fixture library is 8 minutes before anything is cut.
+appended, plus the `nvidia` RuntimeClass, the node selector and the toleration. Neither overlay
+includes `base/`, so both apply with no Immich secret.
 
-It does not include `base/` either, so it applies with no Immich secret. Point the app at
-`http://captioner:8092/v1`. `caption_concurrency` defaults to 1, which is what a CPU captioner
-wants; raise it to 4 on a card. The whole recipe is on
-[Caption server](./caption-server.md).
+Point the app at `http://captioner:8092/v1`. `caption_concurrency` defaults to 1, which is what a
+CPU captioner wants; raise it to 4 on a card. The measured cost per picture, and why the CUDA
+overlay deliberately requests no `nvidia.com/gpu`, are on [Caption server](./caption-server.md).
 
 ## Batch jobs
 

@@ -5,9 +5,9 @@ title: Trigger from Immich or Anything Else
 
 # Trigger from Immich or Anything Else
 
-The server accepts one POST that starts a memory. It takes no parameters: it runs exactly the
-decision `immich-memories auto run` would have made: same detectors, same variety rules, same
-cooldown, same history. You are choosing *when*, not *what*.
+The server accepts one POST that starts a memory. It takes no parameters. It runs exactly the
+decision `immich-memories auto run` would have made, on the same detectors, variety rules,
+cooldown and history. You are choosing *when*, not *what*.
 
 That makes it the piece Immich Workflows was missing. A workflow that fires when an album fills
 up, a cron on another box, a phone shortcut, a Home Assistant automation: anything that can make
@@ -16,7 +16,7 @@ an HTTP request can now start a memory.
 ## Turn it on
 
 The endpoint is **not served at all** unless something can authenticate the caller. This process
-holds your Immich API key, so an anonymous request that could spend it is not a thing that exists.
+holds your Immich API key, so there is no anonymous request that can spend it.
 
 | `auth.enabled` | `server.trigger_token` | `POST /api/trigger` |
 |---|---|---|

@@ -69,7 +69,7 @@ never counts, and a success clears the streak. The GPS fetch is cached for 7 day
 ## auto run
 
 ```bash
-immich-memories auto run [--dry-run] [--force] [--cooldown HOURS] [--upload] [--quiet]
+immich-memories auto run [--candidate KEY] [--dry-run] [--force] [--cooldown HOURS] [--upload] [--quiet]
 ```
 
 Exactly one action per run, one memory per invocation: retry the oldest pending upload if there is
@@ -99,6 +99,23 @@ not on `action`, which is `generation` on every path:
 
 An upload that keeps failing is abandoned after `automation.max_delivery_attempts` (5) tries,
 with a notification carrying the original error; the video stays on disk.
+
+To run one suggestion rather than the top one, pass its exact `memory_key` from
+`auto suggest --json`:
+
+```bash
+immich-memories auto run --candidate 'trip:2026-07-02:2026-07-09:' --dry-run
+```
+
+The runner checks eligibility again, so cooldown, repetition rules and failure backoff still
+apply, and `--force` only skips cooldown. A stale key fails with an explanation; it never
+substitutes another memory.
+
+The child's complete stdout and stderr land under the configured cache at
+`automation-output/<attempt-id>.private.log`: successful runs, failed exits and runs killed by the
+two-hour timeout all get one, readable only by their owner and with configured credentials
+redacted. The web UI's **Runs** page downloads it. Nothing evicts them yet, so one log per attempt
+stays until you delete it, and `runs storage` counts the directory. Older runs may have no log.
 
 ## auto install
 
@@ -139,20 +156,3 @@ The `automation:` and `notifications:` keys, with their defaults, are in the
 [config reference](../../reference/config-reference.md#automation). `automation.enabled` and
 `automation.daily_at` are the two a first setup needs; everything else tunes the rotation rules
 described above.
-
-## Run a specific suggestion
-
-`immich-memories auto suggest --json` includes each suggestion's `memory_key`.
-Pass that exact key to `immich-memories auto run --candidate 'KEY' --dry-run`
-to check it, then omit `--dry-run` to generate it. The runner checks eligibility
-again. A stale key fails with an explanation; it never substitutes another memory.
-Cooldown, repetition rules and failure backoff still apply. `--force` only skips
-cooldown.
-
-The complete child stdout and stderr are retained under the configured cache at
-`automation-output/<attempt-id>.private.log`. Successful runs, failed exits and
-runs killed by the two-hour timeout all get one. Files are readable only by their
-owner, with configured credentials redacted. Open the run in the web UI's **Runs**
-page to download its child output. Older runs may have no log. Nothing evicts them
-yet: one log per attempt stays until you delete it, and `runs storage` counts the
-directory.

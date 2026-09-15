@@ -17,6 +17,30 @@ are held out at every audience (breastfeeding, bathing, toileting or changing, i
 graphic medical procedures, identifying records, sexual content, adult changing). A shirtless baby
 is ordinary family content.
 
+## The three tiers
+
+A tier names the producers a deployment demands. It is never inferred from what happens to fail: a
+producer the tier does not ask for is not missing, and one it does ask for stops the run with a
+count. Each rung down stops a producer, stops whatever that producer sent, and takes something away
+from the audience gate, which may only ever tighten.
+
+```mermaid
+flowchart TB
+    full["full<br/>previews, pixel facts, the encoder and its six heads,<br/>the two detectors, one caption per picture that has none"]
+    full -->|"stop the captions: nothing is sent to the caption server"| nocap
+    nocap["no_captions<br/>previews, pixel facts, the encoder and its six heads, the two detectors"]
+    nocap -->|"stop the ONNX models too: nothing looks at the picture"| meta
+    meta["metadata_only<br/>previews and pixel measurements"]
+
+    full -.- fullgate["the gate reads a sentence per picture and can clear one"]
+    nocap -.- nocapgate["the gate reads the detector heads and flags: it refuses what full refuses<br/>and never clears, because eight findings are named only by a description"]
+    meta -.- metagate["nothing looked, so nothing is cleared:<br/>every unit stays at family viewing"]
+```
+
+Facts are banked per picture and per producer, so moving between tiers erases nothing and a
+`no_captions` library can add captions later, a month at a time. What each tier costs to prepare
+and what it costs the cut are on [Running modes](../running-modes.md).
+
 ## Install
 
 ```bash
@@ -129,8 +153,7 @@ compact description/setting JSON schema at temperature zero, repetition penalty 
 cap. Captions are sent as 400 px JPEG tiles at quality 90; pixel measurements keep their own
 `pixel-facts-v1` quality-85 recipe. Two invalid completions produce a banked `caption unavailable`
 outcome; timeouts, missing models and transport failures stay incomplete and a later run resumes
-them. On `no_captions` and `metadata_only` none of this applies: no endpoint is contacted and an
-absent description is not a missing fact.
+them. On the two lower tiers an absent description is not a missing fact.
 
 A server behind a bearer token gets one from `caption_api_key`. It travels as
 `Authorization: Bearer <key>` on the `/models` probe and on every completion; left blank, no such
@@ -147,12 +170,13 @@ key. Save writes the `${MY_KEY}` form back either way.
 
 ## Editing without a language model
 
-`reader: rules` with `tier: metadata_only` cuts all ten memory types from dates, places,
-favourites, known people and whatever facts the tier produced. It builds no story thesis, does
-not rerank with a model and does not choose Live Photo motion; custom free-text subjects are
-refused. With `no_captions` the classifiers add evidence but not a guaranteed better cut: the
-measured season cut became longer while choosing more household objects. Review the result before
-sharing it. The measured shares per memory type are on [Running modes](../running-modes.md).
+`reader: rules` needs nothing beyond the app on `tier: metadata_only` and cuts all ten memory
+types from dates, places, favourites, known people and whatever facts the tier produced; custom
+free-text subjects are refused. What the rules answer in place of a model is on
+[Rules mode](../../create/pipeline/rules-mode.md), and the measured shares per memory type are on
+[Running modes](../running-modes.md). With `no_captions` the classifiers add evidence but not a
+guaranteed better cut: the measured season cut became longer while choosing more household
+objects. Review the result before sharing it.
 
 Preflight follows the choice: rules skip the reader, `no_captions` skips the caption alias,
 `metadata_only` skips the model files. An explicit `reader: model` without `llm.model` is an error.

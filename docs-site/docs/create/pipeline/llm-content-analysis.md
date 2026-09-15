@@ -151,24 +151,19 @@ are independent of each other. The period account is a single prompt. The moment
 pages are each told what the pages before them found. The story picks read the stages
 above them. A batch is submitted whole, so none of those can be in one.
 
-## LLM Title Generation
+## Trip titles
 
-Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app hands a local LLM a day-by-day summary of where the trip went and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". English and French are the two locales the app ships; it classifies the trip pattern at the same time.
+A template gives you "TWO WEEKS IN SPAIN, SUMMER 2025". The model gives you "Sous les falaises de
+grès" or "Odyssée le long de la côte". English and French are the two locales the app ships.
 
-### What the LLM gets
+The model never sees coordinates. The selected material's GPS points are clustered greedily within
+5 km, each cluster is reverse-geocoded to a city name, and the prompt is one line per day: the place
+names and how many of the selected pictures fell at each. Back come a title, an optional subtitle, a
+[trip classification](./title-screens-and-maps.md#trip-classification) with a one-line reason, and a
+map mode for the intro. All of it is editable on the Generation Options page, and the regenerate
+button asks again over the same GPS data.
 
-The model never sees coordinates. The selected material's GPS points are clustered greedily within 5 km, each cluster is reverse-geocoded to a city name, and what goes into the prompt is one line per day: the place names and how many of the selected pictures fell at each. From that it works out the travel pattern (base camp? road trip? hiking trail?) and writes a title and subtitle in your locale.
-
-### What it produces
-
-- **Title** and optional **subtitle** in your configured language
-- **Trip type**: `base_camp`, `multi_base`, `road_trip`, or `hiking_trail`
-- **Map mode** recommendation for the animated map intro
-- A one-line **reason** explaining why it picked that classification
-
-You see everything on the Generation Options page and can edit before rendering. Hit the regenerate button to try again with the same GPS data.
-
-### Thinking mode has to be off
+## Thinking mode has to be off
 
 On a server whose chat template reasons by default, a bulk call reasons at its small token budget,
 truncates mid-thought and returns nothing parseable. That is what `llm.no_thinking_params` is for,
@@ -193,7 +188,19 @@ The level only reaches hosts that take one: Claude gets it as `output_config.eff
 own level word. Everywhere else it is on or off, and `thinking_params` says how hard. `auto` sends
 nothing in either direction. `true` and `false` still parse, as `high` and `disabled`.
 
-### Which model
+A level is a request, not a promise. z.ai's `.../api/anthropic` route answers HTTP 200 to every
+setting, `disabled` and levels it has never heard of included, and then reasons on its own terms.
+Measured on 2026-09-14 with `glm-5.3-flash`: a caption-shaped ask at the readers' 140-token cap
+spent all 140 tokens inside a `thinking` block and came back with no answer in it. So on that route
+the reader reads the first `text` block and skips the reasoning in front of it, asks for 1,024
+tokens on top of the caller's cap so the cap keeps meaning the length of the answer, and turns a
+reply with no `text` block into an error naming the `stop_reason` instead of an empty string.
+
+When a provider refuses, its own `code` and `message` ride into the reader's log line, bounded to
+300 characters. Before that, a 400 and a 429 reached the operator as the bare status and a link to
+MDN, so `1210` and `1113 Insufficient balance` both read as "Client error".
+
+## Which model
 
 The only configuration whose output has been graded is
 `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit` on oMLX. Everything else is expected to work and
@@ -204,27 +211,11 @@ Speed and cost are a different question, and ten cells were measured on one real
 [Readers](../../deploy/readers.md). Those numbers are the editor's period reads, not title
 generation, but it is the same `llm` model and the same endpoint.
 
-## Mood Detection for Music
+## Mood for music
 
-The music pipeline needs a vision LLM to analyze video keyframes and detect mood. Any server that speaks the OpenAI `/v1/chat/completions` endpoint works: it just needs to handle image inputs.
-
-### LLM Setup
-
-**mlx-vlm (Recommended on Apple Silicon)**:
-
-```bash
-uvx --python 3.12 --from mlx-vlm --with torch --with torchvision \
-  mlx_vlm.server --port 8080
-```
-
-**Ollama**:
-
-```bash
-ollama pull llava
-ollama serve
-```
-
-**Cloud APIs (Groq, OpenAI, etc.)**: any cloud API that supports vision and speaks the OpenAI chat completions format works.
+The same model picks the memory's mood, which is what chooses a bundled track and what the
+generators are asked for. It reads text: the saved cut's thesis, story labels and prepared captions.
+No new images go out. See [Audio & Music](./audio-and-music.md).
 
 ## Configuration
 

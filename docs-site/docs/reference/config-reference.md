@@ -28,9 +28,9 @@ left where it is.
 Unknown keys *inside* a section are silently ignored, with one exception: the thirty keys of the
 removed clip scorer (`analysis.max_refinement_passes`, `photos.max_ratio`, `description_llm`, the
 whole `content_analysis`, `audio_content`, `speech` and `transcription` sections, and the rest of
-that family). A file that still sets one is refused at startup with a message naming the key,
-because a setting that loads and does nothing is worse than one that fails. Unknown top-level keys and invalid values fail
-validation at startup.
+that family). A file that still sets one starts normally and logs one warning naming every key it
+dropped, because a setting that loads and does nothing is worse than one that says so. Unknown
+top-level keys and invalid values fail validation at startup.
 :::
 
 ## Preset
