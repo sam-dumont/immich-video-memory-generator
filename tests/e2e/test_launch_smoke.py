@@ -204,6 +204,11 @@ def _drive_to_step4(page: Page, launch_app_url: str) -> None:
     _choose(page, "Output Format", "MP4 (H.264)")
     _choose(page, "Background music", "None")
     page.get_by_role("button", name="Next: Preview & Export").click()
+    # The NiceGUI navigation can begin after click() returns.
+    page.wait_for_url("**/step4", timeout=30_000)
+    expect(page.get_by_role("button", name="Generate Video", exact=True)).to_be_visible(
+        timeout=30_000
+    )
 
 
 def test_launch_flow_renders_real_video(
