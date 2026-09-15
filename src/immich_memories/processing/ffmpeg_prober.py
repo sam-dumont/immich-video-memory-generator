@@ -200,7 +200,7 @@ class FFmpegProber:
 
         # Subtract transition overlaps
         if self.settings.transition == TransitionType.CROSSFADE and len(clips) > 1:
-            overlap = (self.settings.transition_duration or 0.5) * (len(clips) - 1)
+            overlap = self.settings.effective_transition_duration * (len(clips) - 1)
             total -= overlap
 
         return max(0, total)

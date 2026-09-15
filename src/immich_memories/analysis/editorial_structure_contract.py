@@ -173,6 +173,7 @@ class StructurePlannerPorts:
     resolve_motion: (
         Callable[[list[dict[str, Any]]], tuple[list[dict[str, Any]], dict[str, Any]]] | None
     ) = None
+    resolve_speech: Callable[[list[dict]], list[dict]] | None = None
     thumbnail_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_picture: Callable[[str], Mapping[str, Any]] | None = None
     picture_facts_metrics: Callable[[], Mapping[str, Any]] | None = None

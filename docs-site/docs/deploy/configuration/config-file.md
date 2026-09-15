@@ -44,12 +44,12 @@ always SDR and tone-maps HDR sources.
 
 Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`, `title_screens`,
 `title_llm`, `cache`, `upload`, `trips`, `photos`, `scheduler`). Tuning sections go under
-`advanced:` (`analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
+`advanced:` (`analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
 `notifications`, `triage`, `editorial`, `inference`). The app writes them that way; on read both
 placements work and merge setting by setting, and the top-level value wins a tie.
 
 Unknown keys inside a section are ignored, and the keys of the removed per-clip scorer
-(`content_analysis`, `audio_content`, `speech`, `transcription`, `description_llm`,
+(`content_analysis`, `audio_content`, `transcription`, `description_llm`,
 `analysis.max_refinement_passes`, `photos.max_ratio` and their family) are dropped by name and
 logged, so an old file does not keep loading while its settings silently do nothing. Unknown
 top-level keys and invalid values (`codec: av1`) fail with a validation error.

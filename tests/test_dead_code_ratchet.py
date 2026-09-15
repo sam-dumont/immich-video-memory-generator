@@ -85,7 +85,10 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 #   not scan. The last block is different in kind: symbols reported to the owner
 #   rather than deleted, where the missing caller is the defect and removing the
 #   callee would cement it.
-MAX_WHITELISTED_SYMBOLS = 50
+# 55, up from 50: speech detection restores five kaldi-native-fbank settings.
+# Its C++ extractor reads these attributes; the real FireRedVAD fixture exercises
+# them, but vulture can only see their Python setters.
+MAX_WHITELISTED_SYMBOLS = 55
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

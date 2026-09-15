@@ -534,11 +534,13 @@ def trim_to_timing_budget(
     picture; a story's only picture goes only when no lighter story still has one. A protected
     carrier (one the owner required) is never a victim; when only those remain the trim stops.
     """
+    from immich_memories.speech.cuts import minimum_duration
+
     kept = carriers.copy()
     dropped: list[dict] = []
     while kept:
         budget = content_budget_of(kept)
-        if len(kept) * min_seconds <= budget + 1e-6:
+        if sum(minimum_duration(c, min_seconds) for c in kept) <= budget + 1e-6:
             break
         counts: dict[str, int] = {}
         for c in kept:

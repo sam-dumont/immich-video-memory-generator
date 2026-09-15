@@ -212,3 +212,15 @@ def test_generation_settings_bind_actual_source_certificate(tmp_path, monkeypatc
         _build_assembly_settings(params, [replace(rendered, duration=3.5)])
     source.editorial_live_manifest = None
     assert _build_assembly_settings(params, [rendered]).certified_content_intervals == {}
+    from immich_memories.processing.editorial_timing import (
+        bind_editorial_timeline,
+        timing_policy_for_params,
+    )
+
+    params.target_duration_seconds = 60
+    policy = timing_policy_for_params(params)
+    timeline = policy.resolve([{"asset_id": "still", "seconds": 4}], {"still": source.asset})
+    params.editorial_render_timing = bind_editorial_timeline(policy, timeline, ["still"])
+    assert _build_assembly_settings(params, [rendered]).certified_content_intervals == {
+        "still": (0.0, 4.0)
+    }

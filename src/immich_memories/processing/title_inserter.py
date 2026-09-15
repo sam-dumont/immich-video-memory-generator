@@ -142,20 +142,13 @@ class TitleInserter:
         screens are inserted. By pre-deciding here, the assembler uses
         predecided_transitions directly and never rebuilds the context.
 
-        Content clips use the same SMART logic as the assembler (_pick_transition).
-        Title screens use explicit outgoing_transition or auto-fade.
+        The configured mode and explicit outgoing transitions match ordinary assembly.
         """
-        from immich_memories.processing.assembly_engine import _pick_transition
+        from immich_memories.processing.assembly_engine import decide_transitions
 
-        transitions = []
-        consecutive_fades = 0
-        consecutive_cuts = 0
-        for i in range(len(clips) - 1):
-            t, consecutive_fades, consecutive_cuts = _pick_transition(
-                clips[i], clips[i + 1], consecutive_fades, consecutive_cuts
-            )
-            transitions.append(t)
-        return transitions
+        return decide_transitions(
+            clips, self.settings.transition, self.settings.effective_transition_duration
+        )
 
     def _generate_ending(
         self,

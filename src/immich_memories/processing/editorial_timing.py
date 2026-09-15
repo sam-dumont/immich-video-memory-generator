@@ -1,4 +1,4 @@
-"""Conservative title budgets for already selected, interval-certified content."""
+"""Finished-film budgets for selection and interval-certified content."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ _TITLE_FIELDS = (
     "month_divider_threshold",
     "show_location_cards",
 )
-_VERSION = "editorial-timing-zero-overlap-v1"
+_VERSION = "editorial-timing-overlap-v2"
 
 
 def _digest(value: dict) -> str:
@@ -76,8 +76,21 @@ class EditorialTimingPolicy:
     def as_dict(self) -> dict:
         return {**asdict(self), "version": _VERSION}
 
+    def selection_budget(self, assets: Mapping, *, expected_clip_duration: float = 4.0) -> float:
+        """Fund story slots before picking; selected dates refine the divider reserve later."""
+        options = json.loads(self.title_settings_json)
+        return plan_timeline(
+            list(assets.values()),
+            TitleScreenSettings(**options) if options is not None else None,
+            self.target_seconds,
+            self.memory_type,
+            expected_clip_duration=expected_clip_duration,
+            transition_mode=self.transition,
+            transition_duration=self.transition_duration,
+        ).content_budget
+
     def resolve(self, carriers: list[dict], assets: Mapping) -> TimelinePlan:
-        """Reserve selected title overhead; never borrow expected transition overlap."""
+        """Reserve selected title overhead and credit the configured transition overlap."""
         ids = [row["asset_id"] for row in carriers]
         if len(ids) != len(set(ids)) or any(key not in assets for key in ids):
             raise ValueError("Editorial timing escaped selected source metadata")
@@ -90,8 +103,8 @@ class EditorialTimingPolicy:
             self.target_seconds,
             self.memory_type,
             expected_content_clips=len(selected),
-            transition_mode="none",
-            transition_duration=0,
+            transition_mode=self.transition,
+            transition_duration=self.transition_duration,
         )
         return finalize_selected_timeline(
             preliminary,
@@ -99,8 +112,8 @@ class EditorialTimingPolicy:
             selected_duration=sum(row["seconds"] for row in carriers),
             title_settings=titles,
             memory_type=self.memory_type,
-            transition_mode="none",
-            transition_duration=0,
+            transition_mode=self.transition,
+            transition_duration=self.transition_duration,
         )
 
 
@@ -184,11 +197,15 @@ def read_editorial_timeline(binding: dict) -> TimelinePlan:
         raise ValueError("Editorial timing binding changed")
     timeline = TimelinePlan(**binding["timeline"])
     if (
-        timeline.transition_budget != 0
-        or timeline.content_budget != max(0, timeline.target_duration - timeline.title_budget)
+        not math.isfinite(timeline.transition_budget)
+        or timeline.transition_budget < 0
+        or not math.isclose(
+            timeline.content_budget,
+            max(0, timeline.target_duration - timeline.title_budget) + timeline.transition_budget,
+        )
         or len(binding["source_ids"]) != len(set(binding["source_ids"]))
     ):
-        raise ValueError("Invalid conservative editorial timeline")
+        raise ValueError("Invalid editorial timeline budget")
     return timeline
 
 

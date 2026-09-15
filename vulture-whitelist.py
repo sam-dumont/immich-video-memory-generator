@@ -1,3 +1,11 @@
+# Read by kaldi-native-fbank's C++ feature extractor. The real FireRedVAD fixture
+# tests verify these restored frame settings and the resulting feature scale.
+_.dither
+_.frame_length_ms
+_.frame_shift_ms
+_.samp_freq
+_.num_bins
+
 # Read by Asset.model_dump in source_metadata_digest (analysis/
 # editorial_bound_sample.py:15), which hashes the whole model to bind the source
 # metadata Immich reported. Every field on Asset and on the models it nests is

@@ -99,6 +99,7 @@ demucs = [
 editorial = [
     "onnxruntime>=1.28",
     "huggingface-hub>=1.29",
+    "kaldi-native-fbank>=1.20",
 ]
 # The same seats on a CUDA host. Split by device rather than by feature, the way
 # immich-machine-learning splits its own image: only this variant pulls the CUDA
@@ -112,6 +113,7 @@ editorial-cuda = [
     # 1.27+ requires CUDA 13; the supported image uses CUDA 12 / cuDNN 9.
     "onnxruntime-gpu>=1.26,<1.27; sys_platform == 'linux'",
     "huggingface-hub>=1.29",
+    "kaldi-native-fbank>=1.20",
 ]
 
 all = [
@@ -357,6 +359,8 @@ module = [
     "torch.*",
     "onnxruntime",
     "onnxruntime.*",
+    "kaldi_native_fbank",
+    "kaldi_native_fbank.*",
     "huggingface_hub",
     "huggingface_hub.*",
     # The GPU title kernel library

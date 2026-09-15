@@ -71,13 +71,17 @@ values fail at startup. Renames are in the release notes: check them when a sett
 stopped taking effect.
 
 The removed clip scorer's keys are named rather than merely ignored: `content_analysis`,
-`audio_content`, `speech`, `transcription`, `analysis.max_refinement_passes`,
+`audio_content`, `transcription`, `analysis.max_refinement_passes`,
 `analysis.scene_threshold` and the other pacing and detection dials, `photos.max_ratio`,
 `photos.read_moments`, `photos.moment_gap_seconds`, `photos.moment_hash_threshold` and
 `hardware.gpu_analysis`. A file that still names one starts normally and logs a warning listing
 every one it found, with what each used to do. Delete them to silence it; leaving them changes
 nothing, because the code that read them is gone. The `audio-ml`, `speech` and `transcribe` extras
 went with it.
+
+Speech-aware cuts are available again in the story-first editor. The existing
+`advanced.speech` settings apply to selected videos and Live Photo stitches. The local
+detector ships with the `editorial` and `editorial-cuda` extras; it needs no model server.
 
 ## Data compatibility
 

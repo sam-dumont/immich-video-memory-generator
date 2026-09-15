@@ -183,3 +183,49 @@ def production_story_motion(source, *, cache_path, trace, resources):
         cache_dir=cache_path.parent / "story-motion",
         output_dir=source.artifact_dir / "story-motion",
     )
+
+
+def production_speech_resolver(source, *, resources):
+    """Detect retained speech before final timing, with lazy transport and local inference."""
+    import logging
+
+    from immich_memories.analysis.editorial_speech import resolve_speech_cuts
+    from immich_memories.speech.facts import SpeechFacts
+
+    if not source.config.speech.enabled:
+        return None
+    client = None
+
+    def fetch(asset_id):
+        nonlocal client
+        if client is None:
+            from immich_memories.api.sync_client import SyncImmichClient
+
+            config = source.config.immich
+            client = SyncImmichClient(
+                base_url=config.url, api_key=config.api_key, api_version=config.api_version
+            )
+            resources.callback(client.close)
+        return client.get_video_playback(asset_id)
+
+    facts = SpeechFacts(
+        assets=dict(source.assets) | dict(source.companion_assets),
+        cache_dir=source.bank_dir.parent / "speech-facts",
+        fetch=fetch,
+        config=source.config.speech,
+    )
+
+    def resolve(carriers):
+        if not any(c["kind"] in {"video", "live-motion"} for c in carriers):
+            return carriers
+        if not facts.detector.available:
+            logging.getLogger(__name__).warning(
+                "Speech boundary detection is unavailable; cuts may interrupt speech. "
+                "Install immich-memories[editorial] to enable the local detector."
+            )
+            return carriers
+        return resolve_speech_cuts(
+            carriers, facts, buffer=min(0.3, source.config.speech.min_silence_ms / 1000 * 0.4)
+        )
+
+    return resolve

@@ -228,16 +228,25 @@ def _resolve_motion_and_timing(
     # Audience-eligible funded pictures and completion additions reuse prior results.
     run.carriers = retained_motion(run.carriers)
     run.motion_metrics = retained_motion.metrics
+    if ports.resolve_speech is not None:
+        run.carriers = ports.resolve_speech(run.carriers)
     timing = source.render_timing
-    if timing is None or not any(c["kind"] == "live-motion" for c in run.carriers):
+    if timing is None:
         return
     if (
         timing.target_seconds != source.case.target_seconds
         or timing.memory_type != source.case.product
     ):
         raise ValueError("Editorial render timing disagrees with the requested memory")
+    run.carriers, dropped = trim_to_timing_budget(
+        run.carriers,
+        lambda cs: timing.resolve(cs, source.assets).content_budget,
+        MIN_CARRIER_SECONDS,
+        protected=frozenset(source.owner_required_asset_ids),
+    )
+    run.cut_carriers.extend(dropped)
     run.render_timeline = timing.resolve(run.carriers, source.assets)
-    run.final_content_cap = min(run.final_content_cap, run.render_timeline.content_budget)
+    run.final_content_cap = run.render_timeline.content_budget
     run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
     if sum(c["seconds"] for c in run.carriers) > run.final_content_cap:
         raise ValueError("Editorial minimum content cannot fit the production title budget")
@@ -355,10 +364,18 @@ def _check_empty_attached(ports: StructurePlannerPorts, observed: bool) -> None:
         raise ValueError("empty attached material produced nonempty evidence")
 
 
-def _partition_cap(intent, target_seconds: float, prior) -> tuple[int, int, int | None]:
+def _partition_cap(
+    intent, target_seconds: float, prior, content_budget=None
+) -> tuple[int, int, int | None]:
     """Slots, the per-anchor depth cap and the product's partition carrier limit."""
-    slots_total = int(target_seconds // SECONDS_PER_SLOT)
-    cap = depth_cap(target_seconds)
+    slots_total = int(
+        (target_seconds if content_budget is None else content_budget) // SECONDS_PER_SLOT
+    )
+    cap = (
+        depth_cap(target_seconds)
+        if content_budget is None
+        else int(content_budget // MIN_CARRIER_SECONDS)
+    )
     limit = intent.max_carriers_per_partition
     if limit is not None:
         cap = min(cap, limit)
@@ -388,8 +405,11 @@ def plan_structure(
     contract, contract_key, admission, admission_key = contract_texts(source.case, source.intent)
     wall = read_wall(source)
     material = build_material(source, ports, wall)
+    selection_budget = (
+        source.render_timing.selection_budget(source.assets) if source.render_timing else None
+    )
     slots_total, cap, partition_limit = _partition_cap(
-        source.intent, source.case.target_seconds, source.prior_plan
+        source.intent, source.case.target_seconds, source.prior_plan, selection_budget
     )
     prior_assets = (
         {c["asset_id"] for c in source.prior_plan["carriers"]} if source.prior_plan else set()
@@ -658,6 +678,8 @@ def _story_selection(
     bank_path = source.bank_dir / "picture-stands.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
+    durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
+    seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
     return select_story_first(
         judge=ports.judge,
         rules=ports.rules,
@@ -678,8 +700,14 @@ def _story_selection(
         quality=material.builder.quality,
         picture_line=gate.proposed_picture_line if ports.observe_picture is not None else None,
         motion_line=ports.observe_story_motion,
-        target_seconds=source.case.target_seconds,
-        seconds_per_slot=SECONDS_PER_SLOT,
+        target_seconds=(
+            source.render_timing.selection_budget(
+                source.assets, expected_clip_duration=seconds_per_slot
+            )
+            if source.render_timing
+            else source.case.target_seconds
+        ),
+        seconds_per_slot=seconds_per_slot,
         record=record,
         family_tier=tier,
         period_label=source.case.label,

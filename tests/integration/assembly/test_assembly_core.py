@@ -591,8 +591,8 @@ class TestTransitionDecisions:
 
         assert transitions == ["cut"]
 
-    def test_title_screen_forces_fade(self, test_clip_720p, test_clip_720p_b):
-        """Title screen clips always get fade transitions."""
+    def test_title_screen_respects_cut_mode(self, test_clip_720p, test_clip_720p_b):
+        """A title cannot borrow unbudgeted overlap when the user requested cuts."""
         from immich_memories.processing.assembly_config import TransitionType
         from immich_memories.processing.assembly_engine import AssemblyEngine
         from immich_memories.processing.clip_encoder import ClipEncoder
@@ -608,7 +608,7 @@ class TestTransitionDecisions:
         ]
         transitions = engine.get_transition_types(clips)
 
-        assert transitions == ["fade"]
+        assert transitions == ["cut"]
 
     def test_validate_fade_transitions_short_clips(self):
         """Short clips get downgraded from fade to cut."""

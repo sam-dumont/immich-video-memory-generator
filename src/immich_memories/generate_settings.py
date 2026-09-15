@@ -60,6 +60,9 @@ def _build_assembly_settings(
         for clip in params.clips
         if clip.asset.id in certified_ids and clip.editorial_live_manifest is not None
     }
+    if params.editorial_render_timing is not None:
+        for clip in assembly_clips:
+            certified_intervals.setdefault(clip.asset_id, (0.0, clip.duration))
     config = params.config
 
     transition_type = {

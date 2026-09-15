@@ -10,6 +10,14 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class SpeechConfig(BaseModel):
+    """Local voice activity detection before editorial intervals are fixed."""
+
+    enabled: bool = Field(default=True, description="Move video cuts out of detected speech")
+    vad_threshold: float = Field(default=0.25, ge=0.1, le=0.9)
+    min_silence_ms: int = Field(default=200, ge=50, le=2000)
+
+
 class AnalysisConfig(BaseModel):
     """Settings for source discovery and admission."""
 

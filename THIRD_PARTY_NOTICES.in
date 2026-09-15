@@ -54,6 +54,12 @@ YuNet face detector (opencv_zoo)
     own MIT LICENSE, and that is the one reproduced here. Bundled rather than
     fetched because it is 227 KB and the machine may never reach the network.
 
+FireRedVAD audio-event detector
+  Role: protect speech when selecting and fitting video cut boundaries
+  Artifact: fireredvad_aed.onnx, bundled at src/immich_memories/speech/bundled_models/
+  License: Apache-2.0; reproduced in bundled_models/LICENSE-FireRedVAD
+  URL: https://github.com/FireRedTeam/FireRedVAD
+
 Optional models the app can call but never bundles: a caption model and a text
 reader served by the operator (any OpenAI-compatible endpoint), MusicGen
 (Meta, CC-BY-NC-4.0 weights) and ACE-Step (Apache-2.0) for generated music,

@@ -23,6 +23,7 @@ from immich_memories.analysis.editorial_runtime_ports import (
     EditorialRuntimePorts,
     production_attached_pictures,
     production_sampled_pair_confirmer,
+    production_speech_resolver,
     production_story_motion,
 )
 from immich_memories.analysis.editorial_structure_contract import (
@@ -201,6 +202,7 @@ class ProductionPostCardBackend:
                 rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 0.0),
                 reranker_identity={"model": "rules-v1", "endpoint": "none"},
                 rules=RuleStructureReader(source),
+                resolve_speech=production_speech_resolver(source, resources=resources),
             )
         ranker = StructureReranker()
         picture_facts = PictureFactsProvider(
@@ -235,6 +237,7 @@ class ProductionPostCardBackend:
             resolve_motion=production_motion_resolver(
                 source, on_playback=attached_samples.remember_playback
             ),
+            resolve_speech=production_speech_resolver(source, resources=resources),
             observe_attached_material=final_pictures,
             attached_material_metrics=attached_samples.metrics,
             observe_picture=picture_facts.observe,

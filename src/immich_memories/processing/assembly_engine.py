@@ -6,6 +6,7 @@ Includes assembly context building (resolution, HDR, colorspace resolution).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -124,7 +125,7 @@ def create_assembly_context(
         clip_primaries=clip_primaries,
         colorspace_filter=colorspace_filter,
         target_fps=target_fps,
-        fade_duration=settings.transition_duration or 0.5,
+        fade_duration=settings.effective_transition_duration,
     )
 
 
@@ -140,8 +141,6 @@ def _pick_transition(
     consecutive_cuts: int,
 ) -> tuple[str, int, int]:
     """Pick a single transition type for one clip boundary."""
-    import random
-
     # WHY: explicit outgoing_transition takes priority over is_title_screen.
     # Content-backed title screens use "cut" (deblur reveal IS the transition).
     if clip_before.outgoing_transition is not None:
@@ -151,7 +150,9 @@ def _pick_transition(
         return t, 0, consecutive_cuts + 1
     if clip_before.is_title_screen or clip_after.is_title_screen:
         return "fade", consecutive_fades + 1, 0
-    use_fade = random.random() < 0.7
+    # Source IDs survive rerenders and temporary-file moves; process RNG state does not.
+    boundary = f"{clip_before.asset_id}\0{clip_after.asset_id}".encode()
+    use_fade = int.from_bytes(hashlib.sha256(boundary).digest()[:4]) / 2**32 < 0.7
     if consecutive_fades >= 3:
         use_fade = False
     if consecutive_cuts >= 2:
@@ -159,6 +160,28 @@ def _pick_transition(
     if use_fade:
         return "fade", consecutive_fades + 1, 0
     return "cut", 0, consecutive_cuts + 1
+
+
+def decide_transitions(
+    clips: list[AssemblyClip], mode: TransitionType, duration: float = 0.5
+) -> list[str]:
+    """Use one reproducible boundary policy with or without title composition."""
+    transitions = []
+    if duration <= 0:
+        return ["cut"] * max(0, len(clips) - 1)
+    fades = cuts = 0
+    for before, after in zip(clips, clips[1:], strict=False):
+        if before.outgoing_transition is not None:
+            transition = before.outgoing_transition
+        elif mode in (TransitionType.CUT, TransitionType.NONE):
+            transition = "cut"
+        elif mode == TransitionType.CROSSFADE:
+            transition = "fade"
+        else:
+            transition, _, _ = _pick_transition(before, after, fades, cuts)
+        fades, cuts = (fades + 1, 0) if transition == "fade" else (0, cuts + 1)
+        transitions.append(transition)
+    return transitions
 
 
 class AssemblyEngine:
@@ -225,11 +248,11 @@ class AssemblyEngine:
     ) -> Path:
         transitions = self.get_transition_types(clips)
         transitions = self._validate_fade_transitions(
-            transitions, [c.duration for c in clips], self.settings.transition_duration or 0.5
+            transitions, [c.duration for c in clips], self.settings.effective_transition_duration
         )
 
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        fade_duration = self.settings.transition_duration or 0.5
+        fade_duration = self.settings.effective_transition_duration
         from immich_memories.audio.mixer import music_mute_windows
 
         # The engine is the only place the FINAL sequence (titles included)
@@ -289,26 +312,9 @@ class AssemblyEngine:
         """Get the transition type for each clip boundary."""
         if self.settings.predecided_transitions:
             return self.settings.predecided_transitions
-        transitions = []
-        for i in range(len(clips) - 1):
-            clip, next_clip = clips[i], clips[i + 1]
-            # WHY: explicit outgoing_transition (e.g. "cut" for content-backed
-            # title screens) takes priority over is_title_screen auto-fade.
-            if clip.outgoing_transition is not None:
-                transitions.append(clip.outgoing_transition)
-            elif (
-                clip.is_title_screen
-                or next_clip.is_title_screen
-                or self.settings.transition == TransitionType.CROSSFADE
-            ):
-                transitions.append("fade")
-            elif self.settings.transition == TransitionType.CUT:
-                transitions.append("cut")
-            elif self.settings.transition == TransitionType.SMART:
-                transitions.append("fade")
-            else:
-                transitions.append("cut")
-        return transitions
+        return decide_transitions(
+            clips, self.settings.transition, self.settings.effective_transition_duration
+        )
 
     def _validate_fade_transitions(
         self,

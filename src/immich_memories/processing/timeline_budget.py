@@ -154,7 +154,7 @@ def _transition_overlap_budget(
 ) -> float:
     """Estimate time removed by overlapping transitions.
 
-    SMART uses the same 70% fade probability as ``_pick_transition``.  When the
+    SMART estimates the 70% fade share of the reproducible boundary policy. When the
     selected clip count is not known yet, iterate because adding overlap time
     can itself require another content clip (and therefore another boundary).
     """

@@ -36,12 +36,19 @@ def test_a_removed_section_key_is_named_and_ignored(tmp_path: Path, caplog) -> N
 
 
 def test_a_removed_top_level_section_is_named_and_ignored(tmp_path: Path, caplog) -> None:
-    path = _write(tmp_path, {"advanced": {"speech": {"enabled": False}}})
+    path = _write(tmp_path, {"advanced": {"transcription": {"enabled": False}}})
 
     with caplog.at_level(logging.WARNING):
         Config.from_yaml(path)
 
-    assert "speech" in "\n".join(r.getMessage() for r in caplog.records)
+    assert "transcription" in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_speech_settings_are_used_after_the_scorer_migration(tmp_path: Path, caplog) -> None:
+    path = _write(tmp_path, {"advanced": {"speech": {"enabled": False}}})
+    config = Config.from_yaml(path)
+    assert config.speech.enabled is False
+    assert not [r for r in caplog.records if "speech" in r.getMessage()]
 
 
 def test_every_removed_key_in_the_file_is_named_at_once(tmp_path: Path, caplog) -> None:

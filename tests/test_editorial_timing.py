@@ -46,8 +46,10 @@ def rows(count=3):
     return [{"asset_id": key, "seconds": 4.0} for key in assets], assets
 
 
-@pytest.mark.parametrize("transition", ["smart", "crossfade", "cut", "none"])
-def test_real_default_title_budget_uses_no_transition_credit(transition):
+@pytest.mark.parametrize(
+    "transition, overlap", [("smart", 1.4), ("crossfade", 2), ("cut", 0), ("none", 0)]
+)
+def test_real_default_title_budget_credits_configured_overlap(transition, overlap):
     policy = build_editorial_timing_policy(
         config=Config(),
         target_seconds=60,
@@ -58,8 +60,9 @@ def test_real_default_title_budget_uses_no_transition_credit(transition):
     for asset in assets.values():
         asset.file_created_at = datetime(2010, 1, 1)
     plan = policy.resolve(carriers, assets)
-    assert plan.content_budget == 49.5 and plan.title_budget == 10.5
-    assert plan.transition_budget == 0
+    assert plan.content_budget == pytest.approx(49.5 + overlap)
+    assert plan.title_budget == 10.5
+    assert plan.transition_budget == pytest.approx(overlap)
     assert read_editorial_timeline(bind_editorial_timeline(policy, plan, list(assets))) == plan
 
 
@@ -71,7 +74,18 @@ def test_no_titles_and_output_path_do_not_invalidate_timing():
     policy = timing_policy_for_params(params)
     assert policy == timing_policy_for_params(replace(params, output_path=Path("/two")))
     carriers, assets = rows()
-    assert policy.resolve(carriers, assets).content_budget == 60
+    assert policy.resolve(carriers, assets).content_budget == 61
+
+
+def test_slot_overlap_estimate_uses_the_available_video_lengths():
+    policy = build_editorial_timing_policy(
+        config=Config(title_screens={"enabled": False}),
+        target_seconds=60,
+        memory_type="custom",
+        transition="crossfade",
+    )
+    _, assets = rows()
+    assert policy.selection_budget(assets, expected_clip_duration=6.0) == 65.0
 
 
 @pytest.mark.parametrize(
@@ -152,7 +166,7 @@ def test_trip_new_jump_does_not_recompute_frozen_divider_cap():
     assert original.max_dividers == 0
     assert policy.resolve(subset, assets).max_dividers == 1
     frozen = read_editorial_timeline(bind_editorial_timeline(policy, original, ["0", "2"]))
-    assert frozen.max_dividers == 0 and frozen.content_budget == 109.5
+    assert frozen == original
 
 
 @pytest.mark.parametrize(
@@ -221,16 +235,22 @@ def _ports(inspect=None):
     )
 
 
-def test_actual_no_live_planner_is_unchanged_with_timing_data(tmp_path):
-    captured = source(tmp_path, seconds=60, pictures=12)
-    original = plan_structure(captured, _ports()).plan
+@pytest.mark.parametrize("titles", [False, True])
+def test_actual_photo_planner_allocates_and_binds_finished_film_budget(tmp_path, titles):
+    captured = source(tmp_path, seconds=60, pictures=50)
+    captured.config.title_screens.enabled = titles
     policy = build_editorial_timing_policy(
-        config=captured.config, target_seconds=60, memory_type=captured.case.product
+        config=captured.config,
+        target_seconds=60,
+        memory_type=captured.case.product,
+        transition="cut",
     )
-    second = plan_structure(replace(captured, render_timing=policy), _ports()).plan
-    assert "render_timing" not in original and "render_timing" not in second
-    assert original["carriers"] == second["carriers"]
-    assert original["content_cap_seconds"] == second["content_cap_seconds"]
+    plan = plan_structure(replace(captured, render_timing=policy), _ports()).plan
+    timeline = read_editorial_timeline(plan["render_timing"])
+    assert timeline.content_budget == (49.5 if titles else 60)
+    assert plan["content_cap_seconds"] == timeline.content_budget
+    assert len(plan["carriers"]) == (12 if titles else 15)
+    assert sum(c["seconds"] for c in plan["carriers"]) == (48 if titles else 60)
 
 
 def test_actual_live_planner_freezes_timing_before_inspection_and_survives_cuts(tmp_path):
@@ -262,7 +282,10 @@ def test_actual_live_planner_freezes_timing_before_inspection_and_survives_cuts(
     observed = []
 
     def inspect(carriers):
-        assert sum(row["seconds"] for row in carriers) <= 49.5
+        assert (
+            sum(row["seconds"] for row in carriers)
+            <= policy.resolve(carriers, assets).content_budget
+        )
         observed.extend(deepcopy(carriers))
         first = carriers[0]["asset_id"]
         members = {first: ("bound-hold",)}
@@ -272,9 +295,9 @@ def test_actual_live_planner_freezes_timing_before_inspection_and_survives_cuts(
     plan = plan_structure(captured, _ports(inspect)).plan
     assert observed and all(row in observed for row in plan["carriers"])
     assert len(plan["carriers"]) < len(observed)
-    assert plan["content_cap_seconds"] == 49.5
+    assert plan["content_cap_seconds"] == policy.resolve(observed, assets).content_budget
     timeline = read_editorial_timeline(plan["render_timing"])
-    assert timeline.content_budget == 49.5
+    assert timeline.content_budget == plan["content_cap_seconds"]
     assert plan["render_timing"]["source_ids"] == [row["asset_id"] for row in plan["carriers"]]
     assert plan["target_seconds"] == 60
 

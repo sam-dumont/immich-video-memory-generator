@@ -12,6 +12,7 @@ def test_editorial_extra_declares_each_optional_runtime_and_all_includes_it():
     assert {Requirement(value).name for value in extras["editorial"]} == {
         "onnxruntime",
         "huggingface-hub",
+        "kaldi-native-fbank",
     }
     assert "immich-memories[editorial]" in extras["all"]
     assert "immich-memories[editorial]" in extras["all-mac"]
@@ -31,6 +32,7 @@ def test_a_cpu_install_resolves_no_cuda_wheel_and_no_torch_family():
     assert {Requirement(value).name for value in extras["editorial-cuda"]} == {
         "onnxruntime-gpu",
         "huggingface-hub",
+        "kaldi-native-fbank",
     }
     # The CUDA variant replaces the CPU one; two distributions owning the same
     # import name must never be resolved into one environment.

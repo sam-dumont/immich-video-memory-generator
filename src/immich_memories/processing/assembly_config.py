@@ -153,6 +153,11 @@ class AssemblySettings:
     # None preserves the title-settings locale for standalone assembly callers.
     caption_locale: str | None = None
 
+    @property
+    def effective_transition_duration(self) -> float:
+        """An omitted fade uses the default; an explicit zero stays a cut."""
+        return 0.5 if self.transition_duration is None else self.transition_duration
+
 
 @dataclass
 class AssemblyClip:

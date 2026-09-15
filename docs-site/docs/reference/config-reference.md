@@ -104,6 +104,22 @@ not configurable. Where a clip is cut, and how long it runs, is the editor's dec
 photos from one album. Immich returns newest first, so a bigger album is truncated to its most
 recent assets, with a warning naming it.
 
+## Speech boundaries
+
+```yaml
+advanced:
+  speech:
+    enabled: true          # Move video cuts out of detected speech
+    vad_threshold: 0.25    # Voice probability threshold (0.1-0.9)
+    min_silence_ms: 200    # Pause that separates utterances (50-2000ms)
+```
+
+The bundled FireRedVAD model runs locally with the `editorial` or `editorial-cuda` extra.
+It measures retained videos and Live Photo companions, then maps speech onto the stitched
+timeline. The editor fits the resulting intervals before rendering; an uninterrupted
+utterance may cost more time or cause a clip to be left out. This detects voice activity,
+not sentence meaning. Music ducking remains separate.
+
 ## Generation defaults
 
 ```yaml
