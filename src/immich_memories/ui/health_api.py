@@ -277,7 +277,8 @@ async def _readiness_handler(request: Request) -> JSONResponse:  # noqa: ARG001
 
 async def _health_handler(request: Request) -> JSONResponse:  # noqa: ARG001
     """Keep the detailed compatibility payload without readiness status codes."""
-    snapshot = await _build_health_snapshot()
+    # Compatibility status belongs to this response, not the cached readiness payload.
+    snapshot = (await _build_health_snapshot()).copy()
     if snapshot["status"] == "ready":
         snapshot["status"] = "ok"
     return JSONResponse(snapshot)
