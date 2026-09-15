@@ -118,7 +118,9 @@ class ClipExtractor:
             )
             extraction_segment = segment
 
-        output_path = self.output_dir / output_filename
+        output_path = (self.output_dir / output_filename).with_suffix(
+            _clip_suffix(segment.source_path, reencode)
+        )
 
         if output_path.exists():
             logger.debug(f"Clip already exists: {output_path}")
@@ -467,6 +469,11 @@ def _resolve_buffer_times(
     return actual_start, actual_end
 
 
+def _clip_suffix(source_path: Path, reencode: bool) -> str:
+    # A MOV may carry ProRes and PCM streams that cannot be copied into MP4.
+    return ".mov" if not reencode and source_path.suffix.lower() == ".mov" else ".mp4"
+
+
 def _build_clip_output_path(
     source_path: Path,
     actual_start: float,
@@ -481,7 +488,8 @@ def _build_clip_output_path(
         f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
     )
     enc_suffix = "_enc" if reencode else ""
+    suffix = _clip_suffix(source_path, reencode)
     return (
         output_dir
-        / f"clip_{source_hash}_{actual_start:.1f}_{actual_end:.1f}{buffer_suffix}{enc_suffix}.mp4"
+        / f"clip_{source_hash}_{actual_start:.1f}_{actual_end:.1f}{buffer_suffix}{enc_suffix}{suffix}"
     )
