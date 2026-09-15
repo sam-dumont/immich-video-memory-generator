@@ -185,21 +185,23 @@ window would throw away tracks that fit.
 
 ACE-Step 1.5 takes explicit musical parameters (BPM, key, time signature) as structured fields. In
 `api` mode, the default, it is HTTP to an ACE-Step server polled every 3 s, and the server owns the
-loaded models. In `lib` mode the model runs in this process: MLX on Apple Silicon, CUDA on NVIDIA,
+loaded models. In `lib` mode the model runs locally: MLX on Apple Silicon, CUDA on NVIDIA,
 PyTorch CPU otherwise, Python 3.12 or earlier, falling back to `api` when the package is missing.
 
 A worked example, not the defaults. Shipped, `enabled` is false, `mode` is `api`, `model_variant` is
 `turbo` and `lm_model_size` is `1.7B`:
 
 ```yaml
-ace_step:
-  enabled: true
-  mode: "lib"
-  api_url: "http://localhost:8000"
-  model_variant: "acestep-v15-xl-turbo"   # 4B, 8 steps: the production soundtrack model
-  lm_model_size: "4B"
-  use_lm: false
-  num_versions: 3
+advanced:
+  ace_step:
+    enabled: true
+    mode: lib
+    model_variant: acestep-v15-xl-turbo   # 4B, 8 steps
+    lm_model_size: 4B
+    use_lm: false
+    num_versions: 1
+  musicgen:
+    enabled: false                     # use local Demucs for stems
 ```
 
 The variants are `turbo` and `base` (2B, 8 and 50 steps), `acestep-v15-xl-turbo` (4B, 8 steps), and
@@ -219,14 +221,57 @@ failure, so MusicGen is next and then a bundled track. The MLX buffer cache is c
 the DiT copy runs in bf16 (7.8 GB instead of 15.5 GB for XL); `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1`
 keeps fp32. Models are dropped after each batch.
 
+#### Install locally on a Mac
+
+Use the source checkout's Python 3.12 environment for local ACE-Step. It is not included in
+`uv tool install` or the `all-mac` extra. From a fresh checkout:
+
 ```bash
-uv sync --extra demucs
+brew install uv ffmpeg
+git clone https://github.com/sam-dumont/immich-video-memory-generator.git
+cd immich-video-memory-generator
+make dev-mac
 make install-acestep
 ```
 
-That target runs the pinned `uv pip install` lines and imports the backend to prove the install
-works, because a mismatched torchvision fails only at model load, minutes into a generation. A bare
-`uv sync` removes what the project does not declare, so rerun it after one.
+`make install-acestep` installs ACE-Step **v0.1.8**, its inference dependencies and Demucs together.
+It checks the real ACE-Step handler, its language-model imports and a torchvision operator.
+ACE-Step runs automatically in a sibling `.venv-acestep` environment because its Transformers
+version requires an older Hugging Face library than the editor. No server is needed. PyTorch,
+torchvision and torchaudio are pinned together. Training and the upstream web UI are excluded.
+
+Add the configuration above to `~/.immich-memories/config.yaml`, then verify actual generation:
+
+```bash
+make check-local-audio
+# Optional: test the larger XL-turbo model with its 4B planner
+make check-local-audio AUDIO_CHECK_ARGS="--quality high"
+uv run immich-memories ui
+```
+
+The check generates 15 seconds with 2B turbo and its 0.6B planner, runs local Demucs, and checks
+the duration and samples of the track and all four stems. It prints the files so you can listen.
+It fails if local generation fails; a remote server or bundled track cannot pass this check.
+The first run downloads missing weights. Existing `~/.cache/ace-step/checkpoints` and
+`~/.cache/torch/hub/checkpoints` caches are reused. See the memory requirements above before using XL.
+
+Run the app with `uv run immich-memories` from this checkout so it uses the environment you just
+installed into. `make dev`, `make dev-mac` and `make ensure-dev` leave the audio environment alone.
+A bare `uv sync` also leaves it intact, but can remove Demucs from the editor's environment;
+`make install-acestep` restores both. Rerun the installer after moving the checkout or changing
+the app version. It also repairs `operator torchvision::nms does not exist` from an older install.
+
+#### Containers and GPU access
+
+A separate ACE-Step container can expose its API to the editor with `advanced.ace_step.mode: api`
+and `advanced.ace_step.api_url` pointing at that service. Its model cache belongs on a persistent
+volume. This is useful on a [Linux NVIDIA host](../deploy/common-setups/linux-nvidia.md).
+
+On macOS, a normal Docker container cannot use ACE-Step's Metal/MLX backend; it runs on CPU.
+[Docker Desktop's container GPU support](https://docs.docker.com/desktop/features/gpu/) covers
+Windows with WSL2. Use the native installer above for GPU music generation on an Apple Silicon Mac.
+An editor running in Docker can still call a native ACE-Step API server through
+`http://host.docker.internal:8000`.
 
 ### MusicGen
 
@@ -243,13 +288,20 @@ musicgen:
 
 ### Ducking and stems
 
-The CLI masters the full mix and ducks that with a sidechain compressor (threshold 0.02, ratio 4.0,
-100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out); `--music-volume` maps 0.0 to 1.0 onto
--20 dB to 0 dB before ducking. The web UI's mixer is a different path: it separates the clip audio
-into stems with [Demucs](https://github.com/facebookresearch/demucs) and ducks the four stems
-independently (slider -40 dB to 0 dB, default 0.7, ratio 6.0, 50 ms attack, 500 ms release). Demucs
-comes from `pip install 'immich-memories[demucs]'` (an 80 MB model on first use) or from MusicGen's
-remote `/separate` endpoint; without either, ducking uses plain energy detection on the mixed audio.
+Generated music is mastered before [Demucs](https://github.com/facebookresearch/demucs) separates
+it. The CLI retains all four stems for the final mix: vocals duck most under original audio, bass
+and other instruments duck less, and drums keep their rhythm. Detected music in the original
+footage lowers every generated stem. Speech-safe video cuts remain part of selection.
+
+`--music-volume` maps 0.0 to 1.0 onto -20 dB to 0 dB before ducking. The CLI uses threshold 0.02,
+ratio 4.0, 100 ms attack, 2.5 s release, a 2 s fade in and a 3 s fade out. If four stems are
+unavailable, it ducks the full track with the same settings. Bundled and explicitly supplied tracks
+also use this full-track path. The web UI's preview mixer has its own controls.
+
+`make install-acestep` includes local Demucs, which uses Metal on Apple Silicon. For Demucs alone,
+install `immich-memories[demucs]`. Its htdemucs model is about 80 MB on first use. With
+`advanced.musicgen.enabled: true`, the MusicGen server's `/separate` endpoint takes priority over
+local Demucs.
 
 None of the ducking constants has a config key. `audio:` holds only `local_music_dir`
 (`~/Music/Memories`).

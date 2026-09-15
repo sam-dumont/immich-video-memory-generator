@@ -1346,7 +1346,7 @@ class TestRunMusicPhase:
             )
 
         mock_apply.assert_called_once_with(
-            result_path, music_file, 0.7, encoding_plan, mute_windows=None
+            result_path, music_file, 0.7, encoding_plan, mute_windows=None, stems=None
         )
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
@@ -1980,6 +1980,7 @@ class TestResolveMusic:
         assert result.path is None
 
     def test_auto_generate_when_no_path_and_config_available(self, tmp_path):
+        from immich_memories.audio.music_generator_models import GeneratedMusic
         from immich_memories.generate_music import resolve_music
 
         config = Config()
@@ -1990,7 +1991,7 @@ class TestResolveMusic:
             patch("immich_memories.generate_music.music_config_available", return_value=True),
             patch(
                 "immich_memories.generate_music.auto_generate_music",
-                return_value=tmp_path / "generated.mp3",
+                return_value=GeneratedMusic(full_mix=tmp_path / "generated.mp3"),
             ) as mock_gen,
         ):
 

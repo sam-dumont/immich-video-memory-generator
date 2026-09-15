@@ -81,12 +81,13 @@ auth = [
 # Model cache: ~/.cache/torch/hub/ (~80MB for htdemucs)
 demucs = [
     "demucs>=4.0",
+    "soundfile>=0.13.1",
 ]
 # Local ACE-Step music generation (in-process, no API server needed)
 # ⚠️  NOT a pip extra — ACE-Step is not published on PyPI.
 #     Install the tested v0.1.8 tag with --no-deps, then its inference-only
 #     dependencies. The upstream UI set conflicts with this app's Starlette.
-#     See docs-site/docs/create/pipeline/audio-and-music.md for setup instructions.
+#     See docs-site/docs/create/titles-and-music.md for setup instructions.
 # Required when preparing missing editorial public heads and detector facts.
 # Weights and the compact-caption endpoint are separate setup dependencies.
 #

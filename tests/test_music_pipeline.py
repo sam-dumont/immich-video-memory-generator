@@ -388,26 +388,66 @@ class TestStemSeparatorProtocol:
 class TestSeparationIsOptional:
     """Demucs is minutes of CPU. Only ask for it where the stems get used (#499)."""
 
-    def test_the_cli_path_does_not_order_stems_it_cannot_use(self, tmp_path):
-        """`auto_generate_music` returns the full mix and the mix path masters it;
-        the stems it used to separate were dropped on the floor."""
-        from unittest.mock import AsyncMock
-
+    def test_the_cli_keeps_generated_stems_for_the_final_mix(self, tmp_path):
+        from immich_memories.audio.music_generator_models import (
+            GeneratedMusic,
+            MusicGenerationResult,
+            MusicStems,
+            VideoTimeline,
+        )
         from immich_memories.config_loader import Config
         from immich_memories.generate_music import auto_generate_music
 
         config = Config()
         config.ace_step.enabled = True
+        full_mix = tmp_path / "full.wav"
+        full_mix.write_bytes(b"generated music")
+        stems = MusicStems(
+            vocals=tmp_path / "vocals.wav",
+            drums=tmp_path / "drums.wav",
+            bass=tmp_path / "bass.wav",
+            other=tmp_path / "other.wav",
+        )
+
+        async def generated(**kwargs):
+            return MusicGenerationResult(
+                versions=[
+                    GeneratedMusic(full_mix, stems if kwargs.get("separate_stems", True) else None)
+                ],
+                timeline=VideoTimeline(),
+                mood="calm",
+            )
 
         # WHY: replaces the ACE-Step/MusicGen call, which needs a GPU or a running server.
         with patch(
             "immich_memories.audio.music_generator.generate_music_for_video",
-            new_callable=AsyncMock,
-            return_value=None,
-        ) as generate:
-            auto_generate_music(config, [], tmp_path, None, transition_overlap=0.0)
+            side_effect=generated,
+        ):
+            result = auto_generate_music(config, [], tmp_path, None, transition_overlap=0.0)
 
-        assert generate.await_args.kwargs["separate_stems"] is False
+        assert result is not None
+        assert result.full_mix == full_mix
+        assert result.stems == stems
+
+    def test_resolving_generated_music_keeps_stems_available_to_the_mixer(self, tmp_path):
+        from immich_memories.audio.music_generator_models import GeneratedMusic, MusicStems
+        from immich_memories.config_loader import Config
+        from immich_memories.generate_music import resolve_music
+
+        config = Config()
+        config.ace_step.enabled = True
+        stems = MusicStems(
+            vocals=tmp_path / "vocals.wav",
+            drums=tmp_path / "drums.wav",
+            bass=tmp_path / "bass.wav",
+            other=tmp_path / "other.wav",
+        )
+        track = GeneratedMusic(tmp_path / "mastered.wav", stems)
+        # WHY: replaces model generation; the public resolver must retain its selected stems.
+        with patch("immich_memories.generate_music.auto_generate_music", return_value=track):
+            selection = resolve_music(config, None, False, [], tmp_path, None, transition_overlap=0)
+        assert selection.path == track.full_mix
+        assert selection.stems == stems
 
     def test_a_caller_that_cannot_use_stems_gets_no_separator(self):
         from immich_memories.audio.music_pipeline import create_pipeline

@@ -20,6 +20,15 @@ from immich_memories.audio.generators.ace_step_backend import (
 )
 from immich_memories.audio.generators.base import GenerationRequest
 
+
+@pytest.fixture(autouse=True)
+def no_installed_audio_environment(monkeypatch):
+    # WHY: these tests exercise in-process library/API behavior, independent of local installs.
+    monkeypatch.setattr(
+        "immich_memories.audio.generators.ace_step_isolated.isolated_python", lambda: None
+    )
+
+
 # ---------------------------------------------------------------------------
 # _detect_season
 # ---------------------------------------------------------------------------

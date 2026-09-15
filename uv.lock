@@ -1574,6 +1574,7 @@ all = [
     { name = "kaldi-native-fbank", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "mutagen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "soundfile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 all-mac = [
     { name = "demucs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1586,6 +1587,7 @@ all-mac = [
     { name = "pyobjc-framework-metal", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
+    { name = "soundfile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 audio = [
     { name = "mutagen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1595,6 +1597,7 @@ auth = [
 ]
 demucs = [
     { name = "demucs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "soundfile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 dev = [
     { name = "commitizen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1704,6 +1707,9 @@ requires-dist = [
     { name = "refurb", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
+    { name = "soundfile", marker = "extra == 'all'", specifier = ">=0.13.1" },
+    { name = "soundfile", marker = "extra == 'all-mac'", specifier = ">=0.13.1" },
+    { name = "soundfile", marker = "extra == 'demucs'", specifier = ">=0.13.1" },
     { name = "soundfile", marker = "extra == 'dev'", specifier = ">=0.12" },
     { name = "staticmap", specifier = ">=0.5" },
     { name = "types-croniter", marker = "extra == 'dev'", specifier = ">=6.0" },

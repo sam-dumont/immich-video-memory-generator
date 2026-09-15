@@ -23,6 +23,7 @@ from immich_memories.audio.generators.base import (
     MusicGenerator,
     StemSeparator,
 )
+from immich_memories.audio.mastering import master_music_track
 from immich_memories.audio.music_generator_models import (
     GeneratedMusic,
     MusicGenerationResult,
@@ -112,6 +113,10 @@ class MusicPipeline:
                 )
                 continue
 
+            # Master once before separation so stems retain the full track's balance.
+            result.audio_path = master_music_track(
+                result.audio_path, output_dir / f"mastered_version_{i}.wav"
+            )
             stems = await self._try_separate_stems(result, request, progress_callback, i)
 
             versions.append(
@@ -224,10 +229,8 @@ def create_pipeline(app_config, *, separate_stems: bool = True) -> MusicPipeline
     1. MusicGen API (if enabled) — established, supports 2-stem and 4-stem
     2. Local Demucs (if demucs package installed) — zero-config fallback
 
-    ``separate_stems=False`` skips the separator entirely. Demucs is minutes of
-    CPU per version, and only the UI's 4-stem ducking consumes the result; the
-    CLI mix path masters the full mix instead, so it was paying for stems it
-    then dropped (#499).
+    ``separate_stems=False`` skips the separator for callers that only need a
+    full track. CLI and UI generation retain stems for the final mix.
     """
     from immich_memories.audio.generators.factory import create_generator
 

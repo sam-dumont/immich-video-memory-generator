@@ -79,10 +79,27 @@ just started. On a Mac it is mlxcel and two commands, and the app checks that `G
 advertises `smolvlm2-500m-base-public` before it sends a picture. The recipe is on
 [Caption server](../installation/caption-server.md#apple-silicon-with-mlxcel).
 
+## Add local music generation
+
+ACE-Step needs a separate installation; `uv tool install "immich-memories[all-mac]"` does not
+include it. Follow the [local ACE-Step setup](../../create/titles-and-music.md#install-locally-on-a-mac)
+to use the source checkout's Python 3.12 environment. From that checkout:
+
+```bash
+make install-acestep
+make check-local-audio
+uv run immich-memories ui
+```
+
+The installer includes Demucs. The check generates a real 15-second track and all four stems
+locally. It prints the audio files and fails on errors, so a bundled fallback cannot hide a broken
+installation. Configure `advanced.ace_step.enabled: true`, `advanced.ace_step.mode: lib` and
+`advanced.musicgen.enabled: false` to use both models on this Mac.
+
 ## What this machine does that others do not
 
 VideoToolbox takes the H.264/H.265 encode onto the media engine, the GPU title renderer gets the
-particle effects and gradient backgrounds, and ACE-Step generates music in-process with no server
+particle effects and gradient backgrounds, and ACE-Step generates music locally with no server
 involved: a 60 s track takes ~17 s with `use_lm: false`, or ~45 s with thinking mode on.
 
 MusicGen is the exception. That backend only talks to an API server, so it needs an NVIDIA host or

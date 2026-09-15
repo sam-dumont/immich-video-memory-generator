@@ -85,16 +85,24 @@ install:
 dev:
 	uv sync --all-extras
 
-install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music generation)
-	uv pip install --python .venv/bin/python --no-deps \
+.PHONY: install-acestep check-local-audio
+install-acestep:  ## Install the tested ACE-Step 1.5 inference stack and local Demucs
+	uv sync --extra demucs --inexact
+	uv venv --python 3.12 --allow-existing .venv-acestep
+	uv pip install --python .venv-acestep/bin/python --no-deps \
 	  'ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'
-	uv pip install --python .venv/bin/python \
+	uv pip install --python .venv-acestep/bin/python -e '.[demucs]' \
 	  'accelerate>=1.12.0' 'diffusers>=0.37.0' diskcache 'loguru>=0.7.3' \
+	  'soundfile>=0.13.1' 'scipy>=1.10.1' 'numba>=0.63.1' 'matplotlib>=3.7.5' \
+	  'einops>=0.8.1' \
 	  'mlx>=0.25.2' 'mlx-lm>=0.20.0' 'pytorch-wavelets>=1.3.0' \
-	  'pywavelets>=1.9.0' toml 'torchvision==0.25.0' \
+	  'pywavelets>=1.9.0' toml 'torch==2.10.0' 'torchvision==0.25.0' 'torchaudio==2.10.0' \
 	  'transformers>=4.51.0,<4.58.0' 'typer-slim>=0.21.1' \
 	  'vector-quantize-pytorch>=1.27.15'
-	@uv run python -c "from immich_memories.audio.generators.ace_step_backend import ACEStepBackend; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('ACE-Step stack OK')"
+	@.venv-acestep/bin/python -c "from acestep.handler import AceStepHandler; from acestep.llm_inference import LLMHandler; from demucs.pretrained import get_model; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('Local ACE-Step and Demucs imports OK')"
+
+check-local-audio:  ## Generate 15 seconds locally and verify all four Demucs stems
+	uv run python scripts/validate_local_audio.py $(AUDIO_CHECK_ARGS)
 
 # Install dev tools only (no GPU/CUDA/editorial deps — for CI quality gates).
 # --locked: CI must install exactly what uv.lock pins, since that is what

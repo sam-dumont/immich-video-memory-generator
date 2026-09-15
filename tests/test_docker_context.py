@@ -45,6 +45,7 @@ def test_the_context_excludes_every_tree_the_image_never_uses() -> None:
         "output",
         "dist",
         ".venv",
+        ".venv-acestep",
         ".worktrees",
         "*.private.*",
         ".git",

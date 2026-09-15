@@ -773,7 +773,12 @@ class TestACEStepBackend:
     async def test_is_available_no_lib_no_api(self):
         """Should return False when neither lib nor API is available."""
         backend = ACEStepBackend(ACEStepConfig(mode="lib"))
+        # WHY: simulate an uninstalled local runtime and an unreachable external API.
         with (
+            patch(
+                "immich_memories.audio.generators.ace_step_isolated.isolated_python",
+                return_value=None,
+            ),
             patch(
                 "immich_memories.audio.generators.ace_step_backend.is_ace_step_importable",
                 return_value=False,

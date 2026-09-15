@@ -6,6 +6,7 @@
 .gitattributes
 .github
 .venv
+.venv-acestep
 .worktrees
 venv
 

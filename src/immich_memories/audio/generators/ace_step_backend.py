@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from immich_memories.audio.generators import ace_step_isolated
 from immich_memories.audio.generators.ace_step_captions import (
     build_ace_caption_structured,
 )
@@ -116,11 +117,12 @@ class ACEStepBackend(MusicGenerator):
     async def is_available(self) -> bool:
         """Check if ACE-Step is available in configured mode."""
         if self.config.mode == "lib":
+            if ace_step_isolated.isolated_python():
+                return True
             if is_ace_step_importable():
                 return True
             logger.warning(
-                "ACE-Step library not installed (pip install 'ace-step @ "
-                "git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'). "
+                "ACE-Step library not installed. For a Mac checkout, run make install-acestep. "
                 "Falling back to API at %s",
                 self.config.api_url,
             )
@@ -168,7 +170,9 @@ class ACEStepBackend(MusicGenerator):
         if self._effective_mode:
             return self._effective_mode
 
-        if self.config.mode == "lib" and is_ace_step_importable():
+        if self.config.mode == "lib" and (
+            ace_step_isolated.isolated_python() or is_ace_step_importable()
+        ):
             self._effective_mode = "lib"
         else:
             self._effective_mode = "api"
@@ -201,6 +205,9 @@ class ACEStepBackend(MusicGenerator):
         mode = self._get_effective_mode()
 
         if mode == "lib":
+            if python := ace_step_isolated.isolated_python():
+                logger.info("Generating ACE-Step music in the local audio environment")
+                return await ace_step_isolated.generate_isolated(python, self.config, request)
             return await self._generate_lib(request, progress_callback)
         return await self._generate_api(request, progress_callback)
 

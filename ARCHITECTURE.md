@@ -239,6 +239,7 @@ src/immich_memories/
 │       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
 │       ├── ace_step_backend.py # ACE-Step lib/API (mode choice, captions, REST protocol)
 │       ├── ace_step_runtime.py # ACE-Step in-process handlers: device, MLX/torch memory, one render
+│       ├── ace_step_isolated.py # Local subprocess using the installer's separate audio environment
 │       ├── ace_step_captions.py # Dense caption templates
 │       └── demucs_local.py     # Local Demucs stem separation (in-process)
 │

@@ -343,6 +343,7 @@ def _run_music_phase(
             params.music_volume,
             encoding_plan,
             mute_windows=mute_windows,
+            stems=selection.stems,
         )
     except Exception as exc:  # WHY: optional music must not invalidate the base artifact
         return _complete_music_failure(

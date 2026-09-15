@@ -28,6 +28,7 @@ from immich_memories.processing.scaling_utilities import aggregate_mood_from_cli
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
+    from immich_memories.audio.music_generator_models import GeneratedMusic, MusicStems
     from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class MusicSelection:
 
     path: Path | None
     warning: str | None = None
+    stems: MusicStems | None = None
 
 
 def optional_music_warning(exc: Exception, config: Config | None = None) -> str:
@@ -140,7 +142,7 @@ def resolve_music(
             logger.warning(warning)
             generated = None
         if generated:
-            return MusicSelection(_master(generated, run_output_dir))
+            return MusicSelection(generated.full_mix, stems=generated.stems)
 
     # WHY: with no generator configured this used to return silence, which is what
     # the Docker/NAS path gets by default.
@@ -235,10 +237,10 @@ def auto_generate_music(
     report_fn: Callable[[str, float, str], None] | None = None,
     *,
     transition_overlap: float,
-) -> Path | None:
+) -> GeneratedMusic | None:
     """Auto-generate music using configured AI backends.
 
-    Returns the path to the generated music file, or None when no backend
+    Returns the selected track and stems, or None when no backend
     is available. Backend failures propagate to the optional phase boundary.
     """
     if not music_config_available(config):
@@ -289,9 +291,6 @@ def auto_generate_music(
                 photo_cadence_seconds=photo_cadence_seconds(
                     assembly_clips, transition_overlap=transition_overlap
                 ),
-                # This path masters the full mix and ducks that. It has no way to
-                # use stems, so it used to run Demucs and drop the result (#499).
-                separate_stems=False,
             )
         )
 
@@ -303,7 +302,7 @@ def auto_generate_music(
             selected = result.selected
             if selected and selected.full_mix and selected.full_mix.exists():
                 logger.info(f"Auto-generated music: {selected.full_mix}")
-                return selected.full_mix
+                return selected
 
     except (RuntimeError, OSError):
         raise
@@ -411,9 +410,12 @@ def apply_music_file(
     volume: float,
     encoding_plan: EncodingPlan,
     mute_windows: list[tuple[float, float]] | None = None,
+    *,
+    stems: MusicStems | None = None,
 ) -> OutputProbe:
     """Mix a music file and publish it only when it matches the encoding plan."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
+    from immich_memories.audio.mixer_helpers import mix_audio_with_4stem_ducking
 
     mix_config = MixConfig(
         ducking=DuckingConfig(
@@ -422,10 +424,27 @@ def apply_music_file(
         mute_windows=mute_windows,
     )
     with staged_music_output(video_path, encoding_plan) as staged_path:
-        mix_audio_with_ducking(
-            video_path=video_path,
-            music_path=music_path,
-            output_path=staged_path,
-            config=mix_config,
-        )
+        if (
+            stems
+            and stems.drums
+            and stems.bass
+            and stems.other
+            and all(p.is_file() for p in (stems.drums, stems.bass, stems.vocals, stems.other))
+        ):
+            mix_audio_with_4stem_ducking(
+                video_path,
+                stems.drums,
+                stems.bass,
+                stems.vocals,
+                stems.other,
+                staged_path,
+                config=mix_config,
+            )
+        else:
+            mix_audio_with_ducking(
+                video_path=video_path,
+                music_path=music_path,
+                output_path=staged_path,
+                config=mix_config,
+            )
         return publish_music_mix(video_path, encoding_plan)

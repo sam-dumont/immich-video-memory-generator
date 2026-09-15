@@ -244,7 +244,7 @@ of public domain, BSD and GPL parts. Nothing here changes the project's MIT
 licence for its own code, but a downstream that vendors the environment
 should know.
 
-137 packages, computed from uv.lock: everything reachable from
+138 packages, computed from uv.lock: everything reachable from
 immich-memories through the runtime extras (never the dev tools). Regenerate
 with `make notices`; `make notices-check` fails when this list is stale.
 
@@ -707,6 +707,10 @@ simple-websocket 1.1.0
 six 1.17.0
   License: MIT
   URL: https://github.com/benjaminp/six
+
+soundfile 0.13.1
+  License: BSD
+  URL: https://github.com/bastibe/python-soundfile
 
 starlette 1.6.0
   License: BSD-3-Clause

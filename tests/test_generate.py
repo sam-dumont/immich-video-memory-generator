@@ -819,7 +819,7 @@ class TestAutoMusicGeneration:
                 transition_overlap=0.0,
             )
             assert result is not None
-            assert result == fake_music_path
+            assert result.full_mix == fake_music_path
 
     def test_auto_music_returns_none_when_no_config(self, tmp_path):
         """When no music backend is configured, auto-generate returns None."""

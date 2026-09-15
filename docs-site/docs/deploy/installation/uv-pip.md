@@ -73,9 +73,12 @@ checkout, `pip install -e .`.
 `editorial` and `editorial-cuda` together: `onnxruntime` and `onnxruntime-gpu` own the same import
 name and the one that answers is whichever pip wrote last. `all` and `all-mac` carry the CPU one.
 
-Two things need no extra: GPU title rendering, whose kernel library is a base dependency wherever
-it publishes a wheel ([Title kernels](../hardware.md#title-kernels)), and AI music generation,
-which talks to a server ([Audio and music](../../create/titles-and-music.md#music)). The pinned
+GPU title rendering needs no extra: its kernel library is a base dependency wherever
+it publishes a wheel ([Title kernels](../hardware.md#title-kernels)). Remote AI music generation
+also needs no extra. For **local ACE-Step and Demucs on a Mac**, use a source checkout and
+`make install-acestep`, then `make check-local-audio` to verify a real track and four stems.
+The commands and configuration are in [Local ACE-Step setup](../../create/titles-and-music.md#install-locally-on-a-mac).
+The pinned
 encoder, detector weights and caption endpoint the `editorial` runtime needs are on
 [editorial annotation setup](../configuration/editorial-preparation.md).
 

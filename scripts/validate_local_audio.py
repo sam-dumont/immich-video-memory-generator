@@ -9,8 +9,8 @@ Usage:
     .venv/bin/python scripts/validate_local_audio.py --quality high  # XL-turbo + 4B LM
 
 Requirements:
-    uv sync --extra demucs
-    Install ACE-Step v0.1.8 with the inference-only commands in the Audio & Music manual.
+    make install-acestep
+    make check-local-audio
 
 Model cache locations:
     ACE-Step: ~/.cache/ace-step/checkpoints/  (~28GB for XL-turbo + 4B LM + shared assets)
@@ -62,16 +62,22 @@ def check_dependencies() -> dict[str, bool]:
     deps = {}
     for pkg in ("acestep", "demucs", "torch", "torchaudio"):
         deps[pkg] = importlib.util.find_spec(pkg) is not None
+    from immich_memories.audio.generators.ace_step_isolated import isolated_python
+
+    deps["acestep"] = deps["acestep"] or isolated_python() is not None
     return deps
 
 
 def get_peak_memory_mb() -> float:
     """Get peak RSS in MB (macOS/Linux)."""
-    usage = resource.getrusage(resource.RUSAGE_SELF)
+    peak = max(
+        resource.getrusage(kind).ru_maxrss
+        for kind in (resource.RUSAGE_SELF, resource.RUSAGE_CHILDREN)
+    )
     # macOS reports in bytes, Linux in KB
     if sys.platform == "darwin":
-        return usage.ru_maxrss / (1024 * 1024)
-    return usage.ru_maxrss / 1024
+        return peak / (1024 * 1024)
+    return peak / 1024
 
 
 async def run_acestep(output_dir: Path, quality: str) -> Path | None:
@@ -87,6 +93,11 @@ async def run_acestep(output_dir: Path, quality: str) -> Path | None:
 
     logger.info(f"ACE-Step config: variant={config.model_variant}, lm={config.lm_model_size}")
 
+    from immich_memories.audio.generators.ace_step_isolated import isolated_python
+    from immich_memories.audio.generators.ace_step_runtime import is_ace_step_importable
+
+    if not isolated_python() and not is_ace_step_importable():
+        raise RuntimeError("Local ACE-Step is missing. Run make install-acestep first.")
     backend = ACEStepBackend(config)
     if not await backend.is_available():
         logger.error("ACE-Step not available (acestep package missing)")
@@ -100,6 +111,9 @@ async def run_acestep(output_dir: Path, quality: str) -> Path | None:
 
     start = time.monotonic()
     result = await backend.generate(request)
+    if result.metadata.get("mode") != "lib":
+        raise RuntimeError("The local check cannot use an API server.")
+    validate_audio(result.audio_path, require_sound=True)
     elapsed = time.monotonic() - start
 
     logger.info(f"ACE-Step generated: {result.audio_path} ({elapsed:.1f}s)")
@@ -125,6 +139,10 @@ async def run_demucs(audio_path: Path, output_dir: Path) -> bool:
 
     start = time.monotonic()
     stems = await backend.separate_stems(audio_path, output_dir)
+    for path in (stems.vocals, stems.drums, stems.bass, stems.other):
+        if path is None:
+            raise RuntimeError("Demucs did not produce all four stems")
+        validate_audio(path)
     elapsed = time.monotonic() - start
 
     logger.info(f"Demucs separated {4 if stems.has_full_stems else 2} stems ({elapsed:.1f}s)")
@@ -139,6 +157,20 @@ async def run_demucs(audio_path: Path, output_dir: Path) -> bool:
 
     backend.release()
     return True
+
+
+def validate_audio(path: Path, *, require_sound: bool = False) -> None:
+    """Check real samples and duration, allowing silent instrumental vocal stems."""
+    import numpy as np
+    import soundfile as sf
+
+    samples, rate = sf.read(path, dtype="float32", always_2d=True)
+    duration = len(samples) / rate
+    if abs(duration - 15) > 0.5 or not np.isfinite(samples).all():
+        raise RuntimeError(f"Invalid audio duration or samples: {path.name}")
+    if require_sound and np.max(np.abs(samples)) < 0.001:
+        raise RuntimeError("ACE-Step produced silent audio")
+    logger.info("Verified %s: %.2fs, %d Hz", path.name, duration, rate)
 
 
 async def main():
@@ -170,7 +202,7 @@ async def main():
     missing = [k for k, v in deps.items() if not v]
     if missing:
         logger.warning(f"Missing packages: {missing}")
-        logger.info("Install with: pip install 'immich-memories[demucs]' acestep")
+        logger.info("Install with: make install-acestep (ACE-Step runs in its own environment)")
 
     # 2. ACE-Step generation
     logger.info("")
