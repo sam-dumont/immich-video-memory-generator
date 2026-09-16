@@ -12,7 +12,6 @@ import json
 from functools import partial
 from typing import Any
 
-from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT, relationship_evidence
@@ -284,7 +283,6 @@ def _synthesize(
         episode.key: {
             **hints.get(episode.key, {}),
             "people_context": relationship_evidence(episode.facts),
-            "episode_context": context_evidence(episode.facts),
         }
         for episode in episodes
     }

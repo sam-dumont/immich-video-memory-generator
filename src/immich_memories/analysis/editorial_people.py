@@ -17,14 +17,17 @@ does not establish kinship. Holding a baby does not establish parenthood. When t
 not establish a relationship, describe the people and action without inventing one."""
 
 
-def relationship_evidence(rows: Iterable[Mapping]) -> str:
+def relationship_evidence(
+    rows: Iterable[Mapping], *, fields=("known_people_in_group", "person_links")
+) -> str:
     """Carry distinct people facts past prose summaries without losing their provenance."""
-    return "; ".join(
+    return ";".join(
         dict.fromkeys(
-            str(row[field])
+            fact.strip()
             for row in rows
-            for field in ("known_people_in_group", "person_links")
-            if row.get(field)
+            for field in fields
+            for fact in str(row.get(field) or "").split(";")
+            if fact.strip()
         )
     )
 

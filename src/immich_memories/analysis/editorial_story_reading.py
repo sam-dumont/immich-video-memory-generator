@@ -13,7 +13,6 @@ from functools import partial
 from operator import itemgetter
 from typing import Any
 
-from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT, relationship_evidence
@@ -215,10 +214,10 @@ def _episode_summary(episode, last_seen) -> dict[str, Any]:
     return {
         "id": episode.key,
         "title": episode.title,
+        "account": episode.account,
         "last_seen": last_seen.get(episode.key, "")[:16],
         "facts": [f["fact"][:90] for f in (episode.facts or [])[:3]],
         "people_context": relationship_evidence(episode.facts),
-        "episode_context": context_evidence(episode.facts),
     }
 
 

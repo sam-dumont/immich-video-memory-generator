@@ -237,8 +237,10 @@ def test_wider_episode_context_reaches_story_reading_without_inventing_picture_p
         0
     ]
     assert all("Taylor Example" not in row["known_people_in_group"] for row in fragments)
-    for prefix in ("story-understanding", "story-weighing"):
-        assert any(
-            surrounding in row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)
-        )
+    # Later stages consume the reader's account, not another copy of raw context.
+    assert all(
+        surrounding not in row["prompt"]
+        for row in judge.calls
+        if row["stage"].startswith(("story-understanding", "story-weighing"))
+    )
     assert plan["episode_context"] == captured.episode_context

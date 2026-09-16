@@ -12,9 +12,8 @@ from functools import partial
 from itertools import chain
 from typing import Any
 
-from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
-from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT
+from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT, relationship_evidence
 from immich_memories.analysis.editorial_story_replies import (
     GATE_WEIGHT,
     STORY_VERSION,
@@ -89,8 +88,7 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
             f"{rel} x{n}" for rel, n in sorted(people.items(), key=lambda kv: -kv[1])[:6]
         )
         episode_hints = [hints.get(key, {}) for key in story["episodes"]]
-        relationships = context_evidence(episode_hints, field="people_context")
-        context = context_evidence(episode_hints)
+        relationships = relationship_evidence(episode_hints, fields=("people_context",))
         rows.append(
             f"{story['key']} | {span} | {seen['days']} day(s) | {seen['episodes']} episode(s) | "
             f"{seen['moments']} moments | {seen['pictures']} pictures | {seen['favourites']} favourites | "
@@ -98,7 +96,6 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
             + (f" | people: {people_text}" if people_text else "")
             + (f" | facts: {facts}" if facts else "")
             + (f" | people.yaml: {relationships}" if relationships else "")
-            + (f" | surrounding context: {context}" if context else "")
         )
     return rows
 

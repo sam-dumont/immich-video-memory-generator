@@ -120,7 +120,8 @@ give the editor choices and keep short Live sequences available. Longer date ran
 months or years to fit the same budget. Small pools pass through in full.
 
 Sampling retains the surrounding eligible episode's time span, capture count, places and named
-participants as context for story reading and weighting. Someone tagged elsewhere in the episode
+participants as context for story reading. Later grouping and weighting use that reading's short
+account and confirmed people facts; they do not repeat the full source context. Someone tagged elsewhere in the episode
 is not assumed to appear in each selected picture. A matching cached episode summary is reused;
 changed membership or evidence invalidates it. Missing summaries trigger no extra analysis outside
 the sample. Metadata cannot reveal an action that no picture or cached reading has described.

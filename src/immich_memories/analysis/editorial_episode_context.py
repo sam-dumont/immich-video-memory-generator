@@ -16,11 +16,6 @@ from immich_memories.store.episode_readings import (
 )
 
 
-def context_evidence(rows, *, field="episode_context") -> str:
-    """Conserve distinct surrounding context through story summaries."""
-    return "\n".join(dict.fromkeys(row[field] for row in rows if row.get(field)))
-
-
 def contextualize_episode_rows(tables, moment_assets, context):
     """Attach context to episodes while leaving picture/people associations untouched."""
     if not context:
