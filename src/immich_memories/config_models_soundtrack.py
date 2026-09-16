@@ -15,14 +15,25 @@ from immich_memories.config_models import expand_env_vars
 
 
 class AudioConfig(BaseModel):
-    """Local music library used by the `music` CLI subcommand.
+    """Soundtrack policy: the local library the `music` CLI scans, and how
+    auto-generated music is vetted.
 
-    Generation picks its music backend from `ace_step.enabled` / `musicgen.enabled`
-    and the `--music` / `--no-music` flags; ducking and fades are fixed in the mixer.
+    Generation picks its backend from `ace_step.enabled` / `musicgen.enabled`
+    and the `--music` / `--no-music` flags; ducking and fades are fixed in the
+    mixer.
     """
 
     local_music_dir: str = Field(
         default="~/Music/Memories", description="Directory for local music library"
+    )
+    max_regenerations: int = Field(
+        default=2,
+        ge=0,
+        le=3,
+        description=(
+            "Extra tracks auto mode may generate when the first is flagged as a "
+            "repetitive 'tick' by the cheap quality gate; the best-scored take is kept"
+        ),
     )
 
     @property

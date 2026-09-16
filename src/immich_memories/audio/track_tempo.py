@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import logging
 import random
-import subprocess
 from pathlib import Path
 
 import numpy as np
+
+from immich_memories.audio.audio_decode import decode_mono_float
 
 logger = logging.getLogger(__name__)
 
@@ -42,32 +43,9 @@ _MAX_BPM = 180
 _BEAT_TOLERANCE = 0.2
 
 
-def _decode_mono(path: Path) -> np.ndarray | None:
-    proc = subprocess.run(
-        [
-            "ffmpeg",
-            "-v",
-            "error",
-            "-i",
-            str(path),
-            "-ac",
-            "1",
-            "-ar",
-            str(_SAMPLE_RATE),
-            "-f",
-            "f32le",
-            "-",
-        ],
-        capture_output=True,
-    )
-    if proc.returncode != 0 or not proc.stdout:
-        return None
-    return np.frombuffer(proc.stdout, dtype=np.float32)
-
-
 def detect_bpm(path: Path) -> float | None:
     """Tempo of a track in BPM, or None when it cannot be read or has no pulse."""
-    samples = _decode_mono(path)
+    samples = decode_mono_float(path, _SAMPLE_RATE)
     if samples is None or samples.size < _SAMPLE_RATE:
         return None
 

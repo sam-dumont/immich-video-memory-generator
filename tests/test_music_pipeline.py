@@ -656,3 +656,179 @@ class TestBackendChainSurvivesAnyFailure:
 
         assert len(seen) >= 2, "expected a separation per version"
         assert len(seen) == len(set(seen)), f"versions shared a stem directory: {seen}"
+
+
+class CountingGenerator(FakeGenerator):
+    def __init__(self, name: str = "Gen"):
+        super().__init__(name)
+        self.calls = 0
+
+    async def generate(
+        self,
+        request: GenerationRequest,
+        progress_callback: Any | None = None,
+    ) -> GenerationResult:
+        self.calls += 1
+        return await super().generate(request, progress_callback)
+
+
+class CountingSeparator(FakeStemSeparator):
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    async def separate_stems(
+        self,
+        audio_path: Path,
+        output_dir: Path,
+        progress_callback: Any | None = None,
+    ) -> MusicStems:
+        self.calls += 1
+        return await super().separate_stems(audio_path, output_dir, progress_callback)
+
+
+class TestQualityGate:
+    """Auto mode's bounded regenerate: score each take, stop early, keep the best.
+
+    ``quality_gate`` turns the version loop from "generate everything, separate
+    everything" into "generate until one passes, separate the winner only".
+    """
+
+    async def test_an_accepted_take_stops_the_loop_after_one(self, tmp_path: Path) -> None:
+        from immich_memories.audio.track_quality import TrackQuality
+
+        gen = CountingGenerator()
+        sep = CountingSeparator()
+        pipeline = MusicPipeline(generators=[gen], stem_separator=sep)
+
+        # WHY: returns a verdict object; the pipeline only reads .flagged/.score.
+        def gate(path: Path) -> TrackQuality:
+            del path
+            return TrackQuality(periodicity=0.2, spikiness=1.1)
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=3, quality_gate=gate
+            )
+
+        assert gen.calls == 1, "an accepted take must not spend further regenerations"
+        assert sep.calls == 1, "stems are separated once, for the accepted take"
+        assert len(result.versions) == 1
+        assert result.selected_version == 0
+
+    async def test_flagged_takes_regenerate_bounded_and_keep_the_best(self, tmp_path: Path) -> None:
+        from immich_memories.audio.track_quality import TrackQuality
+
+        gen = CountingGenerator()
+        sep = CountingSeparator()
+        verdicts = iter(
+            [
+                TrackQuality(periodicity=0.9, spikiness=4.0),  # a tick
+                TrackQuality(periodicity=0.3, spikiness=1.4),  # a good take
+            ]
+        )
+
+        def gate(path: Path) -> TrackQuality:
+            del path
+            return next(verdicts)
+
+        pipeline = MusicPipeline(generators=[gen], stem_separator=sep)
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=3, quality_gate=gate
+            )
+
+        assert gen.calls == 2, "the first tick is replaced, the second accepted"
+        assert sep.calls == 1, "only the winner is separated"
+        assert len(result.versions) == 1
+        # The winner is the good take: regeneration replaced the tick instead of
+        # silently shipping it.
+        assert result.versions[0].full_mix.name == "fake_1.wav"
+
+    async def test_scoring_nothing_still_returns_a_track(self, tmp_path: Path) -> None:
+        """None means 'no verdict', not 'drop the take'."""
+
+        gen = CountingGenerator()
+        pipeline = MusicPipeline(generators=[gen], stem_separator=None)
+
+        def gate(path: Path):
+            del path
+            return None
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=3, quality_gate=gate
+            )
+
+        assert gen.calls == 3, "no verdict never lets the loop stop early"
+        assert len(result.versions) == 1
+        assert result.versions[0].full_mix.exists()
+
+
+class TestAutoRegenerationBudget:
+    """Auto mode regenerates a bounded number of takes and gates them (#1007)."""
+
+    def test_auto_mode_requests_the_budget_and_a_quality_gate(self, tmp_path: Path) -> None:
+        from immich_memories.audio.music_generator_models import (
+            GeneratedMusic,
+            MusicGenerationResult,
+            VideoTimeline,
+        )
+        from immich_memories.config_loader import Config
+        from immich_memories.generate_music import auto_generate_music
+
+        config = Config()
+        config.ace_step.enabled = True
+        config.audio.max_regenerations = 2
+
+        captured: dict = {}
+
+        async def fake_generate(**kwargs):
+            captured.update(kwargs)
+            full_mix = tmp_path / "full.wav"
+            full_mix.write_bytes(b"x")
+            return MusicGenerationResult(
+                versions=[GeneratedMusic(full_mix)],
+                timeline=VideoTimeline(),
+                mood="calm",
+            )
+
+        # WHY: replaces the ACE-Step/MusicGen call, which needs a GPU or a server.
+        with patch(
+            "immich_memories.audio.music_generator.generate_music_for_video",
+            side_effect=fake_generate,
+        ):
+            result = auto_generate_music(config, [], tmp_path, None, transition_overlap=0.0)
+
+        assert result is not None
+        assert captured["config"].num_versions == 3, "one take plus two regenerations"
+        assert callable(captured["quality_gate"]), "auto mode gates every take"
+
+
+class TestMoodDetailThreadsThrough:
+    """The reader's music judgment must reach the generator, not stop at a mood word."""
+
+    async def test_mood_detail_is_put_on_every_request(self, tmp_path: Path) -> None:
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        seen: list[GenerationRequest] = []
+
+        class RecordingGenerator(FakeGenerator):
+            async def generate(
+                self,
+                request: GenerationRequest,
+                progress_callback: Any | None = None,
+            ) -> GenerationResult:
+                seen.append(request)
+                return await super().generate(request, progress_callback)
+
+        detail = VideoMood(primary_mood="happy", genre_suggestions=["jazz"], energy_level="high")
+        pipeline = MusicPipeline(generators=[RecordingGenerator("Gen")], stem_separator=None)
+
+        async with pipeline:
+            await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=1, mood_detail=detail
+            )
+
+        assert seen[0].mood_detail is detail

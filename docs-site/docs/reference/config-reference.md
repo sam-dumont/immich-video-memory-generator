@@ -286,10 +286,16 @@ ace_step:
 
 audio:
   local_music_dir: "~/Music/Memories"   # Library scanned by `immich-memories music search`
+  max_regenerations: 2                  # Extra auto-mode takes when the first is flagged (0-3)
 ```
 
 `audio.local_music_dir` only feeds the `immich-memories music` helper commands; generation never
 picks music from it on its own: pass the file with `--music`.
+
+`audio.max_regenerations` bounds auto mode's reaction to a generated track the cheap quality gate
+flags as a repetitive "tic-tac". The first take is scored; if it is flagged, auto mode generates
+up to that many more takes and keeps the best-scored one. It never drops music, so a run ends with
+a track even when every take is flagged.
 
 ## LLM (vision model)
 

@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable
 from pathlib import Path
 
+from immich_memories.audio.mood_analyzer import VideoMood
 from immich_memories.audio.music_generator_client import (
     MusicGenClient,
     MusicGenClientConfig,
@@ -20,6 +22,7 @@ from immich_memories.audio.music_generator_models import (
     MusicGenerationResult,
     VideoTimeline,
 )
+from immich_memories.audio.track_quality import TrackQuality
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +107,8 @@ async def generate_music_for_video(
     memory_type: str | None = None,
     photo_cadence_seconds: float | None = None,
     separate_stems: bool = True,
+    mood_detail: VideoMood | None = None,
+    quality_gate: Callable[[Path], TrackQuality | None] | None = None,
 ) -> MusicGenerationResult:
     """Generate multiple music versions for a video with per-clip moods.
 
@@ -113,6 +118,10 @@ async def generate_music_for_video(
 
     Callers that cannot consume stems pass ``separate_stems=False`` rather than
     paying for a Demucs run they will drop (#499).
+
+    ``quality_gate`` (pipeline path only) turns the version loop into a bounded
+    regenerate: each take is scored, generation stops early once a take passes,
+    and only the best take is stem-separated (see ``MusicPipeline``).
 
     Args:
         timeline: Video timeline with per-clip mood information
@@ -142,6 +151,8 @@ async def generate_music_for_video(
                 hemisphere=hemisphere,
                 memory_type=memory_type,
                 photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
+                quality_gate=quality_gate,
             )
 
     # Legacy path: direct MusicGen client

@@ -28,6 +28,7 @@ from immich_memories.processing.scaling_utilities import aggregate_mood_from_cli
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
+    from immich_memories.audio.mood_analyzer import VideoMood
     from immich_memories.audio.music_generator_models import GeneratedMusic, MusicStems
     from immich_memories.config_loader import Config
 
@@ -116,7 +117,9 @@ def resolve_music(
         # Missing explicit tracks are never silently replaced with bundled music.
         return MusicSelection(music_path if music_path.exists() else None)
 
-    assembly_clips, music_mood = _music_evidence(config, assembly_clips, editorial_attempt_dir)
+    assembly_clips, music_mood, mood_detail = _music_evidence(
+        config, assembly_clips, editorial_attempt_dir
+    )
 
     warning: str | None = None
     if source is MusicSource.AUTO and music_config_available(config):
@@ -130,6 +133,7 @@ def resolve_music(
                 memory_type,
                 report_fn,
                 transition_overlap=transition_overlap,
+                mood_detail=mood_detail,
             )
         except Exception as exc:  # WHY: optional music must not invalidate the base artifact
             # A configured generator that fails used to be worse than no generator
@@ -166,8 +170,12 @@ def resolve_music(
 
 def _music_evidence(
     config: Config, clips: list[AssemblyClip], attempt: Path | None
-) -> tuple[list[AssemblyClip], str | None]:
-    """Apply the text answer to music copies; preserve facts used by titles and replay."""
+) -> tuple[list[AssemblyClip], str | None, VideoMood | None]:
+    """Apply the text answer to music copies; preserve facts used by titles and replay.
+
+    Returns the clips, the mood the bundled branch reads, and the full reader
+    judgment the AI branch carries into the caption (energy, tempo, genres).
+    """
     from immich_memories.audio.text_mood import mood_for_cut
 
     fallback = aggregate_mood_from_clips(clips)
@@ -180,9 +188,9 @@ def _music_evidence(
         )
     )
     if choice.source != "cut_text":
-        return clips, fallback
+        return clips, fallback, None
     mood = choice.mood.primary_mood
-    return [replace(clip, llm_emotion=mood) for clip in clips], mood
+    return [replace(clip, llm_emotion=mood) for clip in clips], mood, choice.mood
 
 
 def _master(track: Path, run_output_dir: Path) -> Path:
@@ -237,6 +245,7 @@ def auto_generate_music(
     report_fn: Callable[[str, float, str], None] | None = None,
     *,
     transition_overlap: float,
+    mood_detail: VideoMood | None = None,
 ) -> GeneratedMusic | None:
     """Auto-generate music using configured AI backends.
 
@@ -250,6 +259,7 @@ def auto_generate_music(
         from immich_memories.audio.music_generator import generate_music_for_video
         from immich_memories.audio.music_generator_client import MusicGenClientConfig
         from immich_memories.audio.music_generator_models import VideoTimeline
+        from immich_memories.audio.track_quality import score_track
 
         clip_data: list[tuple[float, str, int | None]] = [
             (
@@ -271,7 +281,7 @@ def auto_generate_music(
         )
 
         musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
-        musicgen_config.num_versions = 1  # CLI: just generate one, accept it
+        musicgen_config.num_versions = 1 + config.audio.max_regenerations
 
         music_dir = run_output_dir / "music"
         music_dir.mkdir(parents=True, exist_ok=True)
@@ -291,6 +301,8 @@ def auto_generate_music(
                 photo_cadence_seconds=photo_cadence_seconds(
                     assembly_clips, transition_overlap=transition_overlap
                 ),
+                mood_detail=mood_detail,
+                quality_gate=score_track,
             )
         )
 

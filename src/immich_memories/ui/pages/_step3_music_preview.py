@@ -101,6 +101,7 @@ async def _generate_music(
             config=musicgen_config,
             progress_callback=music_progress,
             app_config=config,
+            mood_detail=choice.mood,
         )
 
         # Store result in state for Step 4 to use

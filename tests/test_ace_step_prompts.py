@@ -101,9 +101,9 @@ class TestMoodVariety:
     @pytest.mark.parametrize(
         ("phrase", "expected"),
         [
-            ("upbeat romantic", "tender"),
+            ("upbeat romantic", "romantic"),
             ("upbeat warm groovy nostalgic", "nostalgic"),
-            ("upbeat playful", "happy"),
+            ("upbeat playful", "playful"),
             ("upbeat warm calm", "calm"),
             ("upbeat", "happy"),
         ],
@@ -188,3 +188,76 @@ def test_unknown_memory_type_still_produces_a_caption():
 
     assert "serene" in result.caption
     assert f"{result.bpm} bpm" in result.caption
+
+
+class TestReaderJudgmentDrivesTheCaption:
+    """The text mood's energy, tempo and genre yields must reach the caption (#1007)."""
+
+    def test_genre_yields_pick_the_style(self):
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        detail = VideoMood(primary_mood="happy", genre_suggestions=["jazz"])
+        result = build_ace_caption_structured("happy", mood_detail=detail)
+
+        assert result.caption.startswith("jazz trio")
+
+    def test_the_mood_still_sets_the_register_within_the_genre(self):
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        detail = VideoMood(primary_mood="nostalgic", genre_suggestions=["piano"])
+        result = build_ace_caption_structured("nostalgic", mood_detail=detail)
+
+        assert result.caption.startswith("solo piano")
+        assert "wistful" in result.caption
+
+    def test_stated_energy_places_the_tempo(self):
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        low = build_ace_caption_structured(
+            "happy",
+            style="acoustic",
+            mood_detail=VideoMood(primary_mood="happy", energy_level="low"),
+        ).bpm
+        high = build_ace_caption_structured(
+            "happy",
+            style="acoustic",
+            mood_detail=VideoMood(primary_mood="happy", energy_level="high"),
+        ).bpm
+
+        assert high > low
+
+    def test_genres_win_over_the_memory_type_default(self):
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        detail = VideoMood(primary_mood="happy", genre_suggestions=["orchestral"])
+        result = build_ace_caption_structured(
+            "happy", memory_type="person_spotlight", mood_detail=detail
+        )
+
+        assert result.caption.startswith("cinematic orchestral")
+
+    def test_a_metal_festival_reader_picks_metal(self):
+        """A niche event the reader names must reach the caption, not fall to jazz."""
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        detail = VideoMood(
+            primary_mood="energetic", energy_level="high", genre_suggestions=["metal"]
+        )
+        result = build_ace_caption_structured("energetic", mood_detail=detail)
+
+        assert result.caption.startswith("heavy metal")
+        assert "guitar" in result.caption
+        assert "drums" in result.caption
+
+    def test_a_specific_style_wins_the_caption_verbatim(self):
+        """A style the genre list cannot name still reaches ACE-Step, verbatim."""
+        from immich_memories.audio.mood_analyzer import VideoMood
+
+        detail = VideoMood(
+            primary_mood="playful", specific_style="medieval folk with lute and frame drum"
+        )
+        result = build_ace_caption_structured("playful", mood_detail=detail)
+
+        assert result.caption.startswith("medieval folk with lute and frame drum")
+        assert result.bpm > 0
+        assert result.key_scale

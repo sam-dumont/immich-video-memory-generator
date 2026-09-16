@@ -149,7 +149,9 @@ the sound is, so speech, laughter, wind and traffic all duck it.
 The mood comes from the same text model the editor uses, reading the saved cut's thesis, story
 labels and prepared captions for kept pictures. No new images go out, the answer is reused for
 identical text and model settings, and `runs why` reports its source. Without usable text or a model
-the local defaults apply; a failed text call never switches to vision.
+the local defaults apply; a failed text call never switches to vision. The answer carries a full
+judgment, not one word: a primary mood, an energy level, a tempo and up to five genre yields, and the
+generation step uses all of it rather than collapsing every memory to "upbeat" or "calm".
 
 | Where | Switch | Effect |
 |---|---|---|
@@ -213,6 +215,13 @@ pulls instrumental briefs off target, and takes a 60 s track from about 17 s to 
 When the memory holds photos the requested tempo is nudged so a photo lasts a whole number of beats,
 measured against the interval between visible cuts, within the genre's tempo range and within 15 % of
 the mood's tempo. Videos are never re-timed.
+
+Auto mode checks each generated track before it ships. A metronomically repetitive take, the "tic
+tac" from #1007, is measured on the mastered full mix and, when flagged, replaced by up to
+`audio.max_regenerations` (default 2) more takes, keeping the best-scored one. The check reads how
+much of the onset energy sits at a single repeat lag, so a stuck loop or a flat grid reads high while
+a varied track reads low. Music is never dropped, only re-rolled, so a run still ends with a track
+even when every take is flagged.
 
 `lib` mode checks free memory against the weights the profile keeps resident and refuses with a named
 shortfall rather than letting macOS kill the process mid-render: about 29 GB for XL with the 4B

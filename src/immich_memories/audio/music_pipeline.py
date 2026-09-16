@@ -14,8 +14,9 @@ Stem separation is decoupled from generation via the StemSeparator protocol:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.audio.generators.base import (
     GenerationRequest,
@@ -30,6 +31,10 @@ from immich_memories.audio.music_generator_models import (
     MusicStems,
     VideoTimeline,
 )
+
+if TYPE_CHECKING:
+    from immich_memories.audio.mood_analyzer import VideoMood
+    from immich_memories.audio.track_quality import TrackQuality
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +80,20 @@ class MusicPipeline:
         hemisphere: str = "north",
         memory_type: str | None = None,
         photo_cadence_seconds: float | None = None,
+        *,
+        mood_detail: VideoMood | None = None,
+        quality_gate: Callable[[Path], TrackQuality | None] | None = None,
     ) -> MusicGenerationResult:
-        """Generate music using the first available backend, with fallback."""
+        """Generate music using the first available backend, with fallback.
+
+        ``mood_detail`` carries the reader's full music judgment (energy, tempo,
+        genre yields) to backends that can use richer prompts than a bare mood
+        word. ``quality_gate`` turns the version loop into a bounded regenerate:
+        each take's full mix is scored once it is mastered, the loop stops early
+        as soon as a take is not flagged, and stems are separated only for the
+        best-scored take. Without it the loop generates every version and
+        separates stems for each, which is what the UI preview needs.
+        """
         output_dir.mkdir(parents=True, exist_ok=True)
 
         scenes = timeline.build_scenes(hemisphere=hemisphere)
@@ -84,6 +101,22 @@ class MusicPipeline:
         primary_mood = scenes[0]["mood"] if scenes else "calm"
 
         logger.info(f"Pipeline: {len(scenes)} scenes, {total_duration}s, {num_versions} versions")
+
+        if quality_gate is not None:
+            return await self._generate_gated(
+                timeline=timeline,
+                scenes=scenes,
+                total_duration=total_duration,
+                primary_mood=primary_mood,
+                output_dir=output_dir,
+                num_versions=num_versions,
+                progress_callback=progress_callback,
+                crossfade_duration=crossfade_duration,
+                memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
+                quality_gate=quality_gate,
+            )
 
         versions: list[GeneratedMusic] = []
 
@@ -99,6 +132,7 @@ class MusicPipeline:
                 output_dir=output_dir,
                 memory_type=memory_type,
                 photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
             )
 
             result = await self._try_generate(request, progress_callback, i, num_versions)
@@ -136,6 +170,84 @@ class MusicPipeline:
             versions=versions,
             timeline=timeline,
             mood=primary_mood,
+        )
+
+    async def _generate_gated(
+        self,
+        timeline: VideoTimeline,
+        scenes: list[dict[str, Any]],
+        total_duration: float,
+        primary_mood: str,
+        output_dir: Path,
+        num_versions: int,
+        progress_callback: Any | None,
+        crossfade_duration: float,
+        memory_type: str | None,
+        photo_cadence_seconds: float | None,
+        mood_detail: VideoMood | None,
+        quality_gate: Callable[[Path], TrackQuality | None],
+    ) -> MusicGenerationResult:
+        """Bounded regenerate: score each take, stop early, separate the winner."""
+
+        candidates: list[tuple[GenerationRequest, GenerationResult, TrackQuality | None]] = []
+
+        for i in range(num_versions):
+            logger.info(f"Generating version {i + 1}/{num_versions}")
+
+            request = GenerationRequest(
+                prompt=primary_mood,
+                scenes=scenes,
+                duration_seconds=int(total_duration),
+                variation_index=i,
+                crossfade_duration=crossfade_duration,
+                output_dir=output_dir,
+                memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
+            )
+
+            result = await self._try_generate(request, progress_callback, i, num_versions)
+            if result is None:
+                continue
+
+            result.audio_path = master_music_track(
+                result.audio_path, output_dir / f"mastered_version_{i}.wav"
+            )
+            quality = quality_gate(result.audio_path)
+            candidates.append((request, result, quality))
+            logger.info(
+                "Version %d scored %s",
+                i + 1,
+                "no verdict"
+                if quality is None
+                else f"periodicity={quality.periodicity:.2f} "
+                f"spikiness={quality.spikiness:.2f} flagged={quality.flagged}",
+            )
+
+            if quality is not None and not quality.flagged:
+                break  # accepted; do not spend further regenerations
+
+        if not candidates:
+            raise RuntimeError("All music generation backends failed for all versions")
+
+        request, result, quality = _best_candidate(candidates)
+        stems = await self._try_separate_stems(result, request, progress_callback, 0)
+
+        versions = [
+            GeneratedMusic(
+                full_mix=result.audio_path,
+                stems=stems,
+                duration=float(total_duration),
+                prompt=result.prompt,
+                mood=primary_mood,
+            )
+        ]
+
+        return MusicGenerationResult(
+            versions=versions,
+            timeline=timeline,
+            mood=primary_mood,
+            selected_version=0,
         )
 
     async def _try_generate(
@@ -217,6 +329,23 @@ class MusicPipeline:
             # No exc_info, for the same reason as the backend chain above.
             logger.warning("Stem separation failed; continuing without stems")
             return None
+
+
+def _candidate_rank(
+    candidate: tuple[GenerationRequest, GenerationResult, TrackQuality | None],
+) -> float:
+    """Degeneracy for ranking, with an unscorable take ranked worst."""
+    quality = candidate[2]
+    return quality.score if quality is not None else 1.0
+
+
+def _best_candidate(
+    candidates: list[tuple[GenerationRequest, GenerationResult, TrackQuality | None]],
+) -> tuple[GenerationRequest, GenerationResult, TrackQuality | None]:
+    """The least tick-like take, falling back to the first when none can be scored."""
+    scored = [c for c in candidates if c[2] is not None]
+    pool = scored if scored else candidates
+    return min(pool, key=_candidate_rank)
 
 
 def create_pipeline(app_config, *, separate_stems: bool = True) -> MusicPipeline:

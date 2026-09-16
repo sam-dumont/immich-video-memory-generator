@@ -20,8 +20,17 @@ STYLES = sorted(STYLE_PROFILES)
 
 
 def test_the_matrix_covers_every_mood_with_every_style():
-    assert len(MOODS) == 5
-    assert set(STYLES) == {"acoustic", "electronic"}
+    assert len(MOODS) == 15
+    assert set(STYLES) == {
+        "acoustic",
+        "electronic",
+        "ambient",
+        "jazz",
+        "rock",
+        "orchestral",
+        "piano",
+        "metal",
+    }
 
 
 @pytest.mark.parametrize("mood", MOODS)
