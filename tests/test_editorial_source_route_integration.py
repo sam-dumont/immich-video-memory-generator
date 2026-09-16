@@ -187,6 +187,7 @@ def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
         (Path(cold.stats["editorial_attempt_directory"]) / "status.private.json").read_text()
     )
     assert attempt_status["duration_realization"] == native_plans[0]["duration_realization"]
+    assert attempt_status["calls_by_stage"] == native_plans[0]["calls_by_stage"]
     assert len(image_calls) >= len(cold.selected_clips)
     assert set(native_plans[0]["picture_facts"]).issuperset(
         clip.asset.id for clip in cold.selected_clips

@@ -246,6 +246,7 @@ def run(source, judge):
 def semantic_plan(plan):
     telemetry = {
         "calls",
+        "calls_by_stage",
         "llm_metrics",
         "reranker_metrics",
         "reranker_calls",

@@ -96,3 +96,22 @@ def test_private_record_writers_do_not_share_a_temporary_filename(tmp_path):
     assert record["body"] == str(record["number"]) * 10000
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_completed_attempt_records_the_model_calls_it_made_per_stage_family(tmp_path):
+    families = {
+        "worthy": {"asked": 2, "cache_hits": 1, "wall_seconds": 4.5},
+        "story-pick": {"asked": 4, "cache_hits": 0, "wall_seconds": 12.25},
+    }
+    with EditorialAttempt(tmp_path, request={}) as attempt:
+        attempt.complete(selected=4, calls_by_stage=families)
+
+    record = json.loads((attempt.directory / "status.private.json").read_text())
+    assert record["calls_by_stage"] == families
+
+
+def test_an_attempt_that_made_no_recorded_calls_omits_the_stage_families(tmp_path):
+    with EditorialAttempt(tmp_path, request={}) as attempt:
+        attempt.complete(selected=1)
+
+    assert "calls_by_stage" not in read_editorial_attempt(attempt.directory)

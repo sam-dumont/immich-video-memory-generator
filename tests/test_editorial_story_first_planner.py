@@ -237,6 +237,22 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     )
     assert all(carrier["story_weight"] in {"dominant", "minor"} for carrier in plan["carriers"])
 
+    families = plan["calls_by_stage"]
+    assert set(families) <= {
+        "period",
+        "episodes",
+        "episode-skim",
+        "worthy",
+        "story-episodes",
+        "story-understanding",
+        "story-weighing",
+        "story-pick",
+        "moment-inventory",
+        "standing",
+        "shareability",
+    }, sorted(families)
+    assert sum(row["asked"] for row in families.values()) == len(plan["calls"])
+
     assert plan["intent_report"]["status"] in {
         "ok",
         "insufficient_material",

@@ -328,10 +328,12 @@ class RuntimeEditorialPlanner:
                     hdr_only=hdr_only,
                     on_stage=stage,
                 )
+                structure = self._backend.last_structure_result
                 attempt.complete(
                     selected=len(result.plan.selections),
                     outcome="selected" if result.plan.selections else "no_selection",
                     duration_realization=result.duration_realization,
+                    calls_by_stage=structure.plan.get("calls_by_stage") if structure else None,
                 )
                 return result
             finally:

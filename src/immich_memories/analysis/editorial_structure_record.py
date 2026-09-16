@@ -23,6 +23,7 @@ from immich_memories.analysis.editorial_intent_validation import CarrierView, va
 from immich_memories.analysis.editorial_story_planner import story_plan_fields
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
 from immich_memories.analysis.editorial_structure_contract import StructurePlanningResult
+from immich_memories.operations.call_families import calls_by_family
 
 IMPLEMENTATION_VERSION = "structure-plan-v87-bounded-offers-and-reference-fallback"
 STORY_FIRST_VERSION = "structure-plan-v88-story-first"
@@ -355,6 +356,7 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
         "content_seconds": judged["content"],
         "llm_metrics": outcome.metrics,
         "calls": outcome.calls,
+        "calls_by_stage": calls_by_family(outcome.calls),
         "pixels_seen_by_text_model": False,
     }
 

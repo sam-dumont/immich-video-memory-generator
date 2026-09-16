@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -75,11 +76,18 @@ class EditorialAttempt:
         return update
 
     def complete(
-        self, *, selected: int, outcome: str = "complete", duration_realization: dict | None = None
+        self,
+        *,
+        selected: int,
+        outcome: str = "complete",
+        duration_realization: dict | None = None,
+        calls_by_stage: Mapping[str, Any] | None = None,
     ) -> None:
         self.record.update(status="complete", outcome=outcome, selected_carriers=selected)
         if duration_realization is not None:
             self.record["duration_realization"] = duration_realization
+        if calls_by_stage is not None:
+            self.record["calls_by_stage"] = dict(calls_by_stage)
 
     def _save(self) -> None:
         self.record["updated_at"] = _now()

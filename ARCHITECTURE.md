@@ -434,6 +434,7 @@ src/immich_memories/
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports
 │   ├── auto_output.py           # Private complete child transcripts, addressed by automation attempt
+│   ├── call_families.py        # family_of()/calls_by_family(): model calls grouped by stage family
 │   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
 │   ├── caption_origins.py      # One picture's caption origin, and the run's distinct-origin line
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
