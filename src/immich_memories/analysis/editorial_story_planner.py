@@ -13,6 +13,7 @@ moments run out the film is shorter.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from immich_memories.analysis.editorial_story_slots import PartitionedSlots
 
 STORY_PLANNER_VERSION = "story-first-selection-v5-sampled-depth"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
+_EPISODE_CAPTURES = re.compile(r"\b(\d+) captures\b")
 GATE_ORDER = {"remarkable": 0, "maybe": 1, "background": 2}
 
 
@@ -96,12 +98,32 @@ class _MomentUnits:
         return TIER_NAME[min(tiers)] if tiers else ""
 
 
+def _episode_captures(moments, context_of_moment: Mapping[Any, str]) -> int | None:
+    """The widest whole-episode capture count among the episode's sampled moments."""
+    wider = [
+        int(match.group(1))
+        for match in (_EPISODE_CAPTURES.search(context_of_moment.get(m, "")) for m in moments)
+        if match
+    ]
+    return max(wider) if wider else None
+
+
+def _relations_of(rows, lines: Mapping[str, str]) -> dict[str, int]:
+    """Known-relationship mentions across the episode's retained sources."""
+    relations: dict[str, int] = {}
+    for u in rows:
+        for rel in relations_on(lines.get(u["asset_id"], "")):
+            relations[rel] = relations.get(rel, 0) + 1
+    return relations
+
+
 def _episode_hints(
     episodes,
     *,
     units: _MomentUnits,
     place_of_moment: Mapping[Any, str],
     lines: Mapping[str, str],
+    context_of_moment: Mapping[Any, str] | None = None,
 ) -> dict[str, dict]:
     """What the synthesis sees beside each day episode: its size, its place and its company."""
     hints = {}
@@ -115,14 +137,14 @@ def _episode_hints(
             "pictures": len(rows),
             "favourites": sum(1 for u in rows if u.get("favourite")),
         }
+        if context_of_moment and (wider := _episode_captures(e.moments, context_of_moment)):
+            # The sample bounds the moments a story shows; the whole episode's size
+            # must still speak, or a large occasion weighs like a quiet day.
+            hint["episode_captures"] = wider
         if places:
             # Equal counts keep the first source place, including across processes.
             hint["place"] = Counter(places).most_common(1)[0][0]
-        relations: dict[str, int] = {}
-        for u in rows:
-            for rel in relations_on(lines.get(u["asset_id"], "")):
-                relations[rel] = relations.get(rel, 0) + 1
-        if relations:
+        if relations := _relations_of(rows, lines):
             hint["relations"] = relations
         gate = units.gate_of(e.moments)
         if gate:
@@ -394,9 +416,12 @@ def select_story_first(
     unit_by_asset = {u["asset_id"]: (f, u) for f, units in event_units.items() for u in units}
     parts = PartitionedSlots(unit_by_asset, partition_of=partition_of, limit=partition_limit)
     units = _MomentUnits(event_units, family_of_moment, dict(family_tier or {}))
+    factual_rows = factual_rows_fn(tables, aliases)
     place_of_moment = {
-        row.get("moment_id"): str(row.get("places") or "").strip()
-        for row in factual_rows_fn(tables, aliases)
+        row.get("moment_id"): str(row.get("places") or "").strip() for row in factual_rows
+    }
+    context_of_moment = {
+        row.get("moment_id"): str(row.get("episode_context") or "") for row in factual_rows
     }
     story_lines = full_lines or lines
 
@@ -416,7 +441,11 @@ def select_story_first(
         prior={},
         record=lambda value: record("period-story", value),
         enrich=lambda episodes: _episode_hints(
-            episodes, units=units, place_of_moment=place_of_moment, lines=story_lines
+            episodes,
+            units=units,
+            place_of_moment=place_of_moment,
+            lines=story_lines,
+            context_of_moment=context_of_moment,
         ),
         allow_gaps=allow_story_gaps,
         journey=journey,

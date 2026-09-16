@@ -70,6 +70,10 @@ def _seen(story, hints, days) -> dict[str, int]:
         "moments": _counted(hints, keys, "moments"),
         "pictures": _counted(hints, keys, "pictures"),
         "favourites": _counted(hints, keys, "favourites"),
+        "episode_captures": max(
+            (int((hints.get(key) or {}).get("episode_captures") or 0) for key in keys),
+            default=0,
+        ),
     }
 
 
@@ -92,7 +96,12 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
         rows.append(
             f"{story['key']} | {span} | {seen['days']} day(s) | {seen['episodes']} episode(s) | "
             f"{seen['moments']} moments | {seen['pictures']} pictures | {seen['favourites']} favourites | "
-            f"reading: {gate or 'none'} | {story['title']} | {story.get('purpose') or ''}"
+            + (
+                f"{seen['episode_captures']} captures in its episode | "
+                if seen["episode_captures"]
+                else ""
+            )
+            + f"reading: {gate or 'none'} | {story['title']} | {story.get('purpose') or ''}"
             + (f" | people: {people_text}" if people_text else "")
             + (f" | facts: {facts}" if facts else "")
             + (f" | people.yaml: {relationships}" if relationships else "")
@@ -112,9 +121,10 @@ Then weigh every other story for THIS memory (month, year, journey, person, anni
 "minor" = one or two moments;
 "glimpse" = one picture of ordinary life, only when a picture would stand on its own;
 "none" = leave out.
-Weigh by what happened and how it was lived. The reading, favourites, moments and days are evidence,
-not a formula. Ordinary domestic routine, however well photographed, is "none" unless this memory is
-about it. Do not force a dramatic arc, equal calendar coverage or quotas; a quiet period stays quiet.
+Weigh by what happened and how it was lived. The reading, favourites, moments, days and
+episode capture counts are evidence, not a formula. Ordinary domestic routine, however well
+photographed, is "none" unless this memory is about it. Do not force a dramatic arc, equal
+calendar coverage or quotas; a quiet period stays quiet.
 Favourites are the owner's own marks on the pictures. Two rows that are one occasion, split across
 the list or filed as separate rows of one afternoon (a party, a march, a fair read as several
 scenes), may be joined in "join" as pairs of story keys. Rows of different days are never joined. A title that names a detail of the

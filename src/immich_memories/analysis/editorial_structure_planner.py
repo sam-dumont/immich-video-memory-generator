@@ -11,7 +11,7 @@ import json
 import math
 import re
 from collections import ChainMap
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from operator import itemgetter
@@ -207,6 +207,7 @@ class _Run:
     render_timeline: Any = None
     final_content_cap: float = 0.0
     motion_metrics: dict = field(default_factory=dict)
+    retained_motion: RetainedMotion | None = None
     attached_audience: dict = field(default_factory=dict)
     final_duplicates: dict = field(
         default_factory=lambda: {
@@ -222,6 +223,7 @@ def _resolve_motion_and_timing(
     # Reviews must see the rendering that ordinary motion measurement resolved.
     # Completion reuses this instance for survivors and newly retained additions.
     retained_motion = RetainedMotion(ports.resolve_motion)
+    run.retained_motion = retained_motion
     run.carriers = retained_motion(run.carriers)
     run.selection_stages["before_picture_review"] = len(run.carriers)
     _announce_count(len(run.carriers), "going into the picture review")
@@ -350,6 +352,103 @@ def _final_duplicate_review(
         for carrier in before_duplicates
         if carrier["asset_id"] in removed
     )
+
+
+_REFILL_IDENTITY_FIELDS = (
+    "event",
+    "anchor",
+    "chapter",
+    "story_episode",
+    "story_weight",
+    "title",
+)
+
+
+def _admit_refill_candidates(
+    run: _Run,
+    removals: list[dict],
+    alternatives_of: Mapping[str, Sequence[str]],
+    unit_of: Mapping[str, dict],
+    removed_ids: set[str],
+    within_bounds,
+) -> list[dict]:
+    """For each removed duplicate, its story's first distinct, fitting alternative."""
+    kept_ids = {c["asset_id"] for c in run.carriers}
+    added: list[dict] = []
+    refilled: set[str] = set()
+    for carrier in removals:
+        for asset_id in alternatives_of.get(carrier["asset_id"], ()):
+            if asset_id in refilled or asset_id in removed_ids or asset_id in kept_ids:
+                continue
+            if (unit := unit_of.get(asset_id)) is None:
+                continue
+            candidate = {
+                **{key: carrier[key] for key in _REFILL_IDENTITY_FIELDS if key in carrier},
+                **unit,
+                "why": "Refills the slot of a removed visual duplicate",
+                "line": "",
+            }
+            if not within_bounds(candidate, run.carriers):
+                continue
+            run.carriers.append(candidate)
+            kept_ids.add(asset_id)
+            refilled.add(asset_id)
+            added.append({"from": carrier["asset_id"], "to": asset_id})
+            break
+    return added
+
+
+def _refill_removed_duplicates(
+    run: _Run,
+    selection,
+    ports: StructurePlannerPorts,
+    material: Material,
+    source: StructurePlanningInput,
+    record,
+) -> bool:
+    """A removed duplicate frees its slot: the story's remaining standing alternatives are
+    still the more-to-choose-from the pick built, so a shorter film is not the automatic
+    outcome while a distinct alternative is available. Additions reuse the run's motion
+    results and speech measurement, stay within the content budget, and face the same
+    completed-film review again, so nothing unproven against the survivors enters."""
+    from immich_memories.speech.cuts import minimum_duration
+
+    timing = source.render_timing
+    removals = [c for c in run.cut_carriers if c.get("review_stage") == "final-duplicates"]
+    if not removals:
+        return False
+    removed_ids = {row["asset_id"] for row in run.final_duplicates["removals"]}
+    unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
+
+    if timing is None:
+        # A first plan has no bound production timeline; the pick's slot grant is the
+        # film's size, so a refill never exceeds what was asked.
+        def within_bounds(_candidate, carriers):
+            return len(carriers) < selection.slots
+
+    else:
+
+        def within_bounds(candidate, carriers):
+            kept = [*carriers, candidate]
+            return (
+                sum(minimum_duration(c, MIN_CARRIER_SECONDS) for c in kept)
+                <= timing.resolve(kept, source.assets).content_budget + 1e-6
+            )
+
+    added = _admit_refill_candidates(
+        run, removals, selection.alternatives_of, unit_of, removed_ids, within_bounds
+    )
+    if not added:
+        return False
+    if run.retained_motion is not None:
+        run.carriers = run.retained_motion(run.carriers)
+    if ports.resolve_speech is not None:
+        run.carriers = ports.resolve_speech(run.carriers)
+    if timing is not None:
+        run.render_timeline = timing.resolve(run.carriers, source.assets)
+        run.final_content_cap = run.render_timeline.content_budget
+    record("duplicate-slot-refill", {"added": added, "kept": len(run.carriers)})
+    return True
 
 
 def _check_empty_attached(ports: StructurePlannerPorts, observed: bool) -> None:
@@ -593,6 +692,21 @@ def _select(
         pixel_facts=source.pixel_facts,
         owner_required=source.owner_required_asset_ids,
     )
+    if _refill_removed_duplicates(run, selection, ports, material, source, record_story):
+        # The refill faces the same completed-film review: a distinct alternative
+        # enters the film, a near-twin of a survivor is removed again.
+        _final_duplicate_review(
+            run,
+            ports,
+            source_relation=source_relation,
+            picture_records=material.picture_evidence.records,
+            attached=attached,
+            prior=source.prior_plan,
+            prior_assets=prior_assets,
+            quality=material.builder.quality,
+            pixel_facts=source.pixel_facts,
+            owner_required=source.owner_required_asset_ids,
+        )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     _announce_count(len(run.carriers), "after the duplicate review")
     _check_empty_attached(ports, observed)

@@ -520,3 +520,126 @@ def test_optional_company_replacement_can_use_a_permitted_standing_alternative(t
     assert [row["new_relations"] for row in pick["company_replacements"]] == [["grandparent"]]
     assert selection.calls["selection_passes"] == 1
     assert selection.calls["rejected_by_audience"] == 1
+
+
+class PromptRecordingJudge(StoryJudge):
+    """Record every weighing prompt while answering exactly like the base judge."""
+
+    def __init__(self):
+        super().__init__()
+        self.weighing_prompts = []
+
+    def answer(self, stage, prompt):
+        if stage.startswith("story-weighing"):
+            self.weighing_prompts.append(prompt)
+        return super().answer(stage, prompt)
+
+
+def test_weighing_sees_an_episodes_true_scale_beyond_the_sampled_moments(tmp_path):
+    """Sampling caps the moments a story shows; the episode's real capture count must
+    still reach the weighing table, or a 37-capture occasion weighs like a quiet day."""
+    from immich_memories.analysis.editorial_story_planner import select_story_first
+
+    source = make_source(tmp_path, seconds=7, occasions=2, pictures=1)
+    aliases = list(source.moment_asset_ids)
+    units = [
+        {
+            "asset_id": asset_id,
+            "taken": source.assets[asset_id].file_created_at.isoformat(),
+            "moment": alias,
+            "kind": "photo",
+            "favourite": False,
+        }
+        for alias in aliases
+        for asset_id in source.moment_asset_ids[alias]
+    ]
+    lines = {u["asset_id"]: source.annotations[u["asset_id"]] for u in units}
+    contexts = {
+        aliases[0]: (
+            "Surrounding episode metadata; participants are not necessarily in this picture: "
+            "37 captures, 2030-05-02T08:00:00+00:00 to 2030-05-02T08:17:00+00:00; places: Jette"
+        ),
+        aliases[1]: (
+            "Surrounding episode metadata; participants are not necessarily in this picture: "
+            "8 captures, 2030-05-03T08:00:00+00:00 to 2030-05-03T08:17:00+00:00; places: Jette"
+        ),
+    }
+    records = {}
+    judge = PromptRecordingJudge()
+    select_story_first(
+        judge=judge,
+        tables={},
+        aliases=aliases,
+        factual_rows_fn=lambda _tables, _aliases: [
+            {
+                "moment_id": alias,
+                "taken": source.assets[
+                    source.moment_asset_ids[alias][0]
+                ].file_created_at.isoformat(),
+                "places": "Jette",
+                "episode_context": contexts[alias],
+            }
+            for alias in aliases
+        ],
+        moment_assets=source.moment_asset_ids,
+        lines=lines,
+        contract=source.intent.story_prompt_block(),
+        event_units={"outing": units},
+        family_of_moment=dict.fromkeys(aliases, "outing"),
+        anchor_label={alias: f"F{index:02d}" for index, alias in enumerate(aliases, 1)},
+        label_line=lambda unit: lines[unit["asset_id"]],
+        quality=lambda _asset: 1.0,
+        target_seconds=7,
+        seconds_per_slot=3.5,
+        record=lambda name, value: records.update({name: value}),
+        shareable=lambda _unit: True,
+        family_tier={"outing": 0},
+    )
+
+    assert judge.weighing_prompts
+    for prompt in judge.weighing_prompts:
+        assert re.search(r"\b37 captures in its episode\b", prompt)
+        assert re.search(r"\b8 captures in its episode\b", prompt)
+
+
+def test_a_story_without_wider_context_shows_no_capture_claim(tmp_path):
+    from immich_memories.analysis.editorial_story_planner import select_story_first
+
+    source = make_source(tmp_path, seconds=7, occasions=1, pictures=1)
+    alias = next(iter(source.moment_asset_ids))
+    units = [
+        {
+            "asset_id": asset_id,
+            "taken": source.assets[asset_id].file_created_at.isoformat(),
+            "moment": alias,
+            "kind": "photo",
+            "favourite": False,
+        }
+        for asset_id in source.moment_asset_ids[alias]
+    ]
+    lines = {u["asset_id"]: source.annotations[u["asset_id"]] for u in units}
+    judge = PromptRecordingJudge()
+    select_story_first(
+        judge=judge,
+        tables={},
+        aliases=[alias],
+        factual_rows_fn=lambda _tables, _aliases: [
+            {"moment_id": alias, "taken": units[0]["taken"], "places": "Jette"}
+        ],
+        moment_assets=source.moment_asset_ids,
+        lines=lines,
+        contract=source.intent.story_prompt_block(),
+        event_units={"outing": units},
+        family_of_moment={alias: "outing"},
+        anchor_label={alias: "F01"},
+        label_line=lambda unit: lines[unit["asset_id"]],
+        quality=lambda _asset: 1.0,
+        target_seconds=7,
+        seconds_per_slot=3.5,
+        record=lambda _name, _value: None,
+        shareable=lambda _unit: True,
+        family_tier={"outing": 0},
+    )
+
+    assert judge.weighing_prompts
+    assert all("captures in its episode" not in prompt for prompt in judge.weighing_prompts)
