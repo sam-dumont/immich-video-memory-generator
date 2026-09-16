@@ -110,7 +110,8 @@ def test_mov_edit_list_reference_packets_do_not_extend_visible_material(tmp_path
     assert visible_frames == 86
 
     probes = ProbeCache()
-    assert probes.last_video_frame(source)["end_seconds"] == pytest.approx(visible_frames / 30)
+    # An edit can shorten its last packet; compare the displayed frame's actual PTS.
+    assert probes.last_video_frame(source)["pts"] == decoded["frames"][-1]["pts"]
     segment = probes.quantized_segment(source, 0.0, 4.0, Fraction(30))
     assert segment["frames"] == visible_frames
     assert segment["kept_packets"] == visible_frames
