@@ -122,28 +122,36 @@ def find_bursts(client: SyncImmichClient, year: int, wanted: int) -> list[list[d
     return picked[:wanted]
 
 
-def _display_size(path: Path, height: int = _RENDER_HEIGHT) -> tuple[int, int]:
-    """The source's own aspect ratio at a display height, width even for h264."""
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height",
-            "-of",
-            "csv=p=0",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    native_w, native_h = (int(value) for value in result.stdout.strip().split(","))
-    width = round(height * native_w / native_h)
-    return width + width % 2, height
+def _display_size(paths: list[Path], height: int = _RENDER_HEIGHT) -> tuple[int, int]:
+    """The sources' own aspect ratio at a display height, width even for h264.
+
+    Any member can name the frame; one that will not probe is skipped rather
+    than ending the candidate.
+    """
+    for path in paths:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        fields = result.stdout.strip().split(",")
+        if len(fields) == 2 and all(field.isdigit() for field in fields):
+            native_w, native_h = int(fields[0]), int(fields[1])
+            width = round(height * native_w / native_h)
+            return width + width % 2, height
+    raise ValueError("no companion could be probed for its frame size")
 
 
 def render_stitch(paths: list[Path], trims: list[tuple[float, float]], target: Path) -> None:
@@ -156,7 +164,7 @@ def render_stitch(paths: list[Path], trims: list[tuple[float, float]], target: P
     pairs = [
         (path, (start, end)) for path, (start, end) in zip(paths, trims, strict=True) if end > start
     ]
-    width, height = _display_size(pairs[0][0])
+    width, height = _display_size([path for path, _ in pairs])
     with tempfile.TemporaryDirectory(prefix="stitch-render-") as directory:
         segments = []
         for index, (path, (start, end)) in enumerate(pairs):
@@ -349,13 +357,22 @@ def main() -> int:
                 path = work / f"{vid}.mp4"
                 path.write_bytes(payload)
                 files.append(path)
-            old = work / "old.mp4"
-            render_stitch(files, trims_meta, old)
-            if trims_aligned is not None:
-                new = work / "new.mp4"
-                render_stitch(files, trims_aligned, new)
-            else:
-                new = None
+            try:
+                old = work / "old.mp4"
+                render_stitch(files, trims_meta, old)
+                if trims_aligned is not None:
+                    new = work / "new.mp4"
+                    render_stitch(files, trims_aligned, new)
+                else:
+                    new = None
+            except (subprocess.CalledProcessError, ValueError) as error:
+                # One candidate whose download will not decode is a row, not
+                # the end of the review.
+                lines.append(
+                    f"| {slug} ({city}) | {len(burst)} | render failed: "
+                    f"{type(error).__name__} | | | | |"
+                )
+                continue
             old_jumps = [
                 join_jump(old, sum(e - s for s, e in trims_meta[:i]))
                 for i in range(1, len(trims_meta))
