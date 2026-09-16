@@ -66,6 +66,31 @@ def test_repeated_invalid_answer_fails_after_one_repair():
     assert len(judge.calls) == 2
 
 
+def test_overfull_pick_repair_sees_its_rejected_list_and_exact_excess():
+    offered = {f"M{i:02d}" for i in range(1, 77)}
+    rejected = json.dumps({"keep": sorted(offered)[:47], "unused_slots": 0})
+    corrected = sorted(offered)[1:47]
+    judge = Answers([rejected, json.dumps({"keep": corrected, "unused_slots": 0})])
+
+    result = ask_moment_pick(
+        judge,
+        "pick",
+        "Choose at most 46 from all 76 moments.",
+        labels=offered,
+        count=46,
+        allow_fewer=True,
+    )
+
+    assert result == corrected
+    assert len(result) == 46
+    assert judge.calls[0][1] == "Choose at most 46 from all 76 moments."
+    repair = judge.calls[1][1]
+    assert rejected in repair
+    assert "received 47 labels" in repair
+    assert "Remove at least 1" in repair
+    assert "complete replacement" in repair
+
+
 def test_both_pick_orders_use_label_free_format_and_validate_the_grant():
     judge = Answers([json.dumps({"keep": ["M03"]})] * 2)
     choices = [
