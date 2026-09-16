@@ -95,6 +95,46 @@ def test_paging_keeps_two_stories_of_one_afternoon_available_to_join():
     assert len(result.stories) == 129
 
 
+@pytest.mark.parametrize("count", [8, 70])
+def test_multiple_centres_are_resolved_once_even_when_their_rows_fit(count):
+    model = YearJudge()
+
+    def reply(stage, prompt):
+        answer = json.loads(model.ask(stage, prompt))
+        if stage.startswith("story-understanding"):
+            answer["about"] = [
+                key
+                for story in answer["stories"]
+                for key in story["episodes"]
+                if key in {"S0001", "S0002", "S0003", "S0004"}
+            ]
+        elif stage.startswith("story-weighing") and "-candidate-context" not in stage:
+            offered = re.search(r"THE READING SAYS THIS MEMORY IS ABOUT: (.*)", prompt)[1]
+            # WHY: the external model repeats every nominated centre while it
+            # also has to weigh a table, as observed in the real short control.
+            answer["about"] = offered.split(", ")
+        return json.dumps(answer)
+
+    result = read_period_story(
+        ScriptedJudge(reply),
+        evidence=[
+            {**fragment(i), "taken": f"{date(2030, 1, 1) + timedelta(days=i * 2)}T12:00:00"}
+            for i in range(count)
+        ],
+        contract="The requested memory.",
+        prior={},
+        enrich=lambda episodes: {
+            e.key: {"day": e.facts[0]["taken"][:10], "moments": 2} for e in episodes
+        },
+    )
+
+    assert len(result.stories) == count
+    assert [story["key"] for story in result.stories if story["weight"] == "dominant"] == ["K01"]
+    assert all(story["weight"] == "minor" for story in result.stories if story["key"] != "K01")
+    assert sum("-candidate-context" in stage for stage, *_ in model.weighing) == 2
+    assert not any("repair" in stage or "part-" in stage for stage, *_ in model.weighing)
+
+
 @pytest.mark.parametrize("comparison_weights", [True, False])
 def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded_pages(
     comparison_weights,

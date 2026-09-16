@@ -515,9 +515,22 @@ def _weigh_stories(
 ):
     """Stage B: weigh the complete story table in both orders, paging large memories."""
     rows = _story_rows(stories, hints, day_of, facts_of, people_of)
+    by_key = {story["key"]: story for story in stories}
+    # The weigher may repeat at most two offered centres in "about"; a real model repeats
+    # every nominated one while it weighs the table. Confirm the centres once before any
+    # weighing table is sent, whether or not the table needs paging.
+    if len(candidates) > 2:
+        candidates = _page_context_candidates(
+            judge,
+            rows,
+            by_key,
+            candidates,
+            thesis=thesis,
+            contract=contract,
+            record=record,
+        )
     prompt_for = partial(_weighing_prompt, thesis=thesis, contract=contract, candidates=candidates)
     prompt = prompt_for(rows)
-    by_key = {story["key"]: story for story in stories}
     if len(rows) <= WEIGHING_PAGE_ITEMS and len(prompt) <= WEIGHING_PAGE_CHARS:
         decisions = _ask_both_orders(judge, prompt, rows, by_key, candidates, record)
     else:
@@ -533,6 +546,8 @@ def _weigh_stories(
         try:
             chunks = _weighing_pages(rows, by_key, candidates, prompt_for, day_of)
         except ValueError:
+            if len(candidates) <= 2:
+                raise
             candidates = _page_context_candidates(
                 judge,
                 rows,
