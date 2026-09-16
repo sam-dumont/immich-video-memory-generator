@@ -184,7 +184,6 @@ class CarrierAdmission:
         life: Callable[[str], bool],
         excluded: Mapping[str, str],
         kind_marker: Callable[[DepictedChoice], str],
-        picture_line: Callable[[dict], str] | None,
         motion_line: Callable[[dict], str] | None,
         contract: str,
         record: Callable[[str, Mapping[str, Any]], None],
@@ -204,7 +203,6 @@ class CarrierAdmission:
         self._life = life
         self._excluded = excluded
         self._kind_marker = kind_marker
-        self._picture_line = picture_line
         self._motion_line = motion_line
         self._contract = contract
         self._record = record
@@ -431,7 +429,6 @@ class CarrierAdmission:
             record=record_pick,
             kind_of=self._kind_marker,
             compatible=self.compatible,
-            picture_of=_unit_reader(self._picture_line, self._unit_by_asset),
             motion_of=_unit_reader(self._motion_line, self._unit_by_asset),
             is_video=lambda c: self._unit_by_asset[c.primary][1]["kind"] == "video",
             replacement_allowed=allows_replacement,

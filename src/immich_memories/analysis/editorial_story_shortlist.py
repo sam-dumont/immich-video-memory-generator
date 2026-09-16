@@ -287,14 +287,11 @@ def _pick_rows(
     *,
     starred,
     kind_of,
-    pictures: Mapping[str, str],
     motions: Mapping[str, str],
 ) -> Callable[[DepictedChoice], str]:
     def row(c: DepictedChoice) -> str:
         star = " | favourite" if starred(c) else ""
         description = f"{labels[c.key]} | {c.taken[:16]} | {c.content[:140]} | {len(c.members)} picture(s){star}{kind_of(c)}"
-        if pictures.get(c.key):
-            description += f"\n  Proposed picture (cached preview only): {pictures[c.key]}"
         if motions.get(c.key):
             description += f"\n  Sampled sequence: {motions[c.key]}"
         return description
@@ -509,22 +506,21 @@ def favourites_fill_grant(
 
 
 def _pick_material(
-    choices: Sequence[DepictedChoice], *, count: int, picture_of, motion_of, is_video
-) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
-    """Row labels and the previews shown beside them.
+    choices: Sequence[DepictedChoice], *, count: int, motion_of, is_video
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Row labels and the sampled sequences shown beside them.
 
-    The primary preview is acquired once per contested shortlisted choice; full
-    material/audience certification still happens at carrier admission.
+    Pictures are read from the inventory the story already produced. Images are
+    observed for the cut, at carrier admission, not for every offered choice.
     """
     labels = {c.key: f"M{i + 1:02d}" for i, c in enumerate(choices)}
-    pictures = {c.key: picture_of(c) for c in choices} if picture_of is not None else {}
     videos = [c for c in choices if is_video(c)]
     motions = (
         {c.key: motion_of(c) for c in videos}
         if count > 1 and len(videos) > 1 and motion_of is not None
         else {}
     )
-    return labels, {v: k for k, v in labels.items()}, pictures, motions
+    return labels, {v: k for k, v in labels.items()}, motions
 
 
 def _fill_from_votes(
@@ -559,7 +555,6 @@ def pick_story_moments(
     compatible: Callable[[DepictedChoice, Sequence[DepictedChoice]], bool] = lambda _c, _others: (
         True
     ),
-    picture_of: Callable[[DepictedChoice], str] | None = None,
     motion_of: Callable[[DepictedChoice], str] | None = None,
     is_video: Callable[[DepictedChoice], bool] = lambda _c: False,
 ) -> list[DepictedChoice]:
@@ -589,8 +584,8 @@ def pick_story_moments(
             },
         )
         return sorted((c for c in choices if c.key in chosen.keys), key=lambda c: c.taken)
-    labels, by_label, pictures, motions = _pick_material(
-        choices, count=count, picture_of=picture_of, motion_of=motion_of, is_video=is_video
+    labels, by_label, motions = _pick_material(
+        choices, count=count, motion_of=motion_of, is_video=is_video
     )
     vote_records: list = []
     allow_fewer = count > 1
@@ -602,7 +597,6 @@ def pick_story_moments(
             labels,
             starred=starred,
             kind_of=kind_of,
-            pictures=pictures,
             motions=motions,
         ),
         by_label=by_label,
@@ -637,7 +631,6 @@ def pick_story_moments(
             "chosen": chosen_keys,
             "company_replacements": company_replacements,
             "company_rejected": sorted(company_rejected),
-            "observed_choices": list(pictures),
             "motion_choices": {k: v for k, v in motions.items() if v},
             "editorial_limit": chosen.limit,
             "vote_records": vote_records,

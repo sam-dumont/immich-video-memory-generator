@@ -236,6 +236,11 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     assert any(stage.startswith("standing-") for stage in asked), (
         "every carrier is asked to stand by itself"
     )
+    assert all(
+        "Proposed picture" not in call["prompt"]
+        for call in judge.calls
+        if call["stage"].startswith("story-pick-")
+    ), "the pick reads the inventory; pictures are observed for the cut, not for every choice"
     assert all(carrier["story_weight"] in {"dominant", "minor"} for carrier in plan["carriers"])
 
     families = plan["calls_by_stage"]

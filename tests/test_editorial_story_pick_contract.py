@@ -138,22 +138,13 @@ def test_conflicting_choices_keep_favourite_or_model_priority_before_filling_nex
 
 
 @pytest.mark.parametrize("favourites_fill", [False, True])
-def test_picture_comparison_is_once_per_contested_choice_and_skips_filled_favourites(
+def test_a_contested_shortlist_is_asked_from_its_inventory_and_a_filled_grant_is_not(
     favourites_fill,
 ):
     choices = [
-        DepictedChoice(str(i), "K01", f"2030-05-01T1{i}:00", "A ride", str(i)) for i in range(3)
+        DepictedChoice(str(i), "K01", f"2030-05-01T1{i}:00", f"A ride {i}", str(i))
+        for i in range(3)
     ]
-    observed = []
-
-    def picture(choice):
-        observed.append(choice.key)
-        return (
-            "Friends smiling in the setting"
-            if choice.key == "1"
-            else "Distant activity under dense overlays"
-        )
-
     judge = Answers(['{"keep":["M02"]}'] * 2)
     selected = pick_story_moments(
         judge,
@@ -163,18 +154,15 @@ def test_picture_comparison_is_once_per_contested_choice_and_skips_filled_favour
         starred=lambda c: favourites_fill and c.key == "2",
         contract="The month",
         record=lambda *_: None,
-        picture_of=picture,
     )
     if favourites_fill:
-        assert observed == [] and judge.calls == []
+        assert judge.calls == []
         assert selected == [choices[2]]
     else:
-        assert observed == ["0", "1", "2"]
         assert selected == [choices[1]]
         for _, prompt in judge.calls:
-            assert "Friends smiling in the setting" in prompt
-            assert "Distant activity under dense overlays" in prompt
-            assert "cached preview only" in prompt
+            assert "A ride 1" in prompt  # the inventory content line carries the choice
+            assert "Proposed picture" not in prompt
 
 
 # The exact answer a hosted qwen3-30b gave on the June 2024 fixture (issue #908).

@@ -453,7 +453,6 @@ def select_story_first(
     journey: bool = False,
     partition_of: Callable[[str], str | None] | None = None,
     partition_limit: int | None = None,
-    picture_line: Callable[[dict], str] | None = None,
     motion_line: Callable[[dict], str] | None = None,
     rules=None,
 ) -> StorySelection:
@@ -577,7 +576,6 @@ def select_story_first(
         excluded=dict(excluded or {}),
         kind_marker=kind_of,
         mechanical_picks=rules is not None,
-        picture_line=picture_line,
         motion_line=motion_line,
         contract=contract,
         record=record,

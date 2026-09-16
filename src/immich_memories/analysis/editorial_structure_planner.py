@@ -697,7 +697,6 @@ def _story_selection(
         anchor_label=wall.anchor_label,
         label_line=material.text.label,
         quality=material.builder.quality,
-        picture_line=gate.proposed_picture_line if ports.observe_picture is not None else None,
         motion_line=ports.observe_story_motion,
         target_seconds=(
             source.render_timing.selection_budget(

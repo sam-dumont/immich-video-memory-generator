@@ -93,13 +93,6 @@ class AudienceGate:
         self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
         return _share.tighten(record["verdict"])
 
-    def proposed_picture_line(self, u) -> str:
-        # One actual primary preview per contested shortlist choice. This is
-        # not certification of unsampled motion or the unit's other members.
-        primary = {"asset_id": u["asset_id"]}
-        self._pictures.enrich(primary)
-        return self._pictures.line(primary)
-
     def exclude_refused_members(self, candidates) -> None:
         """Exclude the whole refused carrier, including alternate members, from later offers."""
         self.rejected_members.update(

@@ -80,13 +80,14 @@ def test_nearby_comparison_preserves_favourites_and_audience_holds(tmp_path, fav
     assert len(selected) <= 4
 
 
-def test_actual_planner_compares_bound_preview_observations_before_admission(tmp_path):
+def test_actual_planner_observes_the_admitted_pictures_and_not_every_choice(tmp_path):
     from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
     from immich_memories.analysis.editorial_structure_planner import plan_structure
     from tests.test_editorial_visual_body_audience import picture_record
 
     observed = []
 
+    # WHY: the image gateway; one entry per vision call the run actually pays for.
     def observe(asset_id):
         observed.append(asset_id)
         record = picture_record()
@@ -95,12 +96,11 @@ def test_actual_planner_compares_bound_preview_observations_before_admission(tmp
         )
         return record
 
+    # WHY: the editorial judge; the pick answers from the inventory, with no preview line.
     class ObservedJudge(CompanyJudge):
         def answer(self, stage, prompt):
             if stage.startswith("story-pick-"):
-                assert "Proposed picture (cached preview only):" in prompt
-                assert "picture observations: A clothed participant shares the outing" in prompt
-                assert observed  # acquisition precedes the first choice, not just its admission
+                assert "Proposed picture" not in prompt
             return super().answer(stage, prompt)
 
     captured = nearby_source(tmp_path)
@@ -114,7 +114,11 @@ def test_actual_planner_compares_bound_preview_observations_before_admission(tmp
             observe_picture=observe,
         ),
     ).plan
-    assert len(observed) == len(set(observed)) == 6
+    carried = {member for row in plan["carriers"] for member in row["members"]}
+    assert len(observed) == len(set(observed))
+    # The cut and whatever the final duplicate review asks about it, never the shortlist.
+    assert set(observed) == carried == set(plan["picture_facts"])
+    assert carried < set(captured.assets)  # the shortlist offered more than the cut admitted
     assert len(plan["carriers"]) == 4
     assert all("picture observations" not in line for line in captured.annotations.values())
 
