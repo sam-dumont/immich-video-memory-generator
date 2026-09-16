@@ -13,13 +13,17 @@ so no asset can be lost between two pools: there is only one.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any, cast
 
 from immich_memories.api.models import Asset
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
+
+# Given a burst's companion video ids in shutter order, one measured clock
+# offset per join, or None where the measurement refused to commit.
+ClockOffsetProbe = Callable[[Sequence[str]], "list[float | None]"]
 
 
 @dataclass(frozen=True)
@@ -52,12 +56,22 @@ class MotionRendering:
 
 
 def motion_renderings(
-    assets: list[Any], config: Any, *, companion_assets: Mapping[str, Asset] | None = None
+    assets: list[Any],
+    config: Any,
+    *,
+    companion_assets: Mapping[str, Asset] | None = None,
+    clock_offsets: ClockOffsetProbe | None = None,
 ) -> dict[str, MotionRendering]:
     """The motion each photograph could show, keyed by every still in its burst.
 
     Keyed by every still rather than by the first, because any of them may be
     the one selection keeps and the motion belongs to all of them equally.
+
+    `clock_offsets` measures how each burst's companions relate in time; when
+    it answers, the stitch windows are re-placed so joins are
+    content-continuous instead of midpoint-guessed (#1012). A join it cannot
+    measure keeps the metadata model, and a burst with nothing measured keeps
+    the metadata plan.
     """
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
@@ -79,7 +93,7 @@ def motion_renderings(
         merge_window_seconds=window,
         clip_durations=durations,
     ):
-        material, members = _cluster_material(cluster)
+        material, members = _cluster_material(cluster, clock_offsets)
         if material is None:
             continue
         rendering = MotionRendering(
@@ -118,18 +132,27 @@ def _companion_durations(
     return durations
 
 
-def _cluster_material(cluster: Any) -> tuple[LiveRenderMaterial | None, list[Any]]:
+def _cluster_material(
+    cluster: Any, clock_offsets: ClockOffsetProbe | None = None
+) -> tuple[LiveRenderMaterial | None, list[Any]]:
     """The stitchable material of one burst, or ``None`` when it offers none.
 
     One picture, two files: a shared album can hold a second still of the same Live Photo,
     pointing at the same video. The video is offered once, by its earliest still; the later
     still stays an ordinary photograph. A cluster the material guard still refuses is skipped
     rather than ending the plan: its stills remain selectable, without a motion offer.
+
+    A burst whose joins cannot all be measured is refused the same way: the
+    midpoint estimate is not good enough to stitch with, so the stills stay
+    photographs rather than showing a stitch that rewinds or skips (#1012).
     """
+    trims = _measured_trims(cluster, clock_offsets)
+    if trims is None:
+        return None, list(cluster.assets)
     entries: list[LiveSourceEntry] = []
     offered_videos: set[str] = set()
     members: list[Any] = []
-    for a, (start, end) in zip(cluster.assets, cluster.trim_points(), strict=True):
+    for a, (start, end) in zip(cluster.assets, trims, strict=True):
         video_id = cast(str, a.live_photo_video_id)
         if video_id in offered_videos and end > start:
             continue
@@ -147,3 +170,37 @@ def _cluster_material(cluster: Any) -> tuple[LiveRenderMaterial | None, list[Any
         return LiveRenderMaterial(tuple(entries)), members
     except ValueError:
         return None, members
+
+
+def _measured_trims(
+    cluster: Any, clock_offsets: ClockOffsetProbe | None
+) -> list[tuple[float, float]] | None:
+    """Windows re-placed by measured content clocks, or ``None`` to refuse the burst.
+
+    Every production path injects the engine, so a multi-member burst is
+    always stitched from measurement — and refused entirely when a join cannot
+    be measured, because the midpoint estimate is not good enough to stitch
+    with (#1012). A caller that injects no engine keeps the cluster's own
+    window arithmetic; that is the unit-level planning contract, never a
+    production runtime.
+    """
+    if clock_offsets is None:
+        return cluster.trim_points()
+    if cluster.count < 2 or cluster.clip_durations is None:
+        return cluster.trim_points()
+    from immich_memories.processing.stitch_alignment import aligned_trims
+
+    video_ids = [cast(str, asset.live_photo_video_id) for asset in cluster.assets]
+    measured = list(clock_offsets(video_ids))
+    if len(measured) != len(video_ids) - 1:
+        return None
+    deltas: list[float] = []
+    for value in measured:
+        if value is None:
+            return None
+        deltas.append(value)
+    durations = cluster.source_durations()
+    aligned = aligned_trims(cluster.trim_points(), durations, deltas)
+    # An alignment that cannot place every member of a genuinely short burst
+    # is the same refusal: better a photograph than a stutter.
+    return aligned

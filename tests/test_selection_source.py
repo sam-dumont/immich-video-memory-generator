@@ -1216,3 +1216,62 @@ def test_place_scope_radius_admits_gps_within_and_drops_beyond() -> None:
 
     assert prepared.candidate_ids == ("near",)
     assert prepared.trace.story_of("far").reason == "outside place scope"
+
+
+def test_a_source_video_longer_than_the_cap_is_excluded_before_any_analysis() -> None:
+    """An hour-long source paid for the whole download and speech pass for one shot (#1013)."""
+    long_take = make_asset("long-take", duration="1:01:00.000")
+    ordinary = make_asset("ordinary", duration="0:00:30.000")
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (long_take, ordinary)),
+    )
+
+    assert prepared.candidate_ids == ("ordinary",)
+    assert prepared.excluded_ids == ("long-take",)
+    story = prepared.trace.story_of("long-take")
+    assert "61 minutes" in story.reason and "maximum" in story.reason
+
+
+def test_the_duration_cap_admits_the_boundary_and_a_missing_metadata_video_is_excluded() -> None:
+    boundary = make_asset("boundary", duration="0:05:00.000")
+    unknown = make_asset("unknown-duration", duration=None)
+    photo = make_asset("photo", duration=None)
+    photo.type = AssetType.IMAGE
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(source_fetcher=lambda _scope: (boundary, unknown, photo)),
+    )
+
+    assert prepared.candidate_ids == ("boundary", "photo")
+    assert prepared.excluded_ids == ("unknown-duration",)
+    assert "metadata" in prepared.trace.story_of("unknown-duration").reason
+
+
+def test_a_duration_cap_of_zero_disables_the_rule() -> None:
+    long_take = make_asset("long-take", duration="1:01:00.000")
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope(max_source_video_seconds=0)),
+        EditorialDependencies(source_fetcher=lambda _scope: (long_take,)),
+    )
+
+    assert prepared.candidate_ids == ("long-take",)
+
+
+def test_the_duration_cap_covers_clips_and_cannot_be_bypassed_by_the_owner() -> None:
+    long_clip = VideoClipInfo(
+        asset=make_asset("long-clip", duration="1:01:00.000"),
+        duration_seconds=3660.0,
+        width=640,
+        height=480,
+    )
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(
+            scope=SourceScope(),
+            owner_required_asset_ids=("long-clip",),
+        ),
+        EditorialDependencies(source_fetcher=lambda _scope: (long_clip,)),
+    )
+
+    assert prepared.candidate_ids == ()
+    assert prepared.excluded_ids == ("long-clip",)

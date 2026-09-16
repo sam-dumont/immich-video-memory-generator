@@ -185,6 +185,55 @@ def production_story_motion(source, *, cache_path, trace, resources):
     )
 
 
+def production_live_clock_offsets(source, *, resources):
+    """Measure Live companion clock offsets for content-aligned stitch joins (#1012).
+
+    Lazy and memoised: companions are downloaded only when a burst is actually
+    planned, each pair once per run. A pair the correlation refuses (a hard
+    cut, exposure shift, or too little shared content) answers None, and the
+    caller keeps the metadata model for that join.
+    """
+    from immich_memories.processing.stitch_alignment import (
+        CompanionUndecodable,
+        companion_frames,
+        pairwise_clock_offset,
+    )
+
+    client = None
+    memo: dict[tuple[str, str], float | None] = {}
+
+    def fetch(video_id: str) -> bytes:
+        nonlocal client
+        if client is None:
+            from immich_memories.api.sync_client import SyncImmichClient
+
+            config = source.config.immich
+            client = SyncImmichClient(
+                base_url=config.url, api_key=config.api_key, api_version=config.api_version
+            )
+            resources.callback(client.close)
+        return client.get_video_playback(video_id)
+
+    def measure(video_ids) -> list[float | None]:
+        offsets: list[float | None] = []
+        for first, second in zip(video_ids, video_ids[1:], strict=False):
+            key = (first, second)
+            if key not in memo:
+                try:
+                    measured = pairwise_clock_offset(
+                        companion_frames(fetch(first)), companion_frames(fetch(second))
+                    )
+                    memo[key] = measured.seconds if measured is not None else None
+                except (CompanionUndecodable, OSError):
+                    # One unreadable companion leaves every join it touches on
+                    # the metadata model; the burst still renders.
+                    memo[key] = None
+            offsets.append(memo[key])
+        return offsets
+
+    return measure
+
+
 def production_speech_resolver(source, *, resources):
     """Detect retained speech before final timing, with lazy transport and local inference."""
     import logging
