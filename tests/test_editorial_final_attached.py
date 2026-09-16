@@ -167,7 +167,7 @@ def test_actual_planner_checks_final_live_intervals_and_does_not_refill_a_sample
             **picture_record(),
             "description": "A clothed person moves furniture.",
         },
-        confirm_sampled_pairs=lambda pairs, _records: (
+        confirm_sampled_pairs=lambda pairs, _records, **_distances: (
             tuple(SamePicturePairDecision(*pair, False) for pair in pairs),
             {},
         ),

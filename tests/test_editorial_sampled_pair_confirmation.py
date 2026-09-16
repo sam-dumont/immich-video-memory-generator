@@ -16,7 +16,10 @@ from immich_memories.analysis import editorial_gateway
 from immich_memories.analysis.editorial_picture_facts import PROMPT, PictureFactsProvider
 from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
 from immich_memories.analysis.llm_wire import LLMTransportAttempt
-from immich_memories.analysis.selection_same_picture import _PAIR_PROMPT
+from immich_memories.analysis.selection_same_picture import (
+    _PAIR_PROMPT,
+    SELECTS_MAX_CORROBORATION,
+)
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.visual_request_planner import VisionRequestLimits
 from immich_memories.api.models import AssetType
@@ -141,6 +144,20 @@ def test_real_provider_to_existing_pair_primitive_then_exact_warm(observed, monk
     warm, second = adapter((("one", "two"),), observed["records"])
     assert warm == first and second["cache_hits"] == 2 and second["actual_http_attempts"] == 0
     assert observed["records"] == before
+    adapter.close()
+
+
+@pytest.mark.parametrize("distance,expected_calls", [(SELECTS_MAX_CORROBORATION, 1), (None, 2)])
+def test_a_corroborating_distance_replaces_the_second_arrangement(
+    observed, monkeypatch, distance, expected_calls
+):
+    calls = replies(monkeypatch, [answer()] * expected_calls)
+    adapter = confirmer(observed)
+    result, audit = adapter(
+        (("one", "two"),), observed["records"], corroborating_distances=(distance,)
+    )
+    assert result[0].same is True
+    assert len(calls) == audit["actual_http_attempts"] == expected_calls
     adapter.close()
 
 

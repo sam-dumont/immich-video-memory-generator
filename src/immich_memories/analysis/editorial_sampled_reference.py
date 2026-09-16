@@ -13,7 +13,7 @@ def sampled_source_relation(port, *, picture_records):
     # aliases and nominated keeper. Conserve negative/unavailable results too.
     outcomes: dict[tuple[str, ...], dict[str, Any]] = {}
 
-    def confirm(remove_asset_id, kept_asset_id):
+    def confirm(remove_asset_id, kept_asset_id, distance=None):
         if remove_asset_id == kept_asset_id:
             return {"same": True, "scope": "identical source identity"}
         pair = tuple(sorted((remove_asset_id, kept_asset_id)))
@@ -22,7 +22,9 @@ def sampled_source_relation(port, *, picture_records):
         if any(picture_records.get(asset, {}).get("status") != "available" for asset in pair):
             outcomes[pair] = {"same": None, "status": "own_preview_unavailable"}
             return deepcopy(outcomes[pair])
-        decisions, audit = port((pair,), picture_records)
+        # A hash-nominated pair carries its own qualified distance, which spares
+        # the port one arrangement. A description-only nomination has none.
+        decisions, audit = port((pair,), picture_records, corroborating_distances=(distance,))
         if len(decisions) != 1:
             raise ValueError("sampled comparison must account for its exact nominated pair")
         decision = decisions[0]
@@ -33,6 +35,7 @@ def sampled_source_relation(port, *, picture_records):
         outcomes[pair] = {
             "same": decision.same if decision.warning is None else None,
             "decision": asdict(decision),
+            "corroborating_distance": distance,
             # Runtime counters belong in top-level sampled_pair_metrics. They
             # must not alter a semantic decision when the same answer is reused.
             "evidence": {

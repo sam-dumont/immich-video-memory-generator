@@ -43,9 +43,11 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
         assert set(asset_ids) <= set(observed) & set(records)
         return {asset_id: hashes[asset_id] for asset_id in asset_ids}
 
-    def confirm(pairs, records):
+    def confirm(pairs, records, corroborating_distances=None):
         compared.extend(pairs)
         assert pairs == (("picture-000", "picture-001"),)
+        # A hash nomination hands its own distance; the far pair is named by description alone.
+        assert corroborating_distances == ((None,) if far_hash else (0,))
         assert all(records[asset_id]["status"] == "available" for asset_id in pairs[0])
         return (SamePicturePairDecision(*pairs[0], True),), {"scope": "controlled pixel relation"}
 

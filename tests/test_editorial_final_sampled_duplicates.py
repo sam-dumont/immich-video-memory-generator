@@ -35,7 +35,7 @@ def run(units, *, outcomes=None, hashes=None, records=None, **options):
     actual_records, actual_hashes = inputs(units)
     calls = []
 
-    def confirm(left, right):
+    def confirm(left, right, _distance=None):
         calls.append((left, right))
         value = True if outcomes is None else outcomes.get(frozenset((left, right)), False)
         return {"same": value, "source_pair": [left, right], "evidence": "controlled pixels"}
@@ -317,12 +317,36 @@ def test_existing_hash_threshold_is_inclusive_and_only_nominates():
     assert kept == original and calls == [] and not audit["nominations"]
 
 
+def test_a_hash_nominated_pair_carries_its_distance_and_a_description_one_does_not():
+    original = [unit("a"), unit("b"), unit("c")]
+    asked = []
+
+    # WHY: behind this callback sits the image gateway; one call is one real comparison.
+    def confirm(left, right, distance=None):
+        asked.append((left, right, distance))
+        return {"same": False, "source_pair": [left, right]}
+
+    shown = "Two cyclists carry a red ladder along the canal towpath together"
+    reduce_final_sampled_duplicates(
+        original,
+        picture_records={
+            "a": {"status": "available", "description": shown},
+            "b": {"status": "available", "description": shown},
+            "c": {"status": "available"},
+        },
+        # b is nominated on its own description alone; only c is hash-close to a.
+        preview_hashes={"a": "0" * 16, "b": "f" * 16, "c": "00000000000003ff"},
+        confirm_relation=confirm,
+    )
+    assert sorted(asked) == [("a", "b", None), ("a", "c", 10)]
+
+
 def test_replay_reuses_stable_relations_without_changing_semantic_audit():
     original = [unit("a"), unit("b"), unit("c")]
     records, hashes = inputs(original)
     bank, new_calls = {}, []
 
-    def cached_relation(left, right):
+    def cached_relation(left, right, _distance=None):
         key = (left, right)
         if key not in bank:
             new_calls.append(key)

@@ -238,20 +238,23 @@ def _nominations(
 class _RelationCache:
     """One conserved outcome per source pair, inside a fixed comparison work bound."""
 
-    def __init__(self, confirm: Callable[[str, str], Mapping[str, Any]], limit: int) -> None:
+    def __init__(
+        self, confirm: Callable[[str, str, int | None], Mapping[str, Any]], limit: int
+    ) -> None:
         self._confirm, self._limit = confirm, limit
         self._results: dict[tuple[str, ...], dict[str, Any]] = {}
         self.checks_used = 0
 
-    def __call__(self, left: str, right: str) -> dict[str, Any] | None:
-        key = tuple(sorted((left, right)))
+    def __call__(self, left: str, right: str, distance: int | None = None) -> dict[str, Any] | None:
+        earlier, later = sorted((left, right))
+        key = (earlier, later)
         if left == right:
             return {"same": True, "basis": "identical_source_material_member"}
         if key not in self._results:
             if self.checks_used >= self._limit:
                 return None
             self.checks_used += 1
-            outcome = deepcopy(dict(self._confirm(*key)))
+            outcome = deepcopy(dict(self._confirm(earlier, later, distance)))
             if "same" not in outcome or type(outcome["same"]) not in (bool, type(None)):
                 raise ValueError("sampled relation must report same/different/unavailable")
             self._results[key] = outcome
@@ -275,7 +278,9 @@ def _matched_member(
         return False
     unknown = False
     for edge in matches:
-        outcome = relation(member, edge["keeper_member"])
+        # Only a hash nomination's distance corroborates; a description match is not pixels.
+        corroborating = edge["distance"] if "hash" in edge["signals"] else None
+        outcome = relation(member, edge["keeper_member"], corroborating)
         if outcome is None:
             row["status"] = "work_limit"
             return False
@@ -386,7 +391,7 @@ def reduce_final_sampled_duplicates(
     *,
     picture_records: Mapping[str, Mapping[str, Any]],
     preview_hashes: Mapping[str, str | None],
-    confirm_relation: Callable[[str, str], Mapping[str, Any]],
+    confirm_relation: Callable[[str, str, int | None], Mapping[str, Any]],
     protected_asset_ids: Sequence[str] = (),
     objective_quality: Mapping[str, float | None] | None = None,
     max_relation_checks: int | None = None,
@@ -394,9 +399,11 @@ def reduce_final_sampled_duplicates(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Retain original order and source fields; only direct sampled proof permits removal.
 
-    All selected dates, events and media kinds can nominate one another. Hash proximity
-    or existing own-description similarity is a discovery signal only. The callback owns exact conserved pixels and relation
-    reuse; its returned evidence must be stable, with operational metrics kept elsewhere.
+    All selected dates, events and media kinds can nominate one another. Existing own-description
+    similarity is a discovery signal only; a hash nomination also hands the callback its own
+    distance, which the callback may spend instead of a second arrangement. The callback owns
+    exact conserved pixels and relation reuse; its returned evidence must be stable, with
+    operational metrics kept elsewhere.
     A positive is editorial sampled redundancy, never equality of unseen video motion.
     Each removed material member must directly match a member of a surviving keeper.
     The fixed 2N default is a work bound; unresolved comparisons retain their pictures.
