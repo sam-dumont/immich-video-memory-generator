@@ -249,6 +249,117 @@ def test_probe_reports_a_child_that_outlived_its_deadline(
     assert result.outcome is KernelProbeOutcome.TIMED_OUT
 
 
+class _ScriptedRun:
+    """A runner whose answers differ per attempt, recording how many were asked."""
+
+    def __init__(self, *steps: dict[str, object]) -> None:
+        self.steps = list(steps)
+        self.calls = 0
+
+    def __call__(self, command, *, timeout, **_kwargs):
+        step = self.steps[min(self.calls, len(self.steps) - 1)]
+        self.calls += 1
+        if step.get("error") is not None:
+            raise step["error"]
+        payload = step.get("payload")
+        if payload is not None:
+            written = payload if isinstance(payload, str) else json.dumps(payload)
+            Path(command[3]).write_text(written)  # type: ignore[index]
+        return subprocess.CompletedProcess(
+            list(command), int(step.get("returncode", 0)), "", str(step.get("stderr", ""))
+        )
+
+
+def test_a_timed_out_probe_retries_once_before_standing_down(monkeypatch):
+    """The first child may just be cold-starting the native library (#1014)."""
+    import time
+
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        _probe_backend,
+    )
+
+    timeout_error = subprocess.TimeoutExpired("probe", 10.0)
+    timeout_error.stderr = "warm-up output"
+    run = _install_runner(
+        monkeypatch,
+        _ScriptedRun(
+            {"error": timeout_error},
+            {"payload": {"outcome": "success", "detail": None}},
+        ),
+    )
+
+    started = time.monotonic()
+    result = _probe_backend("cpu", timeout=10.0)
+
+    assert run.calls == 2, "one timeout must not be the final answer"
+    assert time.monotonic() - started < 5
+    assert result.outcome is KernelProbeOutcome.SUCCESS
+
+
+def test_a_second_timeout_still_stands_down_and_says_why(monkeypatch):
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        _probe_backend,
+    )
+
+    def timed_out(_cmd, _timeout):
+        error = subprocess.TimeoutExpired("probe", 10.0)
+        error.stderr = "compiling kernel: stuck\n"
+        return error
+
+    run = _install_runner(
+        monkeypatch,
+        _ScriptedRun(
+            {"error": timed_out("probe", 10.0)},
+            {"error": timed_out("probe", 10.0)},
+        ),
+    )
+
+    result = _probe_backend("cpu", timeout=10.0)
+
+    assert run.calls == 2, "retry once, not forever"
+    assert result.outcome is KernelProbeOutcome.TIMED_OUT
+    assert result.detail is not None and "stuck" in result.detail, (
+        "the child's own output is the only clue to why it never finished"
+    )
+
+
+def test_a_crashed_child_names_its_own_last_words(monkeypatch):
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        _probe_backend,
+    )
+
+    _install_runner(
+        monkeypatch,
+        _ScriptedRun(
+            {"payload": None, "returncode": 134, "stderr": "terminate called after throwing"}
+        ),
+    )
+
+    result = _probe_backend("cpu", timeout=10.0)
+
+    assert result.outcome is KernelProbeOutcome.CHILD_SIGNALLED
+    assert result.detail == "SIGABRT"
+    assert result.stderr is not None and "terminate called" in result.stderr, (
+        "the child's own output is the only clue to why it aborted"
+    )
+
+
+def test_a_crash_is_not_retried(monkeypatch):
+    from immich_memories.titles.kernel_backend_probe import _probe_backend
+
+    run = _install_runner(
+        monkeypatch,
+        _ScriptedRun({"payload": None, "returncode": 1, "stderr": "boom"}),
+    )
+
+    _probe_backend("cpu", timeout=10.0)
+
+    assert run.calls == 1, "a crash is an answer, not a cold start"
+
+
 def test_probe_survives_an_interpreter_it_cannot_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -54,8 +54,45 @@ def _source_exclusion_reason(
     if reason is None:
         reason = _provenance_exclusion_reason(asset, clip, request.scope)
     if reason is None:
+        reason = _duration_exclusion_reason(source, asset, request.scope)
+    if reason is None:
         reason = _boundary_exclusion_reason(asset, request, dependencies)
     return reason
+
+
+def _duration_exclusion_reason(
+    source: Asset | VideoClipInfo, asset: Asset, scope: SourceScope
+) -> str | None:
+    """A recording too long to be worth its cost never reaches preparation.
+
+    Decided on Immich metadata alone, before speech analysis, editorial
+    selection, or any original download: an hour-long source once paid for a
+    full 37GB fetch to place one six-second shot (#1013). A photograph has no
+    duration and is exempt; an owner-required id does not lift this — the
+    required picture simply never enters the pool, and the eligibility trace
+    says why.
+    """
+    from immich_memories.api.models import AssetType
+
+    if scope.max_source_video_seconds <= 0:
+        return None
+    if asset.type != AssetType.VIDEO and not isinstance(source, VideoClipInfo):
+        return None
+    duration = (
+        source.duration_seconds if isinstance(source, VideoClipInfo) else asset.duration_seconds
+    )
+    if isinstance(source, VideoClipInfo) and (duration is None or duration <= 0):
+        # A burst clip may not state its own duration; the underlying video is
+        # what would be downloaded, so its metadata is the honest cost.
+        duration = asset.duration_seconds
+    if duration is None or duration <= 0:
+        return "video duration metadata is missing"
+    if duration > scope.max_source_video_seconds:
+        return (
+            f"source video runs {duration / 60:.0f} minutes, over the "
+            f"{scope.max_source_video_seconds / 60:g}-minute maximum"
+        )
+    return None
 
 
 def _identity_exclusion_reason(

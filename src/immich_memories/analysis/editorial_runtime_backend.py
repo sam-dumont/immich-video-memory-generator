@@ -22,6 +22,7 @@ from immich_memories.analysis.editorial_product_brief import build_editorial_bri
 from immich_memories.analysis.editorial_runtime_ports import (
     EditorialRuntimePorts,
     production_attached_pictures,
+    production_live_clock_offsets,
     production_sampled_pair_confirmer,
     production_speech_resolver,
     production_story_motion,
@@ -71,6 +72,22 @@ class ProductionPostCardBackend:
         self.last_structure_result: StructurePlanningResult | None = None
         self.last_companion_assets: dict[str, Asset] = {}
         self.allow_live_motion: bool | None = None
+        # One measurement engine per run: planning and the render projection
+        # must re-derive the same Live stitch material (#1012).
+        self._clock_offsets_provider = None
+
+    def clock_offsets(self, source: StructurePlanningInput, resources):
+        """The run's Live companion clock measurements, built once and memoised."""
+        if self._clock_offsets_provider is None:
+            self._clock_offsets_provider = production_live_clock_offsets(
+                source, resources=resources
+            )
+        return self._clock_offsets_provider
+
+    @property
+    def clock_offsets_provider(self):
+        """The engine planning used, for the render projection that must agree with it."""
+        return self._clock_offsets_provider
 
     def edit(
         self, workprint: TextEditorialWorkprint | StructurePlanningInput, *, trace: Trace
@@ -253,6 +270,7 @@ class ProductionPostCardBackend:
             )
             if demanded_previews is not None
             else picture_facts.metrics,
+            clock_offsets=self.clock_offsets(source, resources),
         )
 
     def _adopt(
