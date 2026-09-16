@@ -80,6 +80,11 @@ def motion_renderings(
         clip_durations=durations,
     ):
         material, members = _cluster_material(cluster)
+        if len(members) < cluster.count:
+            # Removed aliases must neither trim nor connect the surviving footage.
+            # Re-cluster the smaller set so projection reproduces these exact cuts.
+            found.update(motion_renderings(members, config, companion_assets=companion_assets))
+            continue
         if material is None:
             continue
         rendering = MotionRendering(

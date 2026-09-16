@@ -163,3 +163,40 @@ def test_projection_still_rejects_a_manifest_that_reintroduces_unreviewed_motion
             config=captured.config,
             include_live_photos=True,
         )
+
+
+def test_duplicate_positive_companions_keep_exact_timing_through_projection(tmp_path):
+    captured = live_source(tmp_path, pictures=6, add_context=False)
+    members = list(captured.assets.values())
+    start = members[0].file_created_at
+    offsets = (0.0, 1.451, 1.451, 2.406, 4.423, 4.423)
+    videos = (0, 1, 1, 2, 3, 3)
+    for asset, offset, video in zip(members, offsets, videos, strict=True):
+        asset.file_created_at = start + timedelta(seconds=offset)
+        asset.live_photo_video_id = f"video-{video}"
+    captured = replace(
+        captured,
+        companion_assets={
+            f"video-{index}": make_asset(f"video-{index}", duration=duration)
+            for index, duration in enumerate((2.857, 2.603, 2.565, 2.577))
+        },
+    )
+
+    result = run(captured, ControlledStoryJudge())
+
+    carrier = next(row for row in result["carriers"] if row["kind"] == "live-motion")
+    _, candidates = demand(members)
+    projected = project_source_rendering(
+        result["carriers"],
+        candidates,
+        config=captured.config,
+        include_live_photos=True,
+        companion_assets=captured.companion_assets,
+    )
+    selected = next(
+        row.clip for row in projected.candidates if row.clip.asset.id == carrier["asset_id"]
+    )
+    assert selected.live_burst_material == carrier["live_material"]
+    assert selected.live_burst_video_ids == [f"video-{i}" for i in range(4)]
+    assert selected.live_burst_trim_points[1][1] == pytest.approx(2.2565)
+    assert selected.live_burst_trim_points[-1][1] == pytest.approx(2.577)

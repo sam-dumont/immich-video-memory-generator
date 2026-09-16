@@ -95,6 +95,21 @@ def test_a_second_still_of_the_same_live_video_stays_a_photograph_without_ending
     assert renderings[first.id].video_ids.count(first.live_photo_video_id) == 1
 
 
+def test_a_discarded_companion_alias_cannot_bridge_nonoverlapping_sources() -> None:
+    first = _live(1)
+    twin = _live(2, seconds=2.5)
+    twin.live_photo_video_id = first.live_photo_video_id
+    other = _live(3, seconds=5.0)
+
+    renderings = motion_renderings([first, twin, other], _config())
+
+    assert twin.id not in renderings
+    assert renderings[first.id].video_ids == (first.live_photo_video_id,)
+    assert renderings[other.id].video_ids == (other.live_photo_video_id,)
+    assert renderings[first.id].duration_seconds == 3.0
+    assert renderings[other.id].duration_seconds == 3.0
+
+
 def _companion(video_id: str, *, duration="0:00:03.000", asset_id=None):
     from tests.conftest import make_asset
 
