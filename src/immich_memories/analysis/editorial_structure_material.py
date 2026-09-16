@@ -302,7 +302,9 @@ class Material:
     story_lines: dict[str, str]
 
 
-def _live_renderings(source: StructurePlanningInput, wall: Wall) -> dict:
+def _live_renderings(
+    source: StructurePlanningInput, wall: Wall, ports: StructurePlannerPorts
+) -> dict:
     renderings: dict = {}
     if not source.allow_live_motion:
         return renderings
@@ -311,7 +313,12 @@ def _live_renderings(source: StructurePlanningInput, wall: Wall) -> dict:
         # and review, rather than borrow nearby footage from source context.
         material = [source.assets[a] for a in dict.fromkeys(ids) if a in source.assets]
         renderings.update(
-            motion_renderings(material, source.config, companion_assets=source.companion_assets)
+            motion_renderings(
+                material,
+                source.config,
+                companion_assets=source.companion_assets,
+                clock_offsets=ports.clock_offsets,
+            )
         )
     return renderings
 
@@ -328,7 +335,7 @@ def build_material(
         source,
         ports,
         wall,
-        renderings=_live_renderings(source, wall),
+        renderings=_live_renderings(source, wall, ports),
         never_auto=_share.never_auto_ids(source.shareability_flags),
         document_sources=document_sources,
     )

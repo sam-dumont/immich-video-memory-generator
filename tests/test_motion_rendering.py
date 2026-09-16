@@ -117,6 +117,35 @@ def _companion(video_id: str, *, duration="0:00:03.000", asset_id=None):
     return companion
 
 
+def test_measured_alignment_survives_removing_a_duplicate_companion() -> None:
+    import pytest
+
+    first = _live(1)
+    twin = _live(2, seconds=0.5)
+    twin.live_photo_video_id = first.live_photo_video_id
+    other = _live(3, seconds=2.0)
+    companions = {key: _companion(key) for key in ("video-1", "video-3")}
+
+    def measured_offsets(video_ids):
+        # WHY: replace the external frame measurement with known source clocks;
+        # exercise the real clustering, alignment and material construction.
+        return [0.0 if a == b else 0.6 for a, b in zip(video_ids, video_ids[1:], strict=False)]
+
+    found = motion_renderings(
+        [first, twin, other], _config(), companion_assets=companions, clock_offsets=measured_offsets
+    )
+
+    assert twin.id not in found
+    rendering = found[first.id]
+    assert rendering.video_ids == ("video-1", "video-3")
+    assert rendering.trim_points[0][1] == pytest.approx(rendering.trim_points[1][0] + 0.6)
+    assert rendering.duration_seconds == pytest.approx(3.6)
+    reproduced = motion_renderings(
+        [first, other], _config(), companion_assets=companions, clock_offsets=measured_offsets
+    )[first.id]
+    assert rendering.material == reproduced.material
+
+
 def test_a_still_whose_companion_is_absent_stays_an_ordinary_photograph() -> None:
     """No motion offer is not a failure: the picture remains selectable without one."""
     offered, absent = _live(1), _live(2, seconds=1.0)

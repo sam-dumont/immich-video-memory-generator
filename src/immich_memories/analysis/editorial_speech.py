@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from immich_memories.processing.live_material import LiveRenderMaterial
 from immich_memories.speech.cuts import safe_end, set_duration
+from immich_memories.speech.facts import SpeechMeasurementUnavailable
+
+logger = logging.getLogger(__name__)
 
 
 def _merged_ranges(ranges, duration, buffer):
@@ -46,13 +50,25 @@ def resolve_speech_cuts(
         if carrier["kind"] not in {"video", "live-motion"}:
             result.append(carrier)
             continue
-        if carrier["kind"] == "live-motion":
-            material = LiveRenderMaterial.from_dict(carrier["live_material"])
-            ranges = _stitched_ranges(material, regions_for)
-            duration = material.duration_seconds
-        else:
-            duration = carrier["raw_seconds"]
-            ranges = regions_for(carrier["asset_id"])
+        try:
+            if carrier["kind"] == "live-motion":
+                material = LiveRenderMaterial.from_dict(carrier["live_material"])
+                ranges = _stitched_ranges(material, regions_for)
+                duration = material.duration_seconds
+            else:
+                duration = carrier["raw_seconds"]
+                ranges = regions_for(carrier["asset_id"])
+        except SpeechMeasurementUnavailable as error:
+            # WHY: the detector measured nothing for this one source. Speech
+            # protection is optional refinement; the editor's selected interval
+            # stands and the remaining carriers keep theirs.
+            logger.warning(
+                "Speech measurement unavailable for %s (%s); keeping the selected cut as is",
+                carrier["asset_id"],
+                error,
+            )
+            result.append(carrier)
+            continue
         carrier["speech_regions"] = _merged_ranges(ranges, duration, buffer)
         start = carrier.get("start_time", 0.0)
         for left, right in carrier["speech_regions"]:

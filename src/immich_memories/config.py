@@ -9,7 +9,9 @@ This module re-exports everything for backwards compatibility so that
 from immich_memories.config_loader import (  # noqa: F401
     Config,
     get_config,
+    get_config_path,
     init_config_dir,
+    load_config,
     set_config,
 )
 from immich_memories.config_models import (  # noqa: F401
@@ -54,6 +56,8 @@ __all__ = [
     "TitleScreenConfig",
     "expand_env_vars",
     "get_config",
+    "get_config_path",
     "init_config_dir",
+    "load_config",
     "set_config",
 ]

@@ -42,10 +42,9 @@ advanced:
     password: ${MY_SECRET_PASSWORD}   # password, client_secret, issuer_url and client_id expand ${VAR}
 ```
 
-`immich-memories --config PATH ui` reads `PATH` for host and port only, and
-`~/.immich-memories/config.yaml` for every authentication decision, so keep the `auth:` block in
-the default path or in environment variables
-([why](environment-variables.md#shorthand-overrides)).
+`immich-memories --config PATH ui` uses `PATH` for every decision, authentication included: bind
+address, auth, the Immich connection and the settings pages all observe the one file, and a reload
+reloads that same file.
 
 ## OIDC / SSO
 

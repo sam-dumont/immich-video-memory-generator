@@ -86,6 +86,9 @@ class LivePhotoCluster:
 
         Absolute-to-local conversion: clip i's absolute start is
         shutter_i - half_dur, so absolute time T → local = T - shutter_i + half_dur.
+
+        Content-aligned joins are applied by the caller (`motion_rendering`),
+        which replaces this midpoint estimate with measured clock offsets.
         """
         if not self.assets:
             return []
