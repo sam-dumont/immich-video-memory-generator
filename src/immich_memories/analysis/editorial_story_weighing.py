@@ -24,6 +24,7 @@ from immich_memories.analysis.editorial_story_weight_contract import (
     StoryWeightDecisionError,
     ask_complete_weights,
 )
+from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 
 _FAMILY_WORD = re.compile(
     r"\b(mother|father|parent|grand|sibling|brother|sister|uncle|aunt|nibling|niece|nephew|in-law|twin|son|daughter|godfather|godmother|partner|spouse)\b",
@@ -209,6 +210,39 @@ def _weighing_pages(rows, by_key, candidates, prompt_for, day_of):
     return chunks
 
 
+def _page_context_candidates(judge, rows, by_key, candidates, *, thesis, contract, record):
+    """Confirm the shared context first when repeating every candidate would crowd out a page."""
+    keys = {key: story for key, story in by_key.items() if key in candidates}
+    compared = [row for key, row in zip(by_key, rows, strict=True) if key in keys]
+    prompt = _weighing_prompt(
+        compared,
+        thesis=thesis,
+        contract=contract
+        + "\nThis table compares all central-story candidates for the WHOLE memory. "
+        "Confirm at most two, or none. The other stories will still be weighed in full afterward; "
+        "weights and edits from this comparison are not final decisions.",
+        candidates=candidates,
+    )
+    if not keys or len(compared) > WEIGHING_PAGE_ITEMS or len(prompt) > WEIGHING_PAGE_CHARS:
+        raise ValueError("story weighing context exceeds the bounded request size")
+    _, abouts, audits, _, _ = _ask_both_orders(
+        judge, prompt, compared, keys, candidates, record, suffix="-candidate-context"
+    )
+    named, confirmed = _central_stories(abouts, candidates, by_key, list(by_key.values()))
+    selected = named[:2]
+    record(
+        {
+            "stage": "story-weighing-candidate-context",
+            "candidates": list(candidates),
+            "selected": selected,
+            "confirmed": confirmed[:2],
+            "fallback": selected if not confirmed else [],
+            "orders": audits,
+        }
+    )
+    return selected
+
+
 def _split_weighing_page(rows, by_key, candidates, day_of):
     groups = _weighing_groups(by_key, day_of)
     anchors = set().union(*(group for group in groups if group.intersection(candidates)))
@@ -229,14 +263,18 @@ def _complete_weighing_page(judge, rows, by_key, candidates, prompt_for, record,
         decisions = _ask_both_orders(
             judge, prompt_for(rows), rows, keys, candidates, record, suffix=f"-page-{label}"
         )
-    except StoryWeightDecisionError:
+    except (StoryWeightDecisionError, TextCompletionFailure) as exc:
         parts = _split_weighing_page(rows, keys, candidates, day_of)
         if not parts:
             raise
         record(
             {
                 "stage": f"story-weighing-page-{label}-split",
-                "reason": "incomplete decisions after repairs",
+                "reason": (
+                    "incomplete text after transport recovery"
+                    if isinstance(exc, TextCompletionFailure)
+                    else "incomplete decisions after repairs"
+                ),
                 "story_count": len(rows),
                 "child_counts": [len(part) for part in parts],
             }
@@ -457,7 +495,20 @@ def _weigh_stories(
             "The whole-memory thesis, all central candidates and their possible join partners "
             "are repeated for comparison. Weigh against the whole memory, with no page quotas.",
         )
-        chunks = _weighing_pages(rows, by_key, candidates, prompt_for, day_of)
+        try:
+            chunks = _weighing_pages(rows, by_key, candidates, prompt_for, day_of)
+        except ValueError:
+            candidates = _page_context_candidates(
+                judge,
+                rows,
+                by_key,
+                candidates,
+                thesis=thesis,
+                contract=contract,
+                record=record,
+            )
+            prompt_for = partial(prompt_for, candidates=candidates)
+            chunks = _weighing_pages(rows, by_key, candidates, prompt_for, day_of)
         decisions = _ask_weighing_pages(
             judge, chunks, by_key, candidates, prompt_for, record, day_of
         )

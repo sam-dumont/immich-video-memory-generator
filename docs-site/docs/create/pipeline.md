@@ -91,6 +91,12 @@ decisions are cached by producer and input.
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 
+Large annual memories are read in batches. Each story-weighting batch keeps the period's account
+and main-story context, with at most 60 stories in its initial request. If the possible main stories
+would crowd out a batch, they are compared first; every story is still evaluated afterward. A batch
+that returns missing decisions or repeatedly truncated text is split into smaller groups while
+keeping parts of the same occasion together. All batches must finish before the decisions are used.
+
 The shipped design (the source model, the annotation store and its banks, the six stages, the two
 readings, the structure and story planners, carriers and durable attempts) is written up in
 [Story-first selection](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)

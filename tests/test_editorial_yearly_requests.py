@@ -9,6 +9,7 @@ import pytest
 
 from immich_memories.analysis.editorial_story_reading import read_period_story
 from immich_memories.analysis.editorial_story_weight_contract import StoryWeightDecisionError
+from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 from tests.test_editorial_story_reading import ScriptedJudge, fragment, opened, page_answer
 
 
@@ -94,6 +95,86 @@ def test_paging_keeps_two_stories_of_one_afternoon_available_to_join():
     assert len(result.stories) == 129
 
 
+def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded_pages():
+    model = YearJudge()
+    central = {f"S{i:04d}" for i in range(1, 48)}
+
+    def reply(stage, prompt):
+        raw = model.ask(stage, prompt)
+        if stage.startswith("story-understanding"):
+            answer = json.loads(raw)
+            answer["about"] = [
+                episode
+                for story in answer["stories"]
+                for episode in story["episodes"]
+                if episode in central
+            ]
+            return json.dumps(answer)
+        if stage.endswith("-candidate-context"):
+            answer = json.loads(raw)
+            answer["weights"] = dict.fromkeys(answer["weights"], "none")
+            answer["retitle"] = {"K02": "A provisional comparison title"}
+            return json.dumps(answer)
+        return raw
+
+    def day(index):
+        if index < 47:
+            return date(2030, 1, 1) + timedelta(days=index * 2)
+        return date(2030, 8, 1) + timedelta(days=max(0, index - 62) * 2)
+
+    result = read_period_story(
+        ScriptedJudge(reply),
+        evidence=[{**fragment(i), "taken": f"{day(i)}T12:00:00"} for i in range(66)],
+        contract="The whole year.",
+        prior={},
+        enrich=lambda episodes: {
+            e.key: {"day": e.facts[0]["taken"][:10], "moments": 2} for e in episodes
+        },
+    )
+
+    assert len(result.stories) == 66
+    candidates = {f"K{i:02d}" for i in range(1, 48)}
+    occasion = {f"K{i:02d}" for i in range(48, 64)}
+    assert max(len(prompt) for _, prompt, _, _ in model.weighing) <= 48_000
+    assert max(len(keys) for _, _, _, keys in model.weighing) <= 60
+    assert all(story["weight"] == "minor" for story in result.stories if story["key"] != "K01")
+    assert (
+        next(story["title"] for story in result.stories if story["key"] == "K02") == "Outing S0002"
+    )
+    for order in ("source", "reversed"):
+        comparisons = [
+            set(keys)
+            for stage, _, _, keys in model.weighing
+            if order in stage and stage.endswith("-candidate-context")
+        ]
+        assert comparisons == [candidates]
+        pages = [
+            set(keys)
+            for stage, _, _, keys in model.weighing
+            if order in stage and not stage.endswith("-candidate-context")
+        ]
+        assert set.union(*pages) == {f"K{i:02d}" for i in range(1, 67)}
+        assert all("K01" in keys for keys in pages)
+        assert all(occasion <= keys for keys in pages if keys & occasion)
+
+
+def test_a_shared_context_that_exceeds_the_character_limit_is_never_sent():
+    model = YearJudge()
+
+    def reply(stage, prompt):
+        raw = model.ask(stage, prompt)
+        if stage.startswith("story-understanding"):
+            answer = json.loads(raw)
+            answer["thesis"] = "The family visits and outings throughout the year. " * 1000
+            return json.dumps(answer)
+        return raw
+
+    with pytest.raises(ValueError, match="context exceeds the bounded request size"):
+        read_year(ScriptedJudge(reply), count=130)
+
+    assert model.weighing == []
+
+
 def test_a_failed_late_page_leaves_the_whole_year_incomplete():
     model = YearJudge(join=("K03", "K04"))
     records = []
@@ -135,3 +216,41 @@ def test_an_exhausted_page_is_read_in_smaller_groups_without_using_partial_edits
     assert recovered["title"] == "Outing S0089"
     assert recovered["episodes"] == ["S0089"]
     assert any("K89" in keys and len(keys) <= 32 for _, _, _, keys in model.weighing)
+
+
+@pytest.mark.parametrize("truncated_attempt", ["initial", "repair"])
+def test_truncated_weighing_replies_recover_in_smaller_complete_groups(truncated_attempt):
+    model = YearJudge()
+
+    def reply(stage, prompt):
+        answer = model.ask(stage, prompt)
+        keys = re.findall(r"^(K\d+) \|", prompt, re.MULTILINE)
+        if "K89" not in keys or len(keys) <= 32:
+            return answer
+        if truncated_attempt == "initial" or stage.endswith("-repair"):
+            raise TextCompletionFailure(
+                [
+                    {
+                        "outcome": "incomplete",
+                        "raw": '{"weights":',
+                        "max_tokens": budget,
+                        "error": "LLM returned incomplete content",
+                    }
+                    for budget in (1740, 3480)
+                ]
+            )
+        value = json.loads(answer)
+        del value["weights"]["K89"]
+        return json.dumps(value)
+
+    result = read_year(ScriptedJudge(reply), count=200)
+
+    assert len(result.stories) == 200
+    assert all(story["weight"] == "minor" for story in result.stories if story["key"] != "K01")
+    for order in ("source", "reversed"):
+        recovered = [
+            set(keys)
+            for stage, _, _, keys in model.weighing
+            if order in stage and "K89" in keys and len(keys) <= 32
+        ]
+        assert recovered and all({"K89", "K90"} <= keys for keys in recovered)
