@@ -179,3 +179,17 @@ def test_nearby_nomination_is_bounded_and_respects_the_owners_representative():
         nearby_picture_alternatives(choices[:1], choices, units, starred=lambda c: c.key == "0")
         == []
     )
+
+
+def test_standing_weighs_primaries_and_nearby_extras_in_one_packed_round(tmp_path):
+    """Both lists ride in the same blocks, so a pass asks the two established orders once."""
+    captured = nearby_source(tmp_path)
+    plan = run(captured, CompanyJudge())
+    passes = len(list(captured.artifact_dir.rglob("story-shortlist-pass-*.private.json")))
+    standing = [call["stage"] for call in plan["calls"] if call["stage"].startswith("standing-")]
+    assert passes >= 1
+    # Every picture a pass weighs fits one block, so the whole run asks the two established
+    # orders once. Separate rounds for the primaries and for the nearby extras asked four.
+    assert len(standing) == 2, standing
+    assert len(standing) <= 2 * passes
+    assert plan["calls_by_stage"]["standing"]["asked"] == len(standing)

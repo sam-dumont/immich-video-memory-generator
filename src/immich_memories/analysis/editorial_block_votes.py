@@ -182,6 +182,80 @@ class _Block(NamedTuple):
     prompts: dict[str, str]
 
 
+def _banked_rows(
+    bank: MutableMapping[str, dict] | None, row_key: Callable[[str], str] | None
+) -> dict[str, dict] | None:
+    """The per-row store inside the block bank, or None when rows are not banked.
+
+    Block entries are keyed by a 64-hex digest, so the literal "rows" key cannot collide with
+    one. The trade-off this buys: a banked row's vote was cast in one block's company and is
+    reused in another's. The standing score is already kept per asset in `gate.scores` and read
+    from there wherever a picture is weighed, so the bank now agrees with that model instead of
+    with the twelve rows a picture happened to be asked beside.
+    """
+    if bank is None or row_key is None:
+        return None
+    rows = bank.setdefault("rows", {})
+    return rows if isinstance(rows, dict) else None
+
+
+def _row_names(
+    items: Sequence[str],
+    row_key: Callable[[str], str] | None,
+    identity: str | None,
+    max_tokens: int,
+    answer_key: str,
+) -> dict[str, str]:
+    """Each row's name in the bank: its own question, scoped by the model identity and the exact
+    answer asked for, the way a block's cache key is. A row banked under one reader is not
+    replayed for another."""
+    if row_key is None:
+        return {}
+    return {
+        x: _vote_cache_key({"row": row_key(x)}, identity, max_tokens, answer_key) for x in items
+    }
+
+
+def _rows_from_bank(
+    rows: Mapping[str, dict], names_of: Mapping[str, str]
+) -> dict[str, tuple[int, str]]:
+    """The votes the bank already holds for these rows, under each row's own name."""
+    return {
+        x: (int(row["votes"]), str(row.get("why", "")))
+        for x, name in names_of.items()
+        if isinstance(row := rows.get(name), Mapping) and "votes" in row
+    }
+
+
+def _pack_blocks(
+    items: Sequence[str],
+    *,
+    stage: str,
+    bank_key: Callable[[Sequence[str]], str],
+    row_of: Callable[[str], str],
+    prompt_of: Callable[[str], str],
+    identity: str | None,
+    max_tokens: int,
+    answer_key: str,
+) -> list[_Block]:
+    """The rows still to ask, cut into twelves, each block with its two prompts and cache key."""
+    blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
+    packed = []
+    for index, block in enumerate(blocks):
+        orders = _block_orders(block, bank_key(block))
+        prompts = {name: prompt_of("\n".join(row_of(x) for x in order)) for name, order in orders}
+        packed.append(
+            _Block(
+                block,
+                _vote_cache_key(prompts, identity, max_tokens, answer_key),
+                f"{stage}-{index + 1}",
+                orders,
+                prompts,
+            )
+        )
+    return packed
+
+
 def vote_blocks(
     judge,
     *,
@@ -196,29 +270,30 @@ def vote_blocks(
     save: Callable[[], None] | None = None,
     max_tokens: int = 400,
     model_identity: str | None = None,
+    row_key: Callable[[str], str] | None = None,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Votes per item (0, 1 or 2) with the first reason given, and one record per asked round.
     `row_of` renders the whole listing row including its label; `prompt_of` wraps a listing.
     `bank_key` seeds the established order; the separate cache key covers the exact two questions
-    and their model identity."""
-    votes_of: dict[str, tuple[int, str]] = {}
-    rounds: list[dict] = []
+    and their model identity. `row_key` names one row's own question: rows already answered under
+    that name are taken from the bank and never packed into a block."""
     identity = _judge_model_identity(judge, model_identity) if bank is not None else None
     reusable = bank if identity is not None else None
-    blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
-    pending = []
-    for bi, block in enumerate(blocks):
-        orders = _block_orders(block, bank_key(block))
-        prompts = {name: prompt_of("\n".join(row_of(x) for x in order)) for name, order in orders}
-        pending.append(
-            _Block(
-                block,
-                _vote_cache_key(prompts, identity, max_tokens, answer_key),
-                f"{stage}-{bi + 1}",
-                orders,
-                prompts,
-            )
-        )
+    rows = _banked_rows(reusable, row_key)
+    names_of = (
+        _row_names(items, row_key, identity, max_tokens, answer_key) if rows is not None else {}
+    )
+    banked = _rows_from_bank(rows, names_of) if rows else {}
+    pending = _pack_blocks(
+        [x for x in items if x not in banked],
+        stage=stage,
+        bank_key=bank_key,
+        row_of=row_of,
+        prompt_of=prompt_of,
+        identity=identity,
+        max_tokens=max_tokens,
+        answer_key=answer_key,
+    )
 
     def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
         if reusable is not None and asked.key in reusable:
@@ -233,13 +308,42 @@ def vote_blocks(
             max_tokens=max_tokens,
         )
 
-    for asked, votes in zip(pending, reader_map(judge, read, pending), strict=True):
+    votes_of, rounds = _harvest(
+        pending,
+        reader_map(judge, read, pending),
+        label_of=label_of,
+        reusable=reusable,
+        rows=rows,
+        names_of=names_of,
+        save=save,
+    )
+    return banked | votes_of, rounds
+
+
+def _harvest(
+    pending: Sequence[_Block],
+    answers: Sequence[dict[str, dict[str, str]]],
+    *,
+    label_of: Mapping[str, str],
+    reusable: MutableMapping[str, dict] | None,
+    rows: dict[str, dict] | None,
+    names_of: Mapping[str, str],
+    save: Callable[[], None] | None,
+) -> tuple[dict[str, tuple[int, str]], list[dict]]:
+    """Tally each answered block, write what it settled back into the bank, and record the round."""
+    votes_of: dict[str, tuple[int, str]] = {}
+    rounds: list[dict] = []
+    for asked, votes in zip(pending, answers, strict=True):
+        fresh = False
         if reusable is not None and asked.key not in reusable:
             reusable[asked.key] = votes
-            if save is not None:
-                save()
-        names = [name for name, _order in asked.orders]
-        votes_of.update(_tally(asked.items, label_of, votes, names))
+            fresh = True
+        tallied = _tally(asked.items, label_of, votes, [name for name, _o in asked.orders])
+        votes_of.update(tallied)
+        if rows is not None:
+            rows.update({names_of[x]: {"votes": n, "why": w} for x, (n, w) in tallied.items()})
+        if save is not None and (fresh or rows is not None):
+            save()
         rounds.extend(_round_records(asked.stage, asked.orders, votes))
     return votes_of, rounds
 
@@ -400,6 +504,12 @@ def judge_standing(
             ).encode()
         ).hexdigest()
 
+    # One picture's own question: the whole prompt except the company it was offered in.
+    question = STANDING_PROMPT_VERSION + "|" + prompt_of("") + "|"
+
+    def row_key(asset: str) -> str:
+        return hashlib.sha256((question + line_of(asset)).encode()).hexdigest()
+
     rejections, _rounds = vote_blocks(
         judge,
         stage="standing",
@@ -413,5 +523,6 @@ def judge_standing(
         save=save,
         max_tokens=700,
         model_identity=model_identity,
+        row_key=row_key,
     )
     return {a: (2 - n, why) for a, (n, why) in rejections.items()}

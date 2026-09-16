@@ -40,7 +40,7 @@ def standing(judge, bank, *, pictures=("a",), contract="contract", period="perio
     )
 
 
-def test_standing_relabels_a_cached_block_without_losing_its_rejection():
+def test_standing_keeps_a_pictures_rejection_when_its_company_changes():
     judge, bank = VoteJudge(), {}
     assert standing(judge, bank)["a"][0] == 0
     assert standing(judge, bank)["a"][0] == 0
@@ -48,7 +48,10 @@ def test_standing_relabels_a_cached_block_without_losing_its_rejection():
 
     shifted = (*[f"b{i}" for i in range(12)], "a")
     assert standing(judge, bank, pictures=shifted)["a"][0] == 0
-    assert len(judge.calls) == 6, "P13 cannot reuse a response naming P01"
+    # The vote is banked under the picture's own line, not under the label it wore, so the
+    # twelve newcomers are one block and "a" is not asked a third time.
+    assert len(judge.calls) == 4
+    assert all("weak object" not in prompt for _stage, prompt in judge.calls[2:])
 
 
 @pytest.mark.parametrize(
@@ -171,3 +174,18 @@ def test_worthiness_answer_instructions_do_not_nominate_real_or_foreign_choices(
             "A format example must not suggest any candidates"
         )
         assert set(re.findall(r"^(F\d+):", prompt, re.MULTILINE)) == set(labels)
+
+
+def test_a_banked_picture_is_answered_without_asking_it_in_new_company():
+    # WHY: VoteJudge stands in for the reader; the test counts its calls and reads the prompts
+    # it was handed, so no model is involved.
+    judge, bank = VoteJudge(), {}
+    first = standing(judge, bank, pictures=("a", "b", "c"))
+    assert len(judge.calls) == 2
+
+    second = standing(judge, bank, pictures=("c", "d"))
+    assert len(judge.calls) == 4, "only the unbanked picture is worth a block"
+    asked = [prompt for _stage, prompt in judge.calls[2:]]
+    assert all("people at d" in prompt for prompt in asked)
+    assert all("people at c" not in prompt for prompt in asked)
+    assert second["c"] == first["c"]

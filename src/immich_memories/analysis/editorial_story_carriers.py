@@ -339,6 +339,10 @@ class CarrierAdmission:
         }
 
     def _weigh_standing(self, funded, short_of, extra_of) -> None:
+        # Extra nearby pictures cannot alter the established timeline's standing
+        # questions. Their admission remains independently assessed and cached.
+        # They ride in the same blocks as the shortlisted primaries, so one pass packs
+        # its twelves once instead of leaving four part-filled rounds behind.
         self.gate.ensure(
             [
                 a
@@ -347,14 +351,12 @@ class CarrierAdmission:
                 for a in (c.members if self.gate.thin(s["key"]) else [c.primary])
                 if self.free(a)
             ]
+            + [c.primary for s in funded for c in extra_of[s["key"]] if self.free(c.primary)]
         )
-        self.gate.ensure(self._alternatives_of_failed(funded, short_of))
-        # Extra nearby pictures cannot alter the established timeline's standing
-        # questions. Their admission remains independently assessed and cached.
         self.gate.ensure(
-            [c.primary for s in funded for c in extra_of[s["key"]] if self.free(c.primary)]
+            self._alternatives_of_failed(funded, short_of)
+            + self._alternatives_of_failed(funded, extra_of)
         )
-        self.gate.ensure(self._alternatives_of_failed(funded, extra_of))
 
     def _alternatives_of_failed(self, funded, offered) -> list[str]:
         return [
