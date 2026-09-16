@@ -28,11 +28,12 @@ from pathlib import Path
 
 import numpy as np
 
-# Correlation works at thumbnail scale: a 64x36 grayscale at 15 fps resolves
-# handoff alignment to a fifteenth of a second — finer than any join error an
-# eye can catch — at a cost of kilobytes per companion.
+# Correlation works at thumbnail scale: a 36-pixel-tall grayscale at 15 fps
+# resolves handoff alignment to a fifteenth of a second — finer than any join
+# error an eye can catch — at a cost of kilobytes per companion. The width
+# follows each source's own aspect ratio, so frame shapes carry orientation.
 PROBE_FPS = 15.0
-_PROBE_SIZE = (64, 36)
+_PROBE_HEIGHT = 36
 # A correlation this bad means the pair shares no usable content; aligning on
 # it would place a join worse than the metadata guess does.
 _MAX_MATCH_ERROR = 12.0
@@ -57,13 +58,50 @@ class ClockOffset:
     seconds: float
 
 
+def _probe_frame_size(path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,  # noqa: S603
+    )
+    fields = result.stdout.strip().split(",")
+    if len(fields) != 2 or not all(field.isdigit() for field in fields):
+        raise CompanionUndecodable("companion probe found no video frame size")
+    return int(fields[0]), int(fields[1])
+
+
+def _probe_width_aspect(native_w: int, native_h: int) -> int:
+    width = round(_PROBE_HEIGHT * native_w / native_h)
+    return width + width % 2
+
+
 def companion_frames(payload: bytes, *, fps: float = PROBE_FPS) -> np.ndarray:
-    """Decode companion bytes to grayscale probe frames, shape (frames, h, w)."""
+    """Decode companion bytes to grayscale probe frames, shape (frames, h, w).
+
+    The probe keeps each source's own proportions at a fixed display height, so
+    a portrait companion decodes to a narrow array and a landscape one to a
+    wide array. The shapes themselves then say whether two companions can be
+    stitched at all: the members of one burst must share a frame.
+    """
     if not payload:
         raise CompanionUndecodable("companion playback was empty")
     with tempfile.TemporaryDirectory(prefix="stitch-align-") as directory:
         path = Path(directory) / "companion.mp4"
         path.write_bytes(payload)
+        native_w, native_h = _probe_frame_size(path)
+        width = _probe_width_aspect(native_w, native_h)
         command = [
             "ffmpeg",
             "-v",
@@ -71,7 +109,7 @@ def companion_frames(payload: bytes, *, fps: float = PROBE_FPS) -> np.ndarray:
             "-i",
             str(path),
             "-vf",
-            f"fps={fps},scale={_PROBE_SIZE[0]}:{_PROBE_SIZE[1]},format=gray",
+            f"fps={fps},scale={width}:{_PROBE_HEIGHT},format=gray",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -82,12 +120,11 @@ def companion_frames(payload: bytes, *, fps: float = PROBE_FPS) -> np.ndarray:
         if result.returncode or not result.stdout:
             detail = result.stderr[-300:].decode(errors="replace")
             raise CompanionUndecodable(f"companion probe failed: {detail}")
-        h, w = _PROBE_SIZE[1], _PROBE_SIZE[0]
         frames = np.frombuffer(result.stdout, dtype=np.uint8)
-        usable = (len(frames) // (h * w)) * h * w
-        if usable < h * w:
+        usable = (len(frames) // (_PROBE_HEIGHT * width)) * _PROBE_HEIGHT * width
+        if usable < _PROBE_HEIGHT * width:
             raise CompanionUndecodable("companion probe produced no frames")
-        return frames[:usable].reshape(-1, h, w).astype(np.float32)
+        return frames[:usable].reshape(-1, _PROBE_HEIGHT, width).astype(np.float32)
 
 
 def pairwise_clock_offset(frames_a: np.ndarray, frames_b: np.ndarray) -> ClockOffset | None:
@@ -99,6 +136,11 @@ def pairwise_clock_offset(frames_a: np.ndarray, frames_b: np.ndarray) -> ClockOf
     no clear winner — a wrong measurement would place a join worse than the
     metadata guess does.
     """
+    if frames_a.shape[1:] != frames_b.shape[1:]:
+        # Different orientations or proportions: these members cannot share a
+        # frame, so the burst is not stitchable at all (the caller keeps the
+        # stills as photographs).
+        return None
     motion_a = np.abs(np.diff(frames_a, axis=0))
     motion_b = np.abs(np.diff(frames_b, axis=0))
     error_by_offset: list[tuple[float, float]] = []
@@ -119,10 +161,12 @@ def pairwise_clock_offset(frames_a: np.ndarray, frames_b: np.ndarray) -> ClockOf
         return None
     # Separation is measured against the best error at least four probe
     # frames away: adjacent offsets share most of their frames and always
-    # score nearly as well, so they say nothing about confidence. A second
-    # far offset that also clearly beats typical means the content repeats.
-    far = [error for error, d in error_by_offset if abs(d - best_d) > 4 and error < median * 0.7]
-    if far:
+    # score nearly as well, so they say nothing about confidence. A far
+    # offset matching almost as well means the content repeats itself and the
+    # winner cannot be trusted. Near-static scenes score several offsets
+    # closely, so the bar is a ratio to the best, not to the median.
+    far = min(error for error, d in error_by_offset if abs(d - best_d) > 4)
+    if far < best_error * 1.25:
         return None
     return ClockOffset(seconds=best_d / PROBE_FPS)
 

@@ -158,8 +158,10 @@ def render_stitch(paths: list[Path], trims: list[tuple[float, float]], target: P
     """Concatenate trimmed segments, re-encoded small, video only.
 
     Zero-length windows carry lineage but display nothing, exactly like the
-    render material's own `segments` view. The frame keeps the sources' own
-    aspect ratio; nothing here decides what shape the video is.
+    render material's own `segments` view. The canvas takes the first member's
+    proportions and every segment is letterboxed inside it, so no member is
+    ever stretched to another's shape; a burst whose members disagree on
+    orientation is refused before it ever reaches a stitch.
     """
     pairs = [
         (path, (start, end)) for path, (start, end) in zip(paths, trims, strict=True) if end > start
@@ -181,7 +183,8 @@ def render_stitch(paths: list[Path], trims: list[tuple[float, float]], target: P
                     "-i",
                     str(path),
                     "-vf",
-                    f"scale={width}:{height},fps={_RENDER_FPS},setpts=PTS-STARTPTS",
+                    f"scale=-2:{height},pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+                    f"fps={_RENDER_FPS},setpts=PTS-STARTPTS",
                     "-an",
                     "-c:v",
                     "libx264",
@@ -396,6 +399,11 @@ def main() -> int:
                 return ", ".join(f"{distance:.2f}s (err {error:.0f})" for distance, error in jumps)
 
             measured_note = f"{measured_count}/{len(measured)} joins measured"
+            shapes = {frames[video_id].shape[1:] for video_id in video_ids}
+            if len(shapes) > 1:
+                # Distinct probe shapes are distinct orientations or
+                # proportions: the members cannot share a frame at all.
+                measured_note = "orientation mismatch (unstitchable)"
 
             lines.append(
                 f"| {slug} ({city}) | {len(burst)} | {plan_seconds} | {aligned_seconds or '—'} "

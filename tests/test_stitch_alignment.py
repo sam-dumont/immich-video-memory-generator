@@ -205,3 +205,28 @@ def test_an_unmeasurable_join_refuses_the_burst_a_motion_offer() -> None:
 
     assert renderings == {}, "a burst with an unmeasurable join is not stitched by guess"
     # The stills remain ordinary photographs; nothing here removes them.
+
+
+def test_members_of_a_burst_must_share_a_frame() -> None:
+    """A portrait and a landscape companion cannot be stitched into one cut."""
+    portrait = _moving_frames(40, size=(64, 36))
+    landscape = _moving_frames(30, size=(36, 64))
+
+    assert pairwise_clock_offset(portrait, landscape) is None
+
+
+def test_an_unstitchable_orientation_mix_refuses_the_motion_offer() -> None:
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    def mixed_engine(video_ids):
+        # The engine answers None for a join it cannot measure — here because
+        # the frames do not share a shape.
+        return [None, None]
+
+    assert (
+        motion_renderings(stills, Config(), companion_assets=companions, clock_offsets=mixed_engine)
+        == {}
+    )
