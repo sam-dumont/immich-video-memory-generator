@@ -202,6 +202,7 @@ def _projected_rendering(
         config=config,
         include_live_photos=include_live_photos,
         companion_assets=backend.last_companion_assets,
+        clock_offsets=backend.clock_offsets_provider,
     )
     if projected.plan.selected_asset_ids != plan.selected_asset_ids:
         raise ValueError("editorial source projection changed final membership")

@@ -51,12 +51,10 @@ class ClockOffset:
 
     `seconds` is how much later this file's local time zero sits in the
     previous file's timeline: previous(t + seconds) shows what this file shows
-    at t. `separation` is the error margin between the best correlation and the
-    runner-up — the measurement's confidence.
+    at t.
     """
 
     seconds: float
-    separation: float
 
 
 def companion_frames(payload: bytes, *, fps: float = PROBE_FPS) -> np.ndarray:
@@ -82,7 +80,8 @@ def companion_frames(payload: bytes, *, fps: float = PROBE_FPS) -> np.ndarray:
         ]
         result = subprocess.run(command, capture_output=True, timeout=120, check=False)  # noqa: S603
         if result.returncode or not result.stdout:
-            raise CompanionUndecodable(f"companion probe failed: {result.stderr[-300:]}")
+            detail = result.stderr[-300:].decode(errors="replace")
+            raise CompanionUndecodable(f"companion probe failed: {detail}")
         h, w = _PROBE_SIZE[1], _PROBE_SIZE[0]
         frames = np.frombuffer(result.stdout, dtype=np.uint8)
         usable = (len(frames) // (h * w)) * h * w
@@ -122,31 +121,10 @@ def pairwise_clock_offset(frames_a: np.ndarray, frames_b: np.ndarray) -> ClockOf
     # frames away: adjacent offsets share most of their frames and always
     # score nearly as well, so they say nothing about confidence. A second
     # far offset that also clearly beats typical means the content repeats.
-    far = [
-        error
-        for error, d in error_by_offset
-        if abs(d - best_d) > 4 and error < median * 0.7
-    ]
+    far = [error for error, d in error_by_offset if abs(d - best_d) > 4 and error < median * 0.7]
     if far:
         return None
-    return ClockOffset(seconds=best_d / PROBE_FPS, separation=float(median * 0.7 - best_error))
-
-
-def metadata_clock_deltas(durations: list[float], shutters: list[float]) -> list[float]:
-    """The clock deltas the metadata plan assumes, one per join.
-
-    Under the midpoint model, companion i+1's clock zero sits at wall time
-    `s_{i+1} - d_{i+1}/2`, so its position on companion i's timeline is the
-    shutter gap plus the two half-duration errors. This is the fallback for a
-    join whose correlation refused to measure: mixed chains stay strictly
-    better than the raw metadata plan, never worse than it.
-    """
-    deltas = []
-    for i in range(len(durations) - 1):
-        deltas.append(
-            (shutters[i + 1] - shutters[i]) + durations[i + 1] / 2 - durations[i] / 2
-        )
-    return deltas
+    return ClockOffset(seconds=best_d / PROBE_FPS)
 
 
 def aligned_trims(

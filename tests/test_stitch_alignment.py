@@ -7,6 +7,7 @@ cover the measurement and the re-placed windows.
 """
 
 import subprocess
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pytest
@@ -16,6 +17,7 @@ from immich_memories.processing.stitch_alignment import (
     companion_frames,
     pairwise_clock_offset,
 )
+from tests.conftest import make_asset
 
 
 def _moving_frames(count: int, *, offset: int = 0, size: tuple[int, int] = (36, 64)) -> np.ndarray:
@@ -127,11 +129,11 @@ def test_companion_frames_refuse_bytes_that_cannot_decode() -> None:
 def test_the_cluster_consumes_measured_deltas_and_falls_back_cleanly() -> None:
     from immich_memories.processing.live_photo_merger import LivePhotoCluster
 
-    def still(key, seconds):
-        from tests.conftest import make_asset
-        from datetime import UTC, datetime, timedelta
-
-        return make_asset(key, file_created_at=datetime(2024, 6, 4, 12, tzinfo=UTC) + timedelta(seconds=seconds))
+    def still(key: str, seconds: float):
+        return make_asset(
+            key,
+            file_created_at=datetime(2024, 6, 4, 12, tzinfo=UTC) + timedelta(seconds=seconds),
+        )
 
     cluster = LivePhotoCluster(
         assets=[still("a", 0), still("b", 1.088), still("c", 2.333)],
@@ -150,10 +152,56 @@ def test_the_cluster_consumes_measured_deltas_and_falls_back_cleanly() -> None:
     assert cluster.trim_points(measured_deltas=[3.0, 0.833]) == metadata_plan
 
 
-def test_metadata_clock_deltas_reproduce_the_midpoint_model() -> None:
-    from immich_memories.processing.stitch_alignment import metadata_clock_deltas
+def _francorchamps_burst():
+    """Three Live stills 1.088 s and 1.245 s apart; companions 2.4/2.6/1.767 s."""
+    from immich_memories.api.models import AssetType
 
-    # Francorchamps: shutters 1.088 s and 1.245 s apart, files 2.4/2.6/1.767 s.
-    deltas = metadata_clock_deltas([2.4, 2.6, 1.767], [0.0, 1.088, 2.333])
+    base = datetime(2024, 6, 4, 12, tzinfo=UTC)
+    video_ids = ("v1", "v2", "v3")
+    stills = []
+    companions = {}
+    for index, (video_id, gap) in enumerate(zip(video_ids, (0.0, 1.088, 2.333), strict=True)):
+        still = make_asset(f"still-{index}", file_created_at=base + timedelta(seconds=gap))
+        still.type = AssetType.IMAGE
+        still.live_photo_video_id = video_id
+        stills.append(still)
+        duration = {"v1": "0:00:02.400", "v2": "0:00:02.600", "v3": "0:00:01.767"}[video_id]
+        companions[video_id] = make_asset(video_id, duration=duration)
+    return stills, companions
 
-    assert deltas == pytest.approx([1.188, 0.8285])
+
+def test_motion_renderings_consumes_measured_clock_offsets() -> None:
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    renderings = motion_renderings(
+        stills,
+        Config(),
+        companion_assets=companions,
+        clock_offsets=lambda _video_ids: [0.600, 0.833],
+    )
+
+    rendering = renderings["still-0"]
+    flat = [value for pair in rendering.trim_points for value in pair]
+    assert flat == pytest.approx([0.0, 1.658, 1.058, 1.960, 1.127, 1.767], abs=1e-3)
+    assert rendering.duration_seconds == pytest.approx(3.2, abs=1e-3)
+
+
+def test_an_unmeasurable_join_refuses_the_burst_a_motion_offer() -> None:
+    """The midpoint estimate is not good enough to stitch with: no guess, no jump."""
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    renderings = motion_renderings(
+        stills,
+        Config(),
+        companion_assets=companions,
+        clock_offsets=lambda _video_ids: [0.600, None],
+    )
+
+    assert renderings == {}, "a burst with an unmeasurable join is not stitched by guess"
+    # The stills remain ordinary photographs; nothing here removes them.

@@ -29,12 +29,16 @@ from immich_memories.processing.stitch_alignment import (
     PROBE_FPS,
     aligned_trims,
     companion_frames,
-    metadata_clock_deltas,
     pairwise_clock_offset,
 )
 
 _RENDER_FPS = 30
-_RENDER_SIZE = (480, 270)
+_RENDER_HEIGHT = 270
+# Label the two halves; drawtext needs an explicit fontfile on macOS.
+_FONT = (
+    Path(__file__).resolve().parents[1]
+    / "src/immich_memories/titles/bundled_fonts/outfit/latin-700-normal.ttf"
+)
 
 
 def find_bursts(client: SyncImmichClient, year: int, wanted: int) -> list[list[dict]]:
@@ -50,7 +54,7 @@ def find_bursts(client: SyncImmichClient, year: int, wanted: int) -> list[list[d
             size=500,
         )
         items = result.assets.items
-        assets.extend(item.model_dump(by_alias=True, mode='json') for item in items)
+        assets.extend(item.model_dump(by_alias=True, mode="json") for item in items)
         if result.assets.next_page is None:
             break
         page += 1
@@ -60,13 +64,20 @@ def find_bursts(client: SyncImmichClient, year: int, wanted: int) -> list[list[d
     group: list[dict] = []
     for asset in live:
         taken = datetime.fromisoformat(asset["fileCreatedAt"].replace("Z", "+00:00"))
-        if group and (taken - datetime.fromisoformat(group[-1]["fileCreatedAt"].replace("Z", "+00:00"))).total_seconds() > 10:
+        if (
+            group
+            and (
+                taken - datetime.fromisoformat(group[-1]["fileCreatedAt"].replace("Z", "+00:00"))
+            ).total_seconds()
+            > 10
+        ):
             if len(group) >= 2:
                 clusters.append(group)
             group = []
         group.append(asset)
     if len(group) >= 2:
         clusters.append(group)
+
     def place(a: dict) -> str:
         exif = a.get("exifInfo") or {}
         return f"{exif.get('city') or ''} {exif.get('country') or ''}".casefold()
@@ -104,48 +115,129 @@ def find_bursts(client: SyncImmichClient, year: int, wanted: int) -> list[list[d
     cyprus_ids = {a["id"] for c in cyprus for a in c}
     rest = [c for c in overlapping if not any(a["id"] in cyprus_ids for a in c)]
     # Spread the rest evenly across the year.
-    overlapping.sort(key=lambda c: c[0]["fileCreatedAt"])
+    rest.sort(key=lambda c: c[0]["fileCreatedAt"])
     remaining = wanted - len(cyprus_picked)
-    stride = max(1, len(overlapping) // max(1, remaining))
-    picked = cyprus_picked + overlapping[::stride][:remaining]
+    stride = max(1, len(rest) // max(1, remaining))
+    picked = cyprus_picked + rest[::stride][:remaining]
     return picked[:wanted]
+
+
+def _display_size(path: Path, height: int = _RENDER_HEIGHT) -> tuple[int, int]:
+    """The source's own aspect ratio at a display height, width even for h264."""
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    native_w, native_h = (int(value) for value in result.stdout.strip().split(","))
+    width = round(height * native_w / native_h)
+    return width + width % 2, height
 
 
 def render_stitch(paths: list[Path], trims: list[tuple[float, float]], target: Path) -> None:
     """Concatenate trimmed segments, re-encoded small, video only.
 
     Zero-length windows carry lineage but display nothing, exactly like the
-    render material's own `segments` view.
+    render material's own `segments` view. The frame keeps the sources' own
+    aspect ratio; nothing here decides what shape the video is.
     """
-    pairs = [(path, (start, end)) for path, (start, end) in zip(paths, trims, strict=True) if end > start]
+    pairs = [
+        (path, (start, end)) for path, (start, end) in zip(paths, trims, strict=True) if end > start
+    ]
+    width, height = _display_size(pairs[0][0])
     with tempfile.TemporaryDirectory(prefix="stitch-render-") as directory:
         segments = []
         for index, (path, (start, end)) in enumerate(pairs):
             segment = Path(directory) / f"seg{index}.mp4"
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-ss", f"{start:.6f}", "-to", f"{end:.6f}",
-                 "-i", str(path), "-vf",
-                 f"scale={_RENDER_SIZE[0]}:{_RENDER_SIZE[1]},fps={_RENDER_FPS},setpts=PTS-STARTPTS",
-                 "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-y", str(segment)],
-                capture_output=True, check=True,
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-ss",
+                    f"{start:.6f}",
+                    "-to",
+                    f"{end:.6f}",
+                    "-i",
+                    str(path),
+                    "-vf",
+                    f"scale={width}:{height},fps={_RENDER_FPS},setpts=PTS-STARTPTS",
+                    "-an",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "20",
+                    "-y",
+                    str(segment),
+                ],
+                capture_output=True,
+                check=True,
             )
             segments.append(segment)
         concat_list = Path(directory) / "list.txt"
         concat_list.write_text("".join(f"file '{seg}'\n" for seg in segments))
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(concat_list),
-             "-c", "copy", "-y", str(target)],
-            capture_output=True, check=True,
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c",
+                "copy",
+                "-y",
+                str(target),
+            ],
+            capture_output=True,
+            check=True,
         )
 
 
 def stack_vertical(top: Path, bottom: Path, target: Path, gap: int = 8) -> None:
     subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(top), "-i", str(bottom),
-         "-filter_complex",
-         f"[0:v][1:v]vstack=inputs=2,pad=iw:{_RENDER_SIZE[1] * 2 + gap}:{gap // 2}:{gap // 2}:color=black",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-y", str(target)],
-        capture_output=True, check=True,
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(top),
+            "-i",
+            str(bottom),
+            "-filter_complex",
+            f"[0:v]drawtext=fontfile={_FONT}:text=TOP metadata plan:"
+            f"x=8:y=6:fontsize=14:fontcolor=white:box=1:boxcolor=black@0.7[t];"
+            f"[1:v]drawtext=fontfile={_FONT}:text=BOTTOM aligned:"
+            f"x=8:y=6:fontsize=14:fontcolor=white:box=1:boxcolor=black@0.7[b];"
+            f"[t][b]vstack=inputs=2,pad=iw+{gap}:{_RENDER_HEIGHT * 2 + gap}:{gap // 2}:{gap // 2}:color=black",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-y",
+            str(target),
+        ],
+        capture_output=True,
+        check=True,
     )
 
 
@@ -181,7 +273,9 @@ def main() -> int:
 
     config = get_config()
     client = SyncImmichClient(
-        base_url=config.immich.url, api_key=config.immich.api_key, api_version=config.immich.api_version
+        base_url=config.immich.url,
+        api_key=config.immich.api_key,
+        api_version=config.immich.api_version,
     )
     try:
         bursts = find_bursts(client, args.year, args.wanted)
@@ -189,10 +283,13 @@ def main() -> int:
         client.close()
     review_dir = args.output / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["| burst | members | plan seconds | aligned seconds | measured | metadata join rewinds | aligned join rewinds |", "|---|---|---|---|---|---|"]
+    lines = [
+        "| burst | members | plan seconds | aligned seconds | measured | metadata join rewinds | aligned join rewinds |",
+        "|---|---|---|---|---|---|",
+    ]
     for index, burst in enumerate(bursts):
         slug = f"{burst[0]['fileCreatedAt'][:10]}-{burst[0]['id'][:8]}"
-        city = ((burst[0].get("exifInfo") or {}).get("city") or "?")
+        city = (burst[0].get("exifInfo") or {}).get("city") or "?"
         print(f"[{index + 1}/{len(bursts)}] {slug} ({city}, {len(burst)} members)")
         # A shared album can hold two stills of one Live Photo; the video is
         # offered once, so the later still leaves the stitch to the plan.
@@ -201,11 +298,17 @@ def main() -> int:
             unique.setdefault(asset["livePhotoVideoId"], asset)
         burst = list(unique.values())
         if len(burst) < 2:
+            print(f"    skipped: {len(unique)} unique companion video(s)")
             continue
         try:
-            payloads = {a["livePhotoVideoId"]: client.get_video_playback(a["livePhotoVideoId"]) for a in burst}
+            payloads = {
+                a["livePhotoVideoId"]: client.get_video_playback(a["livePhotoVideoId"])
+                for a in burst
+            }
         except Exception as error:  # noqa: BLE001 — one unreachable library must not end the study
-            lines.append(f"| {slug} | {len(burst)} | download failed: {type(error).__name__} | | | | |")
+            lines.append(
+                f"| {slug} | {len(burst)} | download failed: {type(error).__name__} | | | | |"
+            )
             continue
         frames = {vid: companion_frames(payload) for vid, payload in payloads.items()}
         durations = [len(frames[a["livePhotoVideoId"]]) / PROBE_FPS for a in burst]
@@ -227,26 +330,17 @@ def main() -> int:
             clip_durations={f"still-{i}": d for i, d in enumerate(durations)},
         )
         trims_meta = cluster.trim_points()
-        shutters = [
-            datetime.fromisoformat(a["fileCreatedAt"].replace("Z", "+00:00")).timestamp()
-            for a in burst
-        ]
-        metadata_deltas = metadata_clock_deltas(durations, shutters)
         measured: list[float | None] = []
         for a, b in zip(video_ids, video_ids[1:], strict=False):
             offset = pairwise_clock_offset(frames[a], frames[b])
             measured.append(offset.seconds if offset else None)
-        # Per-join evidence: measured where the correlation succeeded, the
-        # midpoint model where it refused — mixed chains beat pure metadata.
-        deltas = [
-            value if value is not None else fallback
-            for value, fallback in zip(measured, metadata_deltas, strict=True)
-        ]
         measured_count = sum(1 for value in measured if value is not None)
-        # With no measured join at all the fallback deltas just re-derive the
-        # metadata model, so the metadata plan is kept untouched.
+        # Measured-only: a burst with any unmeasurable join is refused a motion
+        # offer rather than stitched on the midpoint guess (#1012).
         trims_aligned = (
-            aligned_trims(trims_meta, durations, deltas) if measured_count else None
+            aligned_trims(trims_meta, durations, [value for value in measured if value is not None])
+            if measured and all(value is not None for value in measured)
+            else None
         )
         with tempfile.TemporaryDirectory(prefix="stitch-study-") as directory:
             work = Path(directory)
@@ -284,7 +378,7 @@ def main() -> int:
                     return "unmeasurable"
                 return ", ".join(f"{distance:.2f}s (err {error:.0f})" for distance, error in jumps)
 
-            measured_note = f"{measured_count}/{len(metadata_deltas)} joins measured"
+            measured_note = f"{measured_count}/{len(measured)} joins measured"
 
             lines.append(
                 f"| {slug} ({city}) | {len(burst)} | {plan_seconds} | {aligned_seconds or '—'} "
@@ -295,9 +389,10 @@ def main() -> int:
             else:
                 old.replace(review_dir / f"{slug}-metadata-only.mp4")
     (args.output / "report.md").write_text("\n".join(lines) + "\n")
-    print(f"wrote {args.output / 'report.md'} and {len(list(review_dir.glob('*.mp4')))} review videos")
+    print(
+        f"wrote {args.output / 'report.md'} and {len(list(review_dir.glob('*.mp4')))} review videos"
+    )
     return 0
-
 
 
 if __name__ == "__main__":
