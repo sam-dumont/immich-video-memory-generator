@@ -365,7 +365,6 @@ def select_story_first(
     flagged: Callable[[str], bool] = lambda _asset: False,
     full_lines: Mapping[str, str] | None = None,
     life: Callable[[str], bool] = lambda _asset: True,
-    shareable: Callable[[dict], bool] | None = None,
     family_tier: Mapping[str, int] | None = None,
     period_label: str = "",
     standing_bank: dict | None = None,
@@ -455,7 +454,7 @@ def select_story_first(
         )
 
     # 5. Pick the moments that tell each story, then one picture per moment that stands by
-    #    itself and is shareable.
+    #    itself. The audience gate judges the cut afterwards, not every candidate.
     gate = StandingGate(
         judge,
         contract=contract,
@@ -481,7 +480,6 @@ def select_story_first(
         life=life,
         # documents, screenshots, face close-ups, care items: evidence, never carriers
         excluded=dict(excluded or {}),
-        shareable=shareable,
         kind_marker=_kind_marker_of(unit_by_asset, story_lines),
         mechanical_picks=rules is not None,
         picture_line=picture_line,

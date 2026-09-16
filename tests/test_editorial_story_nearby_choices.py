@@ -71,6 +71,11 @@ def test_nearby_comparison_preserves_favourites_and_audience_holds(tmp_path, fav
         assert selected == {"o0-p0", "o1-p0"}  # existing starred capture-group narrowing
     else:
         assert selected and all(any(a.startswith(f"o{i}-") for a in selected) for i in range(2))
+        # The hold lands on the finished cut, and each outing's own earlier picture stands in.
+        assert {row["from"]: row["to"] for row in plan["shareability"]["substituted"]} == {
+            "o0-p1": "o0-p0",
+            "o1-p1": "o1-p0",
+        }
     assert not {"o0-p1", "o1-p1"} & selected
     assert len(selected) <= 4
 

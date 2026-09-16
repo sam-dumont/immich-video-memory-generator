@@ -690,7 +690,6 @@ def _story_selection(
         lines=material.story_lines,
         flagged=lambda asset_id: bool(FLAGGED_LINE.search(source.annotations.get(asset_id, ""))),
         life=lambda asset_id: _shows_life(material, unit_of, asset_id),
-        shareable=gate.shareable_rung,
         full_lines=source.annotations,
         contract=contract + "\n\n" + source.intent.story_prompt_block(),
         event_units=pool.units,
@@ -759,7 +758,7 @@ def _apply_audience_gate(
         pool_for=alternatives_pool(selection, material.units),
         audience=gate.audience,
     )
-    open_share_log(share_log, gate, funded_acquisition={})
+    open_share_log(share_log, funded_acquisition={})
     run.selection_stages["after_shareability"] = len(run.carriers)
     close_share_log(
         share_log,

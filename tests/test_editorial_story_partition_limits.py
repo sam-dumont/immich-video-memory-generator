@@ -77,7 +77,9 @@ def test_equal_weight_occasions_keep_favourite_then_chronology_before_inventory(
 
 def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions(tmp_path):
     captured = make_source(tmp_path)
-    private = {key for key in captured.assets if "-e1-" in key}
+    # The occasion the weighing funds keeps one sendable picture; the pictures the pick
+    # reaches for first do not.
+    private = {key for key in captured.assets if key.endswith(("-e1-p1", "-e1-p2"))}
     rows = {
         key: replace(
             row,
@@ -100,4 +102,4 @@ def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions
     assert {row["asset_id"] for row in plan["carriers"]}.isdisjoint(private)
     assert plan["intent_report"]["coverage"] == {f"year-{year}": 1 for year in (2030, 2031, 2032)}
     assert plan["intent_report"]["violations"] == []
-    assert plan["shareability"]["preselection_rejected_members"] > 0
+    assert plan["shareability"]["substituted"]

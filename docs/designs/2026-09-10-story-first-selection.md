@@ -157,10 +157,10 @@ itself. The order is the owner's:
    chooses which moments tell the story from a shortlist that names each source truthfully
    (video with its length, live photo, still); the favourite or the most-photographed moment
    leads.
-5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context,
-   spaced from what is already committed and allowed for the audience. Freed slots are
-   re-granted across stories in up to three further passes, never to variants. An occasion whose
-   every candidate failed still shows once.
+5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
+   and spaced from what is already committed. Freed slots are re-granted across stories in up to
+   three further passes, never to variants. An occasion whose every candidate failed still shows
+   once. The audience is not asked here: the gate reads the cut, not every candidate.
 6. **The audience chain and the final duplicate pass** close the cut — sampled-pair confirmation
    over conserved pixels, then duplicate discovery over the material that will actually be
    displayed (`editorial_final_sampled_duplicates.py`).

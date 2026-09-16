@@ -93,12 +93,6 @@ class AudienceGate:
         self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
         return _share.tighten(record["verdict"])
 
-    def shareable_rung(self, u) -> bool:
-        accepted = _share.allowed(self.verdict_of(u), self.audience)
-        if not accepted:
-            self.rejected_members.update(_share.unit_members(u))
-        return accepted
-
     def proposed_picture_line(self, u) -> str:
         # One actual primary preview per contested shortlist choice. This is
         # not certification of unsampled motion or the unit's other members.
@@ -116,10 +110,9 @@ class AudienceGate:
         )
 
 
-def open_share_log(share_log: dict, gate: AudienceGate, *, funded_acquisition: dict) -> None:
+def open_share_log(share_log: dict, *, funded_acquisition: dict) -> None:
     share_log["replacement_policy"] = "bounded editorial contribution review"
     share_log["funded_acquisition"] = funded_acquisition
-    share_log["preselection_rejected_members"] = len(gate.rejected_members)
 
 
 def close_share_log(

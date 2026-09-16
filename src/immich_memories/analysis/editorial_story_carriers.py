@@ -2,9 +2,10 @@
 
 A funded story offers its open moments; the standing gate asks whether each candidate picture
 stands by itself; the pick chooses which moments tell the story; and one picture per chosen
-moment is admitted as a carrier if it is free, in context, spaced from what is already committed
-and allowed for the audience. Freed slots are re-granted across the stories in further passes,
-never to variants. An occasion whose every candidate failed still shows once.
+moment is admitted as a carrier if it is free, in context and spaced from what is already
+committed. The audience gate judges the finished cut, not every candidate. Freed slots are
+re-granted across the stories in further passes, never to variants. An occasion whose every
+candidate failed still shows once.
 """
 
 from __future__ import annotations
@@ -153,7 +154,6 @@ class CarrierAdmission:
         line_of: Callable[[str], str],
         life: Callable[[str], bool],
         excluded: Mapping[str, str],
-        shareable: Callable[[dict], bool] | None,
         kind_marker: Callable[[DepictedChoice], str],
         picture_line: Callable[[dict], str] | None,
         motion_line: Callable[[dict], str] | None,
@@ -174,7 +174,6 @@ class CarrierAdmission:
         self._line_of = line_of
         self._life = life
         self._excluded = excluded
-        self._shareable = shareable
         self._kind_marker = kind_marker
         self._picture_line = picture_line
         self._motion_line = motion_line
@@ -190,7 +189,6 @@ class CarrierAdmission:
         self.failed_standing: list[str] = []
         self.editorially_closed: set[tuple[str, str | None]] = set()
         self._taken: set[str] = set()
-        self._rejected: set[str] = set()
         self._used_choice_keys: set[str] = set()
         self._picked_before: dict[str | tuple[str, str | None], bool] = {}
 
@@ -206,7 +204,6 @@ class CarrierAdmission:
     def free(self, asset: str) -> bool:
         return (
             asset not in self._taken
-            and asset not in self._rejected
             and asset in self._unit_by_asset
             and asset not in self._excluded
             and (
@@ -219,14 +216,6 @@ class CarrierAdmission:
                 < self.parts.limit
             )
         )
-
-    def admissible(self, asset: str) -> bool:
-        if not self.free(asset):
-            return False
-        if self._shareable is not None and not self._shareable(self._unit_by_asset[asset][1]):
-            self._rejected.add(asset)
-            return False
-        return True
 
     def compatible(self, choice, chosen) -> bool:
         occupied = [*self.carriers, *(self._unit_by_asset[c.primary][1] for c in chosen)]
@@ -265,7 +254,7 @@ class CarrierAdmission:
             )
             if not _spaced([actual], self._unit_by_asset, already=self.carriers):
                 continue
-            if not self.admissible(asset):
+            if not self.free(asset):
                 continue
             family, unit = self._unit_by_asset[asset]
             rest = [
@@ -407,7 +396,7 @@ class CarrierAdmission:
             """Check only proposed improvements, before dropping the original choice.
             A held candidate cannot create a hole."""
             return any(
-                self.admissible(a) for a in c.members if self.gate.stands(a, s["weight"], s["key"])
+                self.free(a) for a in c.members if self.gate.stands(a, s["weight"], s["key"])
             )
 
         picked = pick_story_moments(
@@ -471,19 +460,25 @@ class CarrierAdmission:
                 asset, carrier, rest = self.carrier_for(c, s, index, good)
                 if carrier is None:
                     continue
+                # A spare replaces this carrier rather than joining it, so the pool is read
+                # while its own partition slot is still free.
+                spares = self._spares(s, asset, short_of, open_of)
                 self._taken.add(asset)
                 self.carriers.append(carrier)
                 self.chosen_by_story[s["key"]].append(c.key)
                 added += 1
-                self.alternatives_of[asset] = [*rest, *self._spares(s, asset, short_of, open_of)]
+                self.alternatives_of[asset] = [*rest, *spares]
         return added
 
     def _spares(self, s, asset, short_of, open_of) -> list[str]:
+        """The pool the audience gate draws a replacement from: a spare must stand by itself
+        under the same rule the carrier it would replace had to meet."""
         return [
             o.primary
             for o in short_of.get(s["key"], open_of[s["key"]])
             if o.key not in self._used_choice_keys
             and self.free(o.primary)
+            and self.gate.stands(o.primary, s["weight"], s["key"])
             and (
                 self.parts.limit is None
                 or self.parts.of_asset(o.primary) == self.parts.of_asset(asset)
@@ -536,7 +531,7 @@ class CarrierAdmission:
 
     def run(self) -> None:
         """Pick the moments that tell each story, then one picture per moment that stands by
-        itself and is shareable. A picture carries at most one moment."""
+        itself. A picture carries at most one moment."""
         passes = 0
         while len(self.carriers) < self.slots and passes < MAX_PASSES:
             passes += 1
@@ -544,7 +539,6 @@ class CarrierAdmission:
                 break
         self.calls["selection_passes"] = passes
         self._keep_occasions()
-        self.calls["rejected_by_audience"] = len(self._rejected)
         self.calls["failed_standing"] = len(self.failed_standing)
         self.calls["kept_without_standing"] = len(self.kept_without_standing)
         self.carriers.sort(key=itemgetter("taken"))

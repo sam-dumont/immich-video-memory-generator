@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -429,9 +430,9 @@ def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_
 class CompanyReplacementJudge(StoryJudge):
     """Prefer two familiar views; let the production company rule improve them."""
 
-    def __init__(self, *, alternative=False):
+    def __init__(self, *, weak=False):
         super().__init__()
-        self.alternative = alternative
+        self.weak = weak
 
     def answer(self, stage, prompt):
         if stage.startswith("story-weighing"):
@@ -441,20 +442,20 @@ class CompanyReplacementJudge(StoryJudge):
             # WHY: both reading orders agree on the same moments before the company rule.
             labels = sorted(re.findall(r"^(M\d{2}) \|", prompt, re.MULTILINE))
             return json.dumps({"keep": labels[:2]})
-        raw = super().answer(stage, prompt)
-        if self.alternative and stage.startswith("moment-inventory"):
-            result = json.loads(raw)
-            primary, alternative = result["moments"][-2:]
-            primary["sources"].extend(alternative["sources"])
-            result["moments"].pop()
-            return json.dumps(result)
-        return raw
+        if stage.startswith("standing-") and self.weak:
+            rows = re.findall(r"^(P\d+): (.*)$", prompt, re.MULTILINE)
+            return json.dumps(
+                {"weak": {label: "An object on its own" for label, row in rows if "bowl" in row}}
+            )
+        return super().answer(stage, prompt)
 
 
-def _company_selection(tmp_path, relations, *, alternative=False):
-    """Use the real story/inventory/standing pipeline with controlled admission evidence."""
+@pytest.mark.parametrize("weak", [False, True])
+def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, weak):
+    """The real story, inventory and standing pipeline; only the standing votes differ."""
     from immich_memories.analysis.editorial_story_planner import select_story_first
 
+    relations = ["parent", "parent", "grandparent", "parent", "parent"]
     source = make_source(tmp_path, seconds=7, occasions=1, pictures=len(relations))
     assets = list(source.assets)
     alias = next(iter(source.moment_asset_ids))
@@ -472,13 +473,17 @@ def _company_selection(tmp_path, relations, *, alternative=False):
         asset_id: f"{source.annotations[asset_id]} | with Relative ({relation})"
         for asset_id, relation in zip(assets, relations, strict=True)
     }
+    held = assets[2]
+    # WHY: the planner reads life from the picture's own text. The one fresh relation sits on a
+    # lone object, so the two standing orders decide it; a picture with life inside a major
+    # story stands whatever those orders say.
+    lines[held] = (
+        f"{units[2]['taken']} | A ceramic bowl sits alone on a table. | activity=none"
+        f" | with Relative ({relations[2]})"
+    )
     records = {}
-    judge = CompanyReplacementJudge(alternative=alternative)
-    # WHY: this injected admission port represents an already-established audience hold;
-    # story reading, inventory, standing and final carrier selection execute normally.
-    rejected = {assets[2]}
     selection = select_story_first(
-        judge=judge,
+        judge=CompanyReplacementJudge(weak=weak),
         tables={},
         aliases=[alias],
         factual_rows_fn=lambda _tables, _aliases: [
@@ -492,47 +497,37 @@ def _company_selection(tmp_path, relations, *, alternative=False):
         anchor_label={"outing": "F01"},
         label_line=lambda unit: lines[unit["asset_id"]],
         quality=lambda _asset: 1.0,
+        life=lambda asset_id: asset_id != held,
         target_seconds=7,
         seconds_per_slot=3.5,
         record=lambda name, value: records.update({name: value}),
-        shareable=lambda unit: unit["asset_id"] not in rejected,
         family_tier={"outing": 0},
     )
+
     pick = next(value for key, value in records.items() if key.startswith("story-pick-"))
-    return selection, assets, pick
-
-
-def test_rejected_optional_company_replacement_keeps_the_original_selected_picture(tmp_path):
-    selection, assets, pick = _company_selection(
-        tmp_path, ["parent", "parent", "grandparent", "parent", "parent"]
-    )
-
-    # Later familiar views make a lost choice observable: a refill would choose their midpoint.
-    assert [carrier["asset_id"] for carrier in selection.carriers] == assets[:2]
-    assert pick["company_replacements"] == []
+    chosen = [carrier["asset_id"] for carrier in selection.carriers]
+    if weak:
+        # Later familiar views make a lost choice observable: a refill would choose their midpoint.
+        assert chosen == assets[:2]
+        assert pick["company_replacements"] == []
+    else:
+        assert chosen == [assets[0], held]
+        assert [row["new_relations"] for row in pick["company_replacements"]] == [["grandparent"]]
     assert selection.calls["selection_passes"] == 1
-    assert selection.calls["rejected_by_audience"] == 1
 
 
-def test_rejected_optional_company_replacement_tries_the_next_eligible_new_relation(tmp_path):
-    selection, assets, pick = _company_selection(
-        tmp_path, ["parent", "parent", "grandparent", "sibling", "parent", "parent"]
-    )
+def test_the_audience_reads_the_finished_cut_not_every_candidate(tmp_path):
+    class RefusingJudge(StoryJudge):
+        """Holds back one named picture whenever the audience gate reads it."""
 
-    assert [carrier["asset_id"] for carrier in selection.carriers] == [assets[0], assets[3]]
-    assert [row["new_relations"] for row in pick["company_replacements"]] == [["sibling"]]
-    assert selection.calls["selection_passes"] == 1
-    assert selection.calls["rejected_by_audience"] == 1
+        def answer(self, stage, prompt):
+            if stage.startswith("shareability-") and "outing 1, view 2" in prompt:
+                return json.dumps({"finding": "bathing", "why": "A person is bathing"})
+            return super().answer(stage, prompt)
 
+    plan = run(replace(make_source(tmp_path), audience="sendable"), RefusingJudge())
 
-def test_optional_company_replacement_can_use_a_permitted_standing_alternative(tmp_path):
-    selection, assets, pick = _company_selection(
-        tmp_path, ["parent", "parent", "grandparent", "grandparent"], alternative=True
-    )
-
-    # In a major story a lively alternative stands with context even before its own ballot.
-    assert [carrier["asset_id"] for carrier in selection.carriers] == [assets[0], assets[3]]
-    assert all(carrier["story_weight"] == "major" for carrier in selection.carriers)
-    assert [row["new_relations"] for row in pick["company_replacements"]] == [["grandparent"]]
-    assert selection.calls["selection_passes"] == 1
-    assert selection.calls["rejected_by_audience"] == 1
+    refused = [row["asset_id"] for row in plan["shareability"]["tightened"]]
+    assert refused == ["o1-p2"]
+    assert "o1-p2" not in {carrier["asset_id"] for carrier in plan["carriers"]}
+    assert plan["calls_by_stage"]["shareability"]["asked"] <= len(plan["carriers"]) + len(refused)
