@@ -13,6 +13,7 @@ Outputs under --output:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from immich_memories.config_loader import get_config
 from immich_memories.processing.live_photo_merger import LivePhotoCluster
 from immich_memories.processing.stitch_alignment import (
     PROBE_FPS,
+    CompanionUndecodable,
     aligned_trims,
     companion_frames,
     pairwise_clock_offset,
@@ -139,18 +141,20 @@ def _display_size(paths: list[Path], height: int = _RENDER_HEIGHT) -> tuple[int,
                 "-show_entries",
                 "stream=width,height",
                 "-of",
-                "csv=p=0",
+                "json",
                 str(path),
             ],
             capture_output=True,
             text=True,
             check=False,
         )
-        fields = result.stdout.strip().split(",")
-        if len(fields) == 2 and all(field.isdigit() for field in fields):
-            native_w, native_h = int(fields[0]), int(fields[1])
-            width = round(height * native_w / native_h)
-            return width + width % 2, height
+        try:
+            stream = json.loads(result.stdout)["streams"][0]
+            native_w, native_h = int(stream["width"]), int(stream["height"])
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        width = round(height * native_w / native_h)
+        return width + width % 2, height
     raise ValueError("no companion could be probed for its frame size")
 
 
@@ -321,7 +325,21 @@ def main() -> int:
                 f"| {slug} | {len(burst)} | download failed: {type(error).__name__} | | | | |"
             )
             continue
-        frames = {vid: companion_frames(payload) for vid, payload in payloads.items()}
+        frames = {}
+        undecodable = None
+        for vid, payload in payloads.items():
+            try:
+                frames[vid] = companion_frames(payload)
+            except CompanionUndecodable as error:
+                undecodable = (vid, error)
+                break
+        if undecodable is not None:
+            vid, error = undecodable
+            lines.append(
+                f"| {slug} ({city}) | {len(burst)} | decode failed for {vid[:8]}: {error} "
+                f"| | | | |"
+            )
+            continue
         durations = [len(frames[a["livePhotoVideoId"]]) / PROBE_FPS for a in burst]
         video_ids = [a["livePhotoVideoId"] for a in burst]
         stills = [

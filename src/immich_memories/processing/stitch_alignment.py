@@ -21,6 +21,7 @@ each still's moment inside its window.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -69,17 +70,19 @@ def _probe_frame_size(path: Path) -> tuple[int, int]:
             "-show_entries",
             "stream=width,height",
             "-of",
-            "csv=p=0",
+            "json",
             str(path),
         ],
         capture_output=True,
         text=True,
         check=False,  # noqa: S603
     )
-    fields = result.stdout.strip().split(",")
-    if len(fields) != 2 or not all(field.isdigit() for field in fields):
-        raise CompanionUndecodable("companion probe found no video frame size")
-    return int(fields[0]), int(fields[1])
+    try:
+        stream = json.loads(result.stdout)["streams"][0]
+        width, height = int(stream["width"]), int(stream["height"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise CompanionUndecodable("companion probe found no video frame size") from None
+    return width, height
 
 
 def _probe_width_aspect(native_w: int, native_h: int) -> int:
