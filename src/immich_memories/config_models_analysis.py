@@ -92,3 +92,14 @@ class AnalysisConfig(BaseModel):
             "favorite, and media captured before 2008 override the inference"
         ),
     )
+    max_source_video_seconds: float = Field(
+        default=300.0,
+        ge=0,
+        description=(
+            "Source videos longer than this are excluded from every memory on "
+            "Immich's duration metadata, before analysis or download: selecting "
+            "six seconds from an hour-long recording once meant downloading all "
+            "37GB of it. Missing or unreadable duration metadata excludes the "
+            "video too; photographs and Live Photo motion are exempt. 0 disables"
+        ),
+    )

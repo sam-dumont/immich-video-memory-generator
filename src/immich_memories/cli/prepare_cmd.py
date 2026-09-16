@@ -49,6 +49,7 @@ def _eligible_source(client, config: Config, windows: list[DateRange]):
         excluded_filename_patterns=tuple(config.analysis.exclude_filename_patterns),
         stills_need_a_camera=config.analysis.exclude_stills_without_camera_exif,
         min_source_short_side=config.analysis.min_source_short_side,
+        max_source_video_seconds=config.analysis.max_source_video_seconds,
     )
     sources = fetch_full_window_source(client, scope)
     prepared = prepare_editorial_source(
