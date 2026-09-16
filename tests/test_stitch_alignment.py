@@ -1,0 +1,206 @@
+"""Content-aligned Live stitch windows are measured from the files, not guessed.
+
+The metadata plan puts each companion's in-file shutter at the file midpoint;
+measured pre-shutter leads on real bursts differ by up to 0.8 s, and a join's
+visible error is the difference of two files' errors (#1012). These contracts
+cover the measurement and the re-placed windows.
+"""
+
+import subprocess
+from datetime import UTC, datetime, timedelta
+
+import numpy as np
+import pytest
+
+from immich_memories.processing.stitch_alignment import (
+    aligned_trims,
+    companion_frames,
+    pairwise_clock_offset,
+)
+from tests.conftest import make_asset
+
+
+def _moving_frames(count: int, *, offset: int = 0, size: tuple[int, int] = (36, 64)) -> np.ndarray:
+    """A textured frame translating one column per frame, like handheld footage.
+
+    The whole scene moves, so every pixel disagrees at any misaligned offset —
+    the far-offset errors that a featureless background would leave cheap.
+    """
+    rng = np.random.default_rng(7)
+    base = (rng.random(size) * 200 + 20).astype(np.float32)
+    return np.stack([np.roll(base, index + offset, axis=1) for index in range(count)])
+
+
+def test_pairwise_clock_offset_recovers_how_much_later_a_file_started() -> None:
+    early = _moving_frames(40)
+    late = _moving_frames(30, offset=9)  # started 9 frames = 0.6 s later
+
+    measured = pairwise_clock_offset(early, late)
+
+    assert measured is not None
+    assert measured.seconds == pytest.approx(0.6, abs=1 / 15)
+
+
+def test_pairwise_clock_offset_refuses_an_ambiguous_match() -> None:
+    flat = np.full((20, 36, 64), 128.0)  # featureless: every offset matches equally
+
+    assert pairwise_clock_offset(flat, flat) is None
+
+
+def test_pairwise_clock_offset_refuses_content_that_never_matches() -> None:
+    noise_a = np.random.default_rng(1).integers(0, 255, (20, 36, 64)).astype(np.float32)
+    noise_b = np.random.default_rng(2).integers(0, 255, (20, 36, 64)).astype(np.float32)
+
+    assert pairwise_clock_offset(noise_a, noise_b) is None
+
+
+def test_the_francorchamps_race_burst_aligns_to_continuous_content() -> None:
+    """The measured burst: three files, 3.2 s of continuous content, plan claimed 4.42 s."""
+    trims = [(0.0, 2.288), (1.3, 2.545), (0.8835, 1.767)]
+    durations = [2.4, 2.6, 1.767]
+    measured = [0.600, 0.833]  # frame-correlated from the real companions
+
+    aligned = aligned_trims(trims, durations, measured)
+
+    assert aligned is not None
+    assert [round(b, 3) for b, _ in aligned] == [0.0, 1.058, 1.127]
+    assert [round(e, 3) for _, e in aligned] == [1.658, 1.960, 1.767]
+    # Every join is content-continuous: end_i = start_{i+1} + delta_i.
+    for index, delta in enumerate(measured):
+        assert aligned[index][1] == pytest.approx(aligned[index + 1][0] + delta, abs=1e-9)
+    # Each still's measured in-file moment stays inside its window.
+    for (start, end), anchor in zip(aligned, [0.867, 1.567, 1.700], strict=True):
+        assert start <= anchor <= end
+
+
+def test_alignment_keeps_planned_lengths_when_the_files_hold_them() -> None:
+    trims = [(0.0, 1.0), (1.5, 2.5)]
+    durations = [3.0, 3.0]
+
+    aligned = aligned_trims(trims, durations, [0.5])
+
+    assert aligned == [(0.0, 1.0), (0.5, 1.5)]
+
+
+def test_alignment_stands_down_when_files_barely_overlap() -> None:
+    """A measured delta past the previous window's end would need content before file start."""
+    trims = [(0.0, 2.288), (0.0, 1.245)]
+    durations = [2.4, 2.6]
+
+    assert aligned_trims(trims, durations, [3.0]) is None
+
+
+def test_alignment_requires_one_delta_per_join() -> None:
+    with pytest.raises(ValueError, match="one measured delta per join"):
+        aligned_trims([(0.0, 1.0)], [1.0], [0.5, 0.5])
+
+
+def test_companion_frames_decodes_real_bytes(tmp_path) -> None:
+    silent = tmp_path / "tiny.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=64x36:rate=15:duration=0.5",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+            str(silent),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    frames = companion_frames(silent.read_bytes())
+
+    assert frames.ndim == 3
+    assert frames.shape[1:] == (36, 64)
+    assert frames.shape[0] >= 5
+
+
+def test_companion_frames_refuse_bytes_that_cannot_decode() -> None:
+    from immich_memories.processing.stitch_alignment import CompanionUndecodable
+
+    with pytest.raises(CompanionUndecodable):
+        companion_frames(b"not a video")
+
+
+def _francorchamps_burst():
+    """Three Live stills 1.088 s and 1.245 s apart; companions 2.4/2.6/1.767 s."""
+    from immich_memories.api.models import AssetType
+
+    base = datetime(2024, 6, 4, 12, tzinfo=UTC)
+    video_ids = ("v1", "v2", "v3")
+    stills = []
+    companions = {}
+    for index, (video_id, gap) in enumerate(zip(video_ids, (0.0, 1.088, 2.333), strict=True)):
+        still = make_asset(f"still-{index}", file_created_at=base + timedelta(seconds=gap))
+        still.type = AssetType.IMAGE
+        still.live_photo_video_id = video_id
+        stills.append(still)
+        duration = {"v1": "0:00:02.400", "v2": "0:00:02.600", "v3": "0:00:01.767"}[video_id]
+        companions[video_id] = make_asset(video_id, duration=duration)
+    return stills, companions
+
+
+def test_motion_renderings_consumes_measured_clock_offsets() -> None:
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    renderings = motion_renderings(
+        stills,
+        Config(),
+        companion_assets=companions,
+        clock_offsets=lambda _video_ids: [0.600, 0.833],
+    )
+
+    rendering = renderings["still-0"]
+    flat = [value for pair in rendering.trim_points for value in pair]
+    assert flat == pytest.approx([0.0, 1.658, 1.058, 1.960, 1.127, 1.767], abs=1e-3)
+    assert rendering.duration_seconds == pytest.approx(3.2, abs=1e-3)
+
+
+def test_an_unmeasurable_join_refuses_the_burst_a_motion_offer() -> None:
+    """The midpoint estimate is not good enough to stitch with: no guess, no jump."""
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    renderings = motion_renderings(
+        stills,
+        Config(),
+        companion_assets=companions,
+        clock_offsets=lambda _video_ids: [0.600, None],
+    )
+
+    assert renderings == {}, "a burst with an unmeasurable join is not stitched by guess"
+    # The stills remain ordinary photographs; nothing here removes them.
+
+
+def test_members_of_a_burst_must_share_a_frame() -> None:
+    """A portrait and a landscape companion cannot be stitched into one cut."""
+    portrait = _moving_frames(40, size=(64, 36))
+    landscape = _moving_frames(30, size=(36, 64))
+
+    assert pairwise_clock_offset(portrait, landscape) is None
+
+
+def test_an_unstitchable_orientation_mix_refuses_the_motion_offer() -> None:
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.config_loader import Config
+
+    stills, companions = _francorchamps_burst()
+
+    def mixed_engine(video_ids):
+        # The engine answers None for a join it cannot measure — here because
+        # the frames do not share a shape.
+        return [None, None]
+
+    assert (
+        motion_renderings(stills, Config(), companion_assets=companions, clock_offsets=mixed_engine)
+        == {}
+    )

@@ -106,6 +106,7 @@ analysis:
     - "vid-*-wa[0-9][0-9][0-9][0-9]*"
   exclude_stills_without_camera_exif: true   # a photo naming no camera was received, not shot
   min_source_short_side: 1080    # Drop smaller clips unless they carry camera EXIF
+  max_source_video_seconds: 300  # Exclude longer source videos on Immich metadata, before download (0 disables)
 
   # Album source
   max_album_assets: 10000        # Most assets read from one album, per media type (min 1)

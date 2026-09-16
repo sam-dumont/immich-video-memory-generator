@@ -8,7 +8,11 @@ from math import isfinite
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
-from immich_memories.analysis.motion_rendering import MotionRendering, motion_renderings
+from immich_memories.analysis.motion_rendering import (
+    ClockOffsetProbe,
+    MotionRendering,
+    motion_renderings,
+)
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.operations.cut_progress import StageUpdate
 from immich_memories.processing.live_material import LiveRenderMaterial
@@ -133,6 +137,7 @@ def project_source_rendering(
     *,
     config: Config,
     include_live_photos: bool,
+    clock_offsets: ClockOffsetProbe | None = None,
     companion_assets: Mapping[str, Asset] | None = None,
 ) -> EditorialSourcePlan:
     """Bind native selected intervals to the exact sources/material that will render."""
@@ -157,6 +162,7 @@ def project_source_rendering(
             config=config,
             include_live_photos=include_live_photos,
             companion_assets=companion_assets,
+            clock_offsets=clock_offsets,
         )
         selected.append(
             EditorialSelection(asset_id, carrier.start, end, carrier.mode, carrier.frame)
@@ -178,6 +184,7 @@ def _bound_carrier(
     config: Config,
     include_live_photos: bool,
     companion_assets: Mapping[str, Asset] | None,
+    clock_offsets: ClockOffsetProbe | None = None,
 ) -> tuple[VideoClipInfo, float]:
     """Return the exact clip and end time one carrier will actually render."""
     asset = by_id[carrier.asset_id].clip.asset
@@ -188,6 +195,7 @@ def _bound_carrier(
         config=config,
         include_live_photos=include_live_photos,
         companion_assets=companion_assets,
+        clock_offsets=clock_offsets,
     )
     end = _bounded_end(carrier, clip, row, adjustments)
     if carrier.kind == "live-motion":
@@ -213,6 +221,7 @@ def _projected_clip(
     config: Config,
     include_live_photos: bool,
     companion_assets: Mapping[str, Asset] | None,
+    clock_offsets: ClockOffsetProbe | None = None,
 ) -> VideoClipInfo:
     """Re-time the demanded clip against the rendering its carrier kind claims."""
     clip = by_id[carrier.asset_id].clip
@@ -221,7 +230,12 @@ def _projected_clip(
         if not include_live_photos or asset.type != AssetType.IMAGE:
             raise ValueError("editorial Live motion is outside the requested media contract")
         return _live_motion_clip(
-            carrier, row, by_id, config=config, companion_assets=companion_assets
+            carrier,
+            row,
+            by_id,
+            config=config,
+            companion_assets=companion_assets,
+            clock_offsets=clock_offsets,
         )
     if asset.type == AssetType.VIDEO:
         if carrier.kind != "video" and carrier.frame is None:
@@ -241,12 +255,16 @@ def _live_motion_clip(
     *,
     config: Config,
     companion_assets: Mapping[str, Asset] | None,
+    clock_offsets: ClockOffsetProbe | None = None,
 ) -> VideoClipInfo:
     members = _live_members(row, carrier.asset_id, by_id)
     material = [by_id[key].clip.asset for key in members]
-    rendering = motion_renderings(material, config, companion_assets=companion_assets).get(
-        carrier.asset_id
-    )
+    rendering = motion_renderings(
+        material,
+        config,
+        companion_assets=companion_assets,
+        clock_offsets=clock_offsets,
+    ).get(carrier.asset_id)
     if rendering is None or set(rendering.still_ids) != set(members):
         raise ValueError("editorial Live motion has no matching source manifest")
     if rendering.material is None:

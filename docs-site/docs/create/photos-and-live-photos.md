@@ -56,7 +56,7 @@ Merged, 4.5 seconds of continuous footage:
 
 <Video src="/demos/live-photos/italian_hilltop/merged.mp4" width={720} controls />
 
-A bike race, 6 Live Photos merged into 8.4 seconds:
+A bike race, 6 Live Photos merged into 8.2 seconds:
 
 <Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
 

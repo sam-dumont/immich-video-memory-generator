@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import chain
 from pathlib import Path
@@ -195,6 +195,10 @@ class StructurePlannerPorts:
     )
     attached_material_metrics: Callable[[], Mapping[str, Any]] | None = None
     rules: RuleStructureReader | None = None
+    # Measured Live companion clock offsets for content-aligned stitch joins
+    # (#1012); None keeps the metadata plan. Lazy in production: it fetches
+    # companions only for bursts it is actually asked about.
+    clock_offsets: Callable[[Sequence[str]], list[float | None]] | None = None
 
 
 @dataclass(frozen=True)

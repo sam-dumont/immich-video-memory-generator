@@ -88,6 +88,7 @@ class KernelProbeResult:
 
     outcome: KernelProbeOutcome
     detail: str | None = None
+    stderr: str | None = None
 
 
 @contextlib.contextmanager
@@ -181,6 +182,44 @@ def _read_probe_result(result_path: Path) -> KernelProbeResult | None:
         return None
 
 
+def _stream_tail(text: object) -> str:
+    """The child's last words, flattened to one short line for a failure row."""
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    return " | ".join(lines[-3:])[-200:]
+
+
+def _interpret_probe_exit(
+    completed: "subprocess.CompletedProcess[str]",
+    backend_name: str,
+    result_path: Path,
+) -> KernelProbeResult:
+    """Read a finished probe child: its answer, or why it never wrote one."""
+    if completed.returncode or not result_path.is_file():
+        detail = _stream_tail(completed.stderr or completed.stdout)
+        logger.debug(
+            "Kernel %s probe child exited %s: %s",
+            backend_name,
+            completed.returncode,
+            (completed.stderr or completed.stdout or "").strip()[-2000:],
+        )
+        if killed_by := _terminating_signal(completed.returncode):
+            return KernelProbeResult(
+                KernelProbeOutcome.CHILD_SIGNALLED, killed_by.name, detail or None
+            )
+        return KernelProbeResult(
+            KernelProbeOutcome.CHILD_CRASHED,
+            f"exitcode={completed.returncode}: {detail}"
+            if detail
+            else f"exitcode={completed.returncode}",
+        )
+    result = _read_probe_result(result_path)
+    if result is None:
+        return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, "invalid_result")
+    return result
+
+
 def _probe_backend(
     backend_name: str,
     timeout: float = _PROBE_TIMEOUT_SECONDS,
@@ -202,29 +241,30 @@ def _probe_backend(
     with tempfile.TemporaryDirectory(prefix="immich-kernel-probe-") as directory:
         result_path = Path(directory) / "result.json"
         command = [sys.executable, str(Path(__file__).resolve()), backend_name, str(result_path)]
-        try:
-            completed = run_bounded_process(command, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return KernelProbeResult(KernelProbeOutcome.TIMED_OUT)
-        except OSError as exc:
-            return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, type(exc).__name__)
-        if completed.returncode or not result_path.is_file():
-            logger.debug(
-                "Kernel %s probe child exited %s: %s",
-                backend_name,
-                completed.returncode,
-                (completed.stderr or completed.stdout or "").strip()[-2000:],
-            )
-            if killed_by := _terminating_signal(completed.returncode):
-                return KernelProbeResult(KernelProbeOutcome.CHILD_SIGNALLED, killed_by.name)
-            return KernelProbeResult(
-                KernelProbeOutcome.CHILD_CRASHED,
-                f"exitcode={completed.returncode}",
-            )
-        result = _read_probe_result(result_path)
-        if result is None:
-            return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, "invalid_result")
-        return result
+        timeout_error: subprocess.TimeoutExpired | None = None
+        for attempt in (1, 2):
+            try:
+                completed = run_bounded_process(command, timeout=timeout)
+            except subprocess.TimeoutExpired as error:
+                # One timeout can be a cold start: the first child pays the
+                # native library's first-touch page-in and JIT compile, and dies
+                # with no cache written, so every attempt stays cold (#1014).
+                timeout_error = error
+                if attempt == 1:
+                    logger.warning(
+                        "Kernel %s probe timed out after %.0fs; retrying once before "
+                        "falling back to the PIL renderer",
+                        backend_name,
+                        timeout,
+                    )
+                continue
+            except OSError as exc:
+                return KernelProbeResult(KernelProbeOutcome.CHILD_CRASHED, type(exc).__name__)
+            return _interpret_probe_exit(completed, backend_name, result_path)
+        return KernelProbeResult(
+            KernelProbeOutcome.TIMED_OUT,
+            _stream_tail(getattr(timeout_error, "stderr", None)) or "no output captured",
+        )
 
 
 @functools.cache
@@ -251,13 +291,16 @@ def kernel_dispatch_failure() -> str | None:
     if result.outcome is KernelProbeOutcome.SUCCESS:
         return None
     if result.outcome is KernelProbeOutcome.CHILD_SIGNALLED:
+        tail = f' — "{result.stderr}"' if result.stderr else ""
         return (
-            f"kernel backend crashed on this CPU: {_signal_wording(result.detail)}; {_PIL_FALLBACK}"
+            f"kernel backend crashed on this CPU: {_signal_wording(result.detail)}{tail}; "
+            f"{_PIL_FALLBACK}"
         )
     if result.outcome is KernelProbeOutcome.TIMED_OUT:
+        detail = f" ({result.detail})" if result.detail else ""
         return (
-            f"kernel backend did not start within {_PROBE_TIMEOUT_SECONDS:.0f}s on this machine; "
-            f"{_PIL_FALLBACK}"
+            f"kernel backend did not start within {_PROBE_TIMEOUT_SECONDS:.0f}s on this "
+            f"machine{detail}; {_PIL_FALLBACK}"
         )
     return (
         f"kernel backend could not dispatch here ({result.detail or 'no detail'}); {_PIL_FALLBACK}"
