@@ -137,6 +137,56 @@ def plan_loop_copies(*, audio_duration: float, target_duration: float, crossfade
     return max(2, math.ceil((target_duration - audio_duration) / effective) + 1)
 
 
+def assemble_music(
+    block_paths: list[Path],
+    target_duration: float,
+    output_path: Path,
+    crossfade_seconds: float = 2.0,
+) -> Path:
+    """Fold a sequence of distinct blocks into one track of ``target_duration``.
+
+    The block sequence repeats (crossfaded, then trimmed) until it covers the
+    target, so a long video gets several different takes of the same style rather
+    than one phrase on repeat. Output is PCM WAV so mastering and ducking re-encode
+    a clean source, unlike the mp3 ``loop_audio_to_duration`` writes for final
+    delivery.
+    """
+    if not block_paths:
+        raise ValueError("assemble_music needs at least one block")
+    durations = [get_audio_duration(p) for p in block_paths]
+    shortest = min(durations)
+    fade = min(crossfade_seconds, max(shortest / 2, 0.01))
+    # One pass through the sequence, after the overlaps between its blocks.
+    once = max(sum(durations) - fade * (len(durations) - 1), 0.01)
+    # Each further pass adds (once - fade): its first block crossfades into the
+    # previous pass's last block. Fold the block sequence until the target is met.
+    if once - fade > 0.01:
+        copies = max(1, math.ceil((target_duration - fade) / (once - fade)))
+    else:  # degeneration: every block is shorter than the crossfade
+        copies = max(1, math.ceil(target_duration / once))
+
+    inputs = block_paths * copies
+    chain = []
+    previous = "0:a"
+    for index in range(1, len(inputs)):
+        label = f"x{index}"
+        chain.append(f"[{previous}][{index}:a]acrossfade=d={fade}:c1=tri:c2=tri[{label}]")
+        previous = label
+
+    fade_out_start = max(target_duration - 2, 0)
+    chain.append(
+        f"[{previous}]atrim=0:{target_duration},"
+        f"afade=t=in:st=0:d=1,afade=t=out:st={fade_out_start}:d=2[out]"
+    )
+
+    cmd = ["ffmpeg", "-y"]
+    for path in inputs:
+        cmd += ["-i", str(path)]
+    cmd += ["-filter_complex", ";".join(chain), "-map", "[out]", str(output_path)]
+    subprocess.run(cmd, capture_output=True, check=True, timeout=600)
+    return output_path
+
+
 def loop_audio_to_duration(
     audio_path: Path,
     target_duration: float,

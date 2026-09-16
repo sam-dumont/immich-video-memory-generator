@@ -832,3 +832,62 @@ class TestMoodDetailThreadsThrough:
             )
 
         assert seen[0].mood_detail is detail
+
+
+def _fake_assemble(_blocks, _target, out, **kwargs):
+    """Stand in for real FFmpeg assembly against the fake generator's junk bytes."""
+    out.write_bytes(b"RIFF" + b"\x00" * 40)
+    return out
+
+
+class TestLongVideoBlocks:
+    """A long video is filled by distinct same-caption takes, not one stuck phrase."""
+
+    async def test_a_long_video_generates_distinct_blocks(self, tmp_path: Path) -> None:
+        from immich_memories.audio.music_generator_models import ClipMood
+
+        gen = CountingGenerator()
+        pipeline = MusicPipeline(
+            generators=[gen], stem_separator=None, block_seconds=120, max_blocks=3
+        )
+
+        timeline = VideoTimeline()
+        timeline.clips = [ClipMood(duration=600.0, mood="happy")]
+
+        # WHY: replaces real FFmpeg assembly; the fake generator writes junk bytes.
+        with patch(
+            "immich_memories.audio.music_pipeline.assemble_music", side_effect=_fake_assemble
+        ) as assemble:
+            async with pipeline:
+                result = await pipeline.generate_music_for_video(
+                    timeline=timeline, output_dir=tmp_path, num_versions=1
+                )
+
+        assert gen.calls == 3, "three distinct same-caption takes, not one long shot"
+        assert assemble.call_count == 1
+        blocks, target, _chained = assemble.call_args.args
+        assert len(blocks) == 3
+        assert target > 120
+        assert len(result.versions) == 1
+        assert result.versions[0].duration > 120
+
+    async def test_a_short_video_keeps_a_single_take(self, tmp_path: Path) -> None:
+        from immich_memories.audio.music_generator_models import ClipMood
+
+        gen = CountingGenerator()
+        pipeline = MusicPipeline(
+            generators=[gen], stem_separator=None, block_seconds=120, max_blocks=3
+        )
+
+        timeline = VideoTimeline()
+        timeline.clips = [ClipMood(duration=30.0, mood="happy")]
+
+        with patch("immich_memories.audio.music_pipeline.assemble_music") as assemble:
+            async with pipeline:
+                result = await pipeline.generate_music_for_video(
+                    timeline=timeline, output_dir=tmp_path, num_versions=1
+                )
+
+        assert gen.calls == 1, "a short video is one shot, never assembled into blocks"
+        assemble.assert_not_called()
+        assert len(result.versions) == 1

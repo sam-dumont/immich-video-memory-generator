@@ -35,6 +35,25 @@ class AudioConfig(BaseModel):
             "repetitive 'tick' by the cheap quality gate; the best-scored take is kept"
         ),
     )
+    music_block_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=300,
+        description=(
+            "Longest single generated take before auto mode chains distinct takes. "
+            "A video longer than this is filled by several same-caption takes "
+            "joined with crossfades, never one phrase on repeat"
+        ),
+    )
+    max_music_blocks: int = Field(
+        default=3,
+        ge=1,
+        le=6,
+        description=(
+            "Distinct takes to chain for a video longer than music_block_seconds; "
+            "beyond this the chain is looped"
+        ),
+    )
 
     @property
     def local_music_path(self) -> Path:

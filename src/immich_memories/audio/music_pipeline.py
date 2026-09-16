@@ -14,6 +14,7 @@ Stem separation is decoupled from generation via the StemSeparator protocol:
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,7 @@ from immich_memories.audio.generators.base import (
     StemSeparator,
 )
 from immich_memories.audio.mastering import master_music_track
+from immich_memories.audio.mixer import assemble_music
 from immich_memories.audio.music_generator_models import (
     GeneratedMusic,
     MusicGenerationResult,
@@ -51,9 +53,14 @@ class MusicPipeline:
         self,
         generators: list[MusicGenerator],
         stem_separator: StemSeparator | None = None,
+        *,
+        block_seconds: int = 120,
+        max_blocks: int = 3,
     ):
         self._generators = generators
         self._stem_separator = stem_separator
+        self._block_seconds = block_seconds
+        self._max_blocks = max_blocks
 
     async def __aenter__(self):
         for gen in self._generators:
@@ -123,21 +130,20 @@ class MusicPipeline:
         for i in range(num_versions):
             logger.info(f"Generating version {i + 1}/{num_versions}")
 
-            request = GenerationRequest(
-                prompt=primary_mood,
+            made = await self._generate_full_mix(
                 scenes=scenes,
-                duration_seconds=int(total_duration),
-                variation_index=i,
-                crossfade_duration=crossfade_duration,
+                primary_mood=primary_mood,
+                total_duration=total_duration,
                 output_dir=output_dir,
+                crossfade_duration=crossfade_duration,
                 memory_type=memory_type,
                 photo_cadence_seconds=photo_cadence_seconds,
                 mood_detail=mood_detail,
+                candidate_index=i,
+                num_versions=num_versions,
+                progress_callback=progress_callback,
             )
-
-            result = await self._try_generate(request, progress_callback, i, num_versions)
-
-            if result is None:
+            if made is None:
                 backend_names = ", ".join(g.name for g in self._generators)
                 logger.error(
                     "All music backends failed for version %d/%d (tried: %s)",
@@ -147,10 +153,7 @@ class MusicPipeline:
                 )
                 continue
 
-            # Master once before separation so stems retain the full track's balance.
-            result.audio_path = master_music_track(
-                result.audio_path, output_dir / f"mastered_version_{i}.wav"
-            )
+            result, request = made
             stems = await self._try_separate_stems(result, request, progress_callback, i)
 
             versions.append(
@@ -194,25 +197,23 @@ class MusicPipeline:
         for i in range(num_versions):
             logger.info(f"Generating version {i + 1}/{num_versions}")
 
-            request = GenerationRequest(
-                prompt=primary_mood,
+            made = await self._generate_full_mix(
                 scenes=scenes,
-                duration_seconds=int(total_duration),
-                variation_index=i,
-                crossfade_duration=crossfade_duration,
+                primary_mood=primary_mood,
+                total_duration=total_duration,
                 output_dir=output_dir,
+                crossfade_duration=crossfade_duration,
                 memory_type=memory_type,
                 photo_cadence_seconds=photo_cadence_seconds,
                 mood_detail=mood_detail,
+                candidate_index=i,
+                num_versions=num_versions,
+                progress_callback=progress_callback,
             )
-
-            result = await self._try_generate(request, progress_callback, i, num_versions)
-            if result is None:
+            if made is None:
                 continue
 
-            result.audio_path = master_music_track(
-                result.audio_path, output_dir / f"mastered_version_{i}.wav"
-            )
+            result, request = made
             quality = quality_gate(result.audio_path)
             candidates.append((request, result, quality))
             logger.info(
@@ -249,6 +250,108 @@ class MusicPipeline:
             mood=primary_mood,
             selected_version=0,
         )
+
+    async def _generate_full_mix(
+        self,
+        *,
+        scenes: list[dict[str, Any]],
+        primary_mood: str,
+        total_duration: float,
+        output_dir: Path,
+        crossfade_duration: float,
+        memory_type: str | None,
+        photo_cadence_seconds: float | None,
+        mood_detail: VideoMood | None,
+        candidate_index: int,
+        num_versions: int,
+        progress_callback: Any | None,
+    ) -> tuple[GenerationResult, GenerationRequest] | None:
+        """One mastered full-length mix (and its request), pre-stem.
+
+        Up to ``block_seconds`` this is a single take at the video length. Longer,
+        one long take reads as a metronomic ramble, so instead up to ``max_blocks``
+        distinct takes share the caption (fresh seed each, so same genre/key but
+        different music) and are folded together with crossfades, then tiled to the
+        full length. The result is mastered once, so stems and ducking see a
+        balanced track.
+        """
+        if total_duration <= self._block_seconds:
+            request = GenerationRequest(
+                prompt=primary_mood,
+                scenes=scenes,
+                duration_seconds=int(total_duration),
+                variation_index=candidate_index,
+                crossfade_duration=crossfade_duration,
+                output_dir=output_dir,
+                memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
+            )
+            result = await self._try_generate(
+                request, progress_callback, candidate_index, num_versions
+            )
+            if result is None:
+                return None
+            result.audio_path = master_music_track(
+                result.audio_path, output_dir / f"mastered_version_{candidate_index}.wav"
+            )
+            return result, request
+
+        n_blocks = min(
+            self._max_blocks,
+            max(1, int(math.ceil(total_duration / self._block_seconds))),
+        )
+        blocks: list[Path] = []
+        prompt = primary_mood
+        backend_name = ""
+        for b in range(n_blocks):
+            block_request = GenerationRequest(
+                prompt=primary_mood,
+                scenes=scenes,
+                duration_seconds=self._block_seconds,
+                variation_index=b,
+                crossfade_duration=crossfade_duration,
+                output_dir=output_dir,
+                memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
+                mood_detail=mood_detail,
+            )
+            block_result = await self._try_generate(block_request, progress_callback, b, n_blocks)
+            if block_result is None:
+                logger.warning("Music block %d/%d failed; skipping", b + 1, n_blocks)
+                continue
+            blocks.append(block_result.audio_path)
+            prompt = block_result.prompt or prompt
+            backend_name = block_result.backend_name or backend_name
+            logger.info("Music block %d/%d ready", len(blocks), n_blocks)
+
+        if not blocks:
+            return None
+
+        chained = output_dir / f"chained_version_{candidate_index}.wav"
+        assemble_music(blocks, total_duration, chained, crossfade_seconds=crossfade_duration)
+        mastered = master_music_track(
+            chained, output_dir / f"mastered_version_{candidate_index}.wav"
+        )
+
+        request = GenerationRequest(
+            prompt=primary_mood,
+            scenes=scenes,
+            duration_seconds=int(total_duration),
+            variation_index=candidate_index,
+            crossfade_duration=crossfade_duration,
+            output_dir=output_dir,
+            memory_type=memory_type,
+            photo_cadence_seconds=photo_cadence_seconds,
+            mood_detail=mood_detail,
+        )
+        result = GenerationResult(
+            audio_path=mastered,
+            duration_seconds=float(total_duration),
+            prompt=prompt,
+            backend_name=backend_name,
+        )
+        return result, request
 
     async def _try_generate(
         self,
@@ -399,7 +502,26 @@ def create_pipeline(app_config, *, separate_stems: bool = True) -> MusicPipeline
             "Enable at least one of: musicgen.enabled, ace_step.enabled"
         )
 
-    return MusicPipeline(generators=generators, stem_separator=stem_separator)
+    return MusicPipeline(
+        generators=generators,
+        stem_separator=stem_separator,
+        block_seconds=_block_seconds(app_config),
+        max_blocks=_max_blocks(app_config),
+    )
+
+
+def _block_seconds(app_config) -> int:
+    """The longest single take before auto mode chains distinct takes."""
+    audio = getattr(app_config, "audio", None)
+    value = getattr(audio, "music_block_seconds", None)
+    return value if isinstance(value, int) and value > 0 else 120
+
+
+def _max_blocks(app_config) -> int:
+    """Distinct takes to chain for a video longer than the block length."""
+    audio = getattr(app_config, "audio", None)
+    value = getattr(audio, "max_music_blocks", None)
+    return value if isinstance(value, int) and value > 0 else 3
 
 
 def _try_local_demucs() -> StemSeparator | None:

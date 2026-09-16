@@ -223,6 +223,12 @@ much of the onset energy sits at a single repeat lag, so a stuck loop or a flat 
 a varied track reads low. Music is never dropped, only re-rolled, so a run still ends with a track
 even when every take is flagged.
 
+A video longer than `audio.music_block_seconds` (default 120) is not one long generation. Auto mode
+generates up to `audio.max_music_blocks` (default 3) distinct takes of the same caption and joins
+them with crossfades, then loops the sequence to fill the rest. One long take reads as a metronomic
+ramble, and one short phrase on repeat is its own kind of monotony; a chain of a few distinct takes
+is neither, and stems are then separated once on the assembled mix.
+
 `lib` mode checks free memory against the weights the profile keeps resident and refuses with a named
 shortfall rather than letting macOS kill the process mid-render: about 29 GB for XL with the 4B
 planner, 21 GB for XL without it, 11 GB and 7 GB for the 2B profiles. A refusal is a normal backend
