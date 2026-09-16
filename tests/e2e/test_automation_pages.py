@@ -95,7 +95,9 @@ def test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, l
     expect(page.get_by_role("link", name="Open run", exact=True)).to_be_visible(timeout=240_000)
     page.get_by_role("link", name="Open run", exact=True).click()
     disclosure = page.get_by_text("Read the cut", exact=True)
-    expect(disclosure).to_be_visible()
+    # The run-details page reads the saved plan after navigating; every other
+    # wait on this page is 60 s, and the 5 s default lost the race on CI.
+    expect(disclosure).to_be_visible(timeout=60_000)
     disclosure.click()
     expect(page.get_by_text(THESIS, exact=True)).to_be_hidden()
     disclosure.click()
