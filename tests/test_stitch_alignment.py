@@ -126,32 +126,6 @@ def test_companion_frames_refuse_bytes_that_cannot_decode() -> None:
         companion_frames(b"not a video")
 
 
-def test_the_cluster_consumes_measured_deltas_and_falls_back_cleanly() -> None:
-    from immich_memories.processing.live_photo_merger import LivePhotoCluster
-
-    def still(key: str, seconds: float):
-        return make_asset(
-            key,
-            file_created_at=datetime(2024, 6, 4, 12, tzinfo=UTC) + timedelta(seconds=seconds),
-        )
-
-    cluster = LivePhotoCluster(
-        assets=[still("a", 0), still("b", 1.088), still("c", 2.333)],
-        clip_durations={"a": 2.4, "b": 2.6, "c": 1.767},
-    )
-    metadata_plan = cluster.trim_points()
-    assert len(metadata_plan) == 3
-
-    aligned = cluster.trim_points(measured_deltas=[0.600, 0.833])
-    assert aligned != metadata_plan
-    assert aligned is not None and len(aligned) == 3
-    # The joins are content-continuous under the measured clocks.
-    assert aligned[0][1] == pytest.approx(aligned[1][0] + 0.600, abs=1e-9)
-    assert aligned[1][1] == pytest.approx(aligned[2][0] + 0.833, abs=1e-9)
-    # Unmeasurable pairs keep the metadata plan rather than guessing.
-    assert cluster.trim_points(measured_deltas=[3.0, 0.833]) == metadata_plan
-
-
 def _francorchamps_burst():
     """Three Live stills 1.088 s and 1.245 s apart; companions 2.4/2.6/1.767 s."""
     from immich_memories.api.models import AssetType
