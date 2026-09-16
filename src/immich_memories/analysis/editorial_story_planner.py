@@ -48,6 +48,8 @@ class StorySelection:
     alternatives_of: dict[str, list[str]]
     slots: int
     calls: dict[str, int]
+    # The annotation line of every unit, so a replacement carrier can describe itself.
+    lines: Mapping[str, str]
 
     def record(self) -> dict[str, Any]:
         return {
@@ -498,6 +500,7 @@ def select_story_first(
         admission.alternatives_of,
         slots,
         calls,
+        story_lines,
     )
     record(
         "story-selection",
@@ -583,7 +586,9 @@ def alternatives_pool(
                 "anchor": carrier.get("anchor"),
                 "chapter": carrier.get("chapter"),
                 "why": carrier.get("why"),
-                "line": "",
+                # The page and the sheet print this under the thumbnail. A replacement
+                # describes itself; it never borrows the refused picture's description.
+                "line": selection.lines.get(a) or "Replaces a picture the audience gate refused",
             }
             for a in selection.alternatives_of.get(carrier["asset_id"], [])
             if a in unit_by_asset

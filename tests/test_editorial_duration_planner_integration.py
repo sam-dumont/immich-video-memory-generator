@@ -299,9 +299,8 @@ def test_private_initial_choice_is_replaced_by_grounded_depth_without_claiming_i
     assert stood_in and stood_in <= {c["asset_id"] for c in plan["carriers"]}
     # The story may know the occasion, but the shipped material never claims a
     # refused picture survived or borrows its description for another carrier.
-    assert all(
-        "moving step" in row["line"] for row in plan["carriers"] if row["asset_id"] not in stood_in
-    )
+    # A picture that stood in for a refused one describes itself, like any other.
+    assert all("moving step" in row["line"] for row in plan["carriers"])
     assert all(
         "bathtub" not in row["line"] and "bathing" not in row["line"] for row in plan["carriers"]
     )
