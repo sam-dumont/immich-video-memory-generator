@@ -9,14 +9,15 @@ Every photo app has an automatic memories feature and they all work the same way
 (sharpness, faces, smiles), pick the winners, add music. The result is a highlight reel. Technically
 fine, emotionally random, and after the third one you stop watching.
 
-This one reads the period as a story instead. It prepares a description, people, place context and
-picture facts for every eligible picture in the range, decides which stories matter and which
+This one reads the period as a story instead. It samples eligible sources across the period, prepares
+descriptions, people, place context and picture facts for that sample, decides which stories matter and which
 distinct moments show them, and only then allocates the film's duration. One
 `immich-memories generate` and one **Cut** on the Memory page take the identical route.
 
 ```mermaid
 flowchart TD
-    immich[("Immich")] -->|"every eligible asset,<br/>with its exclusion reason"| prep
+    immich[("Immich")] --> budget["Dates, places, people and favourites:<br/>bound the candidate pool"]
+    budget --> prep
 
     subgraph prep["Preparation: once per picture, then banked"]
         direction LR
@@ -88,8 +89,52 @@ show more distinct moments (arrival, the main activity, people together, how the
 than making every extra frame a new event. Matching facts are reused: descriptions and model
 decisions are cached by producer and input.
 
+Episode readings and depicted moments are reusable facts. A moment inventory uses local source
+labels and source evidence, so changing a film's title or moving the same episode from a month
+to a year does not force another reading. Changed evidence, including a corrected relationship,
+gets a fresh reading. Confirmed facts in `people.yaml` take precedence over caption guesses;
+holding a baby does not make someone its parent.
+
+The final duplicate check groups selected pictures mechanically by capture time and place,
+within the existing 90-minute episode window, even when framing, captions or story labels differ. It asks a
+simple visual question: do these pictures show similar content, so keeping one avoids repetition?
+Both display orders must agree before a cut. No person or face match is required.
+Different episodes use the stricter same-picture question. The two questions have separate cache
+entries and share a limit of two pair comparisons per selected clip. Unresolved comparisons stay
+in the film. Explicit manual selections stay protected, and a Live contribution needs evidence for
+every displayed sample before it can be removed. Removed repeats are not refilled with variants.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
+
+## A library is bigger than a film
+
+Before fetching previews or asking a model, every memory type shares a candidate budget:
+`max(384, 4 × ceil(target seconds / photos.duration))`. With four-second photos, a one-minute
+film analyses at most 384 automatic candidates; a ten-minute film gets 600. A 50,000-asset library
+does not get 50,000 captions just because it is there.
+
+The sample shares that budget across calendar periods, then capture groups. Busy days do not consume
+the whole month. Favourites nominate groups and win alternatives within them; a few nearby frames
+give the editor choices and keep short Live sequences available. Longer date ranges use weeks,
+months or years to fit the same budget. Small pools pass through in full.
+
+Sampling retains the surrounding eligible episode's time span, capture count, places and named
+participants as context for story reading and weighting. Someone tagged elsewhere in the episode
+is not assumed to appear in each selected picture. A matching cached episode summary is reused;
+changed membership or evidence invalidates it. Missing summaries trigger no extra analysis outside
+the sample. Metadata cannot reveal an action that no picture or cached reading has described.
+
+This deliberately leaves pictures unseen. It can miss an unmarked important moment; it does not
+promise the same shots as an exhaustive read. Pictures you explicitly require survive the automatic
+limit, provided they pass source eligibility and your exclusions. Output orientation does not enter
+this decision. The final duration still uses the chosen video intervals and Live material, with
+speech checks and title/transition timing applied afterward.
+
+The run reports how many candidates it kept. Its private `source-budget.private.json` records the
+budget, IDs, metadata time and context lookup time, and the source trace records
+`outside analysis budget` for each omitted candidate.
+Existing descriptions and model decisions are reused when their inputs match.
 
 Large annual memories are read in batches. Each story-weighting batch keeps the period's account
 and main-story context, with at most 60 stories in its initial request. If the possible main stories
@@ -122,7 +167,7 @@ Both conditions are required: time alone would collapse a busy minute at a party
 would merge the same kitchen photographed a month apart. A photo whose preview never arrived is
 always kept, because redundancy is measured and never assumed. Measured on one real June library, 64
 of 303 photos went, 21 % of the pool, in groups of up to five. It saves no model calls (captions,
-heads and detectors are paid for the whole eligible period first); what it saves is a cut with five
+heads and detectors are paid for the sampled candidates first); what it saves is a cut with five
 near-identical frames in it.
 
 **2. Neighbours, asked as a pair.** Two pictures side by side, two numbered tiles, judged in both
@@ -194,7 +239,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 
 | Stage | What runs | Where it can run |
 |---|---|---|
-| **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
+| **Reading dates, places and people** | Source eligibility and the candidate budget, then preparation for retained candidates: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | metadata locally; previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The period read as an account with a thesis, one bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
@@ -204,10 +249,10 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
 retries three times before failing.
 
-A cold cut pays for every picture never read and every reading of a period nobody has cut. A warm cut
-over the same period is mostly the render. There is no depth knob and no shortlist at the source:
-every eligible picture is prepared, because a picture the editor never saw is one it cannot weigh.
-The levers are putting the caption server and the reader where they are fast, preparing a library
+A cold cut pays for the sampled pictures without cached facts and for new readings of that evidence.
+A warm cut reuses matching facts and decisions. The source budget is automatic across memory types;
+it grows with the requested film, rather than the library. Other levers are putting the caption
+server and the reader where they are fast, preparing a library
 ahead with [`prepare`](./cli/prepare.md), and keeping the cache. If the render is
 the slow part none of that helps: that is decode, scale, blend and encode, and the levers are a
 hardware encoder, a lower resolution and fewer clips.

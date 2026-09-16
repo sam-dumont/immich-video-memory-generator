@@ -68,3 +68,87 @@ def test_outer_array_with_unknown_sources_cannot_satisfy_coverage():
     rows = [{"sources": ["U0002", "U9999"], "primary": "U0002", "content": "A visit"}]
     with pytest.raises(ValueError, match="coverage is incomplete"):
         page(json.dumps(rows))
+
+
+def test_moment_facts_are_reused_across_films_but_changed_evidence_is_read_again(
+    tmp_path, monkeypatch
+):
+    from immich_memories.analysis import editorial_text_gateway as gateway
+    from immich_memories.analysis.editorial_moment_inventory import inventory_event
+    from immich_memories.analysis.editorial_structure_io import StructureTextJudge
+    from immich_memories.config_loader import Config
+
+    sent = []
+
+    async def answer(prompt, _config, **_):
+        sent.append(prompt)
+        return json.dumps(
+            {
+                "moments": [
+                    {
+                        "sources": ["U0001", "U0002"],
+                        "primary": "U0001",
+                        "content": "Two people share a cake.",
+                    }
+                ]
+            }
+        )
+
+    # WHY: only the provider transport is fake; the production inventory,
+    # request identity, answer bank and source remapping are real.
+    monkeypatch.setattr(gateway, "query_llm", answer)
+    config = Config(
+        llm={
+            "provider": "openai-compatible",
+            "model": "test-model",
+            "base_url": "http://reader.test/v1",
+        }
+    )
+    units = [
+        {
+            "asset_id": f"picture-{i}",
+            "moment": "M001",
+            "taken": f"2030-02-05T12:00:0{i}",
+            "facts": "Two people share a cake.",
+        }
+        for i in range(2)
+    ]
+
+    def run(name, sources, context, people=""):
+        (tmp_path / name).mkdir()
+        judge = StructureTextJudge(config, tmp_path / name, cache_path=tmp_path / "facts.sqlite")
+        moments, _ = inventory_event(
+            judge,
+            event=name,
+            units=sources,
+            context=context,
+            line=lambda unit: unit["facts"],
+            people_context=people,
+        )
+        return moments, judge
+
+    original, cold = run("month", units, "A birthday in February")
+    relabelled = [unit | {"moment": "M147"} for unit in units]
+    repeated, warm = run("year", relabelled, "A year of family celebrations")
+
+    assert len(sent) == 1
+    assert cold.calls[0]["cache_hit"] is False
+    assert warm.calls[0]["cache_hit"] is True
+    assert original[0].sources == repeated[0].sources == ["picture-0", "picture-1"]
+    assert repeated[0].event == "year"
+    _, changed = run(
+        "updated",
+        [relabelled[0] | {"facts": "Two people cut a cake."}, relabelled[1]],
+        "A year of family celebrations",
+    )
+    assert len(sent) == 2
+    assert changed.calls[0]["cache_hit"] is False
+    _, corrected = run(
+        "corrected",
+        units,
+        "A birthday in February",
+        people="P1:name=Taylor Example|relationship=friend|source=confirmed",
+    )
+    assert len(sent) == 3
+    assert corrected.calls[0]["cache_hit"] is False
+    assert "relationship=friend|source=confirmed" in sent[-1]

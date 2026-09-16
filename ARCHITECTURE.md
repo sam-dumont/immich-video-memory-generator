@@ -74,12 +74,23 @@ The four core orchestrators and their composed services:
 
 **SmartPipeline** (analysis/smart_pipeline.py) is the pipeline surface the CLI and the UI
 drive. On the production route `build_smart_pipeline(editorial_context)` (editorial_runtime.py)
-hands it a `RuntimeEditorialPlanner`, and `run_editorial_source()` runs preparation, the two
+hands it a `RuntimeEditorialPlanner`. `editorial_source_budget.py` samples eligible metadata across
+calendar periods and capture groups before previews or annotation producers run. Its duration-based
+budget is shared by every memory type; eligible owner requirements survive the automatic cap, and
+omissions remain in the source trace. `run_editorial_source()` then runs preparation, the two
 readings, the structure and story planners and the timing certification, then projects the plan
 into a `PipelineResult` (editorial_projection.py). The route's seams are Protocol-typed ports
 rather than services: `EditorialRuntimePorts` (editorial_runtime_ports.py: providers, people
 loader), `ProductionPostCardBackend` (editorial_runtime_backend.py), `StructurePlannerPorts`
 (editorial_structure_contract.py: judges, banks, audience gate).
+
+Moment inventories use source-local aliases and factual people context so the judgment bank can
+reuse them across films. `editorial_episode_context.py` carries the wider eligible episode's
+metadata and exact matching cached summary through the bounded source and structure inputs.
+Context never expands selectable membership or triggers a model on a cache miss. Story summaries
+carry this context and `people.yaml` links with their provenance. Final duplicate discovery
+nominates capture time/place groups as well as hashes and captions. Nearby visual-similarity checks
+have separate request identities from strict picture matching and share one bounded work budget.
 
 `SmartPipeline` composes nothing else: the only seams it reads are `PipelineConfig.hdr_only`
 and the planner, and `ProgressTracker` (progress.py) is the run clock the stage reporter reads.
@@ -156,6 +167,7 @@ src/immich_memories/
 ├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
+│   ├── editorial_source_budget.py # Shared source sample before expensive preparation; calendar coverage, favourites, owner requirements
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation

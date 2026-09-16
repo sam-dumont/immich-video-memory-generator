@@ -83,6 +83,12 @@ _PAIR_PROMPT = (
     "Return only one complete JSON object, using exactly these keys and no others:\n" + _PAIR_SHAPE
 )
 
+_EPISODE_PROMPT = (
+    "These two numbered pictures were taken close in time during the same episode. "
+    "Do they show similar visual content, so keeping one would avoid repetition? "
+    'Return one JSON object with schema_version="pair-v3", same (boolean), and reason (one sentence).'
+)
+
 
 @dataclass(frozen=True)
 class _PendingPair:
@@ -104,6 +110,7 @@ class _PairBatchReader:
     sheet_output_dir: Path
     limits: VisionRequestLimits
     concurrency: int
+    episode_similarity: bool = False
 
     def ask(self, task: _PendingPair, arrangement: str) -> bool | None:
         pair = (task.earlier, task.later) if arrangement == "ab" else (task.later, task.earlier)
@@ -115,6 +122,7 @@ class _PairBatchReader:
             self.requester,
             self.sheet_output_dir,
             self.limits,
+            episode_similarity=self.episode_similarity,
         )
 
     def ask_many(self, indices: Sequence[int], arrangement: str) -> tuple[bool | None, ...]:
@@ -147,6 +155,7 @@ def confirm_same_picture_pairs(
     corroborating_distances: Sequence[int | None] | None = None,
     limits: VisionRequestLimits | None = None,
     concurrency: int = 1,
+    episode_similarity: bool = False,
 ) -> tuple[SamePicturePairDecision, ...]:
     """Confirm arbitrary candidate pairs with the measured two-order contract.
 
@@ -154,9 +163,13 @@ def confirm_same_picture_pairs(
     qualified pixel second vote from final-wall nomination; arbitrary pairs
     omit it and retain the conservative two-order contract. Disagreement or an
     unreadable answer never permits removing a picture.
+    Episode similarity requires the caller to establish nearby captures in one episode;
+    it asks about visual repetition and always requires both arrangements to agree.
     """
     nominated = tuple(pairs)
-    distances = _aligned_distances(nominated, corroborating_distances)
+    distances = _aligned_distances(
+        nominated, None if episode_similarity else corroborating_distances
+    )
     if not nominated:
         return ()
 
@@ -178,6 +191,7 @@ def confirm_same_picture_pairs(
         sheet_output_dir=sheet_output_dir,
         limits=limits or VisionRequestLimits(),
         concurrency=max(1, concurrency),
+        episode_similarity=episode_similarity,
     )
     indices = tuple(range(len(tasks)))
     forwards = reader.ask_many(indices, "ab")
@@ -247,6 +261,8 @@ def _ask_one_pair(
     requester: EditorialGateway,
     sheet_output_dir: Path,
     limits: VisionRequestLimits,
+    *,
+    episode_similarity: bool = False,
 ) -> bool | None:
     """One arrangement of one pair. `None` means no usable answer, never "different"."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
@@ -275,8 +291,10 @@ def _ask_one_pair(
             VisualEditorialRequest(
                 pass_name=SELECTS_PASS_NAME,
                 pass_version=SELECTS_PASS_VERSION,
-                prompt=_PAIR_PROMPT,
-                prompt_version=PAIR_PROMPT_VERSION,
+                prompt=_EPISODE_PROMPT if episode_similarity else _PAIR_PROMPT,
+                prompt_version="episode-similarity-v1"
+                if episode_similarity
+                else PAIR_PROMPT_VERSION,
                 schema_version=PAIR_SCHEMA_VERSION,
                 pages=(page,),
                 ordered_input_ids=tuple(candidate.asset_id for candidate in pair),

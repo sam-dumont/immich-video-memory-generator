@@ -144,6 +144,22 @@ def test_real_provider_to_existing_pair_primitive_then_exact_warm(observed, monk
     adapter.close()
 
 
+def test_episode_similarity_is_separate_from_strict_matching_and_reused(observed, monkeypatch):
+    calls = replies(monkeypatch, [answer(False), answer(), answer()])
+    adapter = confirmer(observed)
+    strict, _ = adapter((("one", "two"),), observed["records"])
+    assert not strict[0].same
+    episode, audit = adapter.confirm_episode_pairs((("one", "two"),), observed["records"])
+    assert episode[0].same and audit["cache_hits"] == 0
+    assert calls[0]["prompt"] == _PAIR_PROMPT
+    assert calls[1]["prompt"] == calls[2]["prompt"] != _PAIR_PROMPT
+    assert calls[1]["images"] != calls[2]["images"]
+    warm, repeated = adapter.confirm_episode_pairs((("one", "two"),), observed["records"])
+    assert warm == episode and repeated["cache_hits"] == 2
+    assert repeated["actual_http_attempts"] == 0 and len(calls) == 3
+    adapter.close()
+
+
 @pytest.mark.parametrize(
     "values,expected_calls", [([answer(False)], 1), ([answer(), answer(False)], 2)]
 )

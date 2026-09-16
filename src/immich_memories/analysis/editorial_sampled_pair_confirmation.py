@@ -311,6 +311,8 @@ class CachedSampledPairConfirmer:
         tiles: dict[str, AtlasTile],
         rows: list[dict[str, Any]],
         decisions: dict[int, SamePicturePairDecision],
+        *,
+        episode_similarity: bool,
     ) -> None:
         results = confirm_same_picture_pairs(
             tuple(
@@ -323,6 +325,7 @@ class CachedSampledPairConfirmer:
             limits=self._limits,
             # No hash shortcut: the second positive arrangement remains necessary.
             concurrency=1,
+            episode_similarity=episode_similarity,
         )
         for index, result in zip(eligible, results, strict=True):
             if (result.earlier_asset_id, result.later_asset_id) != nominated[index]:
@@ -339,6 +342,13 @@ class CachedSampledPairConfirmer:
         pairs: Sequence[tuple[str, str]],
         picture_records: Mapping[str, Mapping[str, Any]],
     ) -> tuple[tuple[SamePicturePairDecision, ...], dict[str, Any]]:
+        return self._confirm(pairs, picture_records, episode_similarity=False)
+
+    def confirm_episode_pairs(self, pairs, picture_records):
+        """Check visual similarity after the caller established nearby episode membership."""
+        return self._confirm(pairs, picture_records, episode_similarity=True)
+
+    def _confirm(self, pairs, picture_records, *, episode_similarity):
         nominated = tuple(pairs)
         if any(
             len(pair) != 2
@@ -358,10 +368,16 @@ class CachedSampledPairConfirmer:
         for index, pair in enumerate(nominated):
             rows.append(self._routed_row(index, pair, picture_records, tiles, decisions, eligible))
         if eligible:
-            self._compare_routed(nominated, eligible, tiles, rows, decisions)
+            self._compare_routed(
+                nominated, eligible, tiles, rows, decisions, episode_similarity=episode_similarity
+            )
         requests = self._trace.requests[trace_start:]
         audit: dict[str, Any] = {
-            "scope": "sampled picture relation only; no whole-video equality or cut authority",
+            "scope": (
+                "nearby episode visual similarity; no whole-video equality or cut authority"
+                if episode_similarity
+                else "sampled picture relation only; no whole-video equality or cut authority"
+            ),
             "nominated_pairs": len(nominated),
             "routed_pairs": len(eligible),
             "logical_requests": len(requests),

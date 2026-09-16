@@ -155,6 +155,9 @@ class PreparedEditorialSource:
     moment_groups: tuple[EditorialGroup, ...]
     owner_required_asset_ids: tuple[str, ...] = ()
 
+    # Wider eligible episode facts are context, never additional selectable assets.
+    episode_context: Mapping[str, str] = field(default_factory=dict)
+
     @property
     def candidate_ids(self) -> tuple[str, ...]:
         """Return the stable source order without exposing mutable collection state."""

@@ -112,6 +112,7 @@ def capture_structure_input(
         shareability_flags=load_flags(store_path, {*assets, *companions}),
         motion_residuals={},
         period_evidence=insight.evidence,
+        episode_context=workprint.prepared.episode_context,
         lineage={
             "period_insight": {
                 "producer_key": identity.producer_key,

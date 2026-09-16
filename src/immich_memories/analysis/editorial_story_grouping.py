@@ -12,8 +12,10 @@ import json
 from functools import partial
 from typing import Any
 
+from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT, relationship_evidence
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
     _read_synthesis,
@@ -79,6 +81,7 @@ home). Days that share only an activity, a place or a mood are separate stories.
 never a story. A story's days are consecutive. Every episode belongs to exactly one story; an
 ordinary day is its own small story. Use only documented facts; chronology does not establish
 firsts, emotions or relationships.
+{PEOPLE_FACTS_CONTRACT}
 
 JSON only: {{"thesis":"a specific account of what this period was about, up to 150 words",
 "about":["S0001"],
@@ -277,6 +280,14 @@ def _synthesize(
 ):
     """Group day episodes into stories, then weigh them against the whole-period context."""
     hints = hints or {}
+    hints = {
+        episode.key: {
+            **hints.get(episode.key, {}),
+            "people_context": relationship_evidence(episode.facts),
+            "episode_context": context_evidence(episode.facts),
+        }
+        for episode in episodes
+    }
 
     def day_of(key: str) -> str:
         return str((hints.get(key) or {}).get("day") or "")

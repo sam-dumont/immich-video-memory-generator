@@ -13,8 +13,10 @@ from functools import partial
 from operator import itemgetter
 from typing import Any
 
+from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT, relationship_evidence
 from immich_memories.analysis.editorial_story_grouping import _synthesize
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
@@ -78,6 +80,11 @@ def fragment_fact(row) -> dict:
         "capture_group": row.get("capture_group", ""),
         "taken": str(row.get("taken") or ""),
         "fact": headline[:HEADLINE_CHARS],
+        **{
+            key: row[key]
+            for key in ("known_people_in_group", "person_links", "episode_context")
+            if row.get(key)
+        },
     }
 
 
@@ -115,6 +122,7 @@ def story_evidence_rows(moment_rows, *, sources, annotations, lines):
                     "capture_group": key,
                     "taken": moment["taken"],
                     "known_people_in_group": moment.get("people", ""),
+                    "person_links": moment.get("person_links", ""),
                     "places": moment.get("places", ""),
                     "episode_context": moment.get("episode_context", ""),
                     "observations": fragment,
@@ -189,6 +197,7 @@ the same occasion, visit, journey or ongoing situation, otherwise a new episode.
 hospital stay can span days; unrelated occasions stay separate even when the activity repeats.
 Titles name the occasion, not the activity: "market day in Lisbon", not "walking".
 No invented emotions, firsts or milestones. Roles: central, supporting, texture, incidental.
+{PEOPLE_FACTS_CONTRACT}
 
 OPEN EPISODES (today's; ids, titles, first facts)
 {json.dumps(known, ensure_ascii=False)}
@@ -208,6 +217,8 @@ def _episode_summary(episode, last_seen) -> dict[str, Any]:
         "title": episode.title,
         "last_seen": last_seen.get(episode.key, "")[:16],
         "facts": [f["fact"][:90] for f in (episode.facts or [])[:3]],
+        "people_context": relationship_evidence(episode.facts),
+        "episode_context": context_evidence(episode.facts),
     }
 
 

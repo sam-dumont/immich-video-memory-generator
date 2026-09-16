@@ -18,7 +18,7 @@ def unit(asset_id, **changes):
         "video_ids": [],
         "favourite": False,
         "taken": "2020-01-01T12:00:00+00:00",
-        "event": "event-one",
+        "event": asset_id,
         "seconds": 4.0,
     } | changes
 
@@ -65,6 +65,84 @@ def test_cross_date_event_and_format_discovery_preserves_original_survivor_field
     assert audit["removals"][0]["keeper"] == "favorite"
     assert audit["removals"][0]["asset_id"] == "video"
     assert ("favorite", "video") in calls and not audit["incomplete"]
+
+
+def test_episode_variants_are_compared_despite_different_framing_and_captions():
+    original = [
+        unit("portrait", event="visit", depicted_moment="S0001:K0001", favourite=True),
+        unit("wide-view", event="visit", depicted_moment="S0001:K0002"),
+        unit("new-action", event="visit", depicted_moment="S0001:K0003"),
+        unit("another-day", depicted_moment="S0002:K0001"),
+    ]
+    hashes = {
+        "portrait": "0000000000000000",
+        "wide-view": "ffffffffffffffff",
+        "new-action": "00000000ffffffff",
+        "another-day": "ffffffff00000000",
+    }
+    records = {
+        "portrait": {"status": "available", "description": "A visitor hugs a baby."},
+        "wide-view": {"status": "available", "description": "Two people in the kitchen."},
+        "new-action": {"status": "available", "description": "Everyone shares a cake."},
+        "another-day": {"status": "available", "description": "A cyclist climbs uphill."},
+    }
+    episode_calls = []
+
+    def episode_relation(left, right):
+        # WHY: the direct visual comparison is the external model boundary.
+        episode_calls.append((left, right))
+        return {"same": {left, right} == {"portrait", "wide-view"}}
+
+    kept, audit, calls = run(
+        original,
+        hashes=hashes,
+        records=records,
+        outcomes={},
+        confirm_episode_relation=episode_relation,
+    )
+
+    assert [row["asset_id"] for row in kept] == ["portrait", "new-action", "another-day"]
+    assert calls == []
+    assert frozenset(("portrait", "wide-view")) in {frozenset(pair) for pair in episode_calls}
+    assert all("another-day" not in pair for pair in episode_calls)
+    assert audit["relation_checks"] <= 2 * len(original)
+    assert "same-episode" in audit["nominations"][0]["nominated_edges"][0]["signals"]
+
+
+def test_a_long_episode_does_not_compare_distant_shots_as_nearby_variants():
+    original = [
+        unit(
+            "morning",
+            event="stay",
+            depicted_moment="S0001:K0001",
+            taken="2030-05-01T09:00:00+00:00",
+        ),
+        unit(
+            "afternoon",
+            event="stay",
+            depicted_moment="S0001:K0002",
+            taken="2030-05-01T15:00:00+00:00",
+        ),
+    ]
+    kept, audit, calls = run(
+        original, hashes={"morning": "0000000000000000", "afternoon": "ffffffffffffffff"}
+    )
+    assert kept == original and calls == [] and not audit["nominations"]
+
+
+def test_nearby_landscapes_use_the_capture_episode_despite_different_model_labels():
+    original = [
+        unit("wide-coast", event="lookout", depicted_moment="S0001:K0001"),
+        unit("closer-coast", event="lookout", depicted_moment="S0002:K0001"),
+    ]
+    # WHY: the model boundary confirms visual similarity; neither source has people data.
+    kept, audit, calls = run(
+        original,
+        hashes={"wide-coast": "0000000000000000", "closer-coast": "ffffffffffffffff"},
+        outcomes={},
+        confirm_episode_relation=lambda *_: {"same": True},
+    )
+    assert len(kept) == 1 and audit["relation_checks"] == 1 and calls == []
 
 
 @pytest.mark.parametrize("kind", ["still", "photo", "live-still", "video"])

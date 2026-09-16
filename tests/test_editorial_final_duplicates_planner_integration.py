@@ -44,10 +44,12 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
         return {asset_id: hashes[asset_id] for asset_id in asset_ids}
 
     def confirm(pairs, records):
+        # WHY: this provider boundary reports the controlled duplicate while
+        # preserving different content nominated by the same capture episode.
         compared.extend(pairs)
-        assert pairs == (("picture-000", "picture-001"),)
         assert all(records[asset_id]["status"] == "available" for asset_id in pairs[0])
-        return (SamePicturePairDecision(*pairs[0], True),), {"scope": "controlled pixel relation"}
+        same = pairs[0] == ("picture-000", "picture-001")
+        return (SamePicturePairDecision(*pairs[0], same),), {"scope": "controlled pixel relation"}
 
     judge = ControlledStoryJudge()
     announced: list[str] = []
@@ -61,10 +63,12 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
                 reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
                 observe_picture=observe,
                 confirm_sampled_pairs=confirm,
+                confirm_episode_pairs=confirm,
                 sampled_preview_hashes=get_hashes,
             ),
         ).plan
-    assert compared == [("picture-000", "picture-001")]
+    assert ("picture-000", "picture-001") in compared
+    assert len(compared) <= 2 * len(captured.assets)
     assert hash_requests == [tuple(sorted(captured.assets))]
     assert plan["selection_stages"]["before_picture_review"] == 4
     assert plan["selection_stages"]["after_final_duplicate_review"] == 3

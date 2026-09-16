@@ -138,6 +138,7 @@ class StructurePlanningInput:
     # Canonical support is private context, separate from the prompt-serialized reading.
     # A cited source need not be selectable in the current request.
     period_evidence: tuple[InsightEvidence, ...] = ()
+    episode_context: Mapping[str, str] = field(default_factory=dict)
     # Attached evidence is separate from selectable primaries and canonical context.
     companion_assets: Mapping[str, Asset] = field(default_factory=dict)
     attached_outcome_replay: AttachedOutcomeReplay | None = None
@@ -187,6 +188,13 @@ class StructurePlannerPorts:
         | None
     ) = None
     sampled_pair_metrics: Callable[[], Mapping[str, Any]] | None = None
+    confirm_episode_pairs: (
+        Callable[
+            [tuple[tuple[str, str], ...], Mapping[str, Mapping[str, Any]]],
+            tuple[Any, Mapping[str, Any]],
+        ]
+        | None
+    ) = None
     sampled_preview_hashes: (
         Callable[[tuple[str, ...], Mapping[str, Mapping[str, Any]]], Mapping[str, str]] | None
     ) = None

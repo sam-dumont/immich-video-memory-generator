@@ -479,6 +479,48 @@ def test_relations_on_a_line_are_the_people_files_words_without_names():
     assert relations_on("2024-02-18 | A landscape | children=no") == []
 
 
+def test_people_relationships_survive_caption_reading_and_story_summaries():
+    from immich_memories.analysis.editorial_story_reading import story_evidence_rows
+
+    people = (
+        "P1:name=Taylor Example|relationship=friend|source=confirmed;"
+        "P2:name=Casey Example|relationship=child|source=confirmed"
+    )
+    links = "P2-child-of->P3|source=confirmed;P2-cousin-of->P4|source=derived"
+    evidence = story_evidence_rows(
+        [
+            {
+                "moment_id": "M001",
+                "taken": "2030-02-05T12:00:00",
+                "people": people,
+                "person_links": links,
+            }
+        ],
+        sources={"M001": ["picture"]},
+        annotations={},
+        lines={"picture": "A mother cuddles her baby."},
+    )
+
+    def reply(stage, _prompt):
+        if stage.startswith("story-weighing"):
+            return weighing({"K01": "minor"})
+        if stage == "story-episodes-1":
+            return place(["M001/1"], "S0001", [opened("S0001", "A friend visits")])
+        return synthesis([{"episode": "S0001", "purpose": "A visit"}])
+
+    judge = ScriptedJudge(reply)
+    story = read(judge, evidence)
+
+    assert evidence[0]["person_links"] == links
+    assert story.episodes[0].facts[0]["known_people_in_group"] == people
+    assert story.episodes[0].facts[0]["person_links"] == links
+    # Every reader gets the authoritative graph even when its visual caption
+    # has guessed the wrong relationship; summaries must not erase that correction.
+    for call in judge.asked:
+        assert people in call["prompt"], call["stage"]
+        assert links in call["prompt"], call["stage"]
+
+
 def test_gaps_are_kept_for_a_subject_memory_and_split_elsewhere():
     """Four weekend episodes of one project over two months: one story when the memory is about a
     subject (allow_gaps), split into its days for a month, where a week of one activity around an

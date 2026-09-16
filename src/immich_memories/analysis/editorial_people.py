@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
 from immich_memories.people.context import PersonPromptContext
+
+PEOPLE_FACTS_CONTRACT = """Known people and person_links come from the library's people.yaml.
+Confirmed relationships take precedence over caption guesses; derived graph links keep their
+provenance, and unconfirmed means unknown. Roles such as friend, sister or child are relative
+to the library owner, not to everyone else in the picture. Use explicit person_links for
+relationships between participants. A caption saying mother, family, sibling or 'her baby'
+does not establish kinship. Holding a baby does not establish parenthood. When the graph does
+not establish a relationship, describe the people and action without inventing one."""
+
+
+def relationship_evidence(rows: Iterable[Mapping]) -> str:
+    """Carry distinct people facts past prose summaries without losing their provenance."""
+    return "; ".join(
+        dict.fromkeys(
+            str(row[field])
+            for row in rows
+            for field in ("known_people_in_group", "person_links")
+            if row.get(field)
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)

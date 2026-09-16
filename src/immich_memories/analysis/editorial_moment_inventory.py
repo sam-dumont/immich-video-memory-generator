@@ -15,9 +15,10 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT
 from immich_memories.analysis.editorial_story_replies import _lenient_object
 
-INVENTORY_VERSION = "depicted-moments-v1"
+INVENTORY_VERSION = "depicted-moments-v2"
 PAGE_UNITS = 16
 PAGE_CHARS = 14000
 
@@ -144,15 +145,22 @@ def inventory_event(
     units: list[dict],
     context: str,
     line: Callable[[dict], str],
+    people_context: str = "",
     record: Callable[[dict], None] = lambda _: None,
 ) -> tuple[list[DepictedMoment], dict]:
     """Read all pictures, using earlier depicted moments to join later equivalent views."""
     ordered = sorted(units, key=itemgetter("taken", "asset_id"))
     by_alias = {f"U{i + 1:04d}": u for i, u in enumerate(ordered)}
+    # Capture-group identity is local evidence. Its position in a month or year
+    # must not invalidate the same source reading in the persistent answer bank.
+    group_aliases = {
+        key: f"G{i + 1:04d}"
+        for i, key in enumerate(dict.fromkeys(u.get("moment") for u in ordered))
+    }
     rows = [
         {
             "source": alias,
-            "capture_group": u.get("moment"),
+            "capture_group": group_aliases[u.get("moment")],
             "taken": u["taken"],
             "favourite": bool(u.get("favourite")),
             "facts": line(u),
@@ -163,6 +171,7 @@ def inventory_event(
     audit: dict[str, Any] = {
         "version": INVENTORY_VERSION,
         "event": event,
+        "inferred_context": context,
         "source_units": len(ordered),
         "pages": [],
         "status": "reading",
@@ -191,6 +200,7 @@ moments even within one capture_group. Conversely, two capture_group IDs do not 
 content. Do not merge different participants or actions just because they share an episode.
 Keep all content here, including quiet or imperfect records; relevance to the film is judged later.
 Never invent actions, emotions, relationships or progress from the passage of time.
+{PEOPLE_FACTS_CONTRACT}
 
 For each group return same_as (an existing moment ID for equivalent content, otherwise null),
 sources (NEW source IDs belonging to it), primary (the best source in the group, or the existing
@@ -198,8 +208,8 @@ primary), and content (at most 60 words describing the shared observable content
 An existing moment may be updated once per response. Prefer a favourite among equivalent views.
 JSON only: {{"moments":[{{"same_as":null,"sources":["U0001"],"primary":"U0001","content":"Observed content"}}]}}
 
-EPISODE CONTEXT (inferred; the source facts can correct it)
-{context}
+PEOPLE FACTS (with provenance)
+{people_context}
 
 MOMENTS ALREADY READ
 {json.dumps(existing, ensure_ascii=False)}

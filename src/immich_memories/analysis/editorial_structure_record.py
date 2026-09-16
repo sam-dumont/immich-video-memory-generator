@@ -258,6 +258,7 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
             else {}
         ),
         "period_evidence": [asdict(row) for row in source.period_evidence],
+        "episode_context": dict(source.episode_context),
         "content_cap_seconds": outcome.content_cap,
         "duration_realization": judged["duration_realization"],
         "motion_shaves": outcome.shaved,

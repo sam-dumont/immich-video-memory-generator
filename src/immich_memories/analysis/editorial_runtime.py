@@ -25,6 +25,7 @@ from immich_memories.analysis.editorial_rule_episodes import (
 from immich_memories.analysis.editorial_runtime_backend import ProductionPostCardBackend
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.editorial_source import FullEditorialSource
+from immich_memories.analysis.editorial_source_budget import prepare_budgeted_source
 from immich_memories.analysis.editorial_source_route import (
     EditorialSourcePlan,
     metadata_demand,
@@ -359,7 +360,11 @@ class RuntimeEditorialPlanner:
             # The readers and the structure planner announce through the
             # context, since the callback never reaches that deep.
             with announcing_stages(on_stage):
-                prepared = self._prepared_source(trace=trace, on_stage=on_stage)
+                prepared = self._prepared_source(
+                    requested_ids=tuple(_asset(source).id for source in sources),
+                    trace=trace,
+                    on_stage=on_stage,
+                )
                 candidates = metadata_demand(
                     prepared,
                     sources,
@@ -404,15 +409,25 @@ class RuntimeEditorialPlanner:
             self.close()
 
     def _prepared_source(
-        self, *, trace: Trace, on_stage: Callable[[StageUpdate], None] | None
+        self,
+        *,
+        requested_ids: tuple[str, ...],
+        trace: Trace,
+        on_stage: Callable[[StageUpdate], None] | None,
     ) -> Any:
         if self._prepare_annotations is None:
             return self._planner.prepare_source(trace=trace)
-        # Preparation sees the full eligible corpus. Only the final source
-        # pass belongs to the plan trace (excluded_ids reads that pass).
-        preliminary = self._planner.prepare_source(trace=Trace(), include_previews=False)
-        exclusions = self._prepare_annotations(preliminary, on_stage)
-        return self._planner.prepare_source(trace=trace, evidence_exclusions=exclusions)
+        assert self._backend is not None and self._config is not None
+        return prepare_budgeted_source(
+            self._planner,
+            self._prepare_annotations,
+            self._backend._context,
+            self._config,
+            requested_ids,
+            people=self._backend._people,
+            trace=trace,
+            on_stage=on_stage,
+        )
 
     def close(self) -> None:
         """Release every thread-owned SQLite connection; later reads reopen safely."""

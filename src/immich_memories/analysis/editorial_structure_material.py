@@ -14,6 +14,7 @@ from typing import Any
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis import editorial_wall_rows as wall_rows
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
+from immich_memories.analysis.editorial_episode_context import contextualize_episode_rows
 from immich_memories.analysis.editorial_episode_documents import (
     anchor_observations,
     episode_candidates_any_order,
@@ -65,6 +66,7 @@ def read_wall(source: StructurePlanningInput) -> Wall:
     wall_bytes = source.wall_bytes
     aliases, _ = wall_rows._read_wall_index(wall_bytes)
     tables = wall_rows._table_rows(wall_bytes.decode("utf-8").splitlines())
+    tables = contextualize_episode_rows(tables, source.moment_asset_ids, source.episode_context)
     episode_meaning = {r[0]: r[1] for r in tables["episodes"][1]}
     m_fields = tables["moments"][0]
     moments = {r[0]: dict(zip(m_fields, r, strict=True)) for r in tables["moments"][1]}

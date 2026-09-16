@@ -108,13 +108,24 @@ def _group_by_time_and_place(
         key=lambda a: (_taken_at(a), str(getattr(a, "asset_id", getattr(a, "id", "")))),
     )
     moments: list[list[Any]] = []
+    active: list[list[Any]] = []
     for asset in ordered:
-        for moment in reversed(moments):
+        when = _taken_at(asset)
+        # Input time only moves forward. An expired group can never accept
+        # another source, even if an older-created parallel group is still live.
+        active = [
+            moment
+            for moment in active
+            if (when - _taken_at(moment[-1])).total_seconds() <= window_minutes * 60
+        ]
+        for moment in reversed(active):
             if _belongs_with(asset, moment, window_minutes, radius_metres):
                 moment.append(asset)
                 break
         else:
-            moments.append([asset])
+            fresh = [asset]
+            moments.append(fresh)
+            active.append(fresh)
     return moments
 
 

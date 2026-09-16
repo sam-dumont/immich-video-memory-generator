@@ -46,6 +46,35 @@ def test_editorial_pass_keeps_chronology_and_conserves_every_input() -> None:
     assert payload["editorial_passes"][0]["conservation"]["valid"] is True
 
 
+def test_large_pass_checks_conservation_without_rehashing_the_pool_for_every_asset():
+    hashes = 0
+
+    class AssetId(str):
+        def __hash__(self):
+            # Count work on the public input instead of timing a particular CPU.
+            nonlocal hashes
+            hashes += 1
+            return super().__hash__()
+
+    ids = tuple(AssetId(f"asset-{i}") for i in range(1000))
+    trace = Trace()
+    trace.record_editorial_pass(
+        PassTrace(
+            name="source-eligibility",
+            input_ids=ids,
+            kept_ids=ids[:100],
+            rejected=tuple(TraceDecision(key, "outside analysis budget") for key in ids[100:]),
+            unresolved=(),
+            duration_before=4000,
+            duration_after=400,
+            provenance=_provenance(ids),
+        )
+    )
+
+    assert trace.as_dict()["editorial_passes"][0]["conservation"]["valid"] is True
+    assert hashes < 20 * len(ids)
+
+
 def test_active_trace_accepts_an_editorial_pass_through_the_existing_adapter() -> None:
     """The module adapter remains the one trace entry point during migration."""
     with tracing() as trace:

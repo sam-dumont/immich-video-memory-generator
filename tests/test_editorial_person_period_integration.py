@@ -185,7 +185,14 @@ def test_unsampled_person_period_facts_reach_editorial_stages_but_not_picture_ev
         for row in fragments
         if row["capture_group"] != aliases[1]
     )
-    for prefix in ("shareability-", "moment-inventory", "standing-"):
+    # Semantic inventories need the confirmed graph to correct caption guesses.
+    # It remains episode-scoped and is never supplied as observed pixel evidence.
+    inventories = [
+        row["prompt"] for row in judge.calls if row["stage"].startswith("moment-inventory")
+    ]
+    assert any("Rowan" in prompt and "source=confirmed" in prompt for prompt in inventories)
+    assert any("Rowan" not in prompt for prompt in inventories)
+    for prefix in ("shareability-", "standing-"):
         prompts = [row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)]
         assert prompts, prefix
         assert all(
@@ -214,3 +221,24 @@ def test_person_period_context_does_not_force_its_event_into_the_film(tmp_path):
     assert set(plan["person_period_facts"]) == {"F01"}
     assert plan["carriers"]
     assert all(int(c["asset_id"].rsplit("-", 1)[1]) >= 30 for c in plan["carriers"])
+
+
+def test_wider_episode_context_reaches_story_reading_without_inventing_picture_participants(
+    tmp_path,
+):
+    captured, _ = period_source(tmp_path)
+    surrounding = "Surrounding episode: 42 captures; episode participants include Taylor Example."
+    captured = replace(captured, episode_context={next(iter(captured.assets)): surrounding})
+    judge = PeriodJudge()
+    plan = run(captured, judge)
+    pages = [row["prompt"] for row in judge.calls if row["stage"].startswith("story-episodes")]
+    page = next(prompt for prompt in pages if surrounding in prompt)
+    fragments = json.JSONDecoder().raw_decode(page.split("NEW FRAGMENTS TO PLACE", 1)[1].lstrip())[
+        0
+    ]
+    assert all("Taylor Example" not in row["known_people_in_group"] for row in fragments)
+    for prefix in ("story-understanding", "story-weighing"):
+        assert any(
+            surrounding in row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)
+        )
+    assert plan["episode_context"] == captured.episode_context

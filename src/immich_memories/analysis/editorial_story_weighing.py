@@ -12,7 +12,9 @@ from functools import partial
 from itertools import chain
 from typing import Any
 
+from immich_memories.analysis.editorial_episode_context import context_evidence
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_people import PEOPLE_FACTS_CONTRACT
 from immich_memories.analysis.editorial_story_replies import (
     GATE_WEIGHT,
     STORY_VERSION,
@@ -86,12 +88,17 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
         people_text = ", ".join(
             f"{rel} x{n}" for rel, n in sorted(people.items(), key=lambda kv: -kv[1])[:6]
         )
+        episode_hints = [hints.get(key, {}) for key in story["episodes"]]
+        relationships = context_evidence(episode_hints, field="people_context")
+        context = context_evidence(episode_hints)
         rows.append(
             f"{story['key']} | {span} | {seen['days']} day(s) | {seen['episodes']} episode(s) | "
             f"{seen['moments']} moments | {seen['pictures']} pictures | {seen['favourites']} favourites | "
             f"reading: {gate or 'none'} | {story['title']} | {story.get('purpose') or ''}"
             + (f" | people: {people_text}" if people_text else "")
             + (f" | facts: {facts}" if facts else "")
+            + (f" | people.yaml: {relationships}" if relationships else "")
+            + (f" | surrounding context: {context}" if context else "")
         )
     return rows
 
@@ -115,6 +122,7 @@ Favourites are the owner's own marks on the pictures. Two rows that are one occa
 the list or filed as separate rows of one afternoon (a party, a march, a fair read as several
 scenes), may be joined in "join" as pairs of story keys. Rows of different days are never joined. A title that names a detail of the
 first picture rather than the occasion the facts show may be retitled.
+{PEOPLE_FACTS_CONTRACT}
 
 Return one complete JSON object with "about" (a list of story keys), "weights" (a mapping from
 every remaining story key to major, minor, glimpse or none), "join" (a list of key pairs, usually empty),

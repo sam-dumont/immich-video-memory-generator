@@ -20,6 +20,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import inventory_event
+from immich_memories.analysis.editorial_people import relationship_evidence
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_story_carriers import CarrierAdmission, StandingGate
 from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
@@ -225,6 +226,7 @@ class _DayInventory:
                 units=units,
                 context=f"{s['title']}: {e.title}. {e.account}",
                 line=self._label_line,
+                people_context=relationship_evidence(e.facts),
                 record=lambda value: self._record(f"moment-inventory-{e.key}", value),
             )
         except ValueError as exc:
@@ -406,8 +408,6 @@ def select_story_first(
     evidence = story_evidence_rows(
         factual_rows_fn(tables, aliases), sources=moment_assets, annotations={}, lines=lines
     )
-    for row in evidence:
-        row.pop("episode_context", None)  # the story must stand on descriptions alone
     read_story = rules.read_story if rules is not None else read_period_story
     story = read_story(
         judge,
