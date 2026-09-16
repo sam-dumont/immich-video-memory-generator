@@ -318,6 +318,7 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
             "product": intent.product,
             "scope": intent.scope,
             "partitions": [p.label for p in intent.partitions],
+            "house_instructions": intent.house_instructions,
         },
         "target_seconds": facts.target_seconds,
         "slots_total": facts.slots_total,

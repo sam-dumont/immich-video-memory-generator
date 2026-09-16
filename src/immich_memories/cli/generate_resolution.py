@@ -308,3 +308,20 @@ def _arm_selection_trace(path: Path | None) -> None:
     """Tell run_selection where to write its stage-by-stage report."""
     if path:
         os.environ["IMMICH_MEMORIES_SELECTION_TRACE"] = str(path)
+
+
+def apply_house_instructions(editorial, house_instructions: str | None) -> None:
+    """Carry a per-run taste block onto the editorial config the planner reads.
+
+    The override exists so the two arms of a comparison are two commands rather
+    than a config edit in between; omitting the flag keeps the configured block.
+    """
+    if house_instructions is None:
+        return
+    from immich_memories.analysis.editorial_intent import MAX_HOUSE_INSTRUCTIONS_CHARS
+
+    if len(house_instructions) > MAX_HOUSE_INSTRUCTIONS_CHARS:
+        raise click.UsageError(
+            f"--house-instructions exceeds {MAX_HOUSE_INSTRUCTIONS_CHARS} characters"
+        )
+    editorial.house_instructions = house_instructions

@@ -242,6 +242,16 @@ def run_options(command: FC) -> FC:
             help="Leave this picture out of the cut (repeatable)",
         ),
         click.option(
+            "--house-instructions",
+            "house_instructions",
+            type=str,
+            default=None,
+            help=(
+                "Free-text taste the reader weighs above the built-in selection priorities "
+                "(overrides advanced.editorial.house_instructions for this run)"
+            ),
+        ),
+        click.option(
             "--upload-to-immich",
             is_flag=True,
             default=False,

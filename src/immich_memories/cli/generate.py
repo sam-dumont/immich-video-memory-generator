@@ -43,6 +43,7 @@ from immich_memories.cli.generate_resolution import (
     _arm_selection_trace,
     _resolve_generation_scope,
     _validate_album_scope,
+    apply_house_instructions,
     name_from_catalogue,
     resolve_inclusion,
     resolve_people_condition,
@@ -103,6 +104,7 @@ def register_generate_commands(main: click.Group) -> None:
         trace_selection: Path | None,
         include_asset: tuple[str, ...],
         exclude_asset: tuple[str, ...],
+        house_instructions: str | None,
         upload_to_immich: bool,
         album: str | None,
         from_album: str | None,
@@ -156,6 +158,7 @@ def register_generate_commands(main: click.Group) -> None:
             config_container=config.output.format,
             format_override=output_format,
         )
+        apply_house_instructions(config.editorial, house_instructions)
 
         # CLI quality flag overrides config
         if quality:

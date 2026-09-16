@@ -91,6 +91,30 @@ decisions are cached by producer and input.
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 
+## Your own selection taste
+
+The selection priorities are fixed in code, one set per memory type. If you want a say, write your
+taste once in the config and every run reads it:
+
+```yaml
+editorial:
+  house_instructions: |
+    I like selfies
+    for son pictures prefer pictures with mom
+    diverse days over deep days
+```
+
+The block rides the end of every reader prompt, weighed above the built-in priorities, the texture
+allowance, and which shot wins inside a moment. It never overrides chronological order, the
+favourite rule, the audience and privacy gates, the memory-worthiness judgement, or the duration
+budget, and the prompt says so rather than leaving that to the model. Blank is the default and
+means today's behaviour byte for byte.
+
+Each instruction set banks its own reader answers, so a cut made with your block never reuses (or
+poisons) the answers of a cut made without it. Comparing the two is two commands, not a config edit
+in between: pass `--house-instructions "I like selfies"` for one arm and nothing for the other. The
+exact text used is recorded in the run, so any cut traces back to the instructions that made it.
+
 The shipped design (the source model, the annotation store and its banks, the six stages, the two
 readings, the structure and story planners, carriers and durable attempts) is written up in
 [Story-first selection](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)

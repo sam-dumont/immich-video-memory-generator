@@ -23,6 +23,9 @@ __all__ = ["EditorialIntent", "IntentPartition", "build_editorial_intent"]
 ERA_THRESHOLD_DAYS = (
     548  # a person span longer than ~18 months is read as eras, one per calendar year
 )
+# The operator's free-text taste rides every reader prompt, so its token cost is
+# paid once per prompt; cap it hard rather than let a pasted wall of text do so.
+MAX_HOUSE_INSTRUCTIONS_CHARS = 1000
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,9 @@ class EditorialIntent:
     abstention_policy: str
     subject: str | None = None
     max_carriers_per_partition: int | None = None
+    # The operator's own words for what they want selected, rendered last so the
+    # reader weighs them. Empty means the built-in priorities speak alone.
+    house_instructions: str = ""
 
     def partition_for(self, when: date) -> IntentPartition | None:
         return next((part for part in self.partitions if part.covers(when)), None)
@@ -98,6 +104,13 @@ class EditorialIntent:
                     f"{p.label}{' (required)' if p.required else ''}" for p in self.partitions
                 )
             )
+        if self.house_instructions:
+            lines.append(
+                "OPERATOR INSTRUCTIONS (these outweigh the priorities and texture allowance "
+                "above, and which shot wins inside a moment; they never override chronological "
+                "order, the favourite rule, the audience and privacy gates, the memory-worthy "
+                "judgement, or the duration budget):\n" + self.house_instructions
+            )
         return "\n".join(lines)
 
     def identity(self) -> str:
@@ -130,6 +143,7 @@ def build_editorial_intent(
     brief: str,
     people: Sequence[str] = (),
     event_admission: SpecialEventAdmission | None = None,
+    house_instructions: str = "",
 ) -> EditorialIntent:
     """Derive the contract from the product, its date ranges, and (for a custom memory) its brief."""
     if not product.strip():
@@ -144,7 +158,17 @@ def build_editorial_intent(
     builder = (
         _accepted_special_day if event_admission is not None else _BUILDERS.get(product, _generic)
     )
-    return builder(product, spans, whole, brief=brief, who=who)
+    return replace(
+        builder(product, spans, whole, brief=brief, who=who),
+        house_instructions=_normalize_house_instructions(house_instructions),
+    )
+
+
+def _normalize_house_instructions(text: str) -> str:
+    """Blank counts as no instructions; anything past the cap is a config error."""
+    if len(text) > MAX_HOUSE_INSTRUCTIONS_CHARS:
+        raise ValueError(f"house instructions exceed {MAX_HOUSE_INSTRUCTIONS_CHARS} characters")
+    return text if text.strip() else ""
 
 
 def _per_range(spans, prefix: str, *, required: bool) -> tuple[IntentPartition, ...]:

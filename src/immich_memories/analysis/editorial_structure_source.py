@@ -94,6 +94,7 @@ def capture_structure_input(
             brief=case.brief,
             people=case.people,
             event_admission=case.event_admission,
+            house_instructions=config.editorial.house_instructions,
         ),
         config=config,
         wall_bytes=wall.text.encode(),

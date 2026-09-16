@@ -79,6 +79,14 @@ def test_editorial_producer_contract_rejects_blank_or_missing_versions(
         EditorialConfig(**kwargs)  # type: ignore[arg-type]
 
 
+def test_house_instructions_default_to_silent_and_capped() -> None:
+    config = EditorialConfig()
+
+    assert config.house_instructions == ""
+    with pytest.raises(ValidationError):
+        EditorialConfig(house_instructions="x" * 1001)
+
+
 def test_config_loads_and_saves_editorial_as_an_advanced_section(tmp_path: Path) -> None:
     source = tmp_path / "config.yaml"
     source.write_text(

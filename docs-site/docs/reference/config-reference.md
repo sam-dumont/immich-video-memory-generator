@@ -442,6 +442,7 @@ triage hook: they load, they validate, they do nothing.
 ```yaml
 editorial:
   reader: auto                  # auto | model | rules
+  house_instructions: ""        # Operator taste appended last to every reader prompt (max 1000 chars)
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow

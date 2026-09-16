@@ -288,6 +288,7 @@ immich-memories generate [OPTIONS]
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--include` | text | - | Keep this picture in the cut even if the editor would drop it (repeatable) |
 | `--exclude` | text | - | Leave this picture out of the cut (repeatable) |
+| `--house-instructions` | text | - | Free-text taste the reader weighs above the built-in selection priorities (overrides advanced.editorial.house_instructions for this run) |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
 | `--add-date` | boolean | false | Caption each clip with its date |

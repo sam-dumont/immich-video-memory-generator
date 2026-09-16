@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from immich_memories.analysis.editorial_description_contract import DESCRIPTION_MODEL
+from immich_memories.analysis.editorial_intent import MAX_HOUSE_INSTRUCTIONS_CHARS
 from immich_memories.config_models import expand_env_vars
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 
@@ -35,6 +36,14 @@ class EditorialConfig(BaseModel):
 
     preparation: EditorialPreparationConfig = Field(default_factory=EditorialPreparationConfig)
     reader: Literal["auto", "model", "rules"] = "auto"
+    house_instructions: str = Field(
+        default="",
+        max_length=MAX_HOUSE_INSTRUCTIONS_CHARS,
+        description=(
+            "Free-text operator taste appended last to every reader prompt and weighed "
+            "above the built-in selection priorities; blank means the priorities speak alone"
+        ),
+    )
 
     def resolve_reader(self, model: str) -> Literal["model", "rules"]:
         """A blank model selects the bounded rules reader unless explicitly required."""
