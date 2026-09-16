@@ -78,7 +78,7 @@ class LivePhotoCluster:
         """Cluster is favorite if ANY photo in it is marked as favorite."""
         return any(a.is_favorite for a in self.assets)
 
-    def trim_points(self) -> list[tuple[float, float]]:
+    def trim_points(self, measured_deltas: list[float] | None = None) -> list[tuple[float, float]]:
         """Compute (start, end) trim points for each clip, eliminating overlap.
 
         Each clip plays until the next photo's shutter time, then hands off.
@@ -86,12 +86,24 @@ class LivePhotoCluster:
 
         Absolute-to-local conversion: clip i's absolute start is
         shutter_i - half_dur, so absolute time T → local = T - shutter_i + half_dur.
+
+        `measured_deltas` carries content-clock offsets between consecutive
+        companions (see `stitch_alignment`); when every pair was measured, the
+        windows are re-placed so joins are content-continuous instead of
+        midpoint-guessed. A burst the alignment cannot place keeps this plan.
         """
         if not self.assets:
             return []
 
         if self.clip_durations is not None:
-            return self._bounded_trim_points()
+            plan = self._bounded_trim_points()
+            if measured_deltas:
+                from immich_memories.processing.stitch_alignment import aligned_trims
+
+                aligned = aligned_trims(plan, self.source_durations(), measured_deltas)
+                if aligned is not None:
+                    return aligned
+            return plan
 
         n = len(self.assets)
         half_dur = self.clip_duration / 2.0
