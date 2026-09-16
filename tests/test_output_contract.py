@@ -357,15 +357,18 @@ def test_container_mismatch_is_rejected(tmp_path: Path, monkeypatch: pytest.Monk
         validate_output(staged, _h264_plan())
 
 
-def test_pixel_format_mismatch_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("pixel_format", ["yuv420p10le", "yuvj422p"])
+def test_pixel_format_mismatch_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pixel_format: str
+) -> None:
     """The final stream must retain the bit depth/chroma contract resolved before rendering."""
     from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"wrong-pixel-format")
-    _install_probe(monkeypatch, _probe_payload(stream={"pix_fmt": "yuv420p10le"}))
+    _install_probe(monkeypatch, _probe_payload(stream={"pix_fmt": pixel_format}))
 
-    with pytest.raises(InvalidOutputArtifact, match="expected yuv420p, got yuv420p10le"):
+    with pytest.raises(InvalidOutputArtifact, match=f"expected yuv420p, got {pixel_format}"):
         validate_output(staged, _h264_plan())
 
 
@@ -394,19 +397,20 @@ def test_p010_encoder_input_accepts_the_equivalent_decoded_10_bit_format(
     assert probe.pixel_format == "yuv420p10le"
 
 
+@pytest.mark.parametrize("pixel_format", ["yuv420p", "yuvj420p"])
 def test_nv12_encoder_input_accepts_the_equivalent_decoded_planar_format(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pixel_format: str
 ) -> None:
     """Hardware NV12 output is exposed by ffprobe as planar yuv420p."""
     from immich_memories.processing.output_contract import validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"h264-hardware-video")
-    _install_probe(monkeypatch, _probe_payload(stream={"pix_fmt": "yuv420p"}))
+    _install_probe(monkeypatch, _probe_payload(stream={"pix_fmt": pixel_format}))
 
     probe = validate_output(staged, _h264_nv12_plan())
 
-    assert probe.pixel_format == "yuv420p"
+    assert probe.pixel_format == pixel_format
 
 
 def test_sdr_plan_rejects_hdr_transfer_metadata(

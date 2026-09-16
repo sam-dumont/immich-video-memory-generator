@@ -183,6 +183,46 @@ def _write_tiny_hlg_hevc(output_path: Path) -> None:
 
 
 class TestValidatedOutputPublication:
+    @pytest.mark.parametrize("planned_format", ["yuv420p", "nv12"])
+    def test_real_full_range_h264_retains_its_range_when_published(
+        self, tmp_path: Path, planned_format: str
+    ):
+        from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+        from immich_memories.processing.output_contract import publish_validated_output
+
+        staged = tmp_path / "memory.assembling.mp4"
+        final = tmp_path / "memory.mp4"
+        _write_tiny_sdr_video(
+            staged,
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-color_range",
+                "pc",
+            ],
+        )
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264" if planned_format == "yuv420p" else "h264_videotoolbox",
+            encoder_args=(),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format=planned_format,
+            container="mp4",
+        )
+
+        probe = publish_validated_output(staged, final, plan)
+
+        stream = next(s for s in ffprobe_json(final)["streams"] if s["codec_type"] == "video")
+        assert not staged.exists()
+        assert probe.pixel_format == "yuvj420p"
+        assert probe.decoded_frames == 3
+        assert stream["color_range"] == "pc"
+
     def test_real_h264_output_is_probed_and_atomically_published(self, tmp_path: Path):
         from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
         from immich_memories.processing.output_contract import publish_validated_output

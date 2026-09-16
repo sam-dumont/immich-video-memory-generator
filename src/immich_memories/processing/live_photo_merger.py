@@ -144,7 +144,9 @@ class LivePhotoCluster:
                 continue
             handoff = min(gap, current_half)
             ends[index] = min(durations[index], current_half + handoff)
-            starts[index + 1] = max(0.0, next_half + handoff - gap)
+            # Cancel equal offsets first: roundoff can otherwise make a duplicate
+            # shutter's empty slice negative and discard its source alias.
+            starts[index + 1] = max(0.0, next_half + (handoff - gap))
         return list(zip(starts, ends, strict=True))
 
 

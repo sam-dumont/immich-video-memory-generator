@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from datetime import date
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,7 @@ def _has_immich() -> bool:
 
 
 requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reachable")
+requires_scipy = pytest.mark.skipif(find_spec("scipy") is None, reason="SciPy is not installed")
 
 
 @pytest.fixture(scope="module")
@@ -112,6 +114,7 @@ def second_live_photo_burst(live_photo_burst):
 
 
 @requires_immich
+@requires_scipy
 class TestLivePhotoSpectrogram:
     """End-to-end spectrogram-aligned burst merge with real Immich data."""
 
@@ -195,19 +198,23 @@ class TestLivePhotoSpectrogram:
 
     def test_generate_memory_with_live_burst(self, live_photo_burst, tmp_path):
         """generate_memory() handles live photo bursts end-to-end."""
+        from immich_memories.analysis.motion_rendering import motion_renderings
         from immich_memories.api.models import VideoClipInfo
         from immich_memories.generate import GenerationParams, generate_memory
 
         burst, config, client = live_photo_burst
-        burst_ids = [a.live_photo_video_id for a in burst.assets if a.live_photo_video_id]
-        shutters = [a.file_created_at.timestamp() for a in burst.assets[: len(burst_ids)]]
+        config = config.model_copy(deep=True)
+        config.render.worker_base_url = ""
+        rendering = motion_renderings(burst.assets, config)[burst.assets[0].id]
 
         clip = VideoClipInfo(
             asset=burst.assets[0],
-            duration_seconds=burst.estimated_duration,
-            live_burst_video_ids=burst_ids,
-            live_burst_trim_points=burst.trim_points(),
-            live_burst_shutter_timestamps=shutters,
+            duration_seconds=rendering.duration_seconds,
+            live_burst_video_ids=list(rendering.video_ids),
+            live_burst_trim_points=list(rendering.trim_points),
+            live_burst_shutter_timestamps=list(rendering.shutter_timestamps),
+            live_burst_still_ids=list(rendering.still_ids),
+            live_burst_material=rendering.material.as_dict(),
         )
 
         config.title_screens.enabled = False

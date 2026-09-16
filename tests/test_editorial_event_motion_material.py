@@ -105,6 +105,43 @@ def test_existing_whole_event_burst_has_identical_requests_and_selection_with_ex
     assert [call["prompt"] for call in judge.calls] == [call["prompt"] for call in replay.calls]
 
 
+def test_shared_live_companion_at_one_shutter_keeps_exact_material_through_projection(tmp_path):
+    captured = live_source(tmp_path, pictures=3, add_context=False)
+    first, duplicate, last = captured.assets.values()
+    duplicate.file_created_at = first.file_created_at + timedelta(seconds=1.342)
+    last.file_created_at = duplicate.file_created_at
+    last.live_photo_video_id = duplicate.live_photo_video_id
+    captured = replace(
+        captured,
+        companion_assets={
+            first.live_photo_video_id: make_asset(first.live_photo_video_id, duration=2.733),
+            duplicate.live_photo_video_id: make_asset(
+                duplicate.live_photo_video_id, duration=2.267
+            ),
+        },
+    )
+
+    result = run(captured, ControlledStoryJudge())
+
+    assert len(result["carriers"]) == 1
+    carrier = result["carriers"][0]
+    assert set(carrier["members"]) == {first.id, duplicate.id, last.id}
+    assert len(carrier["video_ids"]) == 2
+    _, candidates = demand(list(captured.assets.values()))
+    projected = project_source_rendering(
+        result["carriers"],
+        candidates,
+        config=captured.config,
+        include_live_photos=True,
+        companion_assets=captured.companion_assets,
+    )
+    selected = next(
+        row.clip for row in projected.candidates if row.clip.asset.id == carrier["asset_id"]
+    )
+    assert selected.live_burst_material == carrier["live_material"]
+    assert selected.live_burst_trim_points == [(0.0, 2.7085), (1.1335, 2.267)]
+
+
 def test_projection_still_rejects_a_manifest_that_reintroduces_unreviewed_motion(tmp_path):
     captured = live_source(tmp_path, pictures=1, add_context=True)
     result = run(captured, ControlledStoryJudge())

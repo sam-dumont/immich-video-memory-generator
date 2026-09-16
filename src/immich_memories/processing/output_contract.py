@@ -26,6 +26,8 @@ _TARGET_TRANSFERS = {
 _DECODED_PIXEL_FORMATS = {
     "nv12": "yuv420p",
     "p010le": "yuv420p10le",
+    # FFmpeg's legacy name for full-range 8-bit 4:2:0; the plan does not fix range.
+    "yuvj420p": "yuv420p",
 }
 # WHY: frame counting decodes the whole memory; supported presets run up to ten minutes.
 _FULL_DECODE_TIMEOUT_SECONDS = 15 * 60
@@ -184,7 +186,8 @@ def _validate_encoding_identity(probe: OutputProbe, plan: EncodingPlan) -> None:
     if probe.container != plan.container:
         raise InvalidOutputArtifact(f"expected {plan.container}, got {probe.container}")
     expected_decoded_format = _DECODED_PIXEL_FORMATS.get(plan.pixel_format, plan.pixel_format)
-    if probe.pixel_format != expected_decoded_format:
+    decoded_format = _DECODED_PIXEL_FORMATS.get(probe.pixel_format, probe.pixel_format)
+    if decoded_format != expected_decoded_format:
         raise InvalidOutputArtifact(f"expected {plan.pixel_format}, got {probe.pixel_format}")
     expected_codec = _CODEC_NAMES[plan.codec]
     if probe.codec != expected_codec:
