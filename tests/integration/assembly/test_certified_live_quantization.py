@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import struct
 import subprocess
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -82,3 +84,33 @@ def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path, sizes):
     probe = ProbeCache().get(merged)
     assert probe.resolution == (320, 240)
     assert probe.has_audio
+
+
+def test_mov_edit_list_reference_packets_do_not_extend_visible_material(tmp_path):
+    source = _companion(tmp_path / "edited.mov", frames=120)
+    data = bytearray(source.read_bytes())
+    edit = data.index(b"elst")
+    movie = data.index(b"mvhd")
+    assert data[edit + 4] == 0  # Version-zero edit list, with one video edit.
+    assert struct.unpack_from(">I", data, edit + 8)[0] == 1
+    timescale = struct.unpack_from(">I", data, movie + 16)[0]
+    # Camera MOVs retain compressed reference frames outside the visible edit.
+    # Shorten only the video edit; the audio/container still run for four seconds.
+    struct.pack_into(">I", data, edit + 12, round(2.85 * timescale))
+    source.write_bytes(data)
+    decoded = json.loads(
+        subprocess.check_output(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_frames", "-show_entries", "frame=pts", "-of", "json", str(source),
+            ]
+        )
+    )  # fmt: skip
+    visible_frames = len(decoded["frames"])
+    assert visible_frames == 86
+
+    probes = ProbeCache()
+    assert probes.last_video_frame(source)["end_seconds"] == pytest.approx(visible_frames / 30)
+    segment = probes.quantized_segment(source, 0.0, 4.0, Fraction(30))
+    assert segment["frames"] == visible_frames
+    assert segment["kept_packets"] == visible_frames

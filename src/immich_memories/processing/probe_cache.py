@@ -216,7 +216,7 @@ class ProbeCache:
                     str(probe.video_stream_index),
                     "-show_packets",
                     "-show_entries",
-                    "stream=time_base:packet=pts,duration",
+                    "stream=time_base:packet=pts,duration,flags",
                     "-of",
                     "json",
                     str(source),
@@ -230,10 +230,12 @@ class ProbeCache:
                 raise ValueError("packet probe failed")
             data = json.loads(result.stdout)
             clock = Fraction(data["streams"][0]["time_base"])
-            packets = data["packets"]
+            # MOV edit lists retain reference packets that are decoded but never
+            # displayed. They cannot establish a visible frame or its cadence.
+            packets = [p for p in data["packets"] if "D" not in p.get("flags", "")]
             if clock <= 0 or not packets or any(type(p.get("pts")) is not int for p in packets):
                 raise ValueError("missing presentation timestamps")
-            packets = sorted(packets, key=itemgetter("pts"))
+            packets.sort(key=itemgetter("pts"))
             if len({p["pts"] for p in packets}) != len(packets):
                 raise ValueError("ambiguous duplicate presentation timestamps")
             value = {"clock": clock, "packets": packets}

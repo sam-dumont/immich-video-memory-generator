@@ -15,7 +15,7 @@ from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.security import write_secret_file
 
 RENDER_VERSION = "editorial-live-render-v1"
-FRAME_QUANTIZATION = "source-packet-segment-quantization-and-frame-hold-v3"
+FRAME_QUANTIZATION = "source-packet-segment-quantization-and-frame-hold-v4"
 
 
 def validate_editorial_live_clip(clip: Any) -> LiveRenderMaterial:
