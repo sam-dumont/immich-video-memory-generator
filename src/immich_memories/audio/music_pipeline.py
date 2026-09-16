@@ -160,7 +160,7 @@ class MusicPipeline:
                 GeneratedMusic(
                     full_mix=result.audio_path,
                     stems=stems,
-                    duration=float(total_duration),
+                    duration=total_duration,
                     prompt=result.prompt,
                     mood=primary_mood,
                 )
@@ -238,7 +238,7 @@ class MusicPipeline:
             GeneratedMusic(
                 full_mix=result.audio_path,
                 stems=stems,
-                duration=float(total_duration),
+                duration=total_duration,
                 prompt=result.prompt,
                 mood=primary_mood,
             )
@@ -347,7 +347,7 @@ class MusicPipeline:
         )
         result = GenerationResult(
             audio_path=mastered,
-            duration_seconds=float(total_duration),
+            duration_seconds=total_duration,
             prompt=prompt,
             backend_name=backend_name,
         )
