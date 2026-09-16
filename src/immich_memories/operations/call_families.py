@@ -5,10 +5,24 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-# A stage label carries its run inside it: an index, a moment id, and the word
-# for the order or the shape of the re-ask. A measurement wants the work, not
-# the run, so both are dropped.
-_RUN_WORDS = frozenset({"source", "reversed", "hashed", "repair", "retry", "activity", "exposure"})
+# A stage label carries its run inside it: an index, a moment id, and the words
+# for the order, the slice of the table and the shape of the re-ask. A measurement
+# wants the work, not the run, so all of them are dropped.
+_RUN_WORDS = frozenset(
+    {
+        "source",
+        "reversed",
+        "hashed",
+        "repair",
+        "retry",
+        "activity",
+        "exposure",
+        "page",
+        "candidate",
+        "context",
+        "again",
+    }
+)
 
 
 def family_of(stage: str) -> str:
