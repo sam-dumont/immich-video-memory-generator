@@ -19,6 +19,8 @@ import json
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+
 PAGE_READ_SCHEMA = "bounded-page-read-v1"
 
 # "The model wrote something no decoder can read" and "the model wrote readable JSON
@@ -27,12 +29,15 @@ PAGE_READ_SCHEMA = "bounded-page-read-v1"
 # unaccounted for), so the record has to say which.
 UNREADABLE = "unreadable_json"
 CONTRACT_NOT_MET = "contract_not_met"
+INCOMPLETE = "incomplete_transport"
 
 T = TypeVar("T")
 
 
 def failure_kind(error: ValueError) -> str:
-    """Which of the two a reader's failure was, for a record the matrix reads."""
+    """Distinguish truncated output, unreadable JSON and an unanswered contract."""
+    if isinstance(error, TextCompletionFailure):
+        return INCOMPLETE
     return UNREADABLE if isinstance(error, json.JSONDecodeError) else CONTRACT_NOT_MET
 
 
@@ -92,6 +97,7 @@ def read_page_answer(
     `read` raises ValueError -- json.JSONDecodeError is one -- when it cannot read the
     answer. The first round keeps the original prompt bytes and budget, so a banked run
     replays unchanged and no digest moves; each later round carries its own judgment key.
+    A transport exhaustion already tried a doubled budget, so it goes straight to repair.
     """
     attempts: list[dict[str, Any]] = []
     rounds = (
@@ -100,11 +106,16 @@ def read_page_answer(
         (f"{stage}-repair", max_tokens * 2, True),
     )
     for asked, budget, repair in rounds:
+        if attempts and attempts[-1]["failure_kind"] == INCOMPLETE and not repair:
+            continue
         question = _repair_request(prompt, attempts[-1]["error"]) if repair else prompt
-        raw = judge.ask(asked, question, max_tokens=budget)
+        raw = ""
         try:
+            raw = judge.ask(asked, question, max_tokens=budget)
             return read(raw)
         except ValueError as exc:
+            if isinstance(exc, TextCompletionFailure):
+                raw = exc.attempts[-1]["raw"]
             attempts.append(
                 {
                     "stage": asked,

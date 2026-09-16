@@ -141,6 +141,95 @@ def test_a_retry_that_answers_readably_costs_no_repair_round():
     assert "story-episodes-1-repair" not in judge.stages
 
 
+def test_a_transport_truncation_reaches_the_page_repair_without_another_identical_retry():
+    from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+
+    evidence = [fragment(i) for i in range(9)]
+    readings = [row["reading"] for row in evidence]
+    failure = TextCompletionFailure(
+        [
+            {
+                "outcome": "incomplete",
+                "raw": '{"fragments":[],"new_episodes":[',
+                "error": "LLM returned incomplete content",
+                "max_tokens": budget,
+            }
+            for budget in (3380, 6760)
+        ]
+    )
+
+    def reply(stage, _prompt):
+        if stage == "story-episodes-1":
+            raise failure
+        if stage == "story-episodes-1-repair":
+            return page_answer(readings[:1], "S0001")
+        if stage == "story-episodes-2":
+            assert all(reading in _prompt for reading in readings[1:])
+            return json.dumps(
+                {
+                    "fragments": [
+                        {"reading": reading, "episode": "S0001"} for reading in readings[1:]
+                    ],
+                    "new_episodes": [],
+                }
+            )
+        if stage.startswith("story-weighing"):
+            return json.dumps({"about": [], "weights": {"K01": "major"}, "join": [], "retitle": {}})
+        return json.dumps(
+            {
+                "thesis": "The day together.",
+                "about": [],
+                "stories": [{"title": "The day", "episodes": ["S0001"], "purpose": "it"}],
+                "uncertainties": [],
+            }
+        )
+
+    judge = RecordingJudge(reply)
+    story = read_period_story(judge, evidence=evidence, contract="Test contract.", prior={})
+
+    page_calls = [call for call in judge.asked if call["stage"].startswith("story-episodes")]
+    assert [call["stage"] for call in page_calls] == [
+        "story-episodes-1",
+        "story-episodes-1-repair",
+        "story-episodes-2",
+    ]
+    assert [call["max_tokens"] for call in page_calls] == [3380, 6760, 3160]
+    assert page_calls[1]["prompt"].startswith(page_calls[0]["prompt"])
+    assert "LLM returned incomplete content" in page_calls[1]["prompt"]
+    assert {fact["reading"] for episode in story.episodes for fact in episode.facts} == set(
+        readings
+    )
+
+
+def test_an_exhausted_transport_repair_stops_and_keeps_the_truncated_evidence():
+    from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+
+    raw = '{"fragments":['
+
+    def reply(_stage, _prompt):
+        raise TextCompletionFailure(
+            [
+                {
+                    "outcome": "incomplete",
+                    "raw": raw,
+                    "error": "LLM returned incomplete content",
+                    "max_tokens": budget,
+                }
+                for budget in (1620, 3240)
+            ]
+        )
+
+    judge = RecordingJudge(reply)
+    with pytest.raises(PageReadFailure) as failure:
+        read_period_story(judge, evidence=[fragment(0)], contract="Test contract.", prior={})
+
+    assert judge.stages == ["story-episodes-1", "story-episodes-1-repair"]
+    record = failure.value.as_record()
+    assert record["attempt_count"] == 2
+    assert record["failure_kind"] == "incomplete_transport"
+    assert [attempt["raw"] for attempt in record["attempts"]] == [raw, raw]
+
+
 def test_a_grouping_answer_that_stays_unreadable_is_recorded_not_reraised():
     """Grouping already re-asks once; what was missing was the record and the named error."""
 
