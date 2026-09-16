@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import struct
 import subprocess
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -12,17 +14,18 @@ from immich_memories import generate_downloads as downloads
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.processing import editorial_live_render as certified
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
+from immich_memories.processing.probe_cache import ProbeCache
 from tests.conftest import make_asset
 from tests.integration.conftest import requires_ffmpeg
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
-def _companion(path: Path, frames: int = 89) -> Path:
+def _companion(path: Path, frames: int = 89, *, size: str = "320x240") -> Path:
     subprocess.run(
         [
             "ffmpeg", "-y", "-v", "error",
-            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30",
+            "-f", "lavfi", "-i", f"testsrc2=size={size}:rate=30",
             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
             "-frames:v", str(frames), "-shortest",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
@@ -33,7 +36,8 @@ def _companion(path: Path, frames: int = 89) -> Path:
     return path
 
 
-def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
+@pytest.mark.parametrize("sizes", [("320x240", "320x240"), ("320x240", "160x120")])
+def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path, sizes):
     # Each cut rounds its own segment up to whole output frames before concat:
     # 89 + 74 frames at 30 fps is 38.8 ms past the declared 5.3945 s, more than one frame.
     material = LiveRenderMaterial(
@@ -59,7 +63,10 @@ def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
             "selected_interval": [0.0, material.duration_seconds],
         },
     )
-    paths = [_companion(tmp_path / f"{video_id}.mov") for video_id in material.video_ids]
+    paths = [
+        _companion(tmp_path / f"{video_id}.mov", size=size)
+        for video_id, size in zip(material.video_ids, sizes, strict=True)
+    ]
 
     merged = certified.render_certified_live(
         clip, paths, tmp_path, merge=downloads._try_merge_burst, hardware_enabled=False
@@ -74,3 +81,37 @@ def test_two_cuts_certify_at_their_packet_predicted_length(tmp_path):
         74,
     ]
     assert record["frame_quantization"]["final_frame_hold"] is None
+    probe = ProbeCache().get(merged)
+    assert probe.resolution == (320, 240)
+    assert probe.has_audio
+
+
+def test_mov_edit_list_reference_packets_do_not_extend_visible_material(tmp_path):
+    source = _companion(tmp_path / "edited.mov", frames=120)
+    data = bytearray(source.read_bytes())
+    edit = data.index(b"elst")
+    movie = data.index(b"mvhd")
+    assert data[edit + 4] == 0  # Version-zero edit list, with one video edit.
+    assert struct.unpack_from(">I", data, edit + 8)[0] == 1
+    timescale = struct.unpack_from(">I", data, movie + 16)[0]
+    # Camera MOVs retain compressed reference frames outside the visible edit.
+    # Shorten only the video edit; the audio/container still run for four seconds.
+    struct.pack_into(">I", data, edit + 12, round(2.85 * timescale))
+    source.write_bytes(data)
+    decoded = json.loads(
+        subprocess.check_output(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_frames", "-show_entries", "frame=pts", "-of", "json", str(source),
+            ]
+        )
+    )  # fmt: skip
+    visible_frames = len(decoded["frames"])
+    assert visible_frames == 86
+
+    probes = ProbeCache()
+    # An edit can shorten its last packet; compare the displayed frame's actual PTS.
+    assert probes.last_video_frame(source)["pts"] == decoded["frames"][-1]["pts"]
+    segment = probes.quantized_segment(source, 0.0, 4.0, Fraction(30))
+    assert segment["frames"] == visible_frames
+    assert segment["kept_packets"] == visible_frames

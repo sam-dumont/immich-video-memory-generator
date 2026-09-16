@@ -288,6 +288,7 @@ class SyncTextPromptRequester:
     thinking: bool = False
     artifacts: TextPromptArtifacts | None = None
     batch: BatchCoordinator | None = None
+    retry_larger: bool = True
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0 or self.timeout_seconds <= 0:
@@ -297,7 +298,8 @@ class SyncTextPromptRequester:
         """Ask without raw prompt caching; the semantic caller validates before banking."""
         if not prompt.strip():
             raise ValueError("text prompt cannot be blank")
-        return _run_sync(self._request(prompt, max_tokens=self.max_tokens, ceiling=None))
+        ceiling = None if self.retry_larger else self.max_tokens
+        return _run_sync(self._request(prompt, max_tokens=self.max_tokens, ceiling=ceiling))
 
     def request_with_budget(self, prompt: str, *, max_tokens: int) -> str:
         """Honor a caller-sized completion budget under this adapter's hard ceiling."""

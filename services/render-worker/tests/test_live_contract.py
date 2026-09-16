@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from test_worker import _settle
 
 from conftest import AUTH, render_request_body, stub_artifact, worker_app
 
@@ -82,6 +83,9 @@ def test_a_live_job_keeps_its_sources_and_exact_selected_interval(tmp_path):
     with TestClient(worker_app(tmp_path, Renderer()), headers=AUTH) as client:
         response = client.post("/jobs", json=body)
         assert response.status_code == 202, response.text
+        status = _settle(client, response.json()["job_id"])
+        assert status.status_code == 200, status.text
+        assert status.json()["state"] == "ready", status.text
 
     assert len(rendered) == 1
     params = rendered[0]

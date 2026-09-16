@@ -253,7 +253,9 @@ queue instead of overlapping.
 
 - **Originals** of the selected sources are downloaded (3 workers by default,
   `analysis.download_workers`) and each interval trimmed with FFmpeg. A Live Photo chosen for its
-  motion plays its video; one chosen as a still is held.
+  motion plays its video; one chosen as a still is held. Live companions of different sizes
+  are fitted to a common frame without stretching or changing their selected timing.
+  ProRes MOV clips keep their original video, HDR metadata and audio during trimming.
 - **Photos** render frame by frame in Python: Ken Burns is a `cv2.warpAffine` per frame at 30 fps
   for the seconds granted, two of them on the blurred-background path. HEIC decode and gain-map HDR
   happen here, and sources are capped at 1.5x the output size.

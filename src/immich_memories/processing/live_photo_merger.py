@@ -609,12 +609,39 @@ def build_merge_command(
         has_audio,
         render_frame_rate or (burst_fps(clip_paths) if n > 1 or quantize_material else 0.0),
         quantize_material=quantize_material,
+        geometry_filter=_burst_geometry_filter(clip_paths),
     )
     video_label = _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
 
     plan = burst_encoding_plan(is_hdr=is_hdr, hardware_enabled=hardware_enabled)
     _append_encoding_args(cmd, plan, has_audio, output)
     return apply_hardware_encode(cmd, pixel_format=plan.pixel_format, video_label=video_label)
+
+
+def _burst_geometry_filter(paths: list[Path]) -> str:
+    from immich_memories.processing.probe_cache import ProbeCache, ProbeError
+
+    if len(paths) < 2:
+        return ""
+    probes = ProbeCache()
+    sizes = []
+    for path in paths:
+        try:
+            size = probes.get(path).resolution
+        except (ProbeError, OSError, ValueError):
+            continue  # The legacy path still lets FFmpeg report an unreadable input.
+        if size is not None:
+            sizes.append(size)
+    if not sizes:
+        return ""
+    width, height = max(sizes, key=lambda size: size[0] * size[1])
+    width += width % 2
+    height += height % 2
+    # Companions can mix original and reduced resolutions; concat needs one canvas.
+    return (
+        f",scale={width}:{height}:force_original_aspect_ratio=decrease:"
+        f"force_divisible_by=2:flags=lanczos,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+    )
 
 
 def _build_trim_filters(
@@ -625,6 +652,7 @@ def _build_trim_filters(
     target_fps: float | str,
     *,
     quantize_material: bool = False,
+    geometry_filter: str = "",
 ) -> tuple[list[str], list[str], list[str]]:
     """Build per-clip trim + normalize filter strings."""
     parts: list[str] = []
@@ -643,7 +671,8 @@ def _build_trim_filters(
             # certified caller then verifies/pads a subframe duration shortfall.
             fps_filter = f",fps={rate}:eof_action=pass"
         parts.append(
-            f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS{normalize}{fps_filter}[v{i}]"
+            f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS"
+            f"{normalize}{geometry_filter}{fps_filter}[v{i}]"
         )
         v_labels.append(f"[v{i}]")
 

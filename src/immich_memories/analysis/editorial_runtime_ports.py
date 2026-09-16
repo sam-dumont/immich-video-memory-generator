@@ -76,6 +76,8 @@ class EditorialRuntimePorts:
             max_tokens=TEXT_PERIOD_MAX_OUTPUT_TOKENS,
             timeout_seconds=config.llm.timeout_seconds,
             thinking=False,
+            # The period reader handles overflow by paging the evidence.
+            retry_larger=False,
         )
     )
     episode_store_factory: Callable[[Path], EpisodeReadingStore] = EpisodeReadingStore

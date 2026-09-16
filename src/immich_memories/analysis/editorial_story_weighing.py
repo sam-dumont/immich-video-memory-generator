@@ -1,4 +1,4 @@
-"""Weigh the stories of one memory, in the model's words, over one compact table.
+"""Weigh the stories of one memory over bounded tables with shared period context.
 
 Stage B of the story reading. The model can only name story keys, so it cannot explode
 or fold the grouping; it weighs, and may join two adjacent stories. What it leaves out,
@@ -8,6 +8,8 @@ and the floors and ceilings ruled long ago, are settled here rather than in the 
 from __future__ import annotations
 
 import re
+from functools import partial
+from itertools import chain
 from typing import Any
 
 from immich_memories.analysis.editorial_story_replies import (
@@ -19,6 +21,7 @@ from immich_memories.analysis.editorial_story_replies import (
 )
 from immich_memories.analysis.editorial_story_weight_contract import (
     WEIGHING_CONTRACT_VERSION,
+    StoryWeightDecisionError,
     ask_complete_weights,
 )
 
@@ -26,6 +29,8 @@ _FAMILY_WORD = re.compile(
     r"\b(mother|father|parent|grand|sibling|brother|sister|uncle|aunt|nibling|niece|nephew|in-law|twin|son|daughter|godfather|godmother|partner|spouse)\b",
     re.IGNORECASE,
 )
+WEIGHING_PAGE_ITEMS = 60
+WEIGHING_PAGE_CHARS = 48_000
 
 
 def _day_gap(a: str, b: str) -> int:
@@ -125,7 +130,7 @@ Assess all {len(rows)} stories. Use only the actual keys in the table. Do not re
 """
 
 
-def _ask_both_orders(judge, prompt, rows, by_key, candidates, record):
+def _ask_both_orders(judge, prompt, rows, by_key, candidates, record, *, suffix=""):
     """The same table twice, in both directions, so row order cannot decide a weight."""
     answers: dict[str, dict[str, str]] = {}
     abouts: dict[str, list[str]] = {}
@@ -135,7 +140,7 @@ def _ask_both_orders(judge, prompt, rows, by_key, candidates, record):
     for order_name, listing in (("source", rows), ("reversed", list(reversed(rows)))):
         obj, reply_audits[order_name] = ask_complete_weights(
             judge,
-            stage=f"story-weighing-{order_name}",
+            stage=f"story-weighing-{order_name}{suffix}",
             prompt=prompt.replace(chr(10).join(rows), chr(10).join(listing)),
             story_keys=list(by_key),
             candidates=candidates,
@@ -152,6 +157,127 @@ def _ask_both_orders(judge, prompt, rows, by_key, candidates, record):
             }
         )
     return answers, abouts, reply_audits, joins, retitles
+
+
+def _weighing_groups(by_key, day_of):
+    """Keep join-compatible components together, including nonadjacent rows of a day."""
+    groups: list[set[str]] = []
+    for key, story in by_key.items():
+        connected = [
+            group
+            for group in groups
+            if any(_one_afternoon(story, by_key[other], day_of) for other in group)
+        ]
+        merged = {key}
+        for group in connected:
+            merged.update(group)
+            groups.remove(group)
+        groups.append(merged)
+    positions = {key: index for index, key in enumerate(by_key)}
+    return sorted(groups, key=lambda group: min(positions[key] for key in group))
+
+
+def _weighing_pages(rows, by_key, candidates, prompt_for, day_of):
+    """Repeat central candidates and their join partners; never split a possible occasion."""
+    row_of = dict(zip(by_key, rows, strict=True))
+    groups = _weighing_groups(by_key, day_of)
+    anchors = set().union(*(group for group in groups if group.intersection(candidates)))
+
+    def listing(keys):
+        return [row for key, row in row_of.items() if key in keys]
+
+    def fits(keys):
+        return (
+            len(keys) <= WEIGHING_PAGE_ITEMS
+            and len(prompt_for(listing(keys))) <= WEIGHING_PAGE_CHARS
+        )
+
+    chunks, current = [], anchors.copy()
+    for group in groups:
+        if group <= anchors:
+            continue
+        if not fits(current | group):
+            if current != anchors:
+                chunks.append(listing(current))
+            current = anchors.copy()
+        current.update(group)
+        if not fits(current):
+            raise ValueError("story weighing context exceeds the bounded request size")
+    if not fits(current):
+        raise ValueError("story weighing context exceeds the bounded request size")
+    chunks.append(listing(current))
+    return chunks
+
+
+def _split_weighing_page(rows, by_key, candidates, day_of):
+    groups = _weighing_groups(by_key, day_of)
+    anchors = set().union(*(group for group in groups if group.intersection(candidates)))
+    ordinary = [group for group in groups if not group <= anchors]
+    if len(ordinary) < 2:
+        return []  # Further splitting would separate an occasion or its central context.
+    middle = len(ordinary) // 2
+    return [
+        [row for row in rows if row.split(" |", 1)[0] in anchors.union(*part)]
+        for part in (ordinary[:middle], ordinary[middle:])
+    ]
+
+
+def _complete_weighing_page(judge, rows, by_key, candidates, prompt_for, record, *, day_of, label):
+    """Exhausted repairs narrow the page; partial weights and edits are never carried forward."""
+    keys = {row.split(" |", 1)[0]: by_key[row.split(" |", 1)[0]] for row in rows}
+    try:
+        decisions = _ask_both_orders(
+            judge, prompt_for(rows), rows, keys, candidates, record, suffix=f"-page-{label}"
+        )
+    except StoryWeightDecisionError:
+        parts = _split_weighing_page(rows, keys, candidates, day_of)
+        if not parts:
+            raise
+        record(
+            {
+                "stage": f"story-weighing-page-{label}-split",
+                "reason": "incomplete decisions after repairs",
+                "story_count": len(rows),
+                "child_counts": [len(part) for part in parts],
+            }
+        )
+        for number, part in enumerate(parts, 1):
+            yield from _complete_weighing_page(
+                judge,
+                part,
+                by_key,
+                candidates,
+                prompt_for,
+                record,
+                day_of=day_of,
+                label=f"{label}-part-{number}",
+            )
+    else:
+        yield label, decisions
+
+
+def _ask_weighing_pages(judge, chunks, by_key, candidates, prompt_for, record, day_of):
+    answers: dict[str, dict[str, str]] = {}
+    abouts: dict[str, list[str]] = {}
+    audits: dict[str, dict] = {}
+    joins: list[list[str]] = []
+    retitles: dict[str, str] = {}
+    completed = chain.from_iterable(
+        _complete_weighing_page(
+            judge, rows, by_key, candidates, prompt_for, record, day_of=day_of, label=str(number)
+        )
+        for number, rows in enumerate(chunks, 1)
+    )
+    for label, (weights, central, checks, pairs, titles) in completed:
+        answers.update({f"{order}-page-{label}": values for order, values in weights.items()})
+        audits.update({f"{order}-page-{label}": values for order, values in checks.items()})
+        for order, named in central.items():
+            # Each list is already limited to two. Confirmation must hold across the
+            # whole period, not just whichever page happened to be read first.
+            abouts[order] = [key for key in abouts.get(order, named) if key in named]
+        joins.extend(pairs)
+        retitles.update(titles)
+    return answers, abouts, audits, joins, retitles
 
 
 def _settle_weights(by_key, answers) -> None:
@@ -314,13 +440,28 @@ def _weigh_stories(
     people_of=lambda _story: {},
     journey=False,
 ):
-    """Stage B: one call over the story table, asked in both row orders."""
+    """Stage B: weigh the complete story table in both orders, paging large memories."""
     rows = _story_rows(stories, hints, day_of, facts_of, people_of)
-    prompt = _weighing_prompt(rows, thesis=thesis, contract=contract, candidates=candidates)
+    prompt_for = partial(_weighing_prompt, thesis=thesis, contract=contract, candidates=candidates)
+    prompt = prompt_for(rows)
     by_key = {story["key"]: story for story in stories}
-    answers, abouts, reply_audits, joins, retitles = _ask_both_orders(
-        judge, prompt, rows, by_key, candidates, record
-    )
+    if len(rows) <= WEIGHING_PAGE_ITEMS and len(prompt) <= WEIGHING_PAGE_CHARS:
+        decisions = _ask_both_orders(judge, prompt, rows, by_key, candidates, record)
+    else:
+        prompt_for = partial(
+            _weighing_prompt,
+            thesis=thesis,
+            candidates=candidates,
+            contract=contract
+            + f"\nThis table is one page of {len(rows)} stories in the WHOLE memory. "
+            "The whole-memory thesis, all central candidates and their possible join partners "
+            "are repeated for comparison. Weigh against the whole memory, with no page quotas.",
+        )
+        chunks = _weighing_pages(rows, by_key, candidates, prompt_for, day_of)
+        decisions = _ask_weighing_pages(
+            judge, chunks, by_key, candidates, prompt_for, record, day_of
+        )
+    answers, abouts, reply_audits, joins, retitles = decisions
     # Both order decisions are complete before any of their edits take effect.
     for key, title in retitles.items():
         by_key[key]["title"] = title.strip()[:120]

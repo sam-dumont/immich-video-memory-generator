@@ -18,6 +18,15 @@ attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
 
+Large period accounts page their episode evidence at 48,000 request characters. Story weighing
+also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
+candidates, and keeps join-compatible stories together. Both orders of every page must validate
+before any weights, titles or joins change; central confirmation must hold across pages. Smaller
+story tables retain their existing two requests and cache keys.
+If a large page still omits decisions after its repairs, it is split between join-compatible groups
+and read again with the same central context. An indivisible group still fails visibly; partial
+weights and edits never carry into the recovered page.
+
 ## Two Trees
 
 `src/immich_memories/` is the app. `services/inference/immich_memories_inference/` is a second
@@ -214,7 +223,7 @@ src/immich_memories/
 │   ├── hardware_detection.py   # Hardware detection backends
 │   ├── hardware_encode.py      # VAAPI/QSV device init + hwupload for built commands
 │   ├── rate_control.py         # CRF -> per-encoder constant-quality flags
-│   └── live_photo_merger.py    # Live Photo merging
+│   └── live_photo_merger.py    # Live Photo merging with a common canvas for mixed source sizes
 │
 ├── audio/                      # Audio processing
 │   ├── mixer.py                # Audio mixing & ducking

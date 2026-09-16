@@ -1,9 +1,9 @@
 """Group day episodes into the stories of one memory, then weigh them.
 
 Stage A of the story reading, plus the two-stage synthesis that drives it: grouping runs
-per chunk of at most 60 episodes and is validated for consecutive days, while the weighing
-sees the whole period at once, so weights are comparable across chunks and the grouping
-cannot be undone.
+per chunk of at most 60 episodes and is validated for consecutive days. Weighing shares the
+whole-period thesis and central candidates across bounded pages; join-compatible stories
+stay together, and every page validates before any weights or edits take effect.
 """
 
 from __future__ import annotations
@@ -290,7 +290,7 @@ def _no_readable_moments() -> dict[str, Any]:
 def _synthesize(
     judge, episodes, *, contract, prior, record, hints=None, allow_gaps=False, journey=False
 ):
-    """Two stages: group day episodes into stories per chunk, then weigh the whole period once."""
+    """Group day episodes into stories, then weigh them against the whole-period context."""
     hints = hints or {}
 
     def day_of(key: str) -> str:
