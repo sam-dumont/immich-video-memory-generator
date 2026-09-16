@@ -231,7 +231,7 @@ def test_an_exhausted_transport_repair_stops_and_keeps_the_truncated_evidence():
 
 
 def test_a_grouping_answer_that_stays_unreadable_is_recorded_not_reraised():
-    """Grouping already re-asks once; what was missing was the record and the named error."""
+    """Grouping gets the same bounded envelope recovery as the other page readers."""
 
     def reply(stage, _prompt):
         if stage.startswith("story-episodes"):
@@ -243,8 +243,96 @@ def test_a_grouping_answer_that_stays_unreadable_is_recorded_not_reraised():
         read_period_story(judge, evidence=[fragment(0)], contract="Test contract.", prior={})
 
     assert judge.failures[0]["stage"] == "story-understanding-1"
-    assert judge.failures[0]["record"]["attempt_count"] == 2
+    assert judge.failures[0]["record"]["attempt_count"] == 3
     assert "editorial source evidence unavailable" in str(failure.value)
+
+
+@pytest.mark.parametrize("recovery", ["readable", "exhausted", "truncated"])
+def test_regrouping_keeps_its_own_bounded_envelope_recovery(recovery):
+    from tests.test_editorial_story_reading import opened
+    from tests.test_editorial_story_reading import page_answer as episode_answer
+
+    evidence = [{**fragment(i), "taken": f"2030-03-{1 + i * 3:02d}T10:00:00"} for i in range(2)]
+    malformed = '{"thesis":"Two outings", " "uncertainties":[]}'
+
+    def reply(stage, _prompt):
+        if stage == "story-episodes-1":
+            return episode_answer(
+                [("M000/1", "S0001"), ("M001/1", "S0002")],
+                [opened("S0001", "First outing"), opened("S0002", "Second outing")],
+            )
+        if stage == "story-understanding-1":
+            return json.dumps(
+                {
+                    "thesis": "One long outing.",
+                    "about": ["S0001"],
+                    "stories": [{"title": "One outing", "episodes": ["S0001", "S0002"]}],
+                }
+            )
+        if stage == "story-understanding-1-try2" and recovery == "truncated":
+            from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+
+            raise TextCompletionFailure(
+                [
+                    {"raw": '{"stories":[', "error": "incomplete reply", "max_tokens": n}
+                    for n in (4500, 9000)
+                ]
+            )
+        if stage in ("story-understanding-1-try2", "story-understanding-1-try2-retry"):
+            return malformed
+        if stage == "story-understanding-1-try2-repair":
+            if recovery == "exhausted":
+                return malformed
+            return json.dumps(
+                {
+                    "thesis": "Two separate outings.",
+                    "about": [],
+                    "stories": [
+                        {"title": "First outing", "episodes": ["S0001"]},
+                        {"title": "Second outing", "episodes": ["S0002"]},
+                    ],
+                }
+            )
+        assert stage.startswith("story-weighing")
+        return json.dumps({"about": [], "weights": {"K01": "minor", "K02": "minor"}})
+
+    judge = RecordingJudge(reply)
+
+    def read():
+        return read_period_story(
+            judge,
+            evidence=evidence,
+            contract="Several separate occasions.",
+            prior={},
+            enrich=lambda episodes: {e.key: {"day": e.facts[0]["taken"][:10]} for e in episodes},
+        )
+
+    if recovery == "exhausted":
+        with pytest.raises(PageReadFailure):
+            read()
+        failure = judge.failures[-1]
+        assert failure["stage"] == "story-understanding-1-try2"
+        assert failure["record"]["attempt_count"] == 3
+        assert [a["raw"] for a in failure["record"]["attempts"]] == [malformed] * 3
+        assert not any(stage.startswith("story-weighing") for stage in judge.stages)
+    else:
+        result = read()
+        assert judge.failures == []
+        assert result.thesis == "Two separate outings."
+        assert [s["episodes"] for s in result.stories] == [["S0001"], ["S0002"]]
+        assert [s["weight"] for s in result.stories] == ["minor", "minor"]
+        assert {fact["reading"] for e in result.episodes for fact in e.facts} == {
+            "M000/1",
+            "M001/1",
+        }
+    grouping = [c for c in judge.asked if c["stage"].startswith("story-understanding")]
+    expected_stages = ["story-understanding-1", "story-understanding-1-try2"]
+    if recovery != "truncated":
+        expected_stages.append("story-understanding-1-try2-retry")
+    assert [c["stage"] for c in grouping] == [*expected_stages, "story-understanding-1-try2-repair"]
+    assert [c["max_tokens"] for c in grouping[:2]] == [4500, 4500]
+    assert all(c["max_tokens"] == 9000 for c in grouping[2:])
+    assert grouping[-1]["prompt"].startswith(grouping[1]["prompt"])
 
 
 def test_the_production_judge_leaves_the_failure_beside_the_calls(tmp_path, monkeypatch):
