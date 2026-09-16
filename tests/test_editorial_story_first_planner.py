@@ -263,6 +263,78 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     assert plan["content_seconds"] <= plan["target_seconds"]
 
 
+def _inventory_offers(judge):
+    """Per story, what its moment inventory was shown: source aliases, capture groups, timestamps."""
+    offers = {}
+    for row in judge.calls:
+        if not row["stage"].startswith("moment-inventory"):
+            continue
+        page = row["prompt"].split("NEW SOURCES", 1)[1]
+        offer = offers.setdefault(row["stage"].rsplit("-", 1)[0], {})
+        for field, pattern in (
+            ("sources", r'"source": "(U\d+)"'),
+            ("groups", r'"capture_group": "(G\d+)"'),
+            ("taken", r'"taken": "([^"]+)"'),
+        ):
+            offer.setdefault(field, set()).update(re.findall(pattern, page))
+    return offers
+
+
+def test_inventory_reads_only_the_shortlisted_capture_groups(tmp_path):
+    """Two eight-outing stories, two slots each: the inventory reads the six capture groups the
+    grant can still reach, not all eight."""
+    captured = make_source(tmp_path, seconds=16, occasions=16, pictures=5)
+    judge = StoryJudge()
+    plan = run(captured, judge)
+
+    scope = json.loads(
+        next(captured.artifact_dir.rglob("story-inventory-scope.private.json")).read_text()
+    )
+    assert len(scope) == 2
+    for row in scope.values():
+        assert row["groups_offered"] == 8
+        assert row["groups_shortlisted"] == 6
+        assert row["units_inventoried"] == 30
+        assert row["skipped_for_favourites"] is False
+
+    offers = _inventory_offers(judge)
+    assert len(offers) == 2
+    for offer in offers.values():
+        assert len(offer["groups"]) == 6
+        assert len(offer["sources"]) <= 30
+    # every carrier comes from a group the inventory actually read
+    read = set().union(*(offer["taken"] for offer in offers.values()))
+    assert {row["taken"] for row in plan["carriers"]} <= read
+    assert plan["calls_by_stage"]["moment-inventory"]["asked"] == 4
+
+
+def test_a_story_the_favourites_already_fill_is_not_inventoried(tmp_path):
+    """One slot, one starred outing: the pick is settled, so nothing is read for that story."""
+    captured = make_source(tmp_path, seconds=8, occasions=4, pictures=3)
+    captured = replace(
+        captured,
+        assets={
+            key: asset.model_copy(update={"is_favorite": key == "o0-p1"})
+            for key, asset in captured.assets.items()
+        },
+    )
+    judge = StoryJudge()
+    plan = run(captured, judge)
+
+    scope = json.loads(
+        next(captured.artifact_dir.rglob("story-inventory-scope.private.json")).read_text()
+    )
+    assert sorted(row["skipped_for_favourites"] for row in scope.values()) == [False, True]
+
+    offers = _inventory_offers(judge)
+    assert len(offers) == 1  # only the story without a favourite is read
+    starred_days = ("2030-05-02", "2030-05-04")  # the starred story's two outings
+    assert not [
+        taken for taken in next(iter(offers.values()))["taken"] if taken.startswith(starred_days)
+    ]
+    assert "o0-p1" in {row["asset_id"] for row in plan["carriers"]}
+
+
 @pytest.mark.parametrize("old_switch", [None, "0", "1"])
 def test_default_is_story_first_and_old_switch_cannot_restore_legacy(
     tmp_path, monkeypatch, old_switch

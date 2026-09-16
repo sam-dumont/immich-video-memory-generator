@@ -475,16 +475,37 @@ def _uncontested_moments(
     return sorted(kept, key=lambda c: c.taken)
 
 
-def _lead_with_favourites(
-    choices: Sequence[DepictedChoice], chosen: _Chosen, *, story, count: int, starred
-) -> None:
+def _favourites_lead(
+    choices: Sequence[DepictedChoice],
+    *,
+    story,
+    count: int,
+    starred,
+    compatible=lambda _c, _others: True,
+) -> _Chosen:
     """Favourites lead every slot on one day, or half the slots over several days. When they
     already fill the grant, neither model order can change the resulting choice."""
+    chosen = _Chosen({c.key: c for c in choices}, compatible, count)
     days = int((story.get("seen") or {}).get("days") or 1)
     lead = count if days <= 1 else max(1, count // 2)
     for c in choices:
         if starred(c) and len(chosen) < lead:
             chosen.add(c.key)
+    return chosen
+
+
+def favourites_fill_grant(
+    choices: Sequence[DepictedChoice],
+    *,
+    story: Mapping[str, Any],
+    count: int,
+    starred: Callable[[DepictedChoice], bool],
+) -> bool:
+    """Whether the owner's stars alone answer the grant, so the pick asks nothing."""
+    if count <= 0 or not choices:
+        return False
+    chosen = _favourites_lead(choices, story=story, count=count, starred=starred)
+    return len(chosen) == count
 
 
 def _pick_material(
@@ -553,8 +574,9 @@ def pick_story_moments(
         return []
     count = min(count, len(choices))
     by_key = {c.key: c for c in choices}
-    chosen = _Chosen(by_key, compatible, count)
-    _lead_with_favourites(choices, chosen, story=story, count=count, starred=starred)
+    chosen = _favourites_lead(
+        choices, story=story, count=count, starred=starred, compatible=compatible
+    )
     if len(chosen) == count:
         record(
             f"story-pick-{story['key']}",

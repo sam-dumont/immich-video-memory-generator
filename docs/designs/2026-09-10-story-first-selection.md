@@ -147,9 +147,11 @@ itself. The order is the owner's:
    weight becomes a number of pictures, capped by the moments the story actually holds; where a
    product limits how much one calendar partition may carry (a year's months), that capacity is
    reserved in the same order. Depth per weight class, never per day.
-2. **A funded story is inventoried over its whole span** (`editorial_moment_inventory.py`) — the
-   depicted-moment inventory is read only where a slot lands, which is where the reading budget
-   went from "too slow" to affordable.
+2. **A funded story is inventoried over the capture groups it can spend a slot on**
+   (`editorial_moment_inventory.py`) — the depicted-moment inventory is read only where a slot
+   lands, and inside a funded story only over the groups its own shortlist keeps (whole groups,
+   so a nearby competitor still has one); a story whose favourites already fill its grant is not
+   read at all. That is where the reading budget went from "too slow" to affordable.
 3. **The standing gate rejects before the pick** (`editorial_story_carriers.StandingGate`) —
    "does each picture stand by itself?", reject-only, two orders. A favourite lowers the bar; a
    texture slot raises it.

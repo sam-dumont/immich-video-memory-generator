@@ -31,6 +31,35 @@ MAX_PASSES = 3
 WEIGHED_STORY_WEIGHTS = ("dominant", "major", "minor")
 
 
+def choice_is_starred(c: DepictedChoice, unit_by_asset: Mapping[str, Any]) -> bool:
+    return any(unit_by_asset[a][1].get("favourite") for a in c.members if a in unit_by_asset)
+
+
+def shortlist_by_partition(
+    choices: Sequence[DepictedChoice],
+    grants_by_part: Mapping[str | None, int],
+    parts: PartitionedSlots,
+    unit_by_asset: Mapping[str, Any],
+    *,
+    starred: Callable[[DepictedChoice], bool],
+    life: Callable[[str], bool],
+    kind_of: Callable[[DepictedChoice], str],
+) -> list[DepictedChoice]:
+    """The moments a story's grant can still reach, sampled inside each funded partition."""
+    return [
+        c
+        for part, part_choices in parts.split(choices).items()
+        if grants_by_part.get(part, 0)
+        for c in shortlist_story_moments(
+            _spaced(part_choices, unit_by_asset),
+            grants_by_part[part],
+            starred=starred,
+            life=life,
+            kind_of=kind_of,
+        )
+    ]
+
+
 def _unit_reader(
     read: Callable[[dict], str] | None, unit_by_asset: Mapping[str, Any]
 ) -> Callable[[DepictedChoice], str] | None:
@@ -195,11 +224,7 @@ class CarrierAdmission:
     # -- eligibility ------------------------------------------------------------------
 
     def starred_choice(self, c: DepictedChoice) -> bool:
-        return any(
-            self._unit_by_asset[a][1].get("favourite")
-            for a in c.members
-            if a in self._unit_by_asset
-        )
+        return choice_is_starred(c, self._unit_by_asset)
 
     def free(self, asset: str) -> bool:
         return (
@@ -288,18 +313,15 @@ class CarrierAdmission:
 
     def _shortlists(self, funded, open_of, partition_grants) -> dict[str, list[DepictedChoice]]:
         return {
-            s["key"]: [
-                c
-                for part, choices in self.parts.split(open_of[s["key"]]).items()
-                if partition_grants[s["key"]].get(part, 0)
-                for c in shortlist_story_moments(
-                    _spaced(choices, self._unit_by_asset),
-                    partition_grants[s["key"]][part],
-                    starred=self.starred_choice,
-                    life=self._life,
-                    kind_of=self._kind_marker,
-                )
-            ]
+            s["key"]: shortlist_by_partition(
+                open_of[s["key"]],
+                partition_grants[s["key"]],
+                self.parts,
+                self._unit_by_asset,
+                starred=self.starred_choice,
+                life=self._life,
+                kind_of=self._kind_marker,
+            )
             for s in funded
         }
 
