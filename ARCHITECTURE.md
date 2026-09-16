@@ -24,8 +24,10 @@ candidates, and keeps join-compatible stories together. Both orders of every pag
 before any weights, titles or joins change; central confirmation must hold across pages. Smaller
 story tables retain their existing two requests and cache keys.
 When the shared candidates crowd out a page, compare them first in both orders and repeat only
-the resulting central candidates. This preliminary comparison does not apply weights or edits;
-every story still receives its final decision in both orders.
+the resulting central candidates. This preliminary comparison asks only for at most two
+distinct, offered central-story keys; it does not request weights or edits that would be
+discarded. Both orders use bounded answer recovery, and every story still receives its final
+weighting decision in both orders.
 If a large page still omits decisions after its repairs, or its text completion remains truncated
 after transport recovery, it is split between join-compatible groups
 and read again with the same central context. An indivisible group still fails visibly; partial

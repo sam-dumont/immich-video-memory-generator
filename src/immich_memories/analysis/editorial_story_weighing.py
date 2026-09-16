@@ -12,6 +12,7 @@ from functools import partial
 from itertools import chain
 from typing import Any
 
+from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_story_replies import (
     GATE_WEIGHT,
     STORY_VERSION,
@@ -210,24 +211,55 @@ def _weighing_pages(rows, by_key, candidates, prompt_for, day_of):
     return chunks
 
 
+def _read_central_candidates(raw, candidates):
+    about = _lenient_object(raw).get("about")
+    if (
+        not isinstance(about, list)
+        or len(about) > 2
+        or any(not isinstance(key, str) or key not in candidates for key in about)
+        or len(set(about)) != len(about)
+    ):
+        raise ValueError(
+            '"about" must be a list of at most two distinct keys from the candidate table; '
+            "use [] if none deserves central emphasis"
+        )
+    return about
+
+
 def _page_context_candidates(judge, rows, by_key, candidates, *, thesis, contract, record):
     """Confirm the shared context first when repeating every candidate would crowd out a page."""
     keys = {key: story for key, story in by_key.items() if key in candidates}
     compared = [row for key, row in zip(by_key, rows, strict=True) if key in keys]
-    prompt = _weighing_prompt(
-        compared,
-        thesis=thesis,
-        contract=contract
-        + "\nThis table compares all central-story candidates for the WHOLE memory. "
-        "Confirm at most two, or none. The other stories will still be weighed in full afterward; "
-        "weights and edits from this comparison are not final decisions.",
-        candidates=candidates,
-    )
+    prompt = f"""Confirm the central story of this requested memory. {STORY_VERSION}. central-story-confirmation-v1.
+{contract}
+
+This table compares all central-story candidates nominated by the reading for the WHOLE memory.
+Confirm which one, rarely two, this memory is ABOUT. It takes up to half the film.
+Choose by what happened and how it was lived, using the whole-period thesis and the evidence
+in every candidate row. Return [] if none deserves that emphasis.
+Every story will still receive its full weighting afterward. This comparison only confirms
+central candidates; it does not assign weights, join stories or change their titles.
+
+Return one complete JSON object with only "about": a list of at most two distinct keys from
+the candidate table, or an empty list. Do not return weights or edits.
+
+THESIS (from the reading)
+{thesis}
+
+CENTRAL-STORY CANDIDATES
+{chr(10).join(compared)}
+"""
     if not keys or len(compared) > WEIGHING_PAGE_ITEMS or len(prompt) > WEIGHING_PAGE_CHARS:
         raise ValueError("story weighing context exceeds the bounded request size")
-    _, abouts, audits, _, _ = _ask_both_orders(
-        judge, prompt, compared, keys, candidates, record, suffix="-candidate-context"
-    )
+    abouts = {}
+    for order, listing in (("source", compared), ("reversed", list(reversed(compared)))):
+        abouts[order] = read_page_answer(
+            judge,
+            stage=f"story-weighing-{order}-candidate-context",
+            prompt=prompt.replace(chr(10).join(compared), chr(10).join(listing)),
+            max_tokens=400,
+            read=partial(_read_central_candidates, candidates=keys),
+        )
     named, confirmed = _central_stories(abouts, candidates, by_key, list(by_key.values()))
     selected = named[:2]
     record(
@@ -237,7 +269,10 @@ def _page_context_candidates(judge, rows, by_key, candidates, *, thesis, contrac
             "selected": selected,
             "confirmed": confirmed[:2],
             "fallback": selected if not confirmed else [],
-            "orders": audits,
+            "orders": {
+                order: {"about": about, "coverage_complete": True}
+                for order, about in abouts.items()
+            },
         }
     )
     return selected

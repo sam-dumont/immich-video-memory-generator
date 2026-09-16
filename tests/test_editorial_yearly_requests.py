@@ -95,7 +95,10 @@ def test_paging_keeps_two_stories_of_one_afternoon_available_to_join():
     assert len(result.stories) == 129
 
 
-def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded_pages():
+@pytest.mark.parametrize("comparison_weights", [True, False])
+def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded_pages(
+    comparison_weights,
+):
     model = YearJudge()
     central = {f"S{i:04d}" for i in range(1, 48)}
 
@@ -110,8 +113,10 @@ def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded
                 if episode in central
             ]
             return json.dumps(answer)
-        if stage.endswith("-candidate-context"):
+        if "-candidate-context" in stage:
             answer = json.loads(raw)
+            if not comparison_weights:
+                return json.dumps({"about": answer["about"]})
             answer["weights"] = dict.fromkeys(answer["weights"], "none")
             answer["retitle"] = {"K02": "A provisional comparison title"}
             return json.dumps(answer)
@@ -145,13 +150,13 @@ def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded
         comparisons = [
             set(keys)
             for stage, _, _, keys in model.weighing
-            if order in stage and stage.endswith("-candidate-context")
+            if order in stage and "-candidate-context" in stage
         ]
         assert comparisons == [candidates]
         pages = [
             set(keys)
             for stage, _, _, keys in model.weighing
-            if order in stage and not stage.endswith("-candidate-context")
+            if order in stage and "-candidate-context" not in stage
         ]
         assert set.union(*pages) == {f"K{i:02d}" for i in range(1, 67)}
         assert all("K01" in keys for keys in pages)
@@ -173,6 +178,53 @@ def test_a_shared_context_that_exceeds_the_character_limit_is_never_sent():
         read_year(ScriptedJudge(reply), count=130)
 
     assert model.weighing == []
+
+
+@pytest.mark.parametrize(
+    "invalid_about",
+    [None, "K01", ["K99"], ["K01", "K01"], ["K01", "K02", "K03"], [["K01"]]],
+)
+def test_central_confirmation_repairs_invalid_choices_before_full_year_weighting(invalid_about):
+    model = YearJudge()
+    candidates = {f"S{i:04d}" for i in range(1, 61)}
+
+    def reply(stage, prompt):
+        answer = json.loads(model.ask(stage, prompt))
+        if stage.startswith("story-understanding"):
+            answer["about"] = [
+                episode
+                for story in answer["stories"]
+                for episode in story["episodes"]
+                if episode in candidates
+            ]
+        elif stage == "story-weighing-source-candidate-context":
+            return json.dumps({"about": invalid_about})
+        elif "-candidate-context" in stage:
+            return '{"about": ["K01"]}'
+        return json.dumps(answer)
+
+    result = read_period_story(
+        ScriptedJudge(reply),
+        evidence=[
+            {**fragment(i), "taken": f"{date(2030, 1, 1) + timedelta(days=i * 2)}T12:00:00"}
+            for i in range(130)
+        ],
+        contract="The whole year.",
+        prior={},
+        enrich=lambda episodes: {
+            e.key: {"day": e.facts[0]["taken"][:10], "moments": 2} for e in episodes
+        },
+    )
+
+    assert len(result.stories) == 130
+    assert [story["key"] for story in result.stories if story["weight"] == "dominant"] == ["K01"]
+    assert all(story["weight"] == "minor" for story in result.stories if story["key"] != "K01")
+    comparisons = [stage for stage, _, _, _ in model.weighing if "-candidate-context" in stage]
+    assert comparisons == [
+        "story-weighing-source-candidate-context",
+        "story-weighing-source-candidate-context-retry",
+        "story-weighing-reversed-candidate-context",
+    ]
 
 
 def test_a_failed_late_page_leaves_the_whole_year_incomplete():
