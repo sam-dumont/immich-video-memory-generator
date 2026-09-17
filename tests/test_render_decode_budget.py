@@ -135,7 +135,9 @@ def uploads(render_run, monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     params.upload_enabled = True
     sent: list[bytes] = []
 
-    def upload(_client: object, video_path: Path, _album: object) -> dict[str, str]:
+    def upload(
+        _client: object, video_path: Path, _album: object, _captured_at: object = None
+    ) -> dict[str, str]:
         sent.append(video_path.read_bytes())
         return {"asset_id": "asset-1"}
 
