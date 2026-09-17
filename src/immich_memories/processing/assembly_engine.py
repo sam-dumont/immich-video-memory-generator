@@ -293,6 +293,7 @@ class AssemblyEngine:
             frame_preview_callback=frame_preview_callback,
             probe_cache=self.prober.probe_cache,
             effective_plan_callback=record_effective_plan,
+            captured_at=self.settings.captured_at,
         )
         return output_path
 

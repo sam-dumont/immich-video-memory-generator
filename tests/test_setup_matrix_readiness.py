@@ -4,7 +4,8 @@ Every one of these was found on a real cluster. `kubectl wait` on a label select
 that matches nothing exits 1 with `error: no matching resources found`, and the pod
 is made a moment after `apply` returns, so the scheduling wait lost the race and
 ended the cell. A Job that FAILS never satisfies `kubectl wait
---for=condition=complete`, so the runner sat on a dead cell for three hours. A
+--for=condition=complete`, so the runner sat on a dead cell for three hours, and
+a Job deleted mid-run answered NotFound to every poll for just as long. A
 Deployment that is Available is not a service that can answer: the pod was up
 while every `/facts` request came back 503 because the models were not in its
 cache yet, which a cell then measured as its own slowness. And a re-applied image
@@ -68,7 +69,11 @@ def _job_cell(step: Step) -> CellPlan:
 
 
 def _fake_kubectl(tmp_path: Path, answers: list[str]) -> None:
-    """A kubectl that answers each poll with the next line, so a Job can change state."""
+    """A kubectl that answers each poll with the next line, so a Job can change state.
+
+    A line starting with `!` is a failed call instead: the rest goes to stderr
+    and the exit is 1, the way kubectl reports an error from the API server.
+    """
     (tmp_path / "answers").write_text("\n".join(answers) + "\n")
     script = tmp_path / "kubectl"
     script.write_text(
@@ -77,7 +82,11 @@ def _fake_kubectl(tmp_path: Path, answers: list[str]) -> None:
         'n=$(cat "$count" 2>/dev/null || echo 0)\n'
         "n=$((n + 1))\n"
         'echo "$n" > "$count"\n'
-        f'sed -n "${{n}}p" "{tmp_path}/answers"\n'
+        f'line=$(sed -n "${{n}}p" "{tmp_path}/answers")\n'
+        'case "$line" in\n'
+        "  '!'*) printf '%s\\n' \"${line#!}\" >&2; exit 1 ;;\n"
+        "esac\n"
+        "printf '%s\\n' \"$line\"\n"
     )
     script.chmod(0o755)
 
@@ -118,28 +127,57 @@ def test_a_job_that_never_makes_a_pod_ends_the_cell_rather_than_hanging(
     )
 
 
-def test_a_job_that_fails_ends_the_cell_instead_of_waiting_out_the_ceiling(
-    monkeypatch, tmp_path
-) -> None:
-    _fake_kubectl(tmp_path, ["succeeded= failed=", "succeeded= failed=1"])
+def _wait_on_job(monkeypatch, tmp_path: Path, answers: list[str]) -> dict:
+    """Run a cell whose one step is the Job wait, against a kubectl giving `answers`."""
+    _fake_kubectl(tmp_path, answers)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr(setup_matrix_readiness, "JOB_POLL_S", 0.0)
     item = _job_cell(Step("wait", ("kubectl", "get", "job", "j", "-o", "jsonpath=x")))
+    return setup_matrix.run_remote_cell(item, _plan(item), tmp_path / "out")
 
-    record = setup_matrix.run_remote_cell(item, _plan(item), tmp_path / "out")
+
+def test_a_job_that_fails_ends_the_cell_instead_of_waiting_out_the_ceiling(
+    monkeypatch, tmp_path
+) -> None:
+    record = _wait_on_job(monkeypatch, tmp_path, ["succeeded= failed=", "succeeded= failed=1"])
 
     assert record["error"] == "wait exited 1"
     said = (tmp_path / "out" / "k8s-job" / "wait.stderr.log").read_text()
     assert "failed=1" in said
 
 
-def test_a_job_that_completes_lets_the_cell_carry_on(monkeypatch, tmp_path) -> None:
-    _fake_kubectl(tmp_path, ["succeeded= failed=", "succeeded=1 failed="])
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setattr(setup_matrix_readiness, "JOB_POLL_S", 0.0)
-    item = _job_cell(Step("wait", ("kubectl", "get", "job", "j", "-o", "jsonpath=x")))
+def test_a_job_deleted_while_the_cell_waits_ends_the_cell_at_once(monkeypatch, tmp_path) -> None:
+    """A deleted Job answers NotFound to every poll, and polling on waited out three hours.
 
-    record = setup_matrix.run_remote_cell(item, _plan(item), tmp_path / "out")
+    The success after the NotFound is an answer a deleted Job could never give,
+    there only to show that the wait did not ask again.
+    """
+    gone = '!Error from server (NotFound): jobs.batch "j" not found'
+    answers = ["succeeded= failed=", gone, "succeeded=1 failed="]
+
+    record = _wait_on_job(monkeypatch, tmp_path, answers)
+
+    assert record["error"] == "wait exited 1"
+    assert (tmp_path / "calls").read_text().strip() == "2"
+    said = (tmp_path / "out" / "k8s-job" / "wait.stderr.log").read_text()
+    assert "the job no longer exists" in said
+    assert "(NotFound)" in said, "kubectl's own words travel with the reason"
+
+
+def test_a_poll_that_fails_for_another_reason_keeps_the_cell_waiting(monkeypatch, tmp_path) -> None:
+    """An API server that timed out once has said nothing about the Job."""
+    hiccup = "!Unable to connect to the server: net/http: TLS handshake timeout"
+
+    record = _wait_on_job(
+        monkeypatch, tmp_path, ["succeeded= failed=", hiccup, "succeeded=1 failed="]
+    )
+
+    assert record["error"] is None
+    assert (tmp_path / "calls").read_text().strip() == "3"
+
+
+def test_a_job_that_completes_lets_the_cell_carry_on(monkeypatch, tmp_path) -> None:
+    record = _wait_on_job(monkeypatch, tmp_path, ["succeeded= failed=", "succeeded=1 failed="])
 
     assert record["error"] is None
 

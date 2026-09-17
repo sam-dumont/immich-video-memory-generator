@@ -3,6 +3,11 @@
 Status: QUEUED design. Not tomorrow's job. Written 2026-09-02 against read-only inspection of the
 installed toolchain, the judgment bank, and the app's live-photo path. No inference was run.
 
+Since 2026-09-17 (#1048) the base model already writes one motion line per video at preparation
+(`analysis/editorial_preparation_motion.py`, three keyframes read by byte range). The per-cut
+visual path this note inspects (`analysis/selection_descriptions.py`, `build_visual_atlas` and its
+filmstrip in `analysis/visual_atlas.py`) is removed; the line numbers below are history.
+
 Goal: a local "what happens in this clip" describer, distilled from the 30B teacher onto
 SmolVLM2-500M-Video-Instruct, matching the recipe that shipped the still describer
 (0.604 F1 vs verified truth; `scripts/distill/train_local_mlx.py`, mlx-vlm 0.6.17,

@@ -22,7 +22,7 @@ from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
 from immich_memories.generate_timeline import (
-    publish_and_check_duration,
+    check_rendered_film,
     validate_certified_content,
 )
 from immich_memories.operations.phases import OperationalPhase
@@ -314,17 +314,18 @@ def render_local(
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
         )
+        encode_started = _time.monotonic()
         staged_result_path = assembler.assemble_with_titles(
             assembly_clips,
             staged_output_path,
             assembly_cb,
             frame_preview_callback=params.frame_preview_callback,
         )
+        # Titles included: every second of it was this machine producing the
+        # film, and decoding the result can only be faster.
+        encode_seconds = _time.monotonic() - encode_started
         plan = settings.encoding_plan
-        metrics, duration_warning = publish_and_check_duration(
-            params, staged_result_path, result_output_path, plan
-        )
-        result_path = result_output_path
+        metrics, duration_warning = check_rendered_film(params, staged_result_path, plan)
         run_tracker.complete_phase(items_processed=len(assembly_clips), extra_metrics=metrics)
         operational.emit(
             OperationalPhase.RENDER,
@@ -334,7 +335,8 @@ def render_local(
         )
         phase_times["assembly"] = _time.monotonic() - _t
         return PreparedGeneration(
-            path=result_path,
+            path=result_output_path,
+            staged_path=staged_result_path,
             encoding_plan=plan,
             assembly_clips=tuple(assembly_clips),
             clips_analyzed=len(params.clips),
@@ -342,6 +344,7 @@ def render_local(
             music_mute_windows=settings.music_mute_windows,
             duration_warning=duration_warning,
             render_metrics=metrics,
+            encode_seconds=encode_seconds,
         )
     finally:
         try:

@@ -65,7 +65,6 @@ def make_source(tmp_path, *, years=(2030, 2031, 2032), product="on_this_day"):
                         rendering_family_id=None,
                         favourite=False,
                         source=asset,
-                        proposed_segment=None,
                         shippable_duration=0,
                         grounded_annotations=(),
                     )

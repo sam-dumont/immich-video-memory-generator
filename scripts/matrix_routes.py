@@ -410,8 +410,11 @@ def probe_film(film: Path, ffprobe: str) -> dict[str, Any]:
     )
     picture = next(s for s in probe["streams"] if s["codec_type"] == "video")
     sound = next((s for s in probe["streams"] if s["codec_type"] == "audio"), None)
-    if (picture["width"], picture["height"]) != (1920, 1080):
-        raise RuntimeError(f"{film.name} is {picture['width']}x{picture['height']}, not 1920x1080")
+    # The recipes pin 1080p, not the orientation: a phone library renders portrait
+    # under `--orientation auto`, and that is a correct 1080p film, not a defect.
+    width, height = picture["width"], picture["height"]
+    if (width, height) not in {(1920, 1080), (1080, 1920)}:
+        raise RuntimeError(f"{film.name} is {width}x{height}, not 1920x1080 or 1080x1920")
     if sound is None:
         raise RuntimeError(f"{film.name} has no audio stream")
     return {

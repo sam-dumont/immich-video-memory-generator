@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from PIL import Image
 
 from immich_memories.analysis.editorial_contracts import (
     LivePhotoRenderingFamily,
@@ -607,7 +605,6 @@ def test_duplicate_source_favourite_is_or_merged_without_losing_motion_evidence(
     assert prepared.candidates[0].favourite is True
     assert prepared.candidates[0].shippable_duration == 3.5
     assert "burst-members:2" in prepared.candidates[0].grounded_annotations
-    assert prepared.visual_sources[0].motion_path == local_path
 
 
 def test_enriched_stitch_identity_is_propagated_symmetrically_to_admitted_members() -> None:
@@ -904,54 +901,6 @@ def test_rendering_family_contract_rejects_unsafe_or_misaligned_manifests() -> N
             shutter_timestamps=timestamps,
             motion_duration_seconds=2.0,
         )
-
-
-def test_failed_preview_does_not_mark_a_video_unavailable_when_motion_frames_work(
-    tmp_path: Path,
-) -> None:
-    """Usable motion pixels outrank a failed still-preview provider."""
-    from immich_memories.analysis.visual_atlas import build_visual_atlas
-
-    asset = make_asset("motion", duration="0:00:03.000")
-    local_path = tmp_path / "motion.mp4"
-    local_path.write_bytes(b"generated motion placeholder")
-    clip = VideoClipInfo(
-        asset=asset,
-        duration_seconds=3.0,
-        width=1920,
-        height=1080,
-        local_path=str(local_path),
-    )
-    frames = []
-    for index, colour in enumerate(("red", "green", "blue")):
-        path = tmp_path / f"frame-{index}.jpg"
-        Image.new("RGB", (48, 32), colour).save(path, "JPEG")
-        frames.append(path)
-
-    def failed_preview(_asset):
-        raise RuntimeError("generated preview failure")
-
-    prepared = prepare_editorial_source(
-        EditorialSelectionRequest(scope=SourceScope()),
-        EditorialDependencies(
-            source_fetcher=lambda _scope: (clip,),
-            preview_jpeg=failed_preview,
-        ),
-    )
-    # WHY: duration probing and frame decoding are the two external FFmpeg boundaries.
-    with (
-        patch("immich_memories.analysis.visual_atlas.probe_duration", return_value=3.0),
-        patch(
-            "immich_memories.analysis.visual_atlas.sample_segment_frames",
-            return_value=tuple(frames),
-        ),
-    ):
-        atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=tmp_path / "frames")
-
-    tile = atlas.tile_for("motion")
-    assert prepared.candidate_ids == ("motion",)
-    assert tile.kind == "filmstrip"
-    assert tile.unavailable_reason is None
 
 
 def test_conflicting_duplicate_asset_representations_are_rejected() -> None:

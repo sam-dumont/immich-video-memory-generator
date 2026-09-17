@@ -8,11 +8,13 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams, PreparedGeneration
+from immich_memories.processing import output_contract
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunTracker
 from immich_memories.ui.state import AppState
 from tests.conftest import make_clip
+from tests.output_tools_fake import decoded_file_of, is_decode_check, output_tools, payload_of
 
 
 class _Progress:
@@ -77,6 +79,11 @@ def _h264_plan() -> EncodingPlan:
     )
 
 
+def _pass_film_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
+
+
 def _probe() -> OutputProbe:
     return OutputProbe(
         codec="h264",
@@ -113,6 +120,7 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         assembly_clips=(),
         clips_analyzed=3,
         clips_selected=2,
+        encode_seconds=38_946.0,
     )
     phase_events = []
     params = GenerationParams(
@@ -131,7 +139,6 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
     tracker = RunTracker("ui-finalize", db_path=db_path, capture_system=False)
     tracker.start_run(source="manual")
     state = AppState(config=config, generation_options={"music_source": "None"})
-    seen_plans: list[EncodingPlan] = []
     complete_calls = 0
     complete_artifact = tracker.complete_artifact
 
@@ -140,15 +147,20 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         complete_calls += 1
         return complete_artifact(*args, **kwargs)
 
-    def validate(path: Path, encoding_plan: EncodingPlan) -> OutputProbe:
-        assert path == output_path
-        seen_plans.append(encoding_plan)
-        return _probe()
+    budgets: list[object] = []
+    answer = output_tools(payload_of(_probe()))
+
+    def film_tools(command: list[str], **kwargs: object):
+        if is_decode_check(command):
+            assert decoded_file_of(command) == output_path
+            budgets.append(kwargs["timeout"])
+        return answer(command, **kwargs)
 
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
-    monkeypatch.setattr(step4_generate, "validate_output", validate, raising=False)
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", film_tools)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(tracker, "complete_artifact", count_completion)
 
@@ -162,7 +174,7 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
     )
     saved = RunDatabase(db_path).get_run("ui-finalize")
 
-    assert seen_plans == [plan]
+    assert budgets == [38_946.0]
     assert completed.status == "completed"
     assert completed.delivery_status is DeliveryStatus.NOT_REQUESTED
     assert completed.delivery_attempts == 0
@@ -241,7 +253,7 @@ async def test_ui_artifact_completion_survives_sidecar_mirror_failure(
         return callback(*args, **kwargs)
 
     monkeypatch.setattr(tracker, "_save_metadata_json", fail_sidecar)
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     caplog.set_level("WARNING", logger="immich_memories.tracking.run_tracker")
 
@@ -313,6 +325,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         encoding_plan,
         mute_windows=None,
         source=None,
+        decode_check=None,
     ) -> MusicPhaseResult:
         assert run_tracker is tracker
         assert encoding_plan is plan
@@ -322,17 +335,20 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         run_tracker.complete_phase(items_processed=0, errors=[{"error": warning}])
         return MusicPhaseResult(applied=False, warning=warning)
 
-    def validate(path: Path, encoding_plan: EncodingPlan) -> OutputProbe:
-        assert encoding_plan is plan
-        assert path.read_bytes() == b"validated-base"
-        events.append("final-validation")
-        return _probe()
+    answer = output_tools(payload_of(_probe()))
+
+    def film_tools(command: list[str], **kwargs: object):
+        if is_decode_check(command):
+            assert decoded_file_of(command).read_bytes() == b"validated-base"
+            events.append("final-validation")
+        return answer(command, **kwargs)
 
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
     monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", apply_music)
-    monkeypatch.setattr(step4_generate, "validate_output", validate)
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", film_tools)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     caplog.set_level("WARNING")
 
@@ -372,7 +388,7 @@ async def test_ui_successful_upload_uses_completed_pending_row_and_same_tracker(
     calls: list[str] = []
 
     class Client:
-        def upload_memory(self, *, video_path: Path, album_name: str | None):
+        def upload_memory(self, *, video_path: Path, album_name: str | None, captured_at=None):
             before_call = RunDatabase(db_path).get_run("ui-upload-success")
             assert before_call is not None
             assert before_call.status == "completed"
@@ -403,7 +419,7 @@ async def test_ui_successful_upload_uses_completed_pending_row_and_same_tracker(
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(step4_generate.ui, "notify", lambda *_args, **_kwargs: None)
 
@@ -460,7 +476,7 @@ async def test_ui_success_toast_failure_preserves_delivered_state(
         notifications.append(message)
         raise RuntimeError("success toast observer failed")
 
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
         "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
@@ -527,7 +543,7 @@ async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raise
         return callback(*args, **kwargs)
 
     monkeypatch.setattr(tracker.db, "mark_delivered", commit_then_raise)
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
         "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
@@ -705,7 +721,7 @@ async def test_ui_unexpected_delivery_error_keeps_pending_video_and_redacts_conf
     def unexpected_boundary_failure(*_args, **_kwargs):
         raise RuntimeError(f"secondary failure echoed {configured_literal}")
 
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
         delivery_module,
@@ -790,7 +806,7 @@ async def test_ui_delivery_failure_preserves_retryable_artifact(
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
-    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.ui.notify",

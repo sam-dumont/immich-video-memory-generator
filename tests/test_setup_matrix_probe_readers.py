@@ -11,8 +11,16 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import setup_matrix  # noqa: E402
 import setup_matrix_probe_readers as probe  # noqa: E402
-from setup_matrix_plan import Cell, CellPlan, Plan, PlanError, Step  # noqa: E402
+from setup_matrix_plan import (  # noqa: E402
+    FROM_OPERATOR_CONFIG,
+    Cell,
+    CellPlan,
+    Plan,
+    PlanError,
+    Step,
+)
 
 from immich_memories.analysis import editorial_picture_facts  # noqa: E402
 from immich_memories.analysis.llm_wire import LLMTransportAttempt  # noqa: E402
@@ -187,16 +195,8 @@ def test_budget_override_and_config_are_forwarded_only_to_the_named_probe(tmp_pa
         )
 
 
-@pytest.mark.parametrize(
-    "broken,override,exit_code", [(False, False, 1), (False, True, 0), (True, True, 1)]
-)
-def test_an_override_waives_cost_but_never_image_failure(
-    monkeypatch, tmp_path, broken, override, exit_code
-):
-    config_source = tmp_path / "config.yaml"
-    config_source.write_text("immich:\n  url: http://localhost:9998\n  api_key: test-only\n")
-    # One real image shape is enough to exercise this gate without replaying the text contracts.
-    monkeypatch.setattr(probe, "SHAPES", probe.SHAPES[:1])
+def _picture_reader(*, broken: bool = False):
+    """A reader that answers the picture shape in contract, or refuses images."""
 
     async def query(prompt, config, **kwargs):
         if broken:
@@ -218,13 +218,68 @@ def test_an_override_waives_cost_but_never_image_failure(
             }
         )
 
-    monkeypatch.setattr(probe, "query_llm", query)
-    budget = {**BUDGET, "calls": {"picture-facts": {"count": 100, "parallel": False}}}
+    return query
+
+
+def _picture_budget(count: int) -> dict:
+    return {**BUDGET, "calls": {"picture-facts": {"count": count, "parallel": False}}}
+
+
+@pytest.mark.parametrize(
+    "broken,override,exit_code", [(False, False, 1), (False, True, 0), (True, True, 1)]
+)
+def test_an_override_waives_cost_but_never_image_failure(
+    monkeypatch, tmp_path, broken, override, exit_code
+):
+    config_source = tmp_path / "config.yaml"
+    config_source.write_text("immich:\n  url: http://localhost:9998\n  api_key: test-only\n")
+    # One real image shape is enough to exercise this gate without replaying the text contracts.
+    monkeypatch.setattr(probe, "SHAPES", probe.SHAPES[:1])
+    # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
+    monkeypatch.setattr(probe, "query_llm", _picture_reader(broken=broken))
     result = probe.probe_cells(
         _plan(),
         config_source,
         PRICING,
-        budget=budget,
+        budget=_picture_budget(100),
         budget_overrides=["test-reader"] if override else [],
     )
     assert result == exit_code
+
+
+def test_a_cluster_cell_on_the_operators_immich_is_probed_rather_than_crashing(
+    monkeypatch, tmp_path
+):
+    """Probing a cell writes its config, and its manifests carry the operator's server.
+
+    Nothing loaded that server before a probe did, so every reader probe of such
+    a cell died on `KeyError: 'url'` before its first request, and the February
+    hosted rows of 09-13/14 came back empty.
+    """
+    config_source = tmp_path / "config.yaml"
+    config_source.write_text("immich:\n  url: http://localhost:9998\n  api_key: test-only\n")
+    plan = _plan()
+    item = replace(
+        plan.cells[0],
+        cell=replace(plan.cells[0].cell, lane="k8s"),
+        manifests={"configmap.yaml": f"data:\n  url: {FROM_OPERATOR_CONFIG}\n"},
+        operator_immich=True,
+    )
+    read_from = []
+
+    def operator_immich(source):
+        read_from.append(source)
+        return "http://immich.invalid:2283", "operator-key"
+
+    # WHY: read_operator_immich reads the operator's own config off this machine.
+    monkeypatch.setattr(setup_matrix, "read_operator_immich", operator_immich)
+    monkeypatch.setattr(probe, "SHAPES", probe.SHAPES[:1])
+    # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
+    monkeypatch.setattr(probe, "query_llm", _picture_reader())
+
+    result = probe.probe_cells(
+        replace(plan, cells=(item,)), config_source, PRICING, budget=_picture_budget(1)
+    )
+
+    assert result == 0
+    assert read_from == [config_source], "read once, from the config the probe was given"

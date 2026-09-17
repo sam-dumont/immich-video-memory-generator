@@ -29,6 +29,7 @@ from immich_memories.generate_timeline import (
     validate_final_duration as _validate_final_duration,
 )
 from tests.conftest import make_asset, make_clip
+from tests.output_tools_fake import output_tools
 
 
 def _h264_output_plan():
@@ -395,8 +396,7 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
         },
     }
 
-    def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(command, 0, json.dumps(probe_payload), "")
+    run_probe = output_tools(probe_payload)
 
     def extract_at_download_ownership(*_args, **_kwargs):
         assert [event.phase.value for event in phase_events] == ["discovery", "download"]

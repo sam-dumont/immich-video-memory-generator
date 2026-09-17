@@ -546,7 +546,7 @@ and keeps the two cheaper detectors in the app.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a
 cluster against a T1000, costs 0.69 s a picture whatever the card is doing, because almost all of
-it is the round trip: 3,709 pictures took 42.7 minutes, and a 13,552-picture month would have taken
+it is the round trip: 3,709 pictures took 42.7 minutes, and a 13,552-picture year would have taken
 2.6 hours. Answers are banked in the order the pictures were asked for, so raising this re-derives
 nothing. Raise it until the service is the slow half; the ceiling is 32, and the service's own
 `REQUEST_THREADS` decides how many it can answer at once.
@@ -682,6 +682,10 @@ upload:
   enabled: false
   album_name: null               # Created if missing, reused if exists
 ```
+
+An uploaded memory is filed on the day of its last picture, in the timezone most of its pictures
+share, so it lands in your timeline where the memory ends instead of on the day it was rendered.
+The render day is what you get when no picture in the cut carries a usable time.
 
 ## Scheduler
 

@@ -57,9 +57,13 @@ on, is never displaced by a replacement, and wins the frame of the moment the pi
 does not do is buy the moment. The editor is still asked which moments tell a story, unless that
 story offers a single moment and the grant reaches it, because a dense tail of favourites would
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
-source and audience eligibility.
+source and audience eligibility, but they do not order which stories a film funds. When a period
+holds more stories than the film has slots, stories of the same weight and the same memory-worthy
+reading are funded in the order they happened, so a well starred December cannot push January out of
+the year.
 
-**The audience is FAMILY.** A shirtless baby is ordinary family content and can be included. Eight
+**The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
+is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
@@ -102,6 +106,19 @@ understanding of the period while showing different amounts of it. More time let
 show more distinct moments (arrival, the main activity, people together, how the day ended) rather
 than making every extra frame a new event. Matching facts are reused: descriptions and model
 decisions are cached by producer and input.
+
+**Videos lead the pick.** This is a film. When a story chooses its moments, the ones a video
+carries, or a Live Photo whose motion passed the check, are listed ahead of the stills, each with a
+sentence saying what happens in it, and the reader is told to choose the video over a still of the
+same moment. That sentence is written once per video at preparation by the caption server, from
+three keyframes, so the reader never sees a video frame. On `no_captions` and `metadata_only` the
+row carries the plain facts instead: how long the clip is, and how much a Live Photo moves. The pick is asked in two orders; when they disagree, the moment that moves
+wins. That holds at every length: a 90-second memory gives most stories one picture, and that one
+slot is still a choice between a video and a still. Only the question is reordered; the film still
+plays in the order things happened. A chosen video holds about 6 seconds where a photo holds 4,
+longer when someone is mid-sentence at the cut. When the videos push the cut past its length, the
+longest holds are shaved half a second at a time, never below 3.5 seconds or through a sentence; a
+video is never dropped for being long.
 
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
@@ -218,11 +235,11 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 
 | Stage | What runs | Where it can run |
 |---|---|---|
-| **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
+| **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -289,8 +306,9 @@ queue instead of overlapping.
 `generate_memory()` takes over from the plan under a file lock.
 
 - **Originals** of the selected sources are downloaded (3 workers by default,
-  `analysis.download_workers`) and each interval trimmed with FFmpeg. A Live Photo chosen for its
-  motion plays its video; one chosen as a still is held. Live companions of different sizes
+  `analysis.download_workers`) and each interval trimmed with FFmpeg. A video always plays. A Live
+  Photo plays its video only when its measured motion reached 1.5; below that its photograph is
+  held, and the pick was offered it as a still. Live companions of different sizes
   are fitted to a common frame without stretching or changing their selected timing.
   ProRes MOV clips keep their original video, HDR metadata and audio during trimming.
 - **Photos** render frame by frame in Python: Ken Burns is a `cv2.warpAffine` per frame at 30 fps
@@ -301,6 +319,13 @@ queue instead of overlapping.
 - **Assembly and encode** stream: one FFmpeg decode per clip at a time, crossfades blended into one
   preallocated buffer, raw frames piped into one encode process. Memory stays flat with clip count,
   which is what makes 4K output possible.
+- **The finished film is decoded once**, just before it gets its final name. It stays under its
+  `.assembling` name through the music mix. After the encode and after the mix, `ffprobe` reads
+  container, codec, pixel format, colour and duration without decoding and compares them with the
+  encoding plan. Then FFmpeg decodes every video frame of the mixed film, and a decode error fails
+  the run. That decode may take as long as the encode did (15 minutes at least) and logs its
+  position once a minute. The upload reads the metadata again and reuses the decode unless the
+  file changed since. A film that fails stays on disk, and the error starts with its path.
 
 Encoder selection is a real probe: NVIDIA, Apple, QSV, VAAPI, each having to encode one 256x256
 frame before it is used. A hardware encoder that fails mid-run is retried once in software with the

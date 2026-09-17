@@ -15,13 +15,12 @@ from immich_memories.analysis.editorial_attached_outcomes import AttachedAttempt
 from immich_memories.analysis.editorial_attached_samples import AttachedVideoSamples
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
 from immich_memories.analysis.editorial_final_attached import FinalAttachedPictures
-from immich_memories.analysis.editorial_gateway import VisualEditorialGateway
+from immich_memories.analysis.editorial_preparation_motion import BankedMotionLines
 from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
 from immich_memories.analysis.editorial_source import (
     FullEditorialSource,
     fetch_full_window_source,
 )
-from immich_memories.analysis.editorial_story_motion import StoryMotionFacts
 from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
     StructurePlanningInput,
@@ -54,6 +53,11 @@ class EditorialRuntimePorts:
     load_people: Callable[[], Mapping[str, PersonPromptContext]] = _load_people
     fetch_preview: Callable[[Any, str], bytes | None] = lambda client, asset_id: (
         client.get_asset_thumbnail(asset_id, size="preview")
+    )
+    fetch_playback_range: Callable[[Any, str, int, int], tuple[bytes, int]] = (
+        lambda client, asset_id, start, length: client.get_video_playback_range(
+            asset_id, start, length
+        )
     )
     fetch_full_source: Callable[
         [FullEditorialSource, SourceScope], Sequence[Asset | VideoClipInfo]
@@ -156,34 +160,12 @@ def production_attached_pictures(source, *, cache_path, pictures, pairs, resourc
     return FinalAttachedPictures(samples, pictures, pairs), samples
 
 
-def production_story_motion(source, *, cache_path, trace, resources):
-    """Lazy playback acquisition for shortlisted ordinary-video depth comparisons."""
-    client = None
-
-    def fetch(asset_id):
-        nonlocal client
-        if client is None:
-            from immich_memories.api.sync_client import SyncImmichClient
-
-            config = source.config.immich
-            client = SyncImmichClient(
-                base_url=config.url, api_key=config.api_key, api_version=config.api_version
-            )
-            resources.callback(client.close)
-        return client.get_video_playback(asset_id)
-
-    requester = VisualEditorialGateway(
-        llm_config=source.config.llm, cache_path=cache_path, trace=trace
-    )
-    resources.callback(requester.close)
-    return StoryMotionFacts(
+def production_story_motion(source, *, cache_path):
+    """The pick's motion evidence, read from the preparation bank; no model call, no download."""
+    return BankedMotionLines(
+        store_path=cache_path,
         assets=source.assets,
-        allowed_ids=set(chain.from_iterable(source.moment_asset_ids.values())),
-        fetch_playback=fetch,
-        requester=requester,
-        trace=trace,
-        cache_dir=cache_path.parent / "story-motion",
-        output_dir=source.artifact_dir / "story-motion",
+        described=source.config.editorial.preparation.demands_captions,
     )
 
 

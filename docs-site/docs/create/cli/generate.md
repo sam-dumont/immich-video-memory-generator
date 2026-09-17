@@ -150,6 +150,10 @@ its output.
 `--upload-to-immich --album "2024 Memories"` creates the album if it does not exist; the
 persistent form is `upload.enabled: true` and `upload.album_name`.
 
+The memory is filed on the day of its last picture, in the timezone most of its pictures share, so
+it sits in your timeline where the memory ends instead of on the day you rendered it. The render
+day is what you get when no picture in the cut carries a usable time.
+
 ## Two ways to skip the video
 
 `--dry-run` is the cheap preview: it discovers the inputs and reports what preparation the period

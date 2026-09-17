@@ -315,7 +315,6 @@ def test_fresh_prepared_store_is_readable_by_the_real_annotation_reader(tmp_path
             rendering_family_id=None,
             favourite=False,
             source=a,
-            proposed_segment=None,
             shippable_duration=4,
             grounded_annotations=(),
         )

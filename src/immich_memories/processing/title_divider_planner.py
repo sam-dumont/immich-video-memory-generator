@@ -278,8 +278,11 @@ class TitleDividerPlanner:
         `network.map_tiles` allows the tile request. Cached by name, so a place
         seen twice keeps the first card rather than re-rendering the same map.
         """
+        from immich_memories.i18n_places import localise_place
+
         if not getattr(self._title_settings, "map_tiles", False):
             lat = lon = None
+        name = localise_place(name, getattr(self._title_settings, "locale", "en")) or name
         if name not in cache:
             card = self._generator.generate_location_card_screen(name, lat=lat, lon=lon)
             cache[name] = card.path
