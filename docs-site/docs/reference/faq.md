@@ -30,8 +30,10 @@ recap. What it keeps per memory type, measured against the model editor, is on
 
 The first cut over a period reads every eligible picture once and banks it; the second is mostly
 the render. Measured for a 60-second month of 1,440 pictures, selection only: 55 s cold and 1.4 s
-warm on a workstation with rules, 279 s cold and 11 s warm on a Celeron NAS, 16 to 25 minutes with
-a model reader. The per-host table is on [Running modes](../deploy/running-modes.md).
+warm on a workstation with rules, 279 s cold and 11 s warm on a Celeron NAS. With a model reader,
+a 60-second February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm with no
+model call at all, because a period read once is answered from the bank a month at a time. The
+per-host table is on [Running modes](../deploy/running-modes.md).
 
 **How much disk?**
 
