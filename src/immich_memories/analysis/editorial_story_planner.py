@@ -538,7 +538,8 @@ def select_story_first(
     journey: bool = False,
     partition_of: Callable[[str], str | None] | None = None,
     partition_limit: int | None = None,
-    motion_line: Callable[[dict], str] | None = None,
+    motion_line: Callable[[Mapping[str, Any]], str] | None = None,
+    motion_identity: str = "",
     episode_readings: Mapping[str, Any] | None = None,
     rules=None,
     trips: FilmTrips | None = None,
@@ -676,6 +677,8 @@ def select_story_first(
         bank=standing_bank,
         save=standing_save,
         calls=calls,
+        motion_line=motion_line,
+        motion_identity=motion_identity,
     )
     admission = CarrierAdmission(
         judge,

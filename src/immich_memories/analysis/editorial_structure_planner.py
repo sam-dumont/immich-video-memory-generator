@@ -718,6 +718,7 @@ def _story_selection(
         label_line=material.text.label,
         quality=material.builder.quality,
         motion_line=ports.observe_story_motion,
+        motion_identity=ports.story_motion_identity,
         episode_readings=source.episode_readings,
         target_seconds=(
             source.render_timing.selection_budget(

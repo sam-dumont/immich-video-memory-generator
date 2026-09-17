@@ -19,7 +19,10 @@ from typing import Any
 from immich_memories.analysis.editorial_block_votes import judge_standing
 from immich_memories.analysis.editorial_story_depth import depth_ladder, neighbours
 from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck
-from immich_memories.analysis.editorial_story_pick_contract import carries_motion
+from immich_memories.analysis.editorial_story_pick_contract import (
+    carries_motion,
+    moving_picture_row,
+)
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
@@ -76,7 +79,7 @@ def shortlist_by_partition(
 
 
 def _unit_reader(
-    read: Callable[[dict], str] | None, unit_by_asset: Mapping[str, Any]
+    read: Callable[[Mapping[str, Any]], str] | None, unit_by_asset: Mapping[str, Any]
 ) -> Callable[[DepictedChoice], str] | None:
     """Read a moment's primary unit through an optional observation port."""
     if read is None:
@@ -101,6 +104,8 @@ class StandingGate:
         save: Callable[[], None] | None,
         calls: dict[str, int],
         score_of: Callable[[str], int] | None = None,
+        motion_line: Callable[[Mapping[str, Any]], str] | None = None,
+        motion_identity: str = "",
     ) -> None:
         self._judge = judge
         self._score_of = score_of
@@ -113,8 +118,18 @@ class StandingGate:
         self._bank = bank
         self._save = save
         self._calls = calls
+        self._motion_line = motion_line
+        self._motion_identity = motion_identity
         self.scores: dict[str, int] = {}
         self.context_rejected: set[tuple[str, str]] = set()
+
+    def row_of(self, asset: str) -> str:
+        """The row the gate judges. A still's is its own line; a video's, or a Live Photo whose
+        motion plays, says what it is, how long it runs and what happens across it."""
+        line = self._line_of(asset)
+        if not line or asset not in self._unit_by_asset:
+            return line
+        return moving_picture_row(line, self._unit_by_asset[asset][1], self._motion_line)
 
     def ensure(self, assets: Sequence[str]) -> None:
         unknown = [a for a in dict.fromkeys(assets) if a not in self.scores and self._line_of(a)]
@@ -127,11 +142,12 @@ class StandingGate:
         votes = judge_standing(
             self._judge,
             pictures=unknown,
-            line_of=self._line_of,
+            line_of=self.row_of,
             contract=self._contract,
             period_label=self._period_label,
             bank=self._bank,
             save=self._save,
+            motion_identity=self._motion_identity,
         )
         for a, (n, _why) in votes.items():
             self.scores[a] = n
@@ -199,7 +215,7 @@ class CarrierAdmission:
         life: Callable[[str], bool],
         excluded: Mapping[str, str],
         kind_marker: Callable[[DepictedChoice], str],
-        motion_line: Callable[[dict], str] | None,
+        motion_line: Callable[[Mapping[str, Any]], str] | None,
         contract: str,
         record: Callable[[str, Mapping[str, Any]], None],
         slots: int,

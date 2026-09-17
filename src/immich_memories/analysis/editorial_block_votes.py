@@ -39,14 +39,30 @@ WORTH_SUBJECT_CRITERION = (
     "words what it shows of the subject.\nSubject: {subject}"
 )
 
-STANDING_PROMPT_VERSION = "picture-stands-v3-reject-only"
+STANDING_PROMPT_VERSION = "picture-stands-v4-motion-evidence"
 STANDING_CRITERION = (
     "Name the pictures that do NOT stand by themselves: pictures nobody would show on their own because they show "
     "nothing worth showing. A close-up of a body part or an ailment, a screen, a document, a lone everyday object "
     "with nobody in it, an empty room, a test shot, an accidental or unflattering frame. Judge what a picture shows, "
     "not whether its subject is comfortable: people in a real moment stand whatever the setting, and so does a "
-    "place worth seeing. Name only the weak ones; say for each in at most 12 words why."
+    "place worth seeing. A row that names a video, or a Live Photo whose motion plays, is footage: judge what happens "
+    "across it, told by the sentence after its length, not whether one still frame would make a good photograph. "
+    "Name only the weak ones; say for each in at most 12 words why."
 )
+
+
+def standing_pass_version(motion_identity: str) -> str:
+    """The bank key for standing votes cast on these rows.
+
+    The criterion is half the question; the shape of the row it judges is the other half. A
+    moving picture's row now carries the motion sentence the caption seat banked at
+    preparation, so the seat that wrote those sentences belongs in the key: another seat writes
+    other sentences, and its predecessor's answers must not replay under them. #1064 settled
+    the same thing for cull verdicts and the reading behind them.
+    """
+    if not motion_identity:
+        return STANDING_PROMPT_VERSION
+    return f"{STANDING_PROMPT_VERSION}/{motion_identity}"
 
 
 TRIP_WORTH_CRITERION = (
@@ -131,20 +147,30 @@ def _block_orders(block: list[str], seed: str) -> tuple[tuple[str, list[str]], .
 
 
 def _vote_cache_key(
-    prompts: dict[str, str], identity: str | None, max_tokens: int, answer_key: str
+    prompts: dict[str, str],
+    identity: str | None,
+    max_tokens: int,
+    answer_key: str,
+    rows_version: str = "",
 ) -> str:
+    """The name one asked question lives under.
+
+    `rows_version` names what produced the rows rather than what is written in them: evidence a
+    row carries can come from a bank of its own, and two producers of it ask different
+    questions out of identical text. A caller that has no such producer leaves the key out, so
+    its existing entries keep their names.
+    """
+    payload = {
+        "version": BLOCK_CACHE_VERSION,
+        "model": identity,
+        "prompts": prompts,
+        "max_tokens": max_tokens,
+        "answer_key": answer_key,
+    }
+    if rows_version:
+        payload["rows_version"] = rows_version
     return hashlib.sha256(
-        json.dumps(
-            {
-                "version": BLOCK_CACHE_VERSION,
-                "model": identity,
-                "prompts": prompts,
-                "max_tokens": max_tokens,
-                "answer_key": answer_key,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ).encode()
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()
 
 
@@ -205,6 +231,7 @@ def _row_names(
     identity: str | None,
     max_tokens: int,
     answer_key: str,
+    rows_version: str = "",
 ) -> dict[str, str]:
     """Each row's name in the bank: its own question, scoped by the model identity and the exact
     answer asked for, the way a block's cache key is. A row banked under one reader is not
@@ -212,7 +239,8 @@ def _row_names(
     if row_key is None:
         return {}
     return {
-        x: _vote_cache_key({"row": row_key(x)}, identity, max_tokens, answer_key) for x in items
+        x: _vote_cache_key({"row": row_key(x)}, identity, max_tokens, answer_key, rows_version)
+        for x in items
     }
 
 
@@ -237,6 +265,7 @@ def _pack_blocks(
     identity: str | None,
     max_tokens: int,
     answer_key: str,
+    rows_version: str = "",
 ) -> list[_Block]:
     """The rows still to ask, cut into twelves, each block with its two prompts and cache key."""
     blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
@@ -247,7 +276,7 @@ def _pack_blocks(
         packed.append(
             _Block(
                 block,
-                _vote_cache_key(prompts, identity, max_tokens, answer_key),
+                _vote_cache_key(prompts, identity, max_tokens, answer_key, rows_version),
                 f"{stage}-{index + 1}",
                 orders,
                 prompts,
@@ -271,6 +300,7 @@ def vote_blocks(
     max_tokens: int = 400,
     model_identity: str | None = None,
     row_key: Callable[[str], str] | None = None,
+    rows_version: str = "",
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Votes per item (0, 1 or 2) with the first reason given, and one record per asked round.
     `row_of` renders the whole listing row including its label; `prompt_of` wraps a listing.
@@ -281,7 +311,9 @@ def vote_blocks(
     reusable = bank if identity is not None else None
     rows = _banked_rows(reusable, row_key)
     names_of = (
-        _row_names(items, row_key, identity, max_tokens, answer_key) if rows is not None else {}
+        _row_names(items, row_key, identity, max_tokens, answer_key, rows_version)
+        if rows is not None
+        else {}
     )
     banked = _rows_from_bank(rows, names_of) if rows else {}
     pending = _pack_blocks(
@@ -293,6 +325,7 @@ def vote_blocks(
         identity=identity,
         max_tokens=max_tokens,
         answer_key=answer_key,
+        rows_version=rows_version,
     )
 
     def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
@@ -479,10 +512,13 @@ def judge_standing(
     bank: MutableMapping[str, dict] | None = None,
     save: Callable[[], None] | None = None,
     model_identity: str | None = None,
+    motion_identity: str = "",
 ) -> dict[str, tuple[int, str]]:
     """Does each picture stand by itself? Reject-only: the model names the weak ones. Score per asset
-    id: 2 = named by neither order, 1 = by one, 0 = by both."""
+    id: 2 = named by neither order, 1 = by one, 0 = by both. `motion_identity` names the seat
+    whose sentences a moving picture's row carries, so its rows expire with it."""
     label_of = {a: f"P{i + 1:02d}" for i, a in enumerate(pictures)}
+    version = standing_pass_version(motion_identity)
 
     def prompt_of(listing: str) -> str:
         # Pictures last: see judge_worthiness.prompt_of (#981).
@@ -495,17 +531,11 @@ def judge_standing(
 
     def bank_key(block: Sequence[str]) -> str:
         return hashlib.sha256(
-            (
-                STANDING_PROMPT_VERSION
-                + "|"
-                + contract[:64]
-                + "|"
-                + "|".join(line_of(a) for a in block)
-            ).encode()
+            (version + "|" + contract[:64] + "|" + "|".join(line_of(a) for a in block)).encode()
         ).hexdigest()
 
     # One picture's own question: the whole prompt except the company it was offered in.
-    question = STANDING_PROMPT_VERSION + "|" + prompt_of("") + "|"
+    question = version + "|" + prompt_of("") + "|"
 
     def row_key(asset: str) -> str:
         return hashlib.sha256((question + line_of(asset)).encode()).hexdigest()
@@ -524,5 +554,6 @@ def judge_standing(
         max_tokens=700,
         model_identity=model_identity,
         row_key=row_key,
+        rows_version=version,
     )
     return {a: (2 - n, why) for a, (n, why) in rejections.items()}

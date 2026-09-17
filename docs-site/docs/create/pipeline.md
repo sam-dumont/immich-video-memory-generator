@@ -156,6 +156,16 @@ holds both a still and a video of the same instant, the video takes the frame un
 claims it: a video carries no sharpness measurement, so on a tie of everything else it used to lose
 to any still in the group.
 
+**The standing gate reads a video as a video.** The gate asks, of each candidate picture, whether it
+would stand on its own. A video used to arrive on that list looking like a still, described by
+whatever its one line said, and a real share of the videos that got that far were named weak: 9 of
+them in a 600-second year, 12 in a film spanning two and a half years. A moving row now says what it
+is, how long the source runs, whether anyone speaks in it, and what happens across it, taken from
+the one motion sentence preparation banked. The criterion tells the reader to judge that, not
+whether one frame would make a good photograph. Standing votes are banked per picture, so the bank
+key carries the caption seat that wrote those sentences: a different seat writes different rows and
+its predecessor's verdicts are not replayed against them.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 
@@ -298,7 +308,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
