@@ -36,8 +36,11 @@ mapped onto each hardware encoder's own scale.
 Use `landscape`, `portrait` or `square` to set the canvas yourself. Orientation changes rendering
 only; it does not change which pictures or video intervals are selected.
 
-Opening titles name the people or the occasion, never the query that produced them. `--title` and
-`--subtitle` override all of it. See [titles](../titles-and-music.md).
+Opening titles name the people or the occasion, never the query that produced them. A people or
+occasion memory is named by the model as soon as a reader is configured, from the family record and
+the facts the run already holds; `--llm-title` extends that to trips, and `--no-llm-title` pins the
+template, which is what a comparison run across months wants. `--title` and `--subtitle` override
+all of it. See [titles](../titles-and-music.md).
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile on every knob you did not set.
