@@ -35,7 +35,7 @@ def source_fingerprint(
     # WHY: the key is hashed to scope the cache without persisting the secret;
     # nothing here verifies a password, so stretch cost buys nothing.
     credential_digest = (
-        hashlib.sha256(api_key.encode()).hexdigest()  # codeql[python/weak-sensitive-data-hashing]
+        hashlib.sha256(api_key.encode()).hexdigest()  # codeql[py/weak-sensitive-data-hashing]
     )
     identity = {
         "schema_version": _SCHEMA_VERSION,

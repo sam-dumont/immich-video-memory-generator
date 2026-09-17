@@ -88,8 +88,8 @@ class RenderJobs:
         # ever storing or logging the scoped key; it is an identity fingerprint,
         # not password storage.
         material["immich"]["api_key"] = hashlib.sha256(
-            request.immich.api_key.get_secret_value().encode()
-        ).hexdigest()  # codeql[python/weak-sensitive-data-hashing]
+            request.immich.api_key.get_secret_value().encode()  # codeql[py/weak-sensitive-data-hashing]
+        ).hexdigest()
         fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
         status, fresh = self.store.admit(
             JobStatus(
