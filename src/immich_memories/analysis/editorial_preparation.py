@@ -22,6 +22,16 @@ from immich_memories.analysis.editorial_preparation_detectors import (
     prepare_detectors,
 )
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS, prepare_heads
+from immich_memories.analysis.editorial_preparation_motion import (
+    MOTION_PRODUCER,
+    MotionSource,
+    banked_residuals,
+    missing_motion,
+    motion_sources,
+    playback_sampler,
+    prepare_motion_lines,
+    seat_asker,
+)
 from immich_memories.analysis.editorial_preparation_pixels import (
     PRODUCER_KEY,
     refresh_threshold,
@@ -70,6 +80,8 @@ class PreparationResult:
     # They are named here rather than counted as a gap in every producer that
     # depends on a preview, because no rerun of any producer can fix them.
     unservable_sources: Mapping[str, str] = field(default_factory=dict)
+    # Bytes, requests and model calls a stage paid for, where pictures are not the cost.
+    transfer_by_stage: Mapping[str, Mapping[str, int]] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -86,7 +98,7 @@ class PreparationResult:
         return tuple(
             reason
             for key, reason in sorted(self.failures.items())
-            if not key.startswith(("preview:", "pixel:", "caption:"))
+            if not key.startswith(("preview:", "pixel:", "caption:", "motion:"))
         )
 
     def stage_rates(self) -> dict[str, float]:
@@ -118,6 +130,7 @@ class PreparationPorts:
     captions: Callable = prepare_captions
     heads: Callable = prepare_heads
     detectors: Callable = prepare_detectors
+    motion: Callable = prepare_motion_lines
 
 
 PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
@@ -204,6 +217,10 @@ class _Acquisition:
     seconds: dict[str, float] = field(default_factory=dict)
     pictures: dict[str, int] = field(default_factory=dict)
     service_seconds: dict[str, float] = field(default_factory=dict)
+    transfer: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def transfers(self) -> dict[str, dict[str, int]]:
+        return {stage: counts.copy() for stage, counts in self.transfer.items()}
 
     @contextmanager
     def timed(self, stage: str, pictures: int) -> Iterator[None]:
@@ -353,6 +370,42 @@ class _Acquisition:
                 f"{type(exc).__name__}: {exc}; configure caption_base_url with the compact-v3 public model endpoint"
             )
 
+    def motion(
+        self,
+        connection: sqlite3.Connection,
+        sources: Sequence[MotionSource],
+        read_playback: Callable[[str, int, int], tuple[bytes, int]],
+    ) -> None:
+        self.check()
+        config = self.preparation_config
+        try:
+            with self.timed("motion", len(sources)):
+                outcome = self.providers.motion(
+                    connection=connection,
+                    sources=tuple(sources),
+                    sample=playback_sampler(read_playback),
+                    ask=seat_asker(
+                        config.caption_base_url,
+                        api_key=config.caption_api_key,
+                        timeout=config.caption_timeout_seconds,
+                    ),
+                    concurrency=config.caption_concurrency,
+                    check_cancelled=self.check,
+                    progress=self.report,
+                )
+        except PermissionError as exc:
+            self.failures["motion"] = str(exc)
+            return
+        except Exception as exc:
+            self.failures["motion"] = f"{type(exc).__name__}: {exc}"
+            return
+        self.failures.update({f"motion:{key}": value for key, value in outcome.failures.items()})
+        self.transfer["motion"] = {
+            "bytes": outcome.bytes_read,
+            "requests": outcome.requests,
+            "seat_calls": outcome.seat_calls,
+        }
+
 
 def prepare_editorial_annotations(
     *,
@@ -370,6 +423,7 @@ def prepare_editorial_annotations(
     on_asset: Callable[[str], None] | None = None,
     check_cancelled: Callable[[], None] | None = None,
     ports: PreparationPorts | None = None,
+    read_playback: Callable[[str, int, int], tuple[bytes, int]] | None = None,
 ) -> PreparationResult:
     """Prepare the full source, never only the duration-limited selection demand.
 
@@ -378,7 +432,8 @@ def prepare_editorial_annotations(
     ThumbnailCache or its directory; successful fetches use the same native disk
     layout. ``on_asset`` is told the ID of each picture this pass finishes, so a
     surface watching a long stage can show them; it is never told about one
-    whose preview could not be read.
+    whose preview could not be read. ``read_playback`` answers a byte range of a video's
+    playback rendition with its full size; without it no motion line is produced.
     """
     cache_path = Path(getattr(thumbnail_cache, "cache_dir", thumbnail_cache))
     store_path = Path(store_path)
@@ -439,8 +494,13 @@ def prepare_editorial_annotations(
             _acquire_captions(
                 stage, connection, pending(f"description:{description_model}"), description_model
             )
+        motion = _MotionScope(
+            source, store_path, read_playback, demanded=preparation_config.demands_captions
+        )
+        motion.acquire(stage, connection, before)
         stage.check()
         after, _unavailable = outstanding()
+        motion.report(connection, after)
         produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
         # A source the server will not serve is not a gap any producer can close,
         # so it leaves the run by name instead of being counted as one missing
@@ -462,7 +522,44 @@ def prepare_editorial_annotations(
             if preparation_config.demands_captions
             else {},
             unservable_sources=dict(sorted(stage.unservable.items())),
+            transfer_by_stage=stage.transfers(),
         )
+
+
+class _MotionScope:
+    """The videos this pass owes a motion line: true videos, and Live Photos that play.
+
+    Nothing is owed without a playback reader, or when the tier has no caption seat.
+    """
+
+    key = f"motion:{MOTION_PRODUCER}"
+
+    def __init__(
+        self,
+        assets: Sequence[Asset],
+        store_path: Path,
+        read_playback: Callable[[str, int, int], tuple[bytes, int]] | None,
+        *,
+        demanded: bool,
+    ) -> None:
+        # The demanded-motion bank lives beside the structure banks, where the resolver writes it.
+        bank = store_path.parent / "structure-banks" / "demanded-motion.sqlite"
+        self._read_playback = read_playback
+        self._sources = (
+            motion_sources(assets, residual_of=banked_residuals(bank))
+            if read_playback and demanded
+            else ()
+        )
+
+    def acquire(self, stage: _Acquisition, connection: sqlite3.Connection, before: dict) -> None:
+        owed = missing_motion(connection, self._sources) if self._sources else ()
+        if owed and self._read_playback is not None:
+            before[self.key] = tuple(source.asset_id for source in owed)
+            stage.motion(connection, owed, self._read_playback)
+
+    def report(self, connection: sqlite3.Connection, after: dict) -> None:
+        if self._sources and (owed := missing_motion(connection, self._sources)):
+            after[self.key] = tuple(source.asset_id for source in owed)
 
 
 def _without(
@@ -480,7 +577,7 @@ def _demanded_producers(
     """Whether a producer key was asked for at all, so an absence can be named or ignored."""
 
     def demanded(key: str) -> bool:
-        if key.startswith("description:"):
+        if key.startswith(("description:", "motion:")):
             return preparation_config.demands_captions
         if key.startswith("head:"):
             return preparation_config.demands_models

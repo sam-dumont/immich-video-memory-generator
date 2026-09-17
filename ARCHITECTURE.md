@@ -125,10 +125,12 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_render.py`: local source preparation/assembly or configured worker handoff
-- `processing/remote_render.py`: authenticated jobs, bounded polling and local output validation
+- `processing/remote_render.py`: authenticated jobs, bounded polling, a SHA-256-checked download,
+  and a staged film that reuses the worker's decode when the bytes match
 - `processing/remote_render_plan.py`: frozen cut serialization, including certified Live material
 - `generate_timeline.py`: final-duration validation and content budget guards
 - `generate_delivery.py`: Immich upload of a finished artifact + delivered/pending/failed run state
+- `delivery_timestamp.py`: the capture instant a film is filed under, and the container tags carrying it
 
 ## Package Structure
 
@@ -167,7 +169,8 @@ src/immich_memories/
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
-│   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts
+│   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
+│   │                               # motion lines (one caption-seat sentence per video, read by the pick)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
@@ -181,7 +184,8 @@ src/immich_memories/
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
 │   ├── progress.py             # ProgressTracker: the run clock the stage reporter reads
-│   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
+│   ├── trip_detection.py       # GPS-based trip detection (clustering, injected geocoder)
+│   ├── place_name_cache.py     # Localised names for the places one cut shows, one ask each
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
 │   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
@@ -221,7 +225,7 @@ src/immich_memories/
 │   ├── probe_cache.py          # ProbeCache: run-scoped normalized source probing (injected into FFmpegProber)
 │   ├── encoding_plan.py        # EncodingPlan / resolve_encoding_plan(): immutable output encoding contract
 │   ├── output_canvas.py        # Resolve the single pixel canvas used by one run
-│   ├── output_contract.py      # probe/validate/atomically publish finished video artifacts
+│   ├── output_contract.py      # metadata probe, render-bounded full decode check, atomic publish
 │   ├── timeline_budget.py      # plan_timeline(): pure planning of content + title-screen timeline
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
 │   ├── title_background_renderer.py # TitleBackgroundRenderer: pre-renders the clip a title reveals into
@@ -230,6 +234,7 @@ src/immich_memories/
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
 │   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
 │   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
+│   ├── playback_keyframes.py   # A playback's index and a few keyframes by byte range, decoded from a sparse copy
 │   ├── frame_preview.py        # Frame extraction for previews
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
 │   ├── scaling_utilities.py    # Resolution, aspect ratio, smart crop
@@ -409,6 +414,7 @@ src/immich_memories/
 │
 ├── store/                      # The annotation store: every banked fact and reading
 │   ├── caption_provenance.py   # What served each caption (served /models row + control digest), grouped
+│   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest
 │                               # (annotations.sqlite; see docs/research for the design)
 │
 ├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads
@@ -468,6 +474,7 @@ src/immich_memories/
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
 ├── generate_delivery.py        # Immich upload + delivered/pending/failed run state
+├── delivery_timestamp.py       # The day a memory is filed under: its last picture, in the zone most share
 ├── generate_downloads.py       # Parallel asset downloads
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
@@ -480,6 +487,7 @@ src/immich_memories/
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization
+├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check
@@ -579,7 +587,8 @@ clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it
 versioned job API. `admission.py` names a job after its cut (`memory_key` plus
 the binding digest) and refuses an envelope that drifted from the binding it
 carries, before any byte is fetched. `jobs.py` serializes GPU work, validates
-artifacts, enforces the job deadline and sweeps scratch at boot; `store.py`
+artifacts (one decode per film, reused when the renderer already decoded it),
+records the film's SHA-256 and sends it as `Repr-Digest`, enforces the job deadline and sweeps scratch at boot; `store.py`
 keeps atomic job transitions behind a repository contract ready for a future
 PostgreSQL implementation, with a per-job JSON record so a restart can say a
 render died with its process. `native.py` and `native_plan.py` adapt selected

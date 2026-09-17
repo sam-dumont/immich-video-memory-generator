@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.delivery_timestamp import capture_metadata_args
 from immich_memories.processing.ffmpeg_runner import (
     ffmpeg_error_excerpt,
     ffmpeg_exit_reason,
@@ -16,6 +17,8 @@ from immich_memories.processing.ffmpeg_runner import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.probe_cache import ProbeCache
 
@@ -487,6 +490,7 @@ def mux_video_audio(
     video_path: Path,
     audio_path: Path,
     output_path: Path,
+    captured_at: datetime | None = None,
 ) -> None:
     """Mux video and audio streams into final output.
 
@@ -494,6 +498,9 @@ def mux_video_audio(
     mux step adds ~200ms of priming sample drift (encoder-dependent), which
     would require a hardware-specific offset to compensate. Stream copy
     preserves the exact timing from the filter graph.
+
+    ``captured_at`` stamps the container with when the memory happened, so a
+    server reading the file's own metadata agrees with the upload fields.
     """
     cmd = [
         "ffmpeg",
@@ -506,8 +513,9 @@ def mux_video_audio(
         "copy",
         "-c:a",
         "copy",
+        *capture_metadata_args(captured_at),
         "-movflags",
-        "+faststart",
+        "+faststart+use_metadata_tags",
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # noqa: S603, S607

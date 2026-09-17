@@ -22,7 +22,7 @@ Hardware encoders (Quick Sync, VAAPI, NVENC) only change the render; none of the
 On a cluster, set `advanced.inference.facts_concurrency` with it. It is 8 by default and the app
 keeps that many `/facts` requests in flight. At 1, which is what the client used to do, a Job
 against a T1000 on `no_captions` spent 42.7 minutes on 3,709 pictures: 0.69 s each, the same rate
-a 133-picture scope got, so the wait was the round trip and not the card. A 13,552-picture month
+a 133-picture scope got, so the wait was the round trip and not the card. A 13,552-picture year
 would have cost 2.6 hours of facts before anything was selected. Match it to the service's
 `REQUEST_THREADS` and give the pod the CPU for them. `prepare` prints what each side spent: the
 `remote_facts` row carries the app's wall clock and a `service s/pic` column beside it.
@@ -53,15 +53,19 @@ only a preview check.
 
 ### What each tier costs to prepare
 
-Cold, one cell each, February 2024, 13,552 pictures:
+Cold, one cell each, over the year 2024: 13,552 pictures. The cells asked `prepare` for February,
+but `prepare` dropped `--month` and prepared the whole calendar year until
+[#1054](https://github.com/sam-dumont/immich-video-memory-generator/issues/1054), so every total
+below is a year. That still gives a fair idea of the scale. `prepare --month` now prepares only
+that month, so a month costs its own picture count times the same per-picture rate.
 
-| Host | Tier | Per picture | The month |
+| Host | Tier | Per picture | The year 2024 (13,552 pictures) |
 |---|---|---:|---|
 | Mac M5 Max, facts in process | `full` | 0.2336 s | 53 min, measured |
 | Mac M5 Max, same work, second cache | `full` | 0.3566 s | 81 min, measured |
 | Cluster pod, facts on a GPU service | `no_captions` | 0.2445 s | 64 min, measured |
-| NAS, facts in process | `no_captions` | 1.4404 s | 5 h 25 min, multiplied out from the fixture month |
-| NAS, facts on a cluster service | `no_captions` | 1.0865 s | 4 h 5 min, multiplied out from the fixture month |
+| NAS, facts in process | `no_captions` | 1.4404 s | 5 h 25 min, the fixture month's rate multiplied out |
+| NAS, facts on a cluster service | `no_captions` | 1.0865 s | 4 h 5 min, the fixture month's rate multiplied out |
 
 None of those rows is `full` on a slow box. A caption on four Celeron cores measured 30.9 s, so ten
 thousand pictures is about four days, and no NAS cell in the matrix was set to `full`:
@@ -154,10 +158,10 @@ and its phase split is on [the hardware overview](./hardware.md#what-the-card-is
 the NVENC cell's film came back truncated on copy-out, so its duration is blank and its render
 second is the one to read.
 
-### A real month: 13,552 pictures, February 2024
+### A real month: February 2024
 
-13,552 pictures in the month, 15 kept in every cell that finished. Eligible candidates after the
-scope pass: **1,417 on the Mac and 1,418 on the cluster**. That one picture is a real difference in
+15 pictures kept in every cell that finished. Eligible candidates after the scope pass: **1,417 on
+the Mac and 1,418 on the cluster**. That one picture is a real difference in
 what the two hosts let through, not a rounding artifact, and it is worth knowing before you compare
 two cuts made on two machines and wonder why they are not identical.
 
@@ -166,6 +170,10 @@ two cuts made on two machines and wonder why they are not identical.
      selection timing.selection_s, render timing.render_s, film video.duration_s,
      kept len(selected_asset_ids), overlap overlap_vs_cell_1 against reference_cell mac-local.
      Picture count is cells[].prepared.pictures, candidates cells[].eligible. -->
+
+The cut read February. The two prepare columns did not: they are the whole of 2024, 13,552
+pictures, for the reason [above](#what-each-tier-costs-to-prepare). Selection and render are
+February's.
 
 | Setup | Tier | Prepare cold | Prepare warm | Selection | Render | Film | Kept | Overlap |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -179,15 +187,16 @@ The cluster row cost EUR 0.143 at list price for its reader, 112 calls and 40 pi
 
 **The NAS never ran this month.** Setup got as far as pushing a config to the box and the lane was
 stopped, because the arithmetic said what it would cost: the fixture month measured that NAS at
-1.4404 s per picture on `no_captions`, and 13,552 pictures at that rate is 19,520 s, 5 h 25 min,
-before a single picture is read or a frame encoded. That figure is a rate multiplied by a count,
+1.4404 s per picture on `no_captions`, and the 13,552 pictures of 2024 the other cells prepared come
+to 19,520 s at that rate, 5 h 25 min, before a single picture is read or a frame encoded. That figure is a rate multiplied by a count,
 not a wall clock anyone waited through. The NAS render below is a fixture-month measurement and the
 only NAS render number that exists.
 
 ### What a first run costs, end to end
 
 Three walk-throughs of the same real month, each a **sum** of the measured phases of one cell:
-preparation, selection and render were timed separately and added. Nothing here is a single
+preparation, selection and render were timed separately and added. The preparation in each sum is
+the whole year, 13,552 pictures, and the selection and render are February's. Nothing here is a single
 stopwatch over the whole thing. The totals are in
 [the configuration table](#the-three-configurations-that-ran-a-real-month); what follows is where
 each one's time went.
@@ -195,7 +204,7 @@ each one's time went.
 **Mac, local reader, `full` tier.** 61 % of the preparation is captions, one 400 px tile per picture
 to the caption server. The two detectors took 540 s of the rest, the encoder and its six heads 300 s,
 previews 240 s, pixels 120 s. Every second of that is a one-off: the second memory over the same
-month prepares in 1 s, so a repeat run is almost all reader. The rules cell paid 4,860 s for the same
+year prepares in 1 s, so a repeat run is almost all reader. The rules cell paid 4,860 s for the same
 preparation in its own cache, so the same work on the same host measured 53 min once and 81 min the
 other time.
 
@@ -204,10 +213,10 @@ requests at 0.2445 s a picture, with the classifiers on a T1000 behind the servi
 rules reader for a hosted one adds 31 min of reading and EUR 0.143 of tokens per cut.
 
 **NAS on compose, `no_captions`.** Not run on this month, and the honest version is arithmetic
-rather than a measurement: preparation on the fixture month cost 1.4404 s a picture, so 13,552
-pictures **multiplies out** to 5 h 25 min. The render is the part a warm cache never helps, 1,483 s
+rather than a measurement: preparation on the fixture month cost 1.4404 s a picture, so the
+13,552-picture year **multiplies out** to 5 h 25 min. The render is the part a warm cache never helps, 1,483 s
 for a 54-second film on four Celeron cores against 81 s for the same length on the Mac, so a first
-NAS run over a month that size is most of a night and every run after it is about 25 min of render.
+NAS run over a year that size is most of a night and every run after it is about 25 min of render.
 Moving the picture facts to a cluster service took that box from 1.4404 to 1.0865 s a picture on the
 fixture month, a 25 % cut and not a rescue.
 
@@ -244,8 +253,8 @@ What is a measurement here and what is not:
   encoder rows below.
 - **Summed** from measured phases: the end-to-end walk-throughs. Preparation, selection and render
   were timed separately, in that order, and added.
-- **Multiplied out** from a measured rate: the NAS on February, at 1.4404 s a picture over 13,552
-  pictures. Nobody sat through it.
+- **Multiplied out** from a measured rate: the NAS over the year the February cells prepared, at
+  1.4404 s a picture over 13,552 pictures. Nobody sat through it.
 - **Never run**: every `no_captions` and `metadata_only` cell on the Mac, and `metadata_only`
   anywhere. The matrix has no `metadata_only` cell at all; the `metadata_only` seconds further up
   this page come from an earlier benchmark on the same NAS, not from these runs.
@@ -335,7 +344,7 @@ flowchart LR
 
 The only line that leaves your network is the hosted reader's.
 
-| Configuration | Hardware | First run over a 13,552-picture month | Every run after | What the cut carries | Tokens at list |
+| Configuration | Hardware | First run: 2024 prepared (13,552 pictures), February cut | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|
 | Mac, everything local | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 1 h 14 min | 21 min | a story thesis and a written reason under each picture. The reference cut | nothing |
 | Cluster, rules reader | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 10 min | 6 min | dates, places, favourites, known people and classifier facts. No thesis, no reason, no custom subjects. 25 % overlap with the reference cut | nothing |

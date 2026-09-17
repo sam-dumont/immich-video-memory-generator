@@ -193,3 +193,52 @@ def test_local_replacement_cannot_lose_another_sampled_relationship():
 
     assert {1, 2, 3, 12} <= set(keys(selected))
     assert len(selected) == 6
+
+
+def test_a_moment_that_plays_is_taken_before_an_equivalent_still():
+    """Twelve moments, a grant of one: six fit. The three videos are all kept, the stars first."""
+    moving = {4, 9, 11}
+    selected = shortlist_story_moments(
+        choices(12),
+        1,
+        starred=lambda c: int(c.key) == 2,
+        life=lambda _asset: True,
+        plays=lambda c: int(c.key) in moving,
+    )
+
+    assert set(keys(selected)) >= moving | {2}
+    assert len(selected) == 6
+    assert keys(selected) == sorted(keys(selected))  # the shortlist stays chronological
+
+
+def test_without_moving_moments_the_sample_is_unchanged():
+    pool = choices(12)
+    assert keys(shortlist(pool)) == keys(
+        shortlist_story_moments(
+            pool, 1, starred=lambda _c: False, life=lambda _a: True, plays=lambda _c: False
+        )
+    )
+
+
+def test_a_video_behind_a_still_keeps_its_capture_group_in_the_sample():
+    """The inventory can only find the video moment inside a group the shortlist kept."""
+    from immich_memories.analysis.editorial_story_carriers import shortlist_by_partition
+    from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+
+    pool = choices(12)
+    pool[1].alternatives = ["clip-2"]  # the second group's still leads, its video follows
+    units = {
+        c.primary: ("", {"kind": "still", "taken": c.taken, "moment": c.key}) for c in pool
+    } | {"clip-2": ("", {"kind": "video", "taken": pool[1].taken, "moment": "2"})}
+
+    selected = shortlist_by_partition(
+        pool,
+        {None: 1},
+        PartitionedSlots(units),
+        units,
+        starred=lambda _c: False,
+        life=lambda _asset: False,
+        kind_of=lambda _c: "",
+    )
+
+    assert 2 in keys(selected)

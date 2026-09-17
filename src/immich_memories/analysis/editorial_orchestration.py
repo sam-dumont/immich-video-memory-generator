@@ -27,7 +27,6 @@ from immich_memories.analysis.selection_source import (
     prepare_editorial_source,
 )
 from immich_memories.analysis.selection_source_groups import (
-    EditorialGroup,
     EditorialGroupProjection,
     project_episode_groups,
     project_moment_groups,
@@ -139,7 +138,6 @@ class TextEditorialPlanner:
         *,
         prepared: PreparedEditorialSource,
         trace: Trace,
-        verified_segments: bool = True,
         on_stage: Callable[[StageUpdate], None] | None = None,
     ) -> EditorialPlan:
         """Read the same canonical groups from an already prepared source."""
@@ -152,9 +150,6 @@ class TextEditorialPlanner:
                 trace,
                 f"canonical source omitted {len(missing_demand)} demanded asset(s)",
             )
-        if verified_segments:
-            prepared = _with_planning_segments(prepared, candidates)
-
         episode_projections = project_episode_groups(prepared, demanded_ids)
         episode_reader = self._episode_reader_factory(prepared)
         episodes = self._read_episodes(
@@ -316,38 +311,6 @@ def _record_warnings(trace: Trace, warnings: tuple[str, ...]) -> None:
     for warning in warnings:
         if warning not in trace.warnings:
             trace.warnings.append(warning)
-
-
-def _with_planning_segments(
-    prepared: PreparedEditorialSource,
-    candidates: tuple[ClipWithSegment, ...],
-) -> PreparedEditorialSource:
-    """Overlay verified run timing without changing canonical grouping or evidence."""
-    segments = {
-        candidate.clip.asset.id: (candidate.start_time, candidate.end_time)
-        for candidate in candidates
-    }
-    by_id = {
-        candidate.asset_id: (
-            replace(candidate, proposed_segment=segments[candidate.asset_id])
-            if candidate.asset_id in segments
-            else candidate
-        )
-        for candidate in prepared.candidates
-    }
-
-    def group_with_timing(group: EditorialGroup) -> EditorialGroup:
-        return EditorialGroup(
-            group_id=group.group_id,
-            candidates=tuple(by_id[candidate.asset_id] for candidate in group.candidates),
-        )
-
-    return replace(
-        prepared,
-        candidates=tuple(by_id[candidate.asset_id] for candidate in prepared.candidates),
-        episode_groups=tuple(group_with_timing(group) for group in prepared.episode_groups),
-        moment_groups=tuple(group_with_timing(group) for group in prepared.moment_groups),
-    )
 
 
 def _unavailable(trace: Trace, reason: str) -> EditorialPlan:

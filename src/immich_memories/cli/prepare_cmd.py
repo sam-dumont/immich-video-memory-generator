@@ -80,6 +80,7 @@ def _run_preparation(client, config: Config, assets) -> tuple[ProducerClock, Pre
         description_model=config.editorial.description_model,
         pixel_producer_key=config.editorial.pixel_producer_key,
         fetch_preview=lambda asset_id: client.get_asset_thumbnail(asset_id, size="preview"),
+        read_playback=client.get_video_playback_range,
         progress=clock.report,
     )
     return clock, result
@@ -96,6 +97,12 @@ def _print_outcome(
         service_seconds=result.service_seconds_by_stage,
     ):
         console.print(line, highlight=False)
+    if motion := result.transfer_by_stage.get("motion"):
+        console.print(
+            f"  motion lines: {motion['requests']:,} playback range requests, "
+            f"{motion['bytes'] / 1e6:,.1f} MB read, {motion['seat_calls']:,} caption-seat calls",
+            highlight=False,
+        )
     if result.failures:
         print_error(f"{len(result.failures)} producer failures; the first few:")
         for key, detail in list(result.failures.items())[:5]:

@@ -42,7 +42,6 @@ def candidate(asset_id: str, *, minutes: int = 0) -> EditorialCandidate:
         rendering_family_id=None,
         favourite=False,
         source=make_asset(asset_id, file_created_at=CAPTURED + timedelta(minutes=minutes)),
-        proposed_segment=None,
         shippable_duration=0.0,
         grounded_annotations=(),
     )

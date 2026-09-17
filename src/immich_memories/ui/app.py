@@ -615,7 +615,7 @@ def _is_port_free(host: str, port: int) -> bool:
 
 def main(
     port: int = 8080,
-    host: str = "0.0.0.0",  # noqa: S104
+    host: str = "127.0.0.1",
     reload: bool = False,
     log_level: str | None = None,
 ) -> None:

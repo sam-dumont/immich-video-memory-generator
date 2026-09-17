@@ -240,9 +240,7 @@ class ProductionPostCardBackend:
             pairs=sampled_pairs,
             resources=resources,
         )
-        story_motion = production_story_motion(
-            source, cache_path=self._store_path, trace=trace, resources=resources
-        )
+        story_motion = production_story_motion(source, cache_path=self._store_path)
         return StructurePlannerPorts(
             judge=StructureTextJudge(
                 self._config, source.artifact_dir, cache_path=self._store_path

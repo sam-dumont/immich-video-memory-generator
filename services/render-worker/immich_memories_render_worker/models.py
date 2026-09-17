@@ -169,6 +169,9 @@ class JobStatus(Contract):
     encoder: str | None = None
     encoding_plan: dict | None = None
     probe: dict | None = None
+    # Sent as Repr-Digest with the film; with it, the app skips its own decode
+    # of bytes the worker already decoded.
+    output_sha256: str | None = None
     render_metrics: dict | None = None
     music_mute_windows: list[tuple[float, float]] | None = None
     clips: tuple[dict, ...] = ()

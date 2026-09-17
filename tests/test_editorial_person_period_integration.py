@@ -51,7 +51,6 @@ def period_source(tmp_path):
                 rendering_family_id=None,
                 favourite=asset.is_favorite,
                 source=asset,
-                proposed_segment=None,
                 shippable_duration=0,
                 grounded_annotations=(),
             )

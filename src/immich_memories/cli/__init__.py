@@ -123,7 +123,7 @@ def main(
 @click.option(
     "--port", "-p", default=None, type=int, help="Port to run the UI on (default: config or 8080)"
 )
-@click.option("--host", "-h", default=None, help="Host to bind to (default: config or 0.0.0.0)")  # noqa: S104
+@click.option("--host", "-h", default=None, help="Host to bind to (default: config or 127.0.0.1)")
 @click.option(
     "--reload/--no-reload", default=False, help="Enable hot reload (for development only)"
 )
