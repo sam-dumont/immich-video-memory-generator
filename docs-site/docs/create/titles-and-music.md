@@ -133,6 +133,17 @@ renderer also knows `osm` and `topo` for the pin-and-label frames, but both are 
 `map_style` is a parameter on the renderer functions in `titles/map_renderer.py`, not a
 `title_screens` key, so a generate run always gets satellite.
 
+### Place names and the film's language
+
+Immich geocodes with GeoNames and stores English, so every city and country it hands over is
+English. Country names are translated offline (CLDR, through babel) wherever a viewer reads one:
+the trip title, the clip overlays, the map pin labels and the location cards. A French film says
+`DEUX SEMAINES À ESPAGNE`, not `À SPAIN`.
+
+City names have no offline table. They stay as Immich stored them unless `network.geocoding: true`
+lets Nominatim answer in the film's language, one request per distinct place on the cut. See
+[Network & Privacy](../deploy/configuration/network-and-privacy.md#geocoding-and-maps).
+
 ### Trip titles and classification
 
 A template gives you "TWO WEEKS IN SPAIN, SUMMER 2025". The model gives you "Sous les falaises de
