@@ -292,6 +292,9 @@ class SyncImmichClient:
     def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
         return self._run(self._async_client.album_holding_most(asset_ids, limit=limit))
 
+    def list_album_assets(self, album_id: str) -> list[dict]:
+        return self._run(self._async_client.list_album_assets(album_id))
+
     def create_album(self, name: str, description: str | None = None) -> str:
         return self._run(self._async_client.create_album(name, description))
 

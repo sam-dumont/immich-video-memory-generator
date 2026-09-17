@@ -81,6 +81,15 @@ set still hits. A warm cut therefore asks the model nothing, and its remaining m
 work after the cut. Measured, selection only, on a 60-second February 2024: 3.7 minutes cold and
 40 seconds warm. Deleting that file re-asks all of it.
 
+### After an upgrade that re-reads the episodes
+
+The episode readings are keyed by the prompt that produced them. When a release changes that prompt,
+as the one that stopped a reading from taking a name off a banner did, every banked episode is asked
+again on the first cut over its period, and so is everything read from those sentences: the month
+pages of the period account and the story decisions above them. A second cut over the same period is
+warm again. Captions, head answers and detector verdicts are keyed by their own producers and stay
+warm through it, so the preparation is never repeated.
+
 ### The preview cache scales with your library
 
 Generating a memory reads each candidate's preview several times (sharpness, the heads, the
