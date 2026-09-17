@@ -79,19 +79,21 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 # that is how OpenCV 5 landed in a release (#339/#340).
 RUN python3 -m venv /opt/uv && \
     /opt/uv/bin/pip install --no-cache-dir --require-hashes -r docker/uv-requirements.txt && \
-    /opt/uv/bin/uv export --frozen --all-extras --no-emit-project \
-        --no-emit-package immich-memories-music --no-hashes \
-        --format requirements-txt -o /constraints.txt && \
-    grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
-    mv /constraints.pins /constraints.txt
+    /opt/uv/bin/uv export --frozen --extra "${INFERENCE_EXTRA}" --no-emit-project \
+        --no-emit-package immich-memories-music \
+        --format requirements-txt -o /deps-hashes.txt
 
 RUN python3 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
 # Both detector seats are ONNX. Install exactly one runtime distribution through
 # the selected extra, constrained by the lock; never overwrite the same package
-# files by installing CPU and GPU wheels together.
-RUN pip install --no-cache-dir --constraint /constraints.txt ".[${INFERENCE_EXTRA}]" && \
+# files by installing CPU and GPU wheels together. The lock export is scoped to
+# that extra and carries the wheel hashes, so every dependency download is
+# digest-checked, not just version-pinned; the project itself installs
+# separately (--no-deps) because a local path has no hash to check.
+RUN pip install --no-cache-dir --require-hashes -r /deps-hashes.txt && \
+    pip install --no-cache-dir --no-deps ".[${INFERENCE_EXTRA}]" && \
     pip check
 
 
