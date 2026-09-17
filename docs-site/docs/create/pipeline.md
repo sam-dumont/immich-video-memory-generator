@@ -51,19 +51,34 @@ cut for drama: chronology is the one thing you can check against your own recoll
 reordered memory is subtly a lie about the day. The editorial decisions are what to include and how
 long to dwell, never when.
 
-**Favourites win their moment.** Where you have flagged a photo, nothing overrules you with a score.
-Favourites also help establish a story's importance, subject to source and audience eligibility.
+**A favourite wins its moment, not its story's slot.** Where you have flagged a photo, nothing
+overrules you with a score: a star leads the rows the pick reads, keeps a slot on the page it sits
+on, is never displaced by a replacement, and wins the frame of the moment the pick chooses. What it
+does not do is buy the moment. The editor is still asked which moments tell a story, unless that
+story offers a single moment and the grant reaches it, because a dense tail of favourites would
+otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
+source and audience eligibility.
 
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
 is ordinary family content, which keeps it from filing a bath as something worse, and the code holds
-all eight out of the cut regardless of what the model was told.
+all eight out of the cut regardless of what the model was told. The gate judges the finished cut
+rather than every picture the editor considered: one verdict per carrier, plus one for each
+replacement a refusal pulls in from the same moment.
 
 **A day's title claims only what the evidence shows.** A special day's title is checked against the
 evidence lines it was written from, and an unsupported claim is dropped rather than printed. Trip
 titles are a different path, written from dates and place names, with no such check.
+
+**An episode reading names nothing the facts do not name.** Words on a banner, a shirt, a sign, a
+screen or a poster name the thing they are printed on, never the day, the place or the event: a
+festival poster in the background of one picture does not make the weekend that festival. A name
+has to come from a fact line, and the Immich albums holding an episode's pictures are one of those
+lines. If your album calls that weekend "Summer Festival 2022", the reading may call it that too,
+and everything downstream (the period thesis, the story titles, the film title) inherits a name you
+typed rather than one the model read off a banner.
 
 **Refuse over fake.** A day the model could not name does not get a generic "Memories of June 12th"
 card: it does not render. An empty special-days catalogue produces instructions for building one,
@@ -204,18 +219,25 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | Stage | What runs | Where it can run |
 |---|---|---|
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
-| **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode. Banked per group and evidence key | the reader |
+| **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
 retries three times before failing.
 
 A cold cut pays for every picture never read and every reading of a period nobody has cut. A warm cut
-over the same period is mostly the render. There is no depth knob and no shortlist at the source:
-every eligible picture is prepared, because a picture the editor never saw is one it cannot weigh.
+over the same period is mostly the render: nothing in the period reading carries between calendar
+months, so the bank answers a month it has already read, and a monthly cut after a yearly one asks
+nothing again for that month. Measured on one reader and config, selection only: a 60-second
+February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm; a 10-minute year over
+13,500 assets cost about 990 calls and about 70 minutes cold, and 11 minutes warm. A warm run asks
+the model nothing at all, and what is left of it is the video work after the cut, playback
+downloads, motion measurement and picture review. There is no depth knob and no shortlist at the
+source: every eligible picture is prepared, because a picture the editor never saw is one it cannot
+weigh.
 The levers are putting the caption server and the reader where they are fast, preparing a library
 ahead with [`prepare`](./cli/prepare.md), and keeping the cache. If the render is
 the slow part none of that helps: that is decode, scale, blend and encode, and the levers are a
@@ -298,6 +320,11 @@ duration realisation, and a lease that tells an interrupted run from a slow one)
 stories with weights, every carrier with its reason, which is what `runs story` reads), the render
 projection, the selection trace that `runs why` reads, every model request and answer, and the
 evidence hashes per episode.
+
+The status also counts the run's model calls per stage family, under `calls_by_stage`, with how many
+of them the bank answered and how long each family took, so `jq .calls_by_stage status.private.json`
+says where one cut spent its calls. Every carrier the editor cut carries the reason it was cut, the
+timing trim included, and the selection sheet prints it.
 
 | Cache | Location | Holds |
 |---|---|---|

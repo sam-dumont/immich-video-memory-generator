@@ -21,7 +21,7 @@ you find a call that is not here,
 | `server.arcgisonline.com` (World Imagery) | only with `network.map_tiles: true`: the trip fly-over, the static trip map, the background of location cards | tile requests covering the trip area and your home base | off by default |
 | `cdn.jsdelivr.net` (Fontsource) | only with `network.font_downloads: true`: a title font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | off by default; `titles test --download-fonts` fetches on request whatever the switch says |
 | `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, a `/models` probe, and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
-| `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
+| `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names, plus the names of the Immich albums holding each episode's pictures | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `llm.base_url` | the opening title of a people or occasion memory, by default whenever a reader is configured (both the wizard and the CLI); trips only with `--llm-title` | text, no images: first names, birth dates and ages, the relationships your people file records between the people in the film, the people condition, the span, place names, the catalogue's words, the name of the Immich album most of the cut sits in, and the clip descriptions on the trip path | `--no-llm-title`, `--title` of your own, or no reader configured |
 | `api.anthropic.com` | the reader, with `provider: anthropic` and no `base_url` of your own | the same tiles and lines, to Anthropic | name a host of your own in `llm.base_url` |
 | `api.z.ai` | the reader, with `provider: zai` and no `base_url` of your own | the same tiles and lines, to z.ai | name a host of your own in `llm.base_url` |
@@ -42,7 +42,7 @@ the host does not publish one.
 
 | Seat | Setting | What it is shown |
 |---|---|---|
-| reader | `llm.base_url` | 800 px tiles, and the annotation lines beside them with the names of people and places |
+| reader | `llm.base_url` | 800 px tiles, the annotation lines beside them with the names of people and places, and the album names your library gives those pictures |
 | captioner | `editorial.preparation.caption_base_url` | 400 px tiles, no metadata, and `caption_api_key` if set |
 
 Both default to this machine. Pointing either at another host (a box on your LAN, a container, a

@@ -201,7 +201,7 @@ def _pick_prompts() -> tuple[str, str]:
 
 def _episode_read_prompts() -> tuple[str, str]:
     from immich_memories.analysis.text_episode_answers import _EpisodeRequestScope
-    from immich_memories.analysis.text_episode_reader import _prompt_for
+    from immich_memories.analysis.text_episode_prompt import EpisodePromptFacts, episode_prompt
     from immich_memories.store.episode_readings import EpisodeReadingIdentity
 
     def scope(episode_id: str, assets: tuple[str, ...]) -> _EpisodeRequestScope:
@@ -216,9 +216,10 @@ def _episode_read_prompts() -> tuple[str, str]:
         )
 
     lines = {f"a{i}": f"a picture of thing {i}" for i in range(6)}
+    facts = EpisodePromptFacts(lines=lines)
     return (
-        _prompt_for((scope("e1", ("a0", "a1")),), lines),
-        _prompt_for((scope("e2", ("a2", "a3", "a4")),), lines),
+        episode_prompt((scope("e1", ("a0", "a1")),), facts),
+        episode_prompt((scope("e2", ("a2", "a3", "a4")),), facts),
     )
 
 
