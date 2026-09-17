@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from immich_memories.analysis.special_day import ask_if_special, event_window
+from immich_memories.analysis.special_day import SpecialDay, ask_if_special, event_window
 
 # Two synthetic places, far enough apart to be different clusters.
 _CIRCUIT = (50.31, 4.66)
@@ -175,7 +175,7 @@ def test_the_catalogue_takes_the_models_window_over_the_geometric_one(monkeypatc
     # WHY: ask_if_special is the LLM call; its verdict is the input here.
     monkeypatch.setattr(
         "immich_memories.automation.special_day_scan.ask_if_special",
-        lambda *_a, **_k: SimpleNamespace(
+        lambda *_a, **_k: SpecialDay(
             special=True, title="A day out", subtitle="", what="out", window=judged
         ),
     )

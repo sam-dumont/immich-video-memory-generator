@@ -203,6 +203,13 @@ Resumes by default: years already in the catalogue are not scanned
 again, which matters for a command that runs for hours. --rescan
 starts over.
 
+A catalogue that accumulated over several releases holds rows judged by
+questions this build no longer asks. --replace re-scans the years
+between --since and --until and replaces what they hold, so a period
+can be cleaned without editing JSON by hand. It says how many rows it
+will replace before it starts, and it never touches a year outside the
+period.
+
 ```bash
 immich-memories discover-days [OPTIONS]
 ```
@@ -215,6 +222,7 @@ immich-memories discover-days [OPTIONS]
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
 | `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |
+| `--replace` | boolean | false | Re-scan --since..--until and replace every row those years already hold, dropping days that no longer qualify. Rows outside the period are kept. |
 
 ## `export-project`
 

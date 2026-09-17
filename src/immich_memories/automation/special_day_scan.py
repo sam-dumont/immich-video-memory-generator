@@ -22,11 +22,9 @@ from immich_memories.analysis.special_day import (
     active_hours,
     ask_if_special,
     candidate_days,
-    day_is_prepared,
     days_covered_by_trips,
     event_window,
     run_extent,
-    sample_across_day,
 )
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
@@ -38,12 +36,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_SIZE = 6
-
 
 @dataclass(frozen=True)
 class DiscoveredDay:
-    """A day the scan thinks is worth a memory of its own."""
+    """What the scan made of one candidate day.
+
+    Usually a day worth a memory of its own. With `judged` false it is a day
+    the scan reached and could not read: the catalogue records those so a
+    later run knows they were not simply missed, and no reader offers them.
+    """
 
     day: date
     title: str
@@ -60,6 +61,11 @@ class DiscoveredDay:
     event_id: str | None = None
     asset_ids: tuple[str, ...] = ()
     event_admission: SpecialEventAdmission | None = None
+    judged: bool = True
+    # Which scan produced this. Empty means a scan from before #1065, which
+    # stamped nothing and asked a question a pleasant afternoon answered yes to.
+    prompt_version: str = ""
+    app_version: str = ""
 
 
 def holidays_in(year: int, extra: Iterable[str] = ()) -> set[date]:
@@ -149,7 +155,6 @@ def scan_year(
     *,
     llm_config: Any,
     home: tuple[float, float] | None,
-    thumbnail_for: Any = None,
     ask: int = 6,
     extra_holidays: Iterable[str] = (),
     analysis_config: Any = None,
@@ -208,59 +213,58 @@ def scan_year(
         day_captions = {
             asset.id: captions[asset.id] for asset in items if captions and captions.get(asset.id)
         }
-        # The same gate ask_if_special applies, asked before the downloads rather
-        # than after them: a day the bank has barely touched still costs its tiles.
-        if day_is_prepared(items, day_captions):
-            verdict = ask_if_special(
-                items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
-            )
-        else:
-            thumbnails = _thumbnails_for(items, thumbnail_for)
-            verdict = ask_if_special(items, llm_config, thumbnails=thumbnails)
-        # A title, not just something written about the day. Every reader of
-        # this file falls back to `what` when the title is empty, so an entry
-        # with no title is how the day's own description — "Six images captured
-        # between 07:32 and 16:06, tracing a route from weathered apar" — ended
-        # up on a card. The ask already offers the day's place or its `what`
-        # where either can carry a title; nothing left after that means nothing
-        # truthful to call the day.
-        if not verdict.special or not verdict.title:
-            continue
-        started, ended = run_extent(items) or (None, None)
-        found.append(
-            DiscoveredDay(
-                day=day,
-                title=verdict.title,
-                subtitle=verdict.subtitle,
-                what=verdict.what,
-                photos=len(items),
-                # The model read the day's own timestamps and what was in the
-                # frames; event_window only knows where the pictures were.
-                window=verdict.window or event_window(items),
-                active_hours=active_hours(items),
-                run_start=started,
-                run_end=ended,
-            )
+        verdict = ask_if_special(
+            items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
         )
+        outcome = _day_from(day, items, verdict)
+        if outcome is not None:
+            found.append(outcome)
     return found
 
 
-def _thumbnails_for(items: list, thumbnail_for: Any) -> list[tuple[Any, bytes]]:
-    """The day's sample, each asset paired with the picture drawn for it.
+def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
+    """One candidate day's row, or nothing when there is nothing honest to write.
 
-    Paired rather than two parallel lists: a thumbnail that fails to download
-    has to take its line out of the prompt with it, or every line after it
-    describes the picture before it.
+    A title, not just something written about the day. Every reader of the
+    catalogue falls back to `what` when the title is empty, so an entry with no
+    title is how the day's own description — "Six images captured between 07:32
+    and 16:06, tracing a route from weathered apar" — ended up on a card. The
+    ask already offers the day's place or its `what` where either can carry a
+    title; nothing left after that means nothing truthful to call the day.
     """
-    if thumbnail_for is None:
-        return []
-    tiles: list[tuple[Any, bytes]] = []
-    for asset in sample_across_day(items, count=SAMPLE_SIZE):
-        try:
-            tiles.append((asset, thumbnail_for(asset.id)))
-        except Exception as exc:  # noqa: BLE001, PERF203 - one missing tile is not a failure
-            logger.debug("No thumbnail for %s: %s", asset.id, type(exc).__name__)
-    return tiles
+    from immich_memories import __version__
+    from immich_memories.analysis.special_day import PROMPT_VERSION
+
+    started, ended = run_extent(items) or (None, None)
+    if not verdict.judged:
+        return DiscoveredDay(
+            day=day,
+            title="",
+            subtitle="",
+            what="",
+            photos=len(items),
+            window=None,
+            judged=False,
+            prompt_version=PROMPT_VERSION,
+            app_version=__version__,
+        )
+    if not verdict.special or not verdict.title:
+        return None
+    return DiscoveredDay(
+        day=day,
+        title=verdict.title,
+        subtitle=verdict.subtitle,
+        what=verdict.what,
+        photos=len(items),
+        # The model read the day's own timestamps and what the lines said was
+        # in the frames; event_window only knows where the pictures were.
+        window=verdict.window or event_window(items),
+        active_hours=active_hours(items),
+        run_start=started,
+        run_end=ended,
+        prompt_version=PROMPT_VERSION,
+        app_version=__version__,
+    )
 
 
 def same_day_in(day: date, year: int) -> date:

@@ -15,8 +15,6 @@ import pytest
 
 from immich_memories.analysis.special_day import ask_if_special
 
-_VERDICT = '{"special": true, "title": "Pace and Light", "subtitle": "", "what": ""}'
-
 
 def _asset(hour: int = 10) -> SimpleNamespace:
     return SimpleNamespace(
@@ -48,27 +46,6 @@ def test_a_model_that_cannot_be_reached_is_still_quietly_not_a_verdict() -> None
         verdict = ask_if_special([_asset()], llm_config=SimpleNamespace())
 
     assert verdict.special is False
-
-
-def test_a_bug_during_the_look_stops_the_scan_too() -> None:
-    """Step one is our code as much as step two is."""
-    asset = _asset()
-
-    async def _broken(_prompt, _config, **kwargs):
-        if kwargs.get("images"):
-            raise AttributeError("'NoneType' object has no attribute 'name'")
-        return _VERDICT
-
-    # WHY: the LLM server is the external boundary; the bug is on our side of it.
-    with (
-        patch("immich_memories.analysis.llm_query.query_llm", new=_broken),
-        pytest.raises(AttributeError, match="has no attribute"),
-    ):
-        ask_if_special(
-            [asset],
-            llm_config=SimpleNamespace(thinking=True),
-            thumbnails=[(asset, b"jpeg-bytes")],
-        )
 
 
 def test_the_bug_is_logged_before_it_is_raised(caplog) -> None:
