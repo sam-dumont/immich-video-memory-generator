@@ -202,18 +202,55 @@ def test_a_run_whose_soundtrack_never_mixed_fails_verification(tmp_path):
         driver.assert_music_applied(log)
 
 
-def test_a_film_of_the_wrong_size_or_without_sound_fails_verification(tmp_path, monkeypatch):
+def _probed_as(monkeypatch, tmp_path, streams):
     film = tmp_path / "monthly.mp4"
     film.write_bytes(b"not really a film")
-    streams = [{"codec_type": "video", "width": 1280, "height": 720, "codec_name": "hevc"}]
-    probe = {"streams": streams, "format": {"duration": "61.0"}}
+    probe = {"streams": streams, "format": {"duration": "61.04"}}
     # WHY: ffprobe is the FFmpeg boundary; tmp_path holds no decodable film to read.
     monkeypatch.setattr(driver.subprocess, "check_output", lambda *_a, **_k: json.dumps(probe))
-    with pytest.raises(RuntimeError, match="not 1920x1080"):
+    return film
+
+
+@pytest.mark.parametrize(("width", "height"), [(1280, 720), (1080, 1080), (3840, 2160)])
+def test_a_film_that_is_not_1080p_fails_verification(tmp_path, monkeypatch, width, height):
+    streams = [
+        {"codec_type": "video", "width": width, "height": height, "codec_name": "hevc"},
+        {"codec_type": "audio", "codec_name": "aac"},
+    ]
+    film = _probed_as(monkeypatch, tmp_path, streams)
+    with pytest.raises(RuntimeError, match=f"is {width}x{height}, not 1920x1080 or 1080x1920"):
         driver.probe_film(film, "ffprobe")
-    streams[0].update(width=1920, height=1080)
+
+
+def test_a_film_without_sound_fails_verification(tmp_path, monkeypatch):
+    streams = [{"codec_type": "video", "width": 1920, "height": 1080, "codec_name": "hevc"}]
+    film = _probed_as(monkeypatch, tmp_path, streams)
     with pytest.raises(RuntimeError, match="no audio stream"):
         driver.probe_film(film, "ffprobe")
+
+
+@pytest.mark.parametrize(("width", "height"), [(1920, 1080), (1080, 1920)])
+def test_a_1080p_film_passes_verification_in_either_orientation(
+    tmp_path, monkeypatch, width, height
+):
+    """The recipes pin `--resolution 1080p` beside `--orientation auto`.
+
+    A phone library renders upright at 1080x1920, and the 09-17 route run marked
+    every such case failed while the films were exactly what the recipe asked for.
+    """
+    streams = [
+        {"codec_type": "video", "width": width, "height": height, "codec_name": "hevc"},
+        {"codec_type": "audio", "codec_name": "aac"},
+    ]
+    film = _probed_as(monkeypatch, tmp_path, streams)
+
+    delivered = driver.probe_film(film, "ffprobe")
+
+    assert (delivered["seconds"], delivered["codec"], delivered["audio_codec"]) == (
+        61.04,
+        "hevc",
+        "aac",
+    )
 
 
 def _collect(tmp_path, delivery, plan=None):
