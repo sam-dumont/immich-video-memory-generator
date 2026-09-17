@@ -123,6 +123,21 @@ def _check_contract(case: Case, intent: EditorialIntent) -> None:
 
 
 @dataclass(frozen=True)
+class EpisodeReadingCard:
+    """One canonical episode's banked meaning, carried on every moment it covers.
+
+    The wall row truncates the same meaning to 96 characters; this keeps the whole
+    reading and the representatives it named, so the story read never re-reads captions.
+    """
+
+    episode_id: str
+    evidence_key: str
+    what_happened: str
+    representative_asset_ids: tuple[str, ...]
+    cache_hit: bool
+
+
+@dataclass(frozen=True)
 class StructurePlanningInput:
     """All evidence is captured before planning; source IDs never enter model prompts."""
 
@@ -151,6 +166,9 @@ class StructurePlanningInput:
     # Canonical support is private context, separate from the prompt-serialized reading.
     # A cited source need not be selectable in the current request.
     period_evidence: tuple[InsightEvidence, ...] = ()
+    # The banked 90-minute episode reading behind each moment alias; the story read pages
+    # over these instead of over every caption of the period.
+    episode_readings: Mapping[str, EpisodeReadingCard] = field(default_factory=dict)
     # Attached evidence is separate from selectable primaries and canonical context.
     companion_assets: Mapping[str, Asset] = field(default_factory=dict)
     attached_outcome_replay: AttachedOutcomeReplay | None = None

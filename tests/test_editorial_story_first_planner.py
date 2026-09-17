@@ -18,7 +18,10 @@ from immich_memories.analysis.editorial_moment_wall import (
     RepresentativeEvidence,
 )
 from immich_memories.analysis.editorial_people import adapt_editorial_people
-from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
+from immich_memories.analysis.editorial_structure_contract import (
+    EpisodeReadingCard,
+    StructurePlanningInput,
+)
 from immich_memories.analysis.moment_cards import MomentCard
 from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import AssetType
@@ -119,6 +122,18 @@ def make_source(tmp_path, *, seconds=60, occasions=4, pictures=3):
         lineage={},
         bank_dir=tmp_path / "banks",
         artifact_dir=tmp_path / "plan",
+        episode_readings={
+            alias: EpisodeReadingCard(
+                episode_id=card.episode_id,
+                evidence_key=f"evidence-{card.episode_id}",
+                what_happened=(
+                    f"A walk along the canal on outing {index}, from the first view to the last."
+                ),
+                representative_asset_ids=card.representative_asset_ids,
+                cache_hit=False,
+            )
+            for index, (alias, card) in enumerate(zip(wall.aliases, cards, strict=True))
+        },
     )
 
 
@@ -608,3 +623,108 @@ def test_the_audience_reads_the_finished_cut_not_every_candidate(tmp_path):
     assert refused == ["o1-p2"]
     assert "o1-p2" not in {carrier["asset_id"] for carrier in plan["carriers"]}
     assert plan["calls_by_stage"]["shareability"]["asked"] <= len(plan["carriers"]) + len(refused)
+
+
+def test_each_moment_carries_its_episodes_banked_meaning_and_representatives():
+    """The wall truncates the episode reading to 96 characters; planning gets the whole one."""
+    from immich_memories.analysis.editorial_structure_source import episode_reading_cards
+    from immich_memories.analysis.selection_source_groups import EditorialGroupProjection
+    from immich_memories.analysis.text_episode_reader import (
+        EpisodeEditorialEvidence,
+        TextEpisodeReadResult,
+    )
+    from immich_memories.store.episode_readings import (
+        BankedEpisodeReading,
+        EpisodeReadingIdentity,
+        EpisodeRepresentative,
+    )
+
+    candidates = tuple(
+        EditorialCandidate(
+            asset_id=f"a{index}",
+            taken_at=datetime(2030, 5, 2, 8 + index, tzinfo=UTC),
+            media_kind="photo",
+            live_photo_stitch_member_ids=(),
+            rendering_family_id=None,
+            favourite=False,
+            source=make_asset(f"a{index}", duration=None),
+            proposed_segment=None,
+            shippable_duration=0,
+            grounded_annotations=(),
+        )
+        for index in range(3)
+    )
+    group = EditorialGroup("episode-read", candidates)
+    identity = EpisodeReadingIdentity("episode-read", "producer", "evidence-key")
+    reading = BankedEpisodeReading(
+        identity,
+        group.candidate_ids,
+        "A long afternoon at the canal that the wall can only show the first 96 characters of.",
+        (EpisodeRepresentative("a1", "Shows the outing"),),
+        (),
+    )
+    episodes = TextEpisodeReadResult(
+        (
+            EpisodeEditorialEvidence(
+                EditorialGroupProjection(group, group.candidate_ids), identity, reading, True, None
+            ),
+        ),
+        SimpleNamespace(),
+        (),
+        0,
+    )
+    cards = (
+        MomentCard(
+            moment_id="moment-read",
+            episode_id="episode-read",
+            full_asset_ids=group.candidate_ids,
+            selectable_asset_ids=group.candidate_ids,
+            representative_asset_ids=("a0",),
+            text="Walking by the canal",
+            evidence=MomentCardEvidence(
+                episode_meaning="A long afternoon at the canal.",
+                representatives=(RepresentativeEvidence("A view.", "Shows it."),),
+                annotations=(),
+            ),
+        ),
+        MomentCard(
+            moment_id="moment-unread",
+            episode_id="episode-unread",
+            full_asset_ids=("a2",),
+            selectable_asset_ids=("a2",),
+            representative_asset_ids=("a2",),
+            text="Later",
+            evidence=MomentCardEvidence(
+                episode_meaning="Later that day.",
+                representatives=(RepresentativeEvidence("A view.", "Shows it."),),
+                annotations=(),
+            ),
+        ),
+    )
+
+    carried = episode_reading_cards(episodes, cards, ("M001", "M002"))
+
+    assert carried["M001"].what_happened == reading.what_happened
+    assert carried["M001"].representative_asset_ids == ("a1",)
+    assert (carried["M001"].episode_id, carried["M001"].evidence_key) == (
+        "episode-read",
+        "evidence-key",
+    )
+    assert carried["M001"].cache_hit is True
+    unread = carried["M002"]
+    assert (unread.what_happened, unread.evidence_key, unread.cache_hit) == ("", "", False)
+    assert unread.representative_asset_ids == ("a2",)
+
+
+def test_the_story_read_sees_the_banked_episode_meaning_and_representatives(tmp_path):
+    """The wall row truncates the episode reading to 96 characters; the story read gets it whole."""
+    judge = StoryJudge()
+    run(make_source(tmp_path), judge)
+
+    pages = [call["prompt"] for call in judge.calls if call["stage"].startswith("story-episodes")]
+    assert pages
+    assert all(
+        "A walk along the canal on outing 0, from the first view to the last." in page
+        for page in pages[:1]
+    )
+    assert not any("People walk along the canal." in page for page in pages)

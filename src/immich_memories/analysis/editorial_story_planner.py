@@ -454,6 +454,7 @@ def select_story_first(
     partition_of: Callable[[str], str | None] | None = None,
     partition_limit: int | None = None,
     motion_line: Callable[[dict], str] | None = None,
+    episode_readings: Mapping[str, Any] | None = None,
     rules=None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
@@ -481,10 +482,12 @@ def select_story_first(
     # 1. The period story: day episodes from descriptions, then the synthesis sees each episode
     #    with the numbers and the gate's reading and groups them into weighed stories.
     evidence = story_evidence_rows(
-        factual_rows_fn(tables, aliases), sources=moment_assets, annotations={}, lines=lines
+        factual_rows_fn(tables, aliases),
+        sources=moment_assets,
+        annotations={},
+        lines=lines,
+        readings=episode_readings,
     )
-    for row in evidence:
-        row.pop("episode_context", None)  # the story must stand on descriptions alone
     read_story = rules.read_story if rules is not None else read_period_story
     story = read_story(
         judge,

@@ -15,12 +15,17 @@ from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_moment_wall import ProductionMomentWallRenderer
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
 from immich_memories.analysis.editorial_shareability import load_flags
-from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
+from immich_memories.analysis.editorial_structure_contract import (
+    EpisodeReadingCard,
+    StructurePlanningInput,
+)
 from immich_memories.api.models import Asset, VideoClipInfo
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_orchestration import TextEditorialWorkprint
     from immich_memories.analysis.editorial_people import EditorialPeople
+    from immich_memories.analysis.moment_cards import MomentCard
+    from immich_memories.analysis.text_episode_reader import TextEpisodeReadResult
     from immich_memories.config_loader import Config
 
 
@@ -51,6 +56,35 @@ def capture_companion_assets(
             raise ValueError("captured companion metadata disagrees for one source ID")
         companions[asset.id] = asset
     return companions
+
+
+def episode_reading_cards(
+    episodes: TextEpisodeReadResult,
+    cards: Sequence[MomentCard],
+    aliases: Sequence[str],
+) -> dict[str, EpisodeReadingCard]:
+    """Carry each moment's banked episode meaning and representatives under its wall alias.
+
+    An episode the reader could not read keeps the card's own representatives and an empty
+    meaning; the story read builds its factual line locally rather than losing the moment.
+    """
+    read = {evidence.projection.group.group_id: evidence for evidence in episodes.episodes}
+    carried: dict[str, EpisodeReadingCard] = {}
+    for alias, card in zip(aliases, cards, strict=True):
+        evidence = read.get(card.episode_id)
+        reading = evidence.reading if evidence is not None else None
+        carried[alias] = EpisodeReadingCard(
+            episode_id=card.episode_id,
+            evidence_key=reading.identity.evidence_key if reading is not None else "",
+            what_happened=reading.what_happened if reading is not None else "",
+            representative_asset_ids=(
+                tuple(row.asset_id for row in reading.representatives)
+                if reading is not None
+                else card.representative_asset_ids
+            ),
+            cache_hit=bool(evidence is not None and evidence.cache_hit),
+        )
+    return carried
 
 
 def capture_structure_input(
@@ -112,6 +146,7 @@ def capture_structure_input(
         shareability_flags=load_flags(store_path, {*assets, *companions}),
         motion_residuals={},
         period_evidence=insight.evidence,
+        episode_readings=episode_reading_cards(workprint.episodes, workprint.cards, wall.aliases),
         lineage={
             "period_insight": {
                 "producer_key": identity.producer_key,

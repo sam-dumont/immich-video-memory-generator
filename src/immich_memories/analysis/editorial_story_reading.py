@@ -89,25 +89,31 @@ def _merge_facts(existing, added):
     return sorted(merged.values(), key=itemgetter("taken", "reading"))
 
 
-def story_evidence_rows(moment_rows, *, sources, annotations, lines):
+def _moment_descriptions(moment, assets, annotations, lines) -> list[str]:
+    descriptions: list[str] = []
+    for asset in assets:
+        annotation = annotations.get(asset)
+        description = annotation.description if annotation is not None else lines.get(asset)
+        if description and description not in descriptions:
+            descriptions.append(description)
+    return descriptions or [
+        moment.get("evidence_1_description") or "Source description unavailable"
+    ]
+
+
+def story_evidence_rows(moment_rows, *, sources, annotations, lines, readings=None):
     """Read every distinct source caption, not the two representatives on a moment card.
 
     Identical captions within a capture group share a row. Large groups become multiple
     reading fragments; their identity is retained so paging cannot hide the tail.
+    `readings` carries the banked episode meaning, which the wall row only holds truncated.
     """
     rows = []
+    banked = readings or {}
     for moment in moment_rows:
         key = moment["moment_id"]
-        descriptions = []
-        for asset in sources.get(key, ()):
-            annotation = annotations.get(asset)
-            description = annotation.description if annotation is not None else lines.get(asset)
-            if description and description not in descriptions:
-                descriptions.append(description)
-        if not descriptions:
-            descriptions = [
-                moment.get("evidence_1_description") or "Source description unavailable"
-            ]
+        meaning = getattr(banked.get(key), "what_happened", "") or moment.get("episode_context", "")
+        descriptions = _moment_descriptions(moment, sources.get(key, ()), annotations, lines)
         for index, fragment in enumerate(pages(descriptions, max_items=24, max_chars=6500), 1):
             rows.append(
                 {
@@ -116,7 +122,7 @@ def story_evidence_rows(moment_rows, *, sources, annotations, lines):
                     "taken": moment["taken"],
                     "known_people_in_group": moment.get("people", ""),
                     "places": moment.get("places", ""),
-                    "episode_context": moment.get("episode_context", ""),
+                    "what_happened": meaning,
                     "observations": fragment,
                 }
             )
