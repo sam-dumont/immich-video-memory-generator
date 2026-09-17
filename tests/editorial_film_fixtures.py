@@ -37,6 +37,7 @@ from tests.test_editorial_story_first_planner import StoryJudge
 HOME = (45.0, 5.0, "Hometown", "Homeland")
 SEASIDE = (43.0, 9.0, "Seaside", "Farland")
 POOL = (45.02, 5.0, "Pooltown", "Homeland")
+ORCHARD = (45.2, 5.0, "Orchardville", "Homeland")
 
 
 @dataclass(frozen=True)

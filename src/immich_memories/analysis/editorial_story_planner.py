@@ -375,6 +375,19 @@ def _inventory_funded_stories(
             choices_of[key] = sorted(choices, key=lambda c: c.taken)
 
 
+def _near_home_of_moments(near_home, units: _MomentUnits, unit_by_asset):
+    """Whether most of the pictures of some moments were taken near home; None when unknown."""
+
+    def of(moments: Sequence[str]) -> bool | None:
+        if near_home is None:
+            return None
+        votes = [near_home(unit_by_asset[u["asset_id"]][0]) for u in units.of(moments)]
+        known = [vote for vote in votes if vote is not None]
+        return 2 * sum(known) >= len(known) if known else None
+
+    return of
+
+
 def _photographed_days(event_units: Mapping[str, list[dict]]) -> int:
     return len({u["taken"][:10] for units in event_units.values() for u in units})
 
@@ -457,6 +470,7 @@ def _read_the_period(
     film_span: tuple[date, date] | None,
     lines: list[str],
     calls: dict[str, int],
+    near_home: Callable[[Sequence[str]], bool | None],
 ) -> PeriodStory:
     """The weighed stories of the period, with its trips and recurring activities folded."""
     read_story = rules.read_story if rules is not None else read_period_story
@@ -480,6 +494,7 @@ def _read_the_period(
         span=film_span,
         lines=lines,
         record=record,
+        near_home=near_home,
         skip=thread_scope(rules=rules is not None, journey=journey, gapped=stories_across_gaps),
     )
     return story
@@ -520,6 +535,7 @@ def select_story_first(
     trips: FilmTrips | None = None,
     looks_alike: PairLooksAlike | None = None,
     film_span: tuple[date, date] | None = None,
+    near_home: Callable[[str], bool | None] | None = None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -531,6 +547,7 @@ def select_story_first(
     `trips` are the journeys detected in the pool; each becomes one story before the weighing.
     `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
     `film_span` is the requested period; a recurring activity is one thread per era of it.
+    `near_home(family)` says whether a happening was photographed near the home base.
     """
     calls = {
         "story_pages": 0,
@@ -578,6 +595,7 @@ def select_story_first(
         film_span=film_span,
         lines=[story_lines.get(asset, "") for asset in unit_by_asset],
         calls=calls,
+        near_home=_near_home_of_moments(near_home, units, unit_by_asset),
     )
     calls["story_pages"] = len(story.audit.get("pages") or [])
     calls["story_pages_fresh"] = (story.audit.get("reading_calls") or {}).get("fresh", 0)
@@ -698,63 +716,6 @@ def select_story_first(
         },
     )
     return selection
-
-
-def trim_to_timing_budget(
-    carriers: list[dict],
-    content_budget_of: Callable[[list[dict]], float],
-    min_seconds: float,
-    protected: frozenset[str] = frozenset(),
-) -> tuple[list[dict], list[dict]]:
-    """Drop carriers until their minimum content fits the production content budget of what remains.
-
-    The budget depends on the selection (a month divider per month shown), so it is re-resolved
-    after every drop. Drop order: the least weighed story first, and inside a story its latest
-    picture; a story's only picture goes only when no lighter story still has one. A protected
-    carrier (one the owner required) is never a victim; when only those remain the trim stops.
-    A dropped carrier carries the reason it was cut, which the selection sheet prints.
-    """
-    from immich_memories.speech.cuts import minimum_duration
-
-    kept = carriers.copy()
-    dropped: list[dict] = []
-    while kept:
-        budget = content_budget_of(kept)
-        if sum(minimum_duration(c, min_seconds) for c in kept) <= budget + 1e-6:
-            break
-        counts: dict[str, int] = {}
-        for c in kept:
-            counts[c.get("story_episode") or ""] = counts.get(c.get("story_episode") or "", 0) + 1
-        ranked = [(_drop_rank(c, counts), c) for c in kept if c["asset_id"] not in protected]
-        if not ranked:
-            break
-        best = min(rank for rank, _c in ranked)
-        if best >= 14 and len(kept) == 1:
-            break  # the dominant story's only picture stays whatever the budget says
-        victim = max(
-            (c for rank, c in ranked if rank == best), key=lambda c: c.get("taken") or ""
-        )  # latest first
-        kept.remove(victim)
-        dropped.append(
-            victim
-            | {
-                "reason": f"Cut to fit the film's {budget:.1f} s of content",
-                "review_stage": "timing-trim",
-            }
-        )
-    return kept, dropped
-
-
-_DROP_ORDER = {"none": 0, "glimpse": 1, "minor": 2, "major": 3, "dominant": 4}
-
-
-def _drop_rank(c: Mapping[str, Any], counts: Mapping[str, int]) -> int:
-    """The allocation in reverse: glimpses first, then extra pictures lightest story first,
-    then only pictures lightest story first; the dominant story's only picture last of all."""
-    weight = _DROP_ORDER.get(str(c.get("story_weight")), 0)
-    if weight <= 1:
-        return 0
-    return weight if counts[c.get("story_episode") or ""] > 1 else 10 + weight
 
 
 def alternatives_pool(

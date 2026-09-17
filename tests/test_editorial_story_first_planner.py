@@ -478,7 +478,7 @@ def test_standing_gate_is_reject_only_and_scores_by_how_often_a_picture_is_named
 
 
 def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_the_budget():
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [
         {

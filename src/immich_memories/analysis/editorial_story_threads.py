@@ -37,11 +37,12 @@ from immich_memories.analysis.editorial_story_replies import (
 )
 from immich_memories.analysis.editorial_story_weighing import story_priorities
 
-THREAD_QUESTION_VERSION = "recurring-activity-v1"
+THREAD_QUESTION_VERSION = "recurring-activity-v2"
 _WORD = re.compile(r"[^\W\d_]{4,}")
 _NAMES = re.compile(r"\| with ([^|]+)")
-# Not the activity: grammar, company, and the container nouns a title uses to say that something
-# happened without saying what ("moments", "time", "session"). The reader writes in English.
+# Not the activity: grammar, company, when and where, and the container nouns a title uses to say
+# that something happened without saying what ("moments", "life", "stay"). The reader writes in
+# English. "Early home life" is a period of the film, not something done again and again.
 _FUNCTION_WORDS = frozenset(
     {
         "about",
@@ -130,6 +131,30 @@ _FUNCTION_WORDS = frozenset(
         "sessions",
         "time",
         "times",
+        "daily",
+        "early",
+        "evening",
+        "extended",
+        "home",
+        "house",
+        "indoor",
+        "indoors",
+        "life",
+        "morning",
+        "night",
+        "outdoor",
+        "outdoors",
+        "routine",
+        "routines",
+        "stay",
+        "weekend",
+        "days",
+        "week",
+        "weeks",
+        "month",
+        "months",
+        "year",
+        "years",
     }
 )
 
@@ -177,27 +202,33 @@ def era_of(span: tuple[date, date] | None) -> Callable[[str], str]:
 class _Story:
     """What the nomination reads of one weighed story."""
 
-    def __init__(self, story, *, days, place, words, phrase) -> None:
+    def __init__(self, story, *, days, place, words, phrase, near_home) -> None:
         self.story = story
         self.key = story["key"]
         self.days = days
         self.place = place
         self.words = words
         self.phrase = phrase
+        self.near_home = near_home
+        self.name = story.get("split_from") or story["title"].strip().lower()
 
 
 class _Links:
-    """Which stories of one place and era the reader's own words connect."""
+    """Which stories of one place and era the reader's own words connect.
 
-    def __init__(self, members: Sequence[_Story], specific: set[str]) -> None:
+    Near home only an activity links two days. Away from home, the name the reader gave them
+    (one title before the consecutive-day rule split it, or the same title) links them too.
+    """
+
+    def __init__(self, members: Sequence[_Story], specific: set[str], *, away: bool) -> None:
         self.members = members
         self._specific = specific
+        self._away = away
 
     def linked(self, a: _Story, b: _Story) -> bool:
         if set(a.days) & set(b.days):
             return False
-        split = a.story.get("split_from")
-        if split and split == b.story.get("split_from"):
+        if self._away and a.name == b.name:
             return True
         if a.phrase and a.phrase == b.phrase:
             return True
@@ -221,7 +252,7 @@ class _Links:
         return groups
 
 
-def _describe(story, episode_of, hints, excluded) -> _Story:
+def _describe(story, episode_of, hints, excluded, near_home) -> _Story:
     days = sorted({str((hints.get(k) or {}).get("day") or "") for k in story["episodes"]} - {""})
     places = Counter(
         str((hints.get(k) or {}).get("place") or "").split(":", 1)[-1].strip()
@@ -236,6 +267,9 @@ def _describe(story, episode_of, hints, excluded) -> _Story:
         place=places.most_common(1)[0][0] if places else "",
         words=set().union(*map(_words, titles)) - excluded,
         phrase=phrase,
+        near_home=near_home(
+            [m for k in story["episodes"] if k in episode_of for m in episode_of[k].moments]
+        ),
     )
 
 
@@ -243,11 +277,14 @@ def _question(contract: str, span: str, rows: list[str]) -> str:
     return f"""Recurring activities in this memory. {STORY_VERSION}. {THREAD_QUESTION_VERSION}.
 {contract}
 
-The film covers {span}. The stories below happened at the same place on different days, and their
-titles share an activity. In THIS film, are some of them the same recurring activity, so that one
-picture can stand for all of them? Or are they steps worth showing apart: a first time, a change,
-progress across the film? Name each group of stories that is one recurring activity. Leave out
-every story that should stay apart; a story belongs to at most one group.
+The film covers {span}. The stories below happened at the same place on different days, and the
+reader named them alike. A recurring activity is one specific thing done there again and again: a
+swimming lesson, a sports practice, repeated visits to the same garden or playground. A period of
+life, a stay, or ordinary days that only share the place are not one activity. In THIS film, are
+some of these the same recurring activity, so that one picture can stand for all of them? Or are
+they steps worth showing apart: a first time, a change, progress across the film? Name each group
+of stories that is one recurring activity. Leave out every story that should stay apart; a story
+belongs to at most one group.
 
 Return JSON only: {{"same": [["K01", "K02"]]}} with story keys from the rows below, or {{"same": []}}.
 
@@ -325,9 +362,14 @@ def fold_threads(
     span: tuple[date, date] | None,
     lines: Iterable[str],
     record: Callable[[str, Mapping[str, Any]], None],
+    near_home: Callable[[Sequence[str]], bool | None] = lambda _moments: None,
     skip: str | None = None,
 ) -> int:
-    """Nominate, ask and fold the film's recurring activities; returns the questions asked."""
+    """Nominate, ask and fold the film's recurring activities; returns the questions asked.
+
+    `near_home(moments)` says whether a story's pictures were taken near the home base (None
+    when nothing says). The film's home place itself never holds a thread: its days are the film.
+    """
     if skip is not None:
         record("story-threads", {"version": THREAD_QUESTION_VERSION, "status": skip})
         return 0
@@ -336,33 +378,52 @@ def fold_threads(
     places = {str(h.get("place") or "").split(":", 1)[-1] for h in hints.values()}
     excluded = person_words(lines) | set().union(*map(_words, places))
     described = [
-        _describe(s, episode_of, hints, excluded)
+        _describe(s, episode_of, hints, excluded, near_home)
         for s in story.stories
         if s.get("weight") not in ("", "none") and not s.get("trip") and not s.get("joined_into")
     ]
     specific = _place_specific(described)
     era = era_of(span)
     label = f"{span[0].isoformat()} to {span[1].isoformat()}" if span else "the requested period"
-    audit: dict[str, Any] = {"version": THREAD_QUESTION_VERSION, "nominated": [], "threads": []}
+    home = _home_place(described)
+    audit: dict[str, Any] = {
+        "version": THREAD_QUESTION_VERSION,
+        "home_place": home,
+        "nominated": [],
+        "threads": [],
+    }
     asked = 0
     for (place, period), members in _by_place_and_era(described, era).items():
-        links = _Links(members, specific.get(place, set()))
+        if place == home:
+            continue
+        away = all(m.near_home is False for m in members)
+        links = _Links(members, specific.get(place, set()), away=away)
         for group in links.components():
             asked += 1
-            by_key = {m.key: m for m in group}
             confirmed = _ask(judge, contract, label, group, episode_of, asked, audit, place, period)
-            for keys in confirmed:
-                for thread in links.components([by_key[k] for k in keys]):
-                    folded = _fold(
-                        story.stories,
-                        sorted(thread, key=lambda m: story.stories.index(m.story)),
-                        period,
-                    )
-                    audit["threads"].append({"key": folded["key"]} | folded["thread"])
+            _fold_confirmed(story.stories, links, group, confirmed, period, audit)
     if audit["threads"]:
         _refresh(story)
     record("story-threads", audit)
     return asked
+
+
+def _fold_confirmed(stories, links, group, confirmed, period, audit) -> None:
+    """Each confirmed group, split again into the parts its own links connect, is one story."""
+    by_key = {m.key: m for m in group}
+    for keys in confirmed:
+        for thread in links.components([by_key[k] for k in keys]):
+            ordered = sorted(thread, key=lambda m: stories.index(m.story))
+            folded = _fold(stories, ordered, period)
+            audit["threads"].append({"key": folded["key"]} | folded["thread"])
+
+
+def _home_place(described: Sequence[_Story]) -> str:
+    """The place most stories near the home base happened at; without a home base, the place
+    most stories happened at."""
+    near = Counter(s.place for s in described if s.place and s.near_home)
+    known = near or Counter(s.place for s in described if s.place)
+    return known.most_common(1)[0][0] if known else ""
 
 
 def _place_specific(described: Sequence[_Story]) -> dict[str, set[str]]:

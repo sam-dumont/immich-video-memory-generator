@@ -188,6 +188,7 @@ src/immich_memories/
 │   ├── editorial_story_trips.py     # Detected trips become one story each, with a reserve for their length
 │   ├── editorial_story_lookalike.py # A story's further picture is refused when it repeats one it holds
 │   ├── editorial_story_depth.py     # A short film's free slots as verified-different frames inside shown moments
+│   ├── editorial_story_trim.py      # The allocation in reverse when the production budget is tighter
 │   ├── editorial_story_threads.py   # A recurring activity at one place is one story per era, if the reader agrees
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential

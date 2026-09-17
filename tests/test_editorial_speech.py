@@ -93,7 +93,7 @@ def test_speech_spanning_a_live_stitch_join_uses_the_stitched_clock():
 
 
 def test_fitting_drops_an_indivisible_utterance_instead_of_cutting_it():
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [
         {"asset_id": "speech", "seconds": 8, "speech_regions": [[0, 8]], "story_weight": "minor"},
@@ -105,7 +105,7 @@ def test_fitting_drops_an_indivisible_utterance_instead_of_cutting_it():
 
 
 def test_short_video_contributes_its_actual_duration_to_minimum_fit():
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [{"asset_id": str(i), "seconds": 2.0} for i in range(3)]
     kept, dropped = trim_to_timing_budget(carriers, lambda _: 6, 3.5)

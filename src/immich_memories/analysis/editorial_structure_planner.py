@@ -33,11 +33,8 @@ from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_lookalike import picture_pair_relation
-from immich_memories.analysis.editorial_story_planner import (
-    alternatives_pool,
-    select_story_first,
-    trim_to_timing_budget,
-)
+from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
@@ -747,6 +744,7 @@ def _story_selection(
         trips=trips,
         looks_alike=looks_alike,
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
+        near_home=_near_home_test(source, wall),
     )
 
 

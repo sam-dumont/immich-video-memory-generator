@@ -62,7 +62,7 @@ def test_the_cull_cannot_remove_a_required_picture() -> None:
 
 
 def test_the_timing_trim_never_drops_a_required_picture() -> None:
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [
         {
@@ -232,7 +232,7 @@ def test_nothing_required_leaves_the_carriers_untouched() -> None:
 
 
 def test_the_timing_trim_stops_when_only_required_pictures_remain() -> None:
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [
         {

@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from tests.editorial_film_fixtures import POOL, Day, FilmJudge, film_source
+from tests.editorial_film_fixtures import HOME, ORCHARD, POOL, Day, FilmJudge, film_source
 from tests.test_editorial_duration_planner_integration import run
 
 CHORES = [
@@ -146,3 +146,27 @@ def test_a_shared_name_is_company_not_an_activity(tmp_path):
     run(source, FilmJudge(weigh=_weigh, threads=_recorder(asked)))
 
     assert asked == []
+
+
+def _asked_about(tmp_path, where, title):
+    """Four days titled alike at `where`, among six unrelated days at home."""
+    asked = []
+    days = [Day(date(2030, 1, 7) + timedelta(days=21 * n), title, where) for n in range(4)]
+    days += [Day(date(2030, 1, 9) + timedelta(days=21 * n), CHORES[n]) for n in range(6)]
+    days.sort(key=lambda day: day.day)
+    source = film_source(tmp_path, days, seconds=40, span=(date(2030, 1, 1), date(2030, 12, 31)))
+    run(source, FilmJudge(weigh=_weigh, threads=_recorder(asked)))
+    return asked
+
+
+def test_days_at_home_are_the_film_never_a_thread(tmp_path):
+    assert _asked_about(tmp_path, HOME, "Swimming in the paddling pool") == []
+
+
+def test_near_home_a_shared_name_without_an_activity_links_nothing(tmp_path):
+    assert _asked_about(tmp_path, POOL, "Early days together at Pooltown") == []
+
+
+def test_away_from_home_the_readers_shared_name_is_enough_to_ask(tmp_path):
+    asked = _asked_about(tmp_path, ORCHARD, "Extended stay at Orchardville")
+    assert len(asked) == 1 and len(asked[0]) == 4

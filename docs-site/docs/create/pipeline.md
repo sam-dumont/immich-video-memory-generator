@@ -75,10 +75,12 @@ home base configured nothing is away from home, so there are no trip stories, an
 
 **A recurring activity is one thread, in the context of the film.** Four Saturdays at the same
 pool are not four occasions in a year's film. After the weighing, stories at the same place on
-separate days are put to the reader as a possible thread when its own words link them: it had filed
-them under one title before the consecutive-day rule split them, their titles name the same activity,
-or they share an activity word the film uses at no other place. A place alone never links two days,
-and neither does a name, a relation or a word like "moments". The reader is then asked, with the
+separate days are put to the reader as a possible thread when its own words link them. Near home
+that takes an activity: the same activity in their titles, or an activity word the film uses at no
+other place. Away from home the name the reader gave them is enough, so repeated visits to the same
+garden are asked about. The home place itself never holds a thread, because its days are the film,
+and a place alone never links two days; neither does a name, a relation, a time of day or a word
+like "moments", "life" or "stay". The reader is then asked, with the
 film's dates and contract, which of them are one recurring activity and which are steps worth showing
 apart, and a confirmed thread becomes one story with the weight of its heaviest day. A film longer
 than about 18 months is read in calendar years, and keeps one thread per year, so a child getting

@@ -143,10 +143,14 @@ whose days are not consecutive (`_broken_spans`), because a reader that folds ga
 usually folds unrelated ones. The cost was the other case: the same activity at the same place on
 separate days came back as one story per day and one picture each. After the weighing,
 `editorial_story_threads.py` nominates weighed stories of one place and one era as a group when the
-reader's own words link them: the same `split_from` title, the same activity phrase, or a shared
-title word the film uses at that place only. Names from the annotation lines, kinship words,
-English function words and container nouns ("moments", "time", "session") never link, and a place
-alone never does. One banked question per group (`recurring-activity-v1`) carries the film's dates
+reader's own words link them. Near the home base (the structure planner's 10 km test, by majority of
+a story's pictures) only an activity links: the same activity phrase, or a shared title word the film
+uses at that place only. Away from home, the reader's own name for them (one `split_from` title, or
+the same title) links too. The film's home place (the place most near-home stories happened at, or
+the most common place without a home base) never holds a thread: the first real run asked about 42
+home stories the reader had filed as one "early home life" and joined 28 days of it. Names from the
+annotation lines, kinship words, English function words, times of day and container nouns
+("moments", "life", "stay", "session") never link, and a place alone never does. One banked question per group (`recurring-activity-v2`) carries the film's dates
 and contract and asks which stories are one recurring activity and which are steps worth showing
 apart; each confirmed group, split again into its linked parts, becomes one story with the weight
 of its heaviest member, placed where its first member was. An unreadable answer keeps them apart.
