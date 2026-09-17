@@ -127,8 +127,16 @@ class TestPreflightNamesTheHosts:
         messages = [check.message for check in outside_call_checks(config)]
 
         assert len(messages) == 2
-        assert any("nominatim.openstreetmap.org" in line for line in messages)
-        assert any("server.arcgisonline.com" in line for line in messages)
+        # Exact rows, not substring probes: a bare host substring cannot stand in
+        # for a URL check (CodeQL py/incomplete-url-substring-sanitization).
+        assert (
+            "nominatim.openstreetmap.org will be contacted for trip names and "
+            "place names in the film's language"
+        ) in messages
+        assert (
+            "server.arcgisonline.com will be contacted for the trip fly-over, "
+            "the static map and location cards"
+        ) in messages
 
 
 class TestTitleFontsComeFromTheWheel:

@@ -148,6 +148,16 @@ def test_a_restart_is_distinguishable_from_an_expiry_and_from_a_stranger(tmp_pat
     assert stranger.json()["worker_started_at"]
 
 
+def test_a_job_id_cannot_name_a_directory_outside_the_worker_workspace(tmp_path):
+    service = _service(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="outside"):
+            service.directory("../../elsewhere")
+        assert service.directory(uuid4()).is_relative_to(service.root)
+    finally:
+        service.close()
+
+
 def test_boot_sweeps_a_session_a_hard_kill_left_behind(tmp_path):
     scratch = tmp_path / "render-jobs"
     scratch.mkdir(parents=True)

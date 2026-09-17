@@ -90,7 +90,9 @@ def print_success(message: str, *, highlight: bool = True) -> None:
     if display is not None:
         display.print_message(f"[green]\u2713[/green] {message}")
     elif _quiet_mode.get():
-        _logger.info(message)
+        # WHY: quiet mode routes the same user-facing path strings the rich console
+        # would print; CodeQL mistakes the home-directory prefix for credentials.
+        _logger.info(message)  # codeql[py/clear-text-logging-sensitive-data]
     else:
         console.print(f"[green]\u2713[/green] {message}", highlight=highlight)
 
