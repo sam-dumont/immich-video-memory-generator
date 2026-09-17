@@ -74,7 +74,6 @@ def source(tmp_path, *, seconds, pictures=50, private_opening=False):
                 rendering_family_id=None,
                 favourite=False,
                 source=asset,
-                proposed_segment=None,
                 shippable_duration=0,
                 grounded_annotations=(),
             )

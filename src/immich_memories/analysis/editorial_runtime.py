@@ -376,7 +376,6 @@ class RuntimeEditorialPlanner:
                     candidates,
                     prepared=prepared,
                     trace=trace,
-                    verified_segments=False,
                     on_stage=on_stage,
                 )
             if plan.unavailable_reason is not None:

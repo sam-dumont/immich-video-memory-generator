@@ -75,7 +75,6 @@ def candidate(asset_id: str, **overrides) -> EditorialCandidate:
         "live_photo_stitch_member_ids": (),
         "rendering_family_id": None,
         "favourite": False,
-        "proposed_segment": None,
         "shippable_duration": 0.0,
         "grounded_annotations": (),
         **overrides,

@@ -277,8 +277,6 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
     assert cold.cull.rejected[0].asset_id == "demanded-junk"
     assert cold.cull.survivors[0].asset_id == "context-frame"
     assert [candidate.asset_id for candidate in cold.scoped_survivors] == ["demanded-favourite"]
-    assert cold.scoped_survivors[0].proposed_segment == (1.25, 4.75)
-    assert cold.structure.moments[0].representative.proposed_segment == (1.25, 4.75)
     assert len(cold.cards) == 1
     assert cold.cards[0].full_asset_ids == (
         "context-frame",
