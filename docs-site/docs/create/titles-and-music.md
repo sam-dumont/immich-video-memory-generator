@@ -10,7 +10,10 @@ between segments, an ending. This is the structure around the clips, and it is t
 between a memory and an FFmpeg concat of your footage.
 
 - **Intro card**: a content-backed background (a blurred, darkened frame from your footage), white
-  title text with an entrance animation, optional subtitle. 3.5 seconds.
+  title text with an entrance animation, optional subtitle. 3.5 seconds. Title and subtitle are
+  stacked by the heights they actually wrap to and shrink together when the pair would pass 80 % of
+  the frame height, and a layout whose two blocks would still share a row is refused and drawn
+  again smaller.
 - **Month dividers**: at every month change, for any single-year range spanning four or more months.
   The first month's divider is skipped because the intro card already said it.
   `month_divider_threshold` does not gate insertion, it sizes a budget cap, and when the cap binds it
