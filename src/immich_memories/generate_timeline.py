@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from immich_memories.generate_clips import MIN_CLIP_DURATION
-from immich_memories.processing.output_contract import publish_validated_output
+from immich_memories.processing.output_contract import check_output
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -193,17 +193,18 @@ def apply_final_content_budget(
     return [replace(clip, duration=clip.duration * ratio) for clip in assembly_clips]
 
 
-def publish_and_check_duration(
+def check_rendered_film(
     params: GenerationParams,
     staged_path: Path,
-    final_path: Path,
     plan: EncodingPlan,
 ) -> tuple[dict[str, object], str | None]:
-    """Publish the rendered artifact and check its runtime against the budget.
+    """Check the rendered film's container against its plan and its runtime against the budget.
 
-    Checked here rather than after the music phase: the runtime is already final
-    (music remuxes audio with `-c:v copy`), and rejecting later means discarding
-    a render that has also paid for ACE-Step, Demucs and the mix.
+    Nothing is decoded or published here: the film is decoded once, after its
+    last write. The runtime is checked now rather than after the music phase:
+    it is already final (music remuxes audio with `-c:v copy`), and rejecting
+    later means discarding a render that has also paid for ACE-Step, Demucs
+    and the mix.
     """
-    probe = publish_validated_output(staged_path, final_path, plan)
+    probe = check_output(staged_path, plan)
     return probe.render_metrics(plan), validate_final_duration(params, probe.duration_seconds)

@@ -6,6 +6,7 @@ import time
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from immich_memories_render_worker.renderer import RenderArtifact
 
 from conftest import AUTH, WORKER_TOKEN, render_request_body, stub_artifact, worker_app
 
@@ -120,6 +121,72 @@ def test_the_result_carries_the_plan_the_probe_and_the_mute_windows(tmp_path):
     assert record["music_mute_windows"] == [[0.0, 1.0]]
     assert record["degradations"] == ["h264_nvenc is not available on this host"]
     assert record["plan_digest"] and record["submitted_at"] and record["finished_at"]
+
+
+def _decodes_counted(monkeypatch):
+    import subprocess
+
+    real_run = subprocess.run
+    decoded: list[str] = []
+
+    def run(command, **kwargs):
+        if command[0] == "ffmpeg" and "-progress" in command:
+            decoded.append(command[command.index("-i") + 1])
+        return real_run(command, **kwargs)
+
+    # WHY: ffmpeg is the external process; the wrapper only counts decodes.
+    monkeypatch.setattr(subprocess, "run", run)
+    return decoded
+
+
+def _ready_record(tmp_path, renderer):
+    with TestClient(worker_app(tmp_path, renderer), headers=AUTH) as client:
+        job_id = client.post("/jobs", json=render_request_body()).json()["job_id"]
+        record = _settle(client, job_id).json()
+        film = client.get(f"/jobs/{job_id}/output")
+    return record, film
+
+
+def test_a_film_its_renderer_already_decoded_is_not_decoded_again(tmp_path, monkeypatch):
+    import base64
+    import hashlib
+
+    from immich_memories.processing.output_contract import validate_output
+
+    class Renderer:
+        def health(self):
+            return {"ready": True}
+
+        def render(self, request, directory, progress):
+            artifact = stub_artifact(directory)
+            probe = validate_output(artifact.path, artifact.encoding_plan)
+            return RenderArtifact(artifact.path, artifact.encoding_plan, probe=probe)
+
+    decoded = _decodes_counted(monkeypatch)
+    record, film = _ready_record(tmp_path, Renderer())
+
+    assert record["state"] == "ready", record
+    assert len(decoded) == 1
+    assert record["probe"]["decoded_frames"] == 30
+    assert "stamp" not in record["probe"]
+    sha256 = hashlib.sha256(film.content).digest()
+    assert record["output_sha256"] == sha256.hex()
+    assert film.headers["repr-digest"] == f"sha-256=:{base64.b64encode(sha256).decode()}:"
+
+
+def test_a_film_its_renderer_did_not_decode_is_decoded_once_here(tmp_path, monkeypatch):
+    class Renderer:
+        def health(self):
+            return {"ready": True}
+
+        def render(self, request, directory, progress):
+            return stub_artifact(directory)
+
+    decoded = _decodes_counted(monkeypatch)
+    record, _film = _ready_record(tmp_path, Renderer())
+
+    assert record["state"] == "ready", record
+    assert len(decoded) == 1
 
 
 def test_two_callers_holding_the_same_cut_name_the_same_job(tmp_path):

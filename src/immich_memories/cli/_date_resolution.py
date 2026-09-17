@@ -193,7 +193,10 @@ def resolve_date_range(
 
     When --memory-type is set, delegates to preset date builders.
     --start/--end can override the preset's default date range.
-    Otherwise falls through to manual date range options.
+    Otherwise falls through to manual date range options, where --start
+    wins, then --year narrowed by --birthday or --month. A --month with no
+    year is refused rather than dropped: `prepare` passes no memory type, and
+    this path once returned the whole year for `--year 2024 --month 2` (#1054).
 
     ``preset_params`` carries what a memory type cannot spell as date flags: a
     special day's window comes out of the catalogue, not off the command line.
@@ -219,19 +222,37 @@ def resolve_date_range(
     if manual:
         return manual
 
+    if month is not None and not year:
+        raise click.UsageError(
+            "--month needs --year: a month is only a date range once it has a year "
+            "(for example --year 2024 --month 2)."
+        )
+
     if year:
         if birthday:
             return _birthday_windows(birthday, year, years_back)
+        if month is not None:
+            return _calendar_month(month, year)
         return calendar_year(year)
 
     raise click.UsageError(
         "You must specify a time period. Use one of:\n"
         "  --year YEAR                    Calendar year (Jan 1 - Dec 31)\n"
+        "  --year YEAR --month MONTH      Calendar month\n"
         "  --year YEAR --birthday DATE    Year from birthday (e.g., Feb 7 - Feb 6)\n"
         "  --start DATE --end DATE        Custom date range\n"
         "  --start DATE --period PERIOD   Period from start (e.g., 6m, 1y)\n"
         "  --memory-type TYPE             Memory type preset (season, monthly_highlights, etc.)"
     )
+
+
+def _calendar_month(month: int, year: int) -> DateRange:
+    from immich_memories.memory_types.date_builders import build_month
+
+    try:
+        return build_month(month, year)
+    except ValueError as e:
+        raise click.UsageError(str(e))
 
 
 def _resolve_memory_type_dates(

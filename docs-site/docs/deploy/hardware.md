@@ -45,7 +45,7 @@ Two things off the render move more than the encoder does:
 provider ONNX Runtime has. Put them on a card behind the
 [inference service](./installation/inference-service.md) and preparation changes shape: on the
 fixture month the same cluster pod paid **0.6083 s a picture** to a CPU-backed service and
-**0.1957 s** to a GPU-backed one. On a real 13,552-picture month the GPU-backed service ran at
+**0.1957 s** to a GPU-backed one. Over a real year of 13,552 pictures the GPU-backed service ran at
 0.2445 s a picture, 87 % of a 64-minute preparation.
 
 **The title kernels.** They need a CPU with AVX when there is no card, and the Celeron J-series in a

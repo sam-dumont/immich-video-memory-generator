@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import subprocess
@@ -19,6 +18,7 @@ from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunMetadata, RunTracker
 from tests.conftest import make_clip
+from tests.output_tools_fake import is_decode_check, output_tools
 
 
 def test_run_metadata_delivery_state_round_trips_through_json() -> None:
@@ -992,19 +992,24 @@ def _prepare_generation(
 
     original_run = subprocess.run
 
+    answer_probe = output_tools(_probe_payload())
+
     def run_probe(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if command[0] == "ffprobe":
-            return subprocess.CompletedProcess(command, 0, json.dumps(_probe_payload()), "")
+        if command[0] == "ffprobe" or is_decode_check(command):
+            return answer_probe(command, **kwargs)
         return original_run(command, **kwargs)  # type: ignore[call-overload]
 
     def music_phase(*_args: object, **_kwargs: object) -> MusicPhaseResult:
         events.append("music")
         return MusicPhaseResult(applied=False, warning=music_warning)
 
-    def final_validate(path: Path, encoding_plan: object) -> OutputProbe:
-        assert path.name == "memory.mp4"
-        assert encoding_plan is plan
+    real_publish = generate_module.PreparedGeneration.publish
+
+    def final_publish(prepared: object, decode_check: object = None) -> OutputProbe:
+        assert prepared.path.name == "memory.mp4"
+        assert prepared.encoding_plan is plan
         events.append("final-probe")
+        real_publish(prepared, decode_check)
         return _authoritative_probe()
 
     def upload(*_args: object, **_kwargs: object) -> dict[str, str]:
@@ -1035,7 +1040,8 @@ def _prepare_generation(
     monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
     monkeypatch.setattr(generate_module, "_cleanup_temp_clips", lambda _clips: None)
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
-    monkeypatch.setattr(generate_module, "validate_output", final_validate, raising=False)
+    # WHY: the final check is where the authoritative probe enters the run record.
+    monkeypatch.setattr(generate_module.PreparedGeneration, "publish", final_publish)
     monkeypatch.setattr(
         RunTracker,
         "_get_video_duration",
@@ -1079,7 +1085,8 @@ def test_deferred_generation_returns_exact_context_on_the_caller_owned_tracker(
     assert prepared.clips_analyzed == 1
     assert prepared.clips_selected == 1
     assert len(prepared.assembly_clips) == 1
-    assert prepared.path.read_bytes() == b"validated-artifact"
+    assert not prepared.path.exists()
+    assert prepared.current_path.read_bytes() == b"validated-artifact"
     assert events == []
     assert tracker.current_run is not None
     assert tracker.current_run.run_id == "ui-owned-run"

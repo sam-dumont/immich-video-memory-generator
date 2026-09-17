@@ -1,6 +1,7 @@
 """Authenticated HTTP surface for the isolated render worker."""
 
 import asyncio
+import base64
 import secrets
 from contextlib import asynccontextmanager, suppress
 from uuid import UUID
@@ -134,11 +135,18 @@ def create_app(
     @app.get("/jobs/{job_id}/output")
     def output(job_id: UUID):
         jobs.cleanup()
-        path = jobs.output(job_id)
+        path, sha256 = jobs.output(job_id)
+        # RFC 9530: the digest travels with the bytes it describes.
+        headers = (
+            {"Repr-Digest": f"sha-256=:{base64.b64encode(bytes.fromhex(sha256)).decode()}:"}
+            if sha256
+            else None
+        )
         return FileResponse(
             path,
             media_type="video/mp4",
             filename="memory.mp4",
+            headers=headers,
             background=BackgroundTask(jobs.discard, job_id),
         )
 
