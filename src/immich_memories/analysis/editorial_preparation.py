@@ -66,6 +66,10 @@ class PreparationResult:
     # The distinct caption origins behind this run's captions, largest group
     # first, with only the assets outside that group named one by one.
     caption_provenance: Mapping[str, object] = field(default_factory=dict)
+    # Sources Immich itself will not serve, with the reason, one entry each.
+    # They are named here rather than counted as a gap in every producer that
+    # depends on a preview, because no rerun of any producer can fix them.
+    unservable_sources: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -114,6 +118,23 @@ class PreparationPorts:
     captions: Callable = prepare_captions
     heads: Callable = prepare_heads
     detectors: Callable = prepare_detectors
+
+
+PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
+
+
+def _preview_refused(exc: BaseException) -> bool:
+    """Whether Immich answered about this source, rather than failing to answer at all.
+
+    The client has already spent its retries by the time either arrives here: a
+    404 is never retried and a timeout is raised only after the last attempt. So
+    a 404 is the server's settled answer -- it has no preview for this asset and
+    a rerun will not change that -- while everything else is unfinished work.
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 404
 
 
 def _noop_progress(_stage: str, _done: int, _total: int) -> None:
@@ -175,6 +196,9 @@ class _Acquisition:
     # `report` is also handed work in batches they cannot name.
     note: Callable[[str], None]
     failures: dict[str, str]
+    # Sources the server refused by name, kept apart from `failures` so the
+    # completeness check never reads them as a producer that went down.
+    unservable: dict[str, str] = field(default_factory=dict)
     # Seconds and pictures per stage, so one real run over a real library yields the
     # per-producer numbers a wall-clock total cannot: the tier decision turns on them.
     seconds: dict[str, float] = field(default_factory=dict)
@@ -206,7 +230,10 @@ class _Acquisition:
                     self.note(asset_id)
                 except Exception as exc:
                     unusable.append(asset_id)
-                    self.failures[f"preview:{asset_id}"] = f"{type(exc).__name__}: {exc}"
+                    if _preview_refused(exc):
+                        self.unservable[asset_id] = PREVIEW_UNAVAILABLE
+                    else:
+                        self.failures[f"preview:{asset_id}"] = f"{type(exc).__name__}: {exc}"
                 self.report("previews", index, len(ids))
         return paths, unusable
 
@@ -414,9 +441,13 @@ def prepare_editorial_annotations(
             )
         stage.check()
         after, _unavailable = outstanding()
-        if preview_missing:
-            after["preview"] = tuple(preview_missing)
         produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
+        # A source the server will not serve is not a gap any producer can close,
+        # so it leaves the run by name instead of being counted as one missing
+        # fact per dependent producer. Only the rest still block the cut.
+        after = _without(after, stage.unservable)
+        if still_missing := [a for a in preview_missing if a not in stage.unservable]:
+            after["preview"] = tuple(still_missing)
         demanded = _demanded_producers(preparation_config)
         return PreparationResult(
             len(ids),
@@ -430,7 +461,17 @@ def prepare_editorial_annotations(
             caption_provenance=origins_for(connection, ids, description_model)
             if preparation_config.demands_captions
             else {},
+            unservable_sources=dict(sorted(stage.unservable.items())),
         )
+
+
+def _without(
+    missing: Mapping[str, tuple[str, ...]], excluded: Mapping[str, str]
+) -> dict[str, tuple[str, ...]]:
+    if not excluded:
+        return dict(missing)
+    remaining = {key: tuple(a for a in ids if a not in excluded) for key, ids in missing.items()}
+    return {key: ids for key, ids in remaining.items() if ids}
 
 
 def _demanded_producers(

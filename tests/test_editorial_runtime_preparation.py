@@ -1,6 +1,7 @@
 """Real acquisition and fact stores must finish before the semantic editor starts."""
 
 import json
+import logging
 from dataclasses import replace
 from datetime import timedelta
 
@@ -17,6 +18,7 @@ from immich_memories.analysis.editorial_runtime import (
 )
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.selection_trace import Trace
+from immich_memories.api.immich import ImmichAPIError, ImmichNotFoundError
 from immich_memories.config_loader import Config
 from immich_memories.operations.cut_progress import read_stage_progress
 from immich_memories.operations.editorial_attempt import read_editorial_attempt
@@ -25,13 +27,14 @@ from tests.test_editorial_runtime import _window
 from tests.test_editorial_source_route import photo
 
 
-def build(tmp_path, *, providers, fetched, tier="full"):
+def build(tmp_path, *, providers, fetched, tier="full", sources=None, preview_port=None):
     window = _window(2020, 5, 2)
-    sources = [
-        photo("ordinary", at=window.start + timedelta(hours=9)),
-        photo("display", at=window.start + timedelta(hours=10)),
-        photo("later", at=window.start + timedelta(hours=11)),
-    ]
+    if sources is None:
+        sources = [
+            photo("ordinary", at=window.start + timedelta(hours=9)),
+            photo("display", at=window.start + timedelta(hours=10)),
+            photo("later", at=window.start + timedelta(hours=11)),
+        ]
     config = Config(
         llm={"model": "offline-editor"},
         cache={"directory": str(tmp_path / "cache")},
@@ -46,7 +49,7 @@ def build(tmp_path, *, providers, fetched, tier="full"):
 
     def fetch(asset_id):
         fetched.append(asset_id)
-        return preview()
+        return preview() if preview_port is None else preview_port(asset_id)
 
     def prepare(**kwargs):
         return prepare_editorial_annotations(**kwargs, ports=providers)
@@ -159,6 +162,89 @@ def test_a_refusing_producer_puts_its_own_reason_in_the_message_that_stops_the_r
         planner.plan_source(sources, trace=Trace())
 
     assert "head:doc_docling@det-v2" in str(raised.value)
+
+
+PREVIEW_404 = "preview unavailable at Immich (HTTP 404)"
+
+
+def test_a_source_immich_cannot_preview_leaves_the_film_by_name(tmp_path, monkeypatch, caplog):
+    """Six of 30,188 sources 404'd on their preview and cost a run 31 minutes of work.
+
+    The server's answer about one source is not a producer outage. Those sources
+    leave the cut with a reason, and the other 30,182 are edited.
+    """
+    window = _window(2020, 5, 2)
+    sources = [
+        photo(f"picture-{index}", at=window.start + timedelta(hours=9, minutes=index))
+        for index in range(10)
+    ]
+    refused = {"picture-2", "picture-6"}
+
+    def serve(asset_id):
+        if asset_id in refused:
+            # WHY: Immich is the external boundary. This is what its API answers
+            # for an asset whose thumbnail the server never generated.
+            raise ImmichNotFoundError("Resource not found", status_code=404)
+        return preview()
+
+    planner, _, _ = build(
+        tmp_path,
+        providers=successful_ports([]),
+        fetched=[],
+        sources=sources,
+        preview_port=serve,
+    )
+    observed = []
+
+    def editor(_candidates, *, prepared, trace, **_kwargs):
+        observed.append((prepared, trace))
+        return EditorialPlan()
+
+    monkeypatch.setattr(planner._planner, "plan_prepared", editor)
+    with caplog.at_level(logging.WARNING, logger="immich_memories.analysis.editorial_runtime"):
+        planner.plan_source(sources, trace=Trace())
+
+    prepared, trace = observed[0]
+    assert set(prepared.candidate_ids) == {source.id for source in sources} - refused
+    rejected = {
+        decision.asset_id: decision.reason
+        for editorial_pass in trace.editorial_passes
+        if editorial_pass.name == "source-eligibility"
+        for decision in editorial_pass.rejected
+    }
+    assert rejected == dict.fromkeys(refused, PREVIEW_404)
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "immich_memories.analysis.editorial_runtime"
+        and record.levelno == logging.WARNING
+    ] == [f"2 of 10 sources leave the film: {PREVIEW_404}"]
+    report = json.loads((planner.last_attempt_directory / "preparation.private.json").read_text())
+    assert report["unservable_sources"] == dict.fromkeys(sorted(refused), PREVIEW_404)
+    assert not report["missing_by_producer"] and not report["failures"]
+
+
+def test_a_preview_that_timed_out_still_stops_the_run(tmp_path, monkeypatch):
+    """A transport that gave up is unfinished work for the next run, not an answer."""
+
+    def serve(asset_id):
+        if asset_id == "later":
+            # WHY: Immich is the external boundary. Past the client's retries a
+            # timeout arrives as a transport failure carrying no HTTP status.
+            raise ImmichAPIError("Request failed: timed out")
+        return preview()
+
+    planner, sources, _ = build(
+        tmp_path, providers=successful_ports([]), fetched=[], preview_port=serve
+    )
+    monkeypatch.setattr(
+        planner._planner,
+        "plan_prepared",
+        lambda *_, **__: pytest.fail("editing began without every preview"),
+    )
+
+    with pytest.raises(EditorialInputsRequired, match="preview: 1"):
+        planner.plan_source(sources, trace=Trace())
 
 
 def test_the_attempt_carries_live_numbers_and_recent_pictures_beside_its_stage(

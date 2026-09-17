@@ -511,6 +511,14 @@ class _EvidencePreparation:
                 indent=2,
             ),
         )
+        unservable: dict[str, Any] = dict(result.unservable_sources)
+        if unservable:
+            logger.warning(
+                "%d of %d sources leave the film: %s",
+                len(unservable),
+                result.requested,
+                "; ".join(sorted(set(unservable.values()))),
+            )
         if not result.complete:
             missing = ", ".join(
                 f"{key}: {len(ids)}" for key, ids in result.missing_by_producer.items()
@@ -522,9 +530,10 @@ class _EvidencePreparation:
                 self.readings.store_path,
                 detail="; ".join(filter(None, (missing, *result.producer_failures))),
             )
-        if not prepared.candidate_ids:
-            return {}
-        return self._screen_documents(prepared)
+        readable = tuple(a for a in prepared.candidate_ids if a not in unservable)
+        if not readable:
+            return unservable
+        return unservable | self._screen_documents(prepared, readable)
 
     def _produce(self, prepared: Any, on_stage: Callable[[StageUpdate], None] | None) -> Any:
         from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
@@ -558,13 +567,13 @@ class _EvidencePreparation:
             on_asset=live.note_asset,
         )
 
-    def _screen_documents(self, prepared: Any) -> dict[str, Any]:
+    def _screen_documents(self, prepared: Any, readable: tuple[str, ...]) -> dict[str, Any]:
         from immich_memories.analysis.editorial_source_gate import (
             SCREEN_DOCUMENT_GATE_VERSION,
             screen_document_rejections,
         )
 
-        batch = self.readings.reader(prepared).lines_for(prepared.candidate_ids)
+        batch = self.readings.reader(prepared).lines_for(readable)
         if batch.missing_asset_ids:
             raise EditorialInputsRequired(
                 self.readings.store_path,

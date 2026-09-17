@@ -58,6 +58,11 @@ pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include 
 Neither overrides the audience gate: a picture the gate holds at family-only, or one whose file
 Immich cannot serve, stays out however you ask for it.
 
+A source whose preview Immich answers HTTP 404 for is the second kind. The run logs one line
+naming the count and the reason, `preview unavailable at Immich (HTTP 404)`, lists those ids under
+`unservable_sources` in the attempt's `preparation.private.json`, and cuts the rest. Regenerate
+that asset's thumbnails in Immich, then cut again.
+
 ## No videos found
 
 - The person name must match Immich's, case-insensitive, nothing else fuzzy.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -58,7 +59,13 @@ def _prepared(**kwargs) -> PreparationResult:
     )
 
 
-def _invoke(args: list[str], config: Config, *, photos: list[Asset] | None = None) -> Result:
+def _invoke(
+    args: list[str],
+    config: Config,
+    *,
+    photos: list[Asset] | None = None,
+    prepared=_prepared,
+) -> Result:
     with (
         # WHY: init_config_dir would create ~/.immich-memories on the real home.
         patch("immich_memories.cli.init_config_dir"),
@@ -72,7 +79,7 @@ def _invoke(args: list[str], config: Config, *, photos: list[Asset] | None = Non
         # WHY: the producers are ONNX, torch and a caption server, none present in a unit run.
         patch(
             "immich_memories.analysis.editorial_preparation.prepare_editorial_annotations",
-            side_effect=_prepared,
+            side_effect=prepared,
         ),
     ):
         return CliRunner().invoke(main, args, catch_exceptions=False)
@@ -95,6 +102,31 @@ def test_prepare_reports_a_rate_per_producer_and_renders_nothing(tmp_path, monke
     assert "s/picture" in result.output
     assert "At this rate 10,000 pictures would take" in result.output
     assert not list(Path(config.output.output_path).glob("*.mp4"))
+
+
+def test_prepare_names_the_sources_immich_will_not_serve_without_calling_the_pass_incomplete(
+    tmp_path, monkeypatch
+) -> None:
+    """A 404'd preview is nothing a rerun fixes, so the pass succeeds and still says it."""
+
+    def refused(**kwargs) -> PreparationResult:
+        result = _prepared(**kwargs)
+        return replace(
+            result, unservable_sources={"a1": "preview unavailable at Immich (HTTP 404)"}
+        )
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    result = _invoke(
+        ["prepare", "--year", "2024"],
+        _config(),
+        photos=[_photo("a1"), _photo("a2")],
+        prepared=refused,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "1 sources will leave any cut" in result.output
+    assert "preview unavailable at Immich (HTTP 404)" in result.output
 
 
 def test_prepare_says_so_when_the_scope_is_empty(tmp_path, monkeypatch) -> None:
