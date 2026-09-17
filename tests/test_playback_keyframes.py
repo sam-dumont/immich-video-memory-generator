@@ -21,9 +21,10 @@ def full(kind: bytes, payload: bytes, version: int = 0) -> bytes:
     return box(kind, bytes([version, 0, 0, 0]) + payload)
 
 
-def track(handler: bytes, *, sync: tuple[int, ...] | None) -> bytes:
+def track(handler: bytes, *, sync: tuple[int, ...] | None, codec: bytes = b"avc1") -> bytes:
     """Six samples at 30 ticks a second, ten ticks apart, three to a chunk."""
     table = [
+        full(b"stsd", struct.pack(">I", 1) + box(codec, b"\0" * 16)),
         full(b"stts", struct.pack(">III", 1, 6, 10)),
         full(b"stsc", struct.pack(">IIII", 1, 1, 3, 1)),
         full(b"stsz", struct.pack(">II6I", 0, 6, 10, 11, 12, 13, 14, 15)),
@@ -42,16 +43,20 @@ def track(handler: bytes, *, sync: tuple[int, ...] | None) -> bytes:
 def test_the_video_track_names_its_keyframes_with_their_time_offset_and_size():
     moov = track(b"soun", sync=None) + track(b"vide", sync=(1, 4))
 
-    keyframes, duration = keyframes_of(moov)
+    index = keyframes_of(moov)
 
-    assert [(k.seconds, k.offset, k.size) for k in keyframes] == [(0.0, 100, 10), (1.0, 400, 13)]
-    assert duration == 2.0
+    assert [(k.seconds, k.offset, k.size) for k in index.keyframes] == [
+        (0.0, 100, 10),
+        (1.0, 400, 13),
+    ]
+    assert (index.duration, index.codec) == (2.0, "avc1")
 
 
 def test_a_track_without_a_sync_table_is_all_keyframes():
-    keyframes, _duration = keyframes_of(track(b"vide", sync=None))
+    index = keyframes_of(track(b"vide", sync=None, codec=b"mp4v"))
 
-    assert [k.offset for k in keyframes] == [100, 110, 121, 400, 413, 427]
+    assert [k.offset for k in index.keyframes] == [100, 110, 121, 400, 413, 427]
+    assert index.codec == "mp4v"
 
 
 def test_an_index_without_a_video_track_is_refused():
@@ -62,12 +67,31 @@ def test_an_index_without_a_video_track_is_refused():
 requires_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 
 
-def encode(path, *, gop: int) -> bytes:
+def encoder_available(name: str) -> bool:
+    if shutil.which("ffmpeg") is None:
+        return False
+    listing = subprocess.run(  # noqa: S603 - fixed argv in a test
+        ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, check=False
+    )
+    return f" {name} " in listing.stdout
+
+
+# Immich serves H.264 by default, with B-frames and an edit list; its other targets are HEVC,
+# VP9 and AV1. MPEG-4 Part 2 is not one of them, and is the case the first-sample fetch covers.
+CODECS = [
+    pytest.param(["-c:v", "libx264", "-bf", "2", "-pix_fmt", "yuv420p"], id="h264"),
+    pytest.param(["-c:v", "mpeg4", "-b:v", "3M"], id="mpeg4"),
+]
+
+
+def encode(path, *, gop: int, codec: list[str] | None = None, audio: bool = False) -> bytes:
+    sound = ["-f", "lavfi", "-i", "sine=duration=6", "-c:a", "aac", "-shortest"] if audio else []
     subprocess.run(  # noqa: S603 - fixed argv in a test
         [
             "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
-            "testsrc2=size=640x360:rate=30:duration=6", "-c:v", "mpeg4", "-b:v", "3M",
-            "-g", str(gop), "-movflags", "+faststart", str(path),
+            "testsrc2=size=640x360:rate=30:duration=6", *sound,
+            *(codec or ["-c:v", "mpeg4", "-b:v", "3M"]), "-g", str(gop),
+            "-movflags", "+faststart", str(path),
         ],
         check=True,
     )  # fmt: skip
@@ -83,8 +107,11 @@ def ranged(data: bytes, log: list[int]):
 
 
 @requires_ffmpeg
-def test_three_keyframes_cost_a_fraction_of_the_playback(tmp_path):
-    data = encode(tmp_path / "clip.mp4", gop=30)
+@pytest.mark.parametrize("codec", CODECS)
+def test_three_keyframes_cost_a_fraction_of_the_playback(tmp_path, codec):
+    if not encoder_available(codec[1]):
+        pytest.skip(f"this ffmpeg has no {codec[1]} encoder")
+    data = encode(tmp_path / "clip.mp4", gop=30, codec=codec, audio=True)
     log: list[int] = []
 
     sampled = sample_keyframes(ranged(data, log), count=3, width=320, workdir=tmp_path / "work")

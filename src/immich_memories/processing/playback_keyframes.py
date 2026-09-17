@@ -6,9 +6,12 @@ keyframes (hundreds of kilobytes) instead of the whole rendition (tens of megaby
 
 FFmpeg over the HTTP URL cannot be held to that: it reads forward instead of seeking whenever
 the target is inside its read-ahead window, and its demuxer reads every packet, so three seeks
-into a 10 MB clip transferred 10.5 MB. Here the keyframes are written at their own offsets into
-a sparse local copy and FFmpeg decodes that copy with every non-key packet discarded, so the
-zeroed regions never reach a decoder.
+into a 10 MB clip transferred 10.5 MB. Here the fetched bytes are written at their own offsets
+into a sparse local copy. FFmpeg then stream-copies only the packets at the fetched keyframes'
+byte positions into a small NUT file and decodes that, so a zeroed sample never reaches a
+decoder. `-discard nokey` looked like the shorter road and is not one: FFmpeg 5.1 and 8.1 honour
+it on MP4, 6.1 (Ubuntu 24.04) decodes the zeroed samples anyway and gives up. The position
+filter behaves the same on 5.1, 6.1, 7.1 and 8.1.
 """
 
 from __future__ import annotations
@@ -31,6 +34,9 @@ MAX_INDEX_BYTES = 64 * 1024**2
 WHOLE_CLIP_LIMIT = 24 * 1024**2
 MAX_TOP_LEVEL_BOXES = 64
 _JPEG = "force_original_aspect_ratio=decrease:out_range=full,format=yuvj420p"
+# Codecs whose stream parameters come from the sample description alone. For anything else
+# FFmpeg's probe decodes the first sample, so that sample is fetched too (and never shown).
+DESCRIBED_BY_INDEX = frozenset({"avc1", "avc3", "hvc1", "hev1", "vp09", "av01"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +44,13 @@ class Keyframe:
     seconds: float
     offset: int
     size: int
+
+
+@dataclass(frozen=True, slots=True)
+class KeyframeIndex:
+    keyframes: tuple[Keyframe, ...]
+    duration: float
+    codec: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,8 +130,16 @@ def _sample_offsets(moov: bytes, stbl: tuple[int, int], sizes: list[int]) -> lis
     return offsets
 
 
-def keyframes_of(moov: bytes) -> tuple[tuple[Keyframe, ...], float]:
-    """The video track's keyframes and its length in seconds, from a ``moov`` payload.
+def _codec(moov: bytes, stbl: tuple[int, int]) -> str:
+    """The first sample entry's four-character code, or empty when the index has none."""
+    stsd = _table(moov, stbl, b"stsd")
+    if stsd is None or len(stsd) < 12:
+        return ""
+    return stsd[8:12].decode("latin-1")
+
+
+def keyframes_of(moov: bytes) -> KeyframeIndex:
+    """The video track's keyframes, its length in seconds and its codec, from a ``moov`` payload.
 
     Edit lists and composition offsets are ignored: the times place a filmstrip, they do not
     cut the film.
@@ -145,7 +166,7 @@ def keyframes_of(moov: bytes) -> tuple[tuple[Keyframe, ...], float]:
     if len(offsets) < count or len(times) < count:
         raise ValueError("MP4 sample tables disagree")
     keys = tuple(Keyframe(times[n - 1] / timescale, offsets[n - 1], sizes[n - 1]) for n in sync)
-    return keys, clock / timescale
+    return KeyframeIndex(keys, clock / timescale, _codec(moov, stbl))
 
 
 class _Reader:
@@ -221,22 +242,39 @@ def _write(path: Path, pieces: dict[int, bytes], total: int) -> None:
             copy.write(b"\0")
 
 
+def _ffmpeg(*arguments: str) -> None:
+    subprocess.run(  # noqa: S603 - fixed argv, paths are not shell-interpreted
+        ["ffmpeg", "-v", "error", "-y", *arguments], capture_output=True, timeout=120, check=False
+    )
+
+
 def _decode(
-    source: Path, workdir: Path, width: int, *, before: list[str], after: list[str], rate: str = ""
+    source: Path, workdir: Path, width: int, *, rate: str = "", limit: int = 0
 ) -> tuple[bytes, ...]:
     for stale in workdir.glob("frame-*.jpg"):
         stale.unlink()
-    subprocess.run(  # noqa: S603 - fixed argv, paths are not shell-interpreted
-        [
-            "ffmpeg", "-v", "error", "-y", *before, "-i", str(source), "-an", "-sn", "-dn",
-            "-fps_mode", "passthrough", "-vf", f"{rate}scale={width}:{width}:{_JPEG}",
-            *after, "-q:v", "3", str(workdir / "frame-%03d.jpg"),
-        ],
-        capture_output=True,
-        timeout=120,
-        check=False,
+    frames = ["-frames:v", str(limit)] if limit else []
+    _ffmpeg(
+        "-i", str(source), "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+        "-vf", f"{rate}scale={width}:{width}:{_JPEG}", *frames, "-q:v", "3",
+        str(workdir / "frame-%03d.jpg"),
     )  # fmt: skip
     return tuple(frame.read_bytes() for frame in sorted(workdir.glob("frame-*.jpg")))
+
+
+def _decode_keyframes(
+    copy: Path, workdir: Path, width: int, chosen: list[Keyframe]
+) -> tuple[bytes, ...]:
+    """Copy out the packets at the chosen byte positions, then decode only those."""
+    keys = workdir / "keyframes.nut"
+    kept = "+".join(f"eq(pos\\,{keyframe.offset})" for keyframe in chosen)
+    _ffmpeg(
+        "-i", str(copy), "-map", "0:v:0", "-c", "copy",
+        "-bsf:v", f"noise=drop=not({kept})", "-f", "nut", str(keys),
+    )  # fmt: skip
+    frames = _decode(keys, workdir, width) if keys.exists() else ()
+    keys.unlink(missing_ok=True)
+    return frames
 
 
 def sample_keyframes(read: ReadRange, *, count: int, width: int, workdir: Path) -> SampledKeyframes:
@@ -248,20 +286,20 @@ def sample_keyframes(read: ReadRange, *, count: int, width: int, workdir: Path) 
     """
     reader = _Reader(read)
     pieces, moov = _index(reader)
-    keyframes, duration = keyframes_of(moov)
+    index = keyframes_of(moov)
+    keyframes, duration = index.keyframes, index.duration
     copy = workdir / "playback.mp4"
     if len(keyframes) < 2 and reader.total <= WHOLE_CLIP_LIMIT:
         _write(copy, {0: reader(0, reader.total)}, reader.total)
         rate = f"fps={count}/{max(duration, 0.1):.3f},"
-        frames = _decode(
-            copy, workdir, width, before=[], after=["-frames:v", str(count)], rate=rate
-        )
+        frames = _decode(copy, workdir, width, rate=rate, limit=count)
         seconds = tuple(even_timestamps(duration, len(frames)))
     else:
         chosen = _chosen(keyframes, duration, count)
-        pieces.update({k.offset: reader(k.offset, k.size) for k in chosen})
+        fetched = chosen if index.codec in DESCRIBED_BY_INDEX else [keyframes[0], *chosen]
+        pieces.update({k.offset: reader(k.offset, k.size) for k in fetched})
         _write(copy, pieces, reader.total)
-        frames = _decode(copy, workdir, width, before=["-discard", "nokey"], after=[])
+        frames = _decode_keyframes(copy, workdir, width, chosen)
         if len(frames) != len(chosen):
             raise ValueError(f"{len(chosen)} keyframes decoded as {len(frames)} frames")
         seconds = tuple(k.seconds for k in chosen)

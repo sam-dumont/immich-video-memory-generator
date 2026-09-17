@@ -149,8 +149,10 @@ sees a video frame.
 
 The app does not download the video for it. Immich answers byte ranges on its playback rendition,
 so preparation reads the index (tens of kilobytes), picks the three keyframes nearest a quarter,
-half and three quarters of the clip, reads only those, and has FFmpeg decode them from a sparse
-local copy. Measured on ten real playbacks of 6 to 49 seconds: 235 to 528 KB and 0.1 to 0.4 s
+half and three quarters of the clip, and reads only those. FFmpeg copies exactly those packets
+out of a sparse local copy and decodes them, which behaves the same on FFmpeg 5.1 (the app
+image), 6.1, 7.1 and 8.1. A codec other than H.264, HEVC, VP9 or AV1 also costs its first
+keyframe, which FFmpeg needs to read the stream at all. Measured on ten real playbacks of 6 to 49 seconds: 235 to 528 KB and 0.1 to 0.4 s
 each, against 10 to 60 MB for the whole file. A clip with a single keyframe is a short one, and
 is read whole (0.5 to 2.2 MB for the Live Photo companions measured). The three frames go to the
 server as one 960 × 320 JPEG strip with a one-field schema (`description`, 120 characters), under
