@@ -80,6 +80,8 @@ def run_cull_decisions(
     is what makes a keep sayable: an episode that failed to read leaves its
     pictures unasked rather than kept.
     """
+    # Held before `rejects` is rebound, because what goes into the bank is what
+    # THIS reading said, not the union of it with what the bank already held.
     reading = rejects
     # What a picture IS does not change between memories, so a verdict reached
     # once stands for all of them. What it sat beside does change, which is why
@@ -106,7 +108,7 @@ def run_cull_decisions(
     )
     if verdicts is not None:
         verdicts.remember(
-            _this_reading_s_answer(prepared, reading, judged_asset_ids),
+            _reading_answer(prepared, reading, judged_asset_ids),
             pass_version=provenance.pass_version,
         )
     authoritative_warnings = _authoritative_warnings(prepared)
@@ -159,7 +161,7 @@ def _with_remembered_verdicts(
     return (*rejects, *added), warnings
 
 
-def _this_reading_s_answer(
+def _reading_answer(
     prepared: PreparedEditorialSource,
     reading: tuple[CullDecision, ...],
     judged_asset_ids: tuple[str, ...],
