@@ -638,6 +638,7 @@ def trim_to_timing_budget(
     after every drop. Drop order: the least weighed story first, and inside a story its latest
     picture; a story's only picture goes only when no lighter story still has one. A protected
     carrier (one the owner required) is never a victim; when only those remain the trim stops.
+    A dropped carrier carries the reason it was cut, which the selection sheet prints.
     """
     from immich_memories.speech.cuts import minimum_duration
 
@@ -660,7 +661,13 @@ def trim_to_timing_budget(
             (c for rank, c in ranked if rank == best), key=lambda c: c.get("taken") or ""
         )  # latest first
         kept.remove(victim)
-        dropped.append(victim)
+        dropped.append(
+            victim
+            | {
+                "reason": f"Cut to fit the film's {budget:.1f} s of content",
+                "review_stage": "timing-trim",
+            }
+        )
     return kept, dropped
 
 

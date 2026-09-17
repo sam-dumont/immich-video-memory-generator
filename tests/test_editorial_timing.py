@@ -336,3 +336,40 @@ def test_impossible_render_budget_fails_before_attached_calls(tmp_path, monkeypa
     )
     with pytest.raises(ValueError, match="minimum content cannot fit"):
         plan_structure(captured, _ports(lambda *_a: pytest.fail("sampled before fitting")))
+
+
+def test_a_carrier_the_timing_trim_cuts_says_why_on_the_selection_sheet(tmp_path):
+    """April 2021 at 60 s died with KeyError 'reason' while writing the selection sheet: the
+    sheet prints every cut carrier with the reason it was cut, so each cut owes one."""
+    captured = source(tmp_path, seconds=60, pictures=50)
+    captured.config.title_screens.enabled = True
+    policy = build_editorial_timing_policy(
+        config=captured.config,
+        target_seconds=60,
+        memory_type=captured.case.product,
+        transition="cut",
+    )
+
+    def hold_speech(carriers):
+        # WHY: stands in for the speech measurement boundary (media tools over the real
+        # companion files). An utterance held to 8 s is indivisible, so the selection no
+        # longer fits the finished film and the timing trim has to cut carriers.
+        return [
+            row
+            | {
+                "start_time": 0.0,
+                "seconds": 8.0,
+                "end_time": 8.0,
+                "speech_regions": [[0.0, 8.0]],
+            }
+            for row in carriers
+        ]
+
+    result = plan_structure(
+        replace(captured, render_timing=policy), replace(_ports(), resolve_speech=hold_speech)
+    )
+
+    cut = result.plan["cut_carriers"]
+    assert cut, "the timing trim cut nothing, so no cut carrier was written down"
+    assert all(row.get("reason") for row in cut), [row.get("review_stage") for row in cut]
+    assert all(row["reason"] in result.selection_sheet for row in cut)
