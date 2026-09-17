@@ -80,7 +80,7 @@ against the electricity.
 
 The reader needs a vision-capable model with a 32k context. Most of what it is handed is annotation
 lines, and then the structure pass demands 800 px tiles for the few dozen pictures a month it cannot
-settle on paper: 36 tiles on the demo month, 40 on a month holding 13,552 pictures. So the context
+settle on paper: 36 tiles on the demo month, 40 on February 2024. So the context
 window is what decides whether a model can do this job at all, and the vision head is used sparingly.
 
 ## Four rules that make the numbers mean anything

@@ -180,7 +180,7 @@ curl -s localhost:8094/v1/models
 
 Leave `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY` at 1: four image encodes at
 once share the threads of one, so raising it is slower. At 30.9 s a caption on four Celeron cores a
-13,552-picture month is four days, which is why this page recommends `no_captions`.
+13,552-picture year is almost five days, which is why this page recommends `no_captions`.
 [Caption server](../installation/caption-server.md) has the flags.
 
 Or point the container at a caption endpoint on another box and run the same scope on `full`:
