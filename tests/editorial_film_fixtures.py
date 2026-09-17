@@ -102,8 +102,9 @@ def film_source(
     product: str = "monthly_highlights",
     home_base: bool = True,
     pictures: int = 1,
+    picture_gap: timedelta = timedelta(minutes=7),
 ) -> StructurePlanningInput:
-    """A film over `span` holding `days`; each moment has `pictures` pictures."""
+    """A film over `span` holding `days`; each moment has `pictures` pictures, `picture_gap` apart."""
     groups, episodes, cards, candidates, annotations = [], [], [], [], {}
     for day_index, spec in enumerate(days):
         day_candidates = []
@@ -111,8 +112,10 @@ def film_source(
         for moment in range(spec.moments):
             local = []
             for picture in range(pictures):
-                taken = datetime.combine(spec.day, datetime.min.time(), UTC) + timedelta(
-                    hours=9 + 2 * moment, minutes=7 * picture
+                taken = (
+                    datetime.combine(spec.day, datetime.min.time(), UTC)
+                    + timedelta(hours=9 + 2 * moment)
+                    + picture_gap * picture
                 )
                 asset = _asset(f"d{day_index:03d}-m{moment}-p{picture}", taken, spec.where)
                 description = f"A clothed person during {spec.activity.lower()}, moment {moment} view {picture}."

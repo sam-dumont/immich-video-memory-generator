@@ -199,6 +199,16 @@ star, and when nothing else can take the slot the refused picture comes back, so
 never makes a film short. It asks at most twice as many pairs as the film has slots and records
 every refusal in the run's `story-selection` record.
 
+The same question lets a dense occasion fill its film. Five minutes of spacing inside a capture group
+keeps a burst from taking several slots, and on a busy afternoon it also kept every moment after the
+first of each group out of the cut: a 90-second special day with 27 usable pictures shipped four. A
+film that is still short after every selection pass now spends its free slots inside the moments its
+stories already show, in funding order: the moments the inventory found and no pick took, alternating
+between capture groups, then up to three frames of each chosen moment. A frame gets in only when the
+question confirms it looks different from the kept frames of its moment and the ones just before and
+after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
+stays short.
+
 **4. The final film, over what actually shipped.** The pictures in the cut are checked against each
 other again. A pair is nominated when any of three signals fires: hashes within 10 bits,
 descriptions that read as the same thing (Jaccard over words of four letters or more, at 0.60), or

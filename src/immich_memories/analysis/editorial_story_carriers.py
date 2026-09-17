@@ -11,11 +11,13 @@ candidate failed still shows once.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_story_depth import depth_ladder, neighbours
 from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck
 from immich_memories.analysis.editorial_story_pick_contract import carries_motion
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
@@ -596,10 +598,46 @@ class CarrierAdmission:
                 break
         self.calls["selection_passes"] = passes
         self._keep_occasions()
+        if self.lookalike.available:
+            for index, s in enumerate(self.stories, 1):
+                self._deepen_moments(index, s)
         self.lookalike.readmit(lambda: len(self.carriers) < self.slots)
         self.calls["failed_standing"] = len(self.failed_standing)
         self.calls["kept_without_standing"] = len(self.kept_without_standing)
         self.carriers.sort(key=itemgetter("taken"))
+
+    # -- depth inside moments ---------------------------------------------------------
+
+    def _deepen_moments(self, index: int, s) -> None:
+        """A film still short spends a free slot on another frame of a moment this story shows,
+        only when it shows something new (`editorial_story_depth`)."""
+        if (
+            len(self.carriers) >= self.slots
+            or s["weight"] not in WEIGHED_STORY_WEIGHTS
+            or not self.chosen_by_story[s["key"]]
+        ):
+            return
+        ladder = list(
+            depth_ladder(
+                self.choices_of[s["key"]],
+                chosen=self.chosen_by_story[s["key"]],
+                used=self._used_choice_keys,
+                group_of=lambda asset: self._unit_by_asset[asset][1].get("moment"),
+                frames_of=Counter(c["depicted_moment"] for c in self.carriers),
+            )
+        )
+        self.gate.ensure([asset for _choice, asset in ladder if self.free(asset)])
+        for choice, asset in ladder:
+            if len(self.carriers) >= self.slots:
+                return
+            if not (self.free(asset) and self.gate.stands(asset, s["weight"], s["key"])):
+                continue
+            family, unit = self._unit_by_asset[asset]
+            row = self._carrier_row(unit, family, s, choice, index, asset)
+            kept = [c for c in self.carriers if c["story_episode"] == s["key"]]
+            if self.lookalike.shows_something_new(s["key"], row, neighbours(row, kept)):
+                self._used_choice_keys.add(choice.key)
+                self._admit(s, choice, row | {"depth": True}, [])
 
     # -- occasion integrity -----------------------------------------------------------
 

@@ -224,7 +224,14 @@ itself. The order is the owner's:
    is one request. A refusal frees the slot and buys one more pass, so the story's next distinct
    moment or the next story in funding order takes it; a favourite is never refused against a
    picture the owner did not star; what nothing else can fill is readmitted, so the check never
-   causes a shortfall on its own. Freed slots are re-granted across stories in up to
+   causes a shortfall on its own.
+   A film still short after the passes and the occasion keep then spends its free slots as depth
+   inside the moments its funded stories show (`editorial_story_depth.py`), in funding order:
+   depicted moments the inventory found and no pick took (the five-minute spacing inside a capture
+   group had kept them out), alternating between capture groups, then further members of the chosen
+   moments up to three frames per moment. Each is admitted only when the same question confirms it
+   differs from the kept frames of its moment and its neighbours in capture time; an unasked pair
+   (no visual port, or the bound spent) adds nothing, and a refused variant is never readmitted. Freed slots are re-granted across stories in up to
    three further passes, never to variants. An occasion whose every candidate failed still shows
    once. The audience is not asked here: the gate reads the cut, not every candidate.
 6. **The audience chain and the final duplicate pass** close the cut — sampled-pair confirmation

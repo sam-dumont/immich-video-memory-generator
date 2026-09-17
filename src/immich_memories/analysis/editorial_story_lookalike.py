@@ -51,6 +51,20 @@ class LookAlikeCheck:
         self.refused: list[dict[str, Any]] = []
         self.readmitted: list[dict[str, Any]] = []
         self.unchecked = 0
+        self.depth: dict[str, Any] = {"added": 0, "refused": [], "unasked": 0}
+
+    @property
+    def available(self) -> bool:
+        return self._looks_alike is not None
+
+    def _answer(self, candidate: Mapping[str, Any], keeper: Mapping[str, Any]) -> bool | None:
+        pair = (candidate["asset_id"], keeper["asset_id"])
+        if pair not in self._answers:
+            if self._looks_alike is None or self.checks >= self.limit:
+                raise _Unasked
+            self.checks += 1
+            self._answers[pair] = self._looks_alike(candidate, keeper)
+        return self._answers[pair]
 
     def repeats(
         self, candidate: Mapping[str, Any], kept: Sequence[Mapping[str, Any]]
@@ -62,16 +76,30 @@ class LookAlikeCheck:
         for keeper in kept:
             if candidate.get("favourite") and not keeper.get("favourite"):
                 continue
-            pair = (candidate["asset_id"], keeper["asset_id"])
-            if pair not in self._answers:
-                if self.checks >= self.limit:
-                    self.unchecked += 1
-                    return None
-                self.checks += 1
-                self._answers[pair] = self._looks_alike(candidate, keeper)
-            if self._answers[pair] is True:
-                return keeper["asset_id"]
+            try:
+                if self._answer(candidate, keeper) is True:
+                    return keeper["asset_id"]
+            except _Unasked:
+                self.unchecked += 1
+                return None
         return None
+
+    def shows_something_new(
+        self, story: str, candidate: Mapping[str, Any], kept: Sequence[Mapping[str, Any]]
+    ) -> bool:
+        """Depth inside a moment: True only when every compared frame was asked and differs."""
+        try:
+            repeated = next((k for k in kept if self._answer(candidate, k) is not False), None)
+        except _Unasked:
+            self.depth["unasked"] += 1
+            return False
+        if repeated is not None:
+            self.depth["refused"].append(
+                {"story": story, "asset_id": candidate["asset_id"], "repeats": repeated["asset_id"]}
+            )
+            return False
+        self.depth["added"] += 1
+        return True
 
     def refuse(self, story: str, asset: str, repeats: str, readmit: Callable[[], bool]) -> None:
         self.refused.append(
@@ -94,4 +122,9 @@ class LookAlikeCheck:
             "unchecked_for_the_bound": self.unchecked,
             "refused": [{k: v for k, v in row.items() if k != "_readmit"} for row in self.refused],
             "readmitted": self.readmitted,
+            "depth": self.depth,
         }
+
+
+class _Unasked(Exception):
+    """The pair bound is spent; the pair was never asked."""

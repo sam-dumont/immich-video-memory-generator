@@ -1,12 +1,13 @@
 """Inside one story, a further frame is kept only if it does not look like one already kept."""
 
 import json
-from datetime import date
+from collections import Counter
+from datetime import date, timedelta
 
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.selection_same_picture import SamePicturePairDecision
-from tests.editorial_film_fixtures import FilmJudge, film_source, home_days, trip_days
+from tests.editorial_film_fixtures import Day, FilmJudge, film_source, home_days, trip_days
 
 MAY = (date(2030, 5, 1), date(2030, 5, 31))
 
@@ -105,3 +106,35 @@ def test_the_check_alone_never_leaves_the_film_short(tmp_path):
     record = _lookalike_record(source)
     assert record["refused"], "every further trip frame looked alike"
     assert {r["asset_id"] for r in record["readmitted"]} <= set(carried)
+
+
+def _afternoon(tmp_path):
+    """One dense afternoon: two capture groups of six pictures, half a minute apart."""
+    day = Day(date(2030, 5, 12), "Birthday afternoon in the garden", moments=2)
+    return film_source(
+        tmp_path, [day], seconds=40, span=MAY, pictures=6, picture_gap=timedelta(seconds=30)
+    )
+
+
+def test_a_one_occasion_film_spends_its_free_slots_as_depth_inside_its_moments(tmp_path):
+    source = _afternoon(tmp_path)
+    plan = _run(source, PairAnswers(_never))
+
+    assert plan["story"]["slots"] == 10
+    assert len(plan["carriers"]) == 10
+    per_group = Counter(c["asset_id"].rsplit("-", 1)[0] for c in plan["carriers"])
+    assert sorted(per_group.values()) == [5, 5]
+    record = _lookalike_record(source)
+    assert record["depth"]["added"] == 8
+
+
+def test_depth_takes_only_frames_that_look_different(tmp_path):
+    source = _afternoon(tmp_path)
+    plan = _run(source, PairAnswers(_always))
+
+    assert len(plan["carriers"]) == 2
+    record = _lookalike_record(source)
+    assert record["depth"]["added"] == 0
+    refused = {row["asset_id"] for row in record["depth"]["refused"]}
+    assert refused, "every further frame of the afternoon looked alike"
+    assert not refused & {c["asset_id"] for c in plan["carriers"]}
