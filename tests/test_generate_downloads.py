@@ -411,3 +411,41 @@ class TestAlignBurstSubset:
 
         assert paths == []
         assert trims == []
+
+
+def test_an_unextractable_source_leaves_the_film_by_name(tmp_path: Path, monkeypatch, caplog):
+    """One source FFmpeg cannot cut is dropped by name; the rest of the film is still assembled."""
+    from immich_memories.generate_clips import _extract_clips
+
+    for name in ("broken.MOV", "good.MOV"):
+        (tmp_path / name).write_bytes(b"video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    broken = make_clip("unextractable", duration=5.0)
+    broken.asset.original_file_name = "VID_BROKEN.MOV"
+    broken.local_path = str(tmp_path / "broken.MOV")
+    good = make_clip("extractable", duration=5.0)
+    good.asset.original_file_name = "VID_GOOD.MOV"
+    good.local_path = str(tmp_path / "good.MOV")
+    params = MagicMock()
+    params.clips = [broken, good]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+
+    def extract(source_path, **_kwargs):
+        if Path(source_path).name == "broken.MOV":
+            raise RuntimeError("Failed to extract clip: Could not write header")
+        return segment
+
+    # WHY: the FFmpeg boundary — one source fails to cut, the other yields a real file.
+    monkeypatch.setattr("immich_memories.processing.clips.extract_clip", extract)
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    with caplog.at_level("WARNING"):
+        assembled = _extract_clips(params, MagicMock(), tmp_path)
+
+    assert [clip.asset_id for clip in assembled] == ["extractable"]
+    assert "VID_BROKEN.MOV" in caplog.text
+    assert "Could not write header" in caplog.text
