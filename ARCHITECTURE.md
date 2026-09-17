@@ -179,7 +179,8 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
-│   │                               # motion lines (one caption-seat sentence per video, read by the pick)
+│   │                               # motion lines (one caption-seat sentence per video, read by
+│   │                               # the pick and by the standing gate's moving rows)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
@@ -219,7 +220,9 @@ src/immich_memories/
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
 │   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
-│   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it
+│   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it;
+│                               # may_play: a join earns its length, a lone Live Photo is put to
+│                               # the motion discriminant instead
 │
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 5 services)

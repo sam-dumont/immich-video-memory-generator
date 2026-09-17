@@ -172,6 +172,7 @@ def test_actual_planner_rejected_burst_stops_surviving_burst_is_complete_and_war
             video_ids=material.video_ids,
             trim_points=material.trim_points,
             beats_a_still=False,
+            may_play=False,
             duration_seconds=material.duration_seconds,
             material=material,
         )

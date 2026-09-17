@@ -19,7 +19,7 @@ from tests.test_editorial_duration_planner_integration import (
 from tests.test_editorial_source_route import demand, photo
 
 
-def live_source(tmp_path, *, pictures, add_context):
+def live_source(tmp_path, *, pictures, add_context, residual=9.0):
     captured = source(tmp_path, seconds=15, pictures=pictures)
     assets = dict(captured.assets)
     start = next(iter(assets.values())).file_created_at
@@ -38,7 +38,7 @@ def live_source(tmp_path, *, pictures, add_context):
             asset.live_photo_video_id: make_asset(asset.live_photo_video_id, duration=3.0)
             for asset in assets.values()
         },
-        motion_residuals={aid: {"residual": 9.0} for aid in assets},
+        motion_residuals={aid: {"residual": residual} for aid in assets},
     )
 
 
@@ -62,7 +62,9 @@ def test_planner_uses_exact_selectable_event_material_before_render_projection(t
     assert set(carrier["members"]) == set(expected_ids)
     assert carrier["video_ids"] == list(manifest.video_ids)
     assert carrier["trim_points"] == [list(pair) for pair in manifest.trim_points]
-    assert carrier["kind"] == ("live-motion" if pictures == 2 else "live-still")
+    # A lone Live Photo is under the stitch minimum by construction, so its own motion
+    # decides it (#1066); here that motion is far above the discriminant.
+    assert carrier["kind"] == "live-motion"
     assert "extra-video" not in carrier["video_ids"]
     assert captured.moment_asset_ids == original_members
 
@@ -80,12 +82,20 @@ def test_planner_uses_exact_selectable_event_material_before_render_projection(t
     params = SimpleNamespace(clips=selected, editorial_selections=projected.plan.selections)
     directives = _validated_render_directives(params)
     fetched = [asset.id for asset in _prefetch_assets(selected, directives)]
-    assert fetched == (list(manifest.video_ids) if pictures == 2 else [])
+    assert fetched == list(manifest.video_ids)  # a Live Photo that plays fetches its own footage
     assert "extra-video" not in fetched
 
     replay = ControlledStoryJudge(judge.bank, require_hits=True)
     assert semantic_plan(run(captured, replay)) == semantic_plan(result)
     assert all(call["cache_hit"] for call in replay.calls)
+
+
+def test_a_lone_live_photo_that_barely_moves_is_still_a_photograph(tmp_path):
+    captured = live_source(tmp_path, pictures=1, add_context=True, residual=0.4)
+
+    [carrier] = run(captured, ControlledStoryJudge())["carriers"]
+
+    assert carrier["kind"] == "live-still"
 
 
 def test_existing_whole_event_burst_has_identical_requests_and_selection_with_extra_context(

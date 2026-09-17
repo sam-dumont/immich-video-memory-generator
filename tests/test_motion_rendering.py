@@ -198,3 +198,28 @@ def test_the_companions_own_length_bounds_what_the_burst_can_show() -> None:
     assert assumed.duration_seconds == 3.0
     assert measured.duration_seconds == 1.5
     assert measured.trim_points == ((0.0, 1.5),)
+
+
+def _rendering(*, videos: tuple[str, ...], seconds: float, minimum: float = 3.5):
+    return MotionRendering(
+        video_ids=videos,
+        trim_points=tuple((0.0, seconds / len(videos)) for _ in videos),
+        shutter_timestamps=tuple(0.0 for _ in videos),
+        duration_seconds=seconds,
+        still_ids=tuple(f"still-{i}" for i in range(len(videos))),
+        minimum_seconds=minimum,
+    )
+
+
+def test_a_lone_live_photo_is_put_to_the_motion_discriminant_not_to_the_stitch_minimum() -> None:
+    """Every lone Live Photo is under the stitch minimum by construction, so that rule alone
+    decided the whole kind (#1066). Its own motion decides it now."""
+    lone = _rendering(videos=("video-0",), seconds=2.9)
+
+    assert not lone.beats_a_still
+    assert lone.may_play
+
+
+def test_a_join_too_short_to_be_worth_its_cuts_is_still_a_photograph() -> None:
+    assert not _rendering(videos=("video-0", "video-1"), seconds=3.0).may_play
+    assert _rendering(videos=("video-0", "video-1"), seconds=4.0).may_play

@@ -175,7 +175,7 @@ class UnitBuilder:
         r = self._renderings[asset_id]
         members = [s for s in r.still_ids if s in ids] or [asset_id]
         residual = self._family_residual(members)
-        motion = r.beats_a_still and (
+        motion = r.may_play and (
             (residual is not None and residual >= RESIDUAL_MIN)
             or (residual is None and self._resolve_motion is not None)
         )
@@ -183,7 +183,7 @@ class UnitBuilder:
         return base | {
             "favourite": bool(stars),
             "kind": "live-motion" if motion else "live-still",
-            "motion_candidate": r.beats_a_still,
+            "motion_candidate": r.may_play,
             "motion_assessed": residual is not None,
             "asset_id": max(stars or members, key=self.quality),
             "members": members,

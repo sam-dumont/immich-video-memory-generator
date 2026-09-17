@@ -69,24 +69,31 @@ asset that has already won its place.
 2. **Video components**: the video half is dropped from the video pool. It is part of a photograph,
    not footage somebody shot
 3. **Clustering**: photos taken within a configurable window (default 10.0 s) form a burst
-4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default
-   3.5 s) is a motion candidate; anything shorter renders as the photograph it is. The editor then
-   measures how much actually moves (median optical flow over 12 frames). A candidate plays at 1.5
-   or more, is offered to the story pick as motion and listed first beside the videos, and the next
-   preparation writes it the same one-sentence motion line a video gets; below 1.5 it is offered and
-   rendered as a photograph
+4. **Rendering choice**: a lone Live Photo is a motion candidate, and so is a burst that stitches
+   to at least `live_photo_min_clip_seconds` (default 3.5 s); a shorter join of two or more renders
+   as the photograph it is. The editor then measures how much actually moves (median optical flow
+   over 12 frames). A candidate plays at 1.5 or more, is offered to the story pick as motion and
+   listed first beside the videos, and the next preparation writes it the same one-sentence motion
+   line a video gets; below 1.5 it is offered and rendered as a photograph
 5. **One carrier per burst**: a burst collapses to a single unit before the editor ever chooses. One
    photograph carries it, the favourite if there is one and otherwise the sharpest, best-exposed,
    and the siblings are not separately selectable
 
-Why 3.5 seconds: a lone Live Photo stitches to exactly 3.0 s while the smallest genuine merge of two
-reaches 4.0 s, so the threshold sits between them and a burst of one never displaces the photograph
-it would have shipped as. Motion magnitude is deliberately not part of this. Measured over 64 real
-bursts it correlates with something having happened (median 2.04 against 0.48) but does not separate
-it: a baby's mouth closing scored 0.31 while the same instant twice with a camera shift scored 0.63.
-Duration is structural and free. Motion is no gate: a quiet burst still ships as its photograph. It
-decides whether a Live Photo plays, and a burst that plays is preferred over a still of the same
-moment.
+Why 3.5 seconds, and why only for a join: two or more recordings cut together have to be worth their
+cuts, and a stitch under 3.5 s is more cut than footage. A lone Live Photo is not a join. It is the
+single recording the camera made, 1.7 to 3.3 s in practice, so it is under that minimum by
+construction and the length rule used to veto the whole kind before anything measured whether it
+moved. Across four films, 30 of the 38 Live Photos in the cuts were lone ones and none of them
+reached the motion measurement. Whether a lone Live Photo plays is that measurement's question now.
+
+Why the motion bar sits at 1.5, and why it stays there: measured over 64 real bursts, motion
+correlates with something having happened (median 2.04 against 0.48) but does not separate it. A
+baby's mouth closing scored 0.31 while the same instant twice with a camera shift scored 0.63. Every
+burst at 1.5 or above genuinely had something happen; below it the answer is a coin flip, and a
+still always works while a dead clip does not. Of the 127 Live Photos measured in these libraries so
+far, 59% clear 1.5, 72% clear 1.2 and 88% clear 1.0. Motion is no gate on selection: a quiet burst
+still ships as its photograph. It decides whether a Live Photo plays, and a burst that plays is
+preferred over a still of the same moment.
 
 The two config keys that decide anything are `live_photo_min_clip_seconds` (3.5) and
 `include_live_photos` (true). The CLI's `--include-live-photos` cannot turn the feature back on when

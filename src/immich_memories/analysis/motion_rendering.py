@@ -40,7 +40,7 @@ class MotionRendering:
 
     @property
     def beats_a_still(self) -> bool:
-        """Whether the motion is worth the photograph it would replace.
+        """Whether a STITCH is worth the photograph it would replace.
 
         Duration alone, and deliberately. A lone Live Photo stitches to exactly
         the raw 3.0s with nothing merged, while the smallest genuine merge of
@@ -53,6 +53,20 @@ class MotionRendering:
         would drop the quiet moments a memory is for.
         """
         return self.duration_seconds >= self.minimum_seconds
+
+    @property
+    def may_play(self) -> bool:
+        """Whether this rendering may be offered as motion at all.
+
+        A join of two or more recordings has to earn its length, which is what `beats_a_still`
+        asks. A lone Live Photo is not a join: it is the single recording the camera made, and
+        every one of them is under the stitch minimum by construction, so that rule vetoed the
+        whole kind before the motion discriminant was ever consulted. Measured over four films
+        (#1066): 30 of the 38 Live Photos in the cuts were lone ones, 1.7-3.3s, none of which
+        reached the residual gate; the 8 joins did, and 5 of the 6 with a measurement played.
+        Whether a lone Live Photo plays is the discriminant's question, not the minimum's.
+        """
+        return self.beats_a_still or len(self.video_ids) <= 1
 
 
 def motion_renderings(
