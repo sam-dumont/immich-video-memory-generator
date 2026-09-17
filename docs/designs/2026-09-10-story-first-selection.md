@@ -62,11 +62,15 @@ producer that made it (`store/editorial_preparation.py`):
 
 Preparation (`editorial_preparation*.py`) is the first stage of every run: it produces what is
 missing, reuses what is complete, and a producer that is not available stops the run with a
-count per producer instead of narrowing the input silently. Two invalid caption completions
-become a recorded `caption unavailable`, bound to the preview and the exact request; timeouts
-stay incomplete work for the next run. The pixel rule: **pictures are seen once, by the cheap
-model, and banked.** The text model is text-only everywhere — it reads annotation lines, never
-images.
+count per producer instead of narrowing the input silently. A source the server itself cannot
+serve is the other case: Immich answering 404 for a preview is its settled answer about that one
+asset, and no rerun of any producer changes it, so that source leaves the film by name through
+`evidence_exclusions` — counted once in the run log, listed in `preparation.private.json`, and
+rejected in the `source-eligibility` pass — while a producer outage still stops the run. Two
+invalid caption completions become a recorded `caption unavailable`, bound to the preview and the
+exact request; timeouts stay incomplete work for the next run. The pixel rule: **pictures are
+seen once, by the cheap model, and banked.** The text model is text-only everywhere — it reads
+annotation lines, never images.
 
 The banks live in the same file and beside it, every one keyed by the exact request so a changed
 prompt is a different key, never a stale answer:

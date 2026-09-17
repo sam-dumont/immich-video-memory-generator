@@ -100,6 +100,9 @@ def _print_outcome(
         print_error(f"{len(result.failures)} producer failures; the first few:")
         for key, detail in list(result.failures.items())[:5]:
             console.print(f"  {key}: {detail}", highlight=False)
+    if excluded := result.unservable_sources:
+        reasons = ", ".join(sorted(set(excluded.values())))
+        print_info(f"{len(excluded):,} sources will leave any cut — {reasons}")
     if result.missing_by_producer:
         missing = ", ".join(
             f"{producer}: {len(ids)}" for producer, ids in result.missing_by_producer.items()
