@@ -16,6 +16,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_story_pick_contract import carries_motion
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
@@ -433,6 +434,7 @@ class CarrierAdmission:
             compatible=self.compatible,
             motion_of=_unit_reader(self._motion_line, self._unit_by_asset),
             is_video=lambda c: self._unit_by_asset[c.primary][1]["kind"] == "video",
+            plays=lambda c: carries_motion(self._unit_by_asset[c.primary][1]),
             replacement_allowed=allows_replacement,
         )
         self.calls["pick_calls"] += len(self._judge.calls) - calls_before

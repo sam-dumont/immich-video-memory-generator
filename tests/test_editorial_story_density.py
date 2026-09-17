@@ -124,13 +124,13 @@ def test_normal_planner_does_not_reopen_declined_depth_in_later_passes(tmp_path)
 @pytest.mark.parametrize(
     "count,videos,stars,expected",
     [
-        (1, 3, (), []),
-        (2, 1, (), []),
+        (1, 3, (), ["0", "1", "2"]),  # one slot is still a choice between a video and a still
+        (2, 1, (), ["0"]),
         (2, 3, ("0", "1"), ["0", "1", "2"]),  # stars settle nothing: the depth is still contested
         (3, 2, (), ["0", "1"]),
     ],
 )
-def test_only_contested_video_depth_demands_sequences(count, videos, stars, expected):
+def test_every_offered_video_is_sampled_whatever_the_grant(count, videos, stars, expected):
     choices = [
         DepictedChoice(str(i), "K01", f"2030-05-01T10:{i}0:00", "A different cover pose", str(i))
         for i in range(3)

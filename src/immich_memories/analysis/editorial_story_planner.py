@@ -40,7 +40,7 @@ from immich_memories.analysis.editorial_story_shortlist import (
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
 
-STORY_PLANNER_VERSION = "story-first-selection-v5-sampled-depth"
+STORY_PLANNER_VERSION = "story-first-selection-v6-videos-first"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
 GATE_ORDER = {"remarkable": 0, "maybe": 1, "background": 2}
 

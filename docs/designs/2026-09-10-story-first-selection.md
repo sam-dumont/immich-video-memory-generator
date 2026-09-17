@@ -167,9 +167,13 @@ itself. The order is the owner's:
    texture slot raises it.
 4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`) — the model
    chooses which moments tell the story from a shortlist that names each source truthfully
-   (video with its length, live photo, still), favourites leading its rows and marked there. It
-   is asked whatever the owner starred; only a story offering a single moment its grant reaches
-   has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
+   (video with its length, a live photo that plays or is shown as a still, still), favourites
+   marked there. Moments that play (a true video, or a Live Photo above the motion discriminant)
+   lead its rows, every offered video carries its sampled sequence whatever the grant, and the
+   contract says to choose the moving record over a still of the same moment: this is a video
+   product. Where the two orders split, a moment that plays takes the slot before a still. It is
+   asked whatever the owner starred; only a story offering a single moment its
+   grant reaches has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
    slot.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
    and spaced from what is already committed. Freed slots are re-granted across stories in up to

@@ -103,6 +103,17 @@ show more distinct moments (arrival, the main activity, people together, how the
 than making every extra frame a new event. Matching facts are reused: descriptions and model
 decisions are cached by producer and input.
 
+**Videos lead the pick.** This is a film. When a story chooses its moments, the ones a video
+carries, or a Live Photo whose motion passed the check, are listed ahead of the stills, each with a
+line of sampled frames saying what happens in it, and the reader is told to choose the video over a
+still of the same moment. The pick is asked in two orders; when they disagree, the moment that moves
+wins. That holds at every length: a 90-second memory gives most stories one picture, and that one
+slot is still a choice between a video and a still. Only the question is reordered; the film still
+plays in the order things happened. A chosen video holds about 6 seconds where a photo holds 4,
+longer when someone is mid-sentence at the cut. When the videos push the cut past its length, the
+longest holds are shaved half a second at a time, never below 3.5 seconds or through a sentence; a
+video is never dropped for being long.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 
@@ -222,7 +233,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Every video a pick offers is sampled once and described, banked; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -289,8 +300,9 @@ queue instead of overlapping.
 `generate_memory()` takes over from the plan under a file lock.
 
 - **Originals** of the selected sources are downloaded (3 workers by default,
-  `analysis.download_workers`) and each interval trimmed with FFmpeg. A Live Photo chosen for its
-  motion plays its video; one chosen as a still is held. Live companions of different sizes
+  `analysis.download_workers`) and each interval trimmed with FFmpeg. A video always plays. A Live
+  Photo plays its video only when its measured motion reached 1.5; below that its photograph is
+  held, and the pick was offered it as a still. Live companions of different sizes
   are fitted to a common frame without stretching or changing their selected timing.
   ProRes MOV clips keep their original video, HDR metadata and audio during trimming.
 - **Photos** render frame by frame in Python: Ken Burns is a `cv2.warpAffine` per frame at 30 fps
