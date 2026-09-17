@@ -103,7 +103,6 @@ def _through_app(body, directory, *, fallback):
     from immich_memories.api.sync_client import SyncImmichClient
     from immich_memories.config_models_render import RenderWorkerConfig
     from immich_memories.generate import generate_memory
-    from immich_memories.processing.output_contract import validate_output
     from immich_memories.tracking import RunTracker
 
     worker = (
@@ -126,6 +125,4 @@ def _through_app(body, directory, *, fallback):
             result = generate_memory(params, run_tracker=tracker, defer_finalization=True)
     assert result.assembly_clips[0].duration == 2.0
     assert result.music_mute_windows == [(1.0, 3.0)]
-    return RenderArtifact(
-        result.path, result.encoding_plan, probe=validate_output(result.path, result.encoding_plan)
-    )
+    return RenderArtifact(result.path, result.encoding_plan, probe=result.publish())

@@ -39,7 +39,10 @@ def test_remote_client_returns_a_validated_film_and_exact_cut_metadata(tmp_path)
         repeated = RemoteRenderClient(settings, client=http).render(
             params, tmp_path / "repeated.mp4", lambda *_: None
         )
+        repeated.publish()
         assert repeated.path.is_file()
+    assert not artifact.path.exists()
+    artifact.publish()
     assert artifact.path.is_file()
     assert artifact.encoding_plan.codec.value == "h264"
     assert [(clip.asset_id, clip.duration) for clip in artifact.assembly_clips] == [
@@ -133,6 +136,139 @@ def test_a_changed_worker_result_cannot_replace_a_good_output(tmp_path, changed)
         RemoteRenderClient(settings, client=http).render(params, output, lambda *_: None)
     assert output.read_bytes() == b"previous good film"
     assert not list(tmp_path.glob("*.receiving.mp4"))
+
+
+class _CountingTools:
+    """Real ffprobe and ffmpeg, counting the decodes that read a received film."""
+
+    def __init__(self, *, time_out_here: bool = False):
+        import subprocess
+
+        self.real_run = subprocess.run
+        self.time_out_here = time_out_here
+        self.local_decodes = 0
+
+    def run(self, command, **kwargs):
+        import subprocess
+
+        source = command[command.index("-i") + 1] if "-i" in command else ""
+        if command[0] == "ffmpeg" and "-progress" in command and ".receiving." in source:
+            self.local_decodes += 1
+            if self.time_out_here:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return self.real_run(command, **kwargs)
+
+
+def _stub_renderer(params):
+    class Renderer:
+        def health(self):
+            return {"ready": True}
+
+        def render(self, request, directory, progress):
+            return stub_artifact(
+                directory,
+                size="720x720",
+                seconds=3.25,
+                clips=(
+                    {"asset_id": params.clips[0].asset.id, "duration": 3.25, "is_photo": False},
+                ),
+            )
+
+    return Renderer()
+
+
+def _receive(tmp_path, params, monkeypatch, tools, digest=None, on_response=None):
+    import subprocess
+
+    from immich_memories_render_worker import jobs
+
+    from immich_memories.config_models_render import RenderWorkerConfig
+    from immich_memories.processing.remote_render import RemoteRenderClient
+
+    settings = RenderWorkerConfig(worker_base_url="http://127.0.0.1", worker_token=WORKER_TOKEN)
+    # WHY: ffmpeg is the external process; the wrapper only counts the app's own decodes.
+    monkeypatch.setattr(subprocess, "run", tools.run)
+    if digest is not None:
+        # WHY: stands in for a worker that sends no digest, or a download that lost bytes.
+        monkeypatch.setattr(jobs, "file_sha256", lambda _path: digest(_path))
+    with TestClient(worker_app(tmp_path / "worker", _stub_renderer(params))) as http:
+        if on_response is not None:
+            # WHY: a response hook stands in for a worker that sends a different header.
+            monkeypatch.setattr(http, "event_hooks", {"request": [], "response": [on_response]})
+        return RemoteRenderClient(settings, client=http).render(
+            params, tmp_path / "received.mp4", lambda *_: None
+        )
+
+
+def test_a_worker_film_whose_digest_matches_is_not_decoded_again_here(tmp_path, monkeypatch):
+    params = manual_params(tmp_path)
+    tools = _CountingTools()
+
+    artifact = _receive(tmp_path, params, monkeypatch, tools)
+    probe = artifact.publish()
+
+    assert tools.local_decodes == 0
+    assert probe.decoded_frames == round(3.25 * 30)
+    assert artifact.path.is_file()
+    assert not list(tmp_path.glob("*.receiving.mp4"))
+
+
+def test_a_worker_film_that_arrives_without_a_digest_is_decoded_once_here(tmp_path, monkeypatch):
+    params = manual_params(tmp_path)
+    tools = _CountingTools()
+
+    artifact = _receive(tmp_path, params, monkeypatch, tools, digest=lambda _path: None)
+    artifact.publish()
+
+    assert tools.local_decodes == 1
+    assert artifact.path.is_file()
+
+
+def test_a_worker_film_that_does_not_match_its_digest_is_refused(tmp_path, monkeypatch):
+    from immich_memories.generate import GenerationError
+
+    params = manual_params(tmp_path)
+
+    with pytest.raises(GenerationError, match="does not match"):
+        _receive(tmp_path, params, monkeypatch, _CountingTools(), digest=lambda _path: "0" * 64)
+
+    assert not list(tmp_path.glob("*.receiving.mp4"))
+    assert not (tmp_path / "received.mp4").exists()
+
+
+@pytest.mark.parametrize("header", ["sha-256=abc", "sha-256=:not base64!:"])
+def test_an_unreadable_worker_digest_is_refused(tmp_path, monkeypatch, header):
+    from immich_memories.generate import GenerationError
+
+    params = manual_params(tmp_path)
+
+    def garble(response):
+        if response.request.url.path.endswith("/output"):
+            response.headers["repr-digest"] = header
+
+    with pytest.raises(GenerationError, match="unreadable digest"):
+        _receive(tmp_path, params, monkeypatch, _CountingTools(), on_response=garble)
+
+    assert not list(tmp_path.glob("*.receiving.mp4"))
+
+
+def test_a_received_film_that_fails_its_check_here_is_kept(tmp_path, monkeypatch):
+    """Hours of worker time are not deleted because this machine could not check them in time."""
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+    params = manual_params(tmp_path)
+    tools = _CountingTools(time_out_here=True)
+    artifact = _receive(tmp_path, params, monkeypatch, tools, digest=lambda _path: None)
+
+    with pytest.raises(InvalidOutputArtifact) as caught:
+        artifact.publish()
+
+    kept = list(tmp_path.glob("*.receiving.mp4"))
+    assert len(kept) == 1
+    assert kept[0].stat().st_size > 0
+    assert str(kept[0]) in str(caught.value)
+    assert "decode check did not finish within its 15:00 budget" in str(caught.value)
+    assert not (tmp_path / "received.mp4").exists()
 
 
 @pytest.mark.parametrize(

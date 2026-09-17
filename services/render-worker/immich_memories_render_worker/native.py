@@ -50,7 +50,7 @@ class NativeRenderer:
         """Fetch the selected sources directly and render without selecting or uploading."""
         from immich_memories.api.sync_client import SyncImmichClient
         from immich_memories.generate import generate_memory
-        from immich_memories.processing.output_contract import validate_output
+        from immich_memories.processing.output_contract import DecodeCheck
         from immich_memories.tracking import RunTracker
         from immich_memories_render_worker.admission import job_identity
         from immich_memories_render_worker.native_plan import generation_params
@@ -75,7 +75,13 @@ class NativeRenderer:
         plan = result.encoding_plan
         if plan.encoder != wanted:
             degradations.append(f"encoded with {plan.encoder} instead of {wanted}")
-        probe = validate_output(result.path, plan)
+        # The worker's one decode of this film; the job publisher reuses it.
+        probe = result.publish(
+            DecodeCheck(
+                encode_seconds=result.encode_seconds,
+                progress=lambda message: progress("check", 1.0, message),
+            )
+        )
         tracker.complete_artifact(
             result.path,
             probe,

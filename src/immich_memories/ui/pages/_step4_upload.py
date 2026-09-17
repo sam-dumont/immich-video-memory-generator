@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,6 +81,7 @@ async def upload_to_immich(
     run_tracker: RunTracker,
     progress_bar: object,
     status_label: object,
+    recheck: Callable[[], object] | None = None,
 ) -> RunMetadata:
     """Upload the generated video to Immich.
 
@@ -88,6 +90,7 @@ async def upload_to_immich(
         state: AppState with immich_url, immich_api_key, upload_album_name.
         progress_bar: NiceGUI progress bar element.
         status_label: NiceGUI status label element.
+        recheck: Runs before the upload; a film it refuses stays pending.
     """
     if not params.upload_enabled:
         current = run_tracker.current_run
@@ -101,7 +104,7 @@ async def upload_to_immich(
     try:
         from immich_memories.generate_delivery import deliver_completed_artifact
 
-        await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker)
+        await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker, recheck)
         completed = _authoritative_delivery_run(run_tracker)
         if completed is None:  # pragma: no cover - delivery requires an owned completed run
             raise RuntimeError("Run disappeared after Immich delivery")
