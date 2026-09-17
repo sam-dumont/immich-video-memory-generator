@@ -1,10 +1,17 @@
 """Mechanical pick rules do not need a model when favourites already fill the grant."""
 
 import json
+import re
 
 import pytest
 
-from immich_memories.analysis.editorial_story_shortlist import DepictedChoice, pick_story_moments
+from immich_memories.analysis.editorial_story_pick_pages import page_shares
+from immich_memories.analysis.editorial_story_reading import PAGE_CHARS
+from immich_memories.analysis.editorial_story_shortlist import (
+    DepictedChoice,
+    _pick_prompt,
+    pick_story_moments,
+)
 
 
 class PickJudge:
@@ -269,4 +276,136 @@ def test_held_company_improvement_tries_next_available_novel_moment():
             "added": "choice-5",
             "new_relations": ["sibling"],
         }
+    ]
+
+
+@pytest.mark.parametrize(
+    "offered,grant,expected",
+    [
+        ([10, 10], 4, [2, 2]),
+        ([10, 5], 6, [4, 2]),
+        ([7, 7, 7], 5, [2, 2, 1]),
+        ([120], 40, [40]),
+        ([40, 40, 40], 40, [14, 13, 13]),
+        ([3, 3], 0, [0, 0]),
+    ],
+)
+def test_page_shares_follow_choice_counts_and_never_exceed_the_grant(offered, grant, expected):
+    shares = page_shares(offered, grant)
+    assert shares == expected
+    assert sum(shares) == min(grant, sum(offered))
+    assert all(share <= count for share, count in zip(shares, offered, strict=True))
+
+
+def test_a_page_holding_a_favourite_keeps_one_slot_when_the_grant_allows():
+    assert page_shares([90, 2], 3, favourite_pages=[1]) == [2, 1]
+    assert page_shares([90, 2], 1, favourite_pages=[1]) == [1, 0]
+
+
+class PagingJudge:
+    # WHY: the model boundary. A scripted reader answers every page by the grant named in
+    # its own prompt, so the paging and share rules are exercised without a connection.
+    def __init__(self, short_on=()):
+        self.calls = []
+        self.short_on = set(short_on)
+
+    def ask(self, stage, prompt, **_kwargs):
+        self.calls.append({"stage": stage, "prompt": prompt})
+        grant = int(re.search(r"gets (\d+) picture", prompt)[1])
+        page = re.search(r"-page-(\d+)-", stage)
+        offered = sorted(re.findall(r"^(M\d+) \|", prompt, re.MULTILINE), key=lambda m: int(m[1:]))
+        keep = offered[: grant - (2 if page and int(page[1]) in self.short_on else 0)]
+        return json.dumps(
+            {
+                "keep": keep,
+                "unused_slots": grant - len(keep),
+                "why_fewer": "The remaining views repeat the same hour."
+                if len(keep) < grant
+                else "",
+            }
+        )
+
+
+def _crowded_choices(count):
+    return [
+        DepictedChoice(
+            f"choice-{i:03d}",
+            "K01",
+            f"2030-05-{i // 24 + 1:02d}T{i % 24:02d}:30:00",
+            "A long account of an afternoon by the canal, told again. " * 4,
+            f"asset-{i:03d}",
+        )
+        for i in range(count)
+    ]
+
+
+def _pick_crowded(judge, *, count=40, choice_count=120):
+    records = {}
+    selected = pick_story_moments(
+        judge,
+        story={"key": "K01", "title": "A long month", "seen": {"days": 30}},
+        choices=_crowded_choices(choice_count),
+        count=count,
+        starred=lambda _c: False,
+        contract="Remember the month",
+        record=lambda name, value: records.__setitem__(name, value),
+        kind_of=lambda _c: " | facts: a walk by the canal with a long list of observations, " * 4,
+    )
+    return selected, records["story-pick-K01"]
+
+
+def test_a_large_grant_is_asked_in_pages_that_fit_the_request_budget():
+    judge = PagingJudge(short_on={1})
+    selected, record = _pick_crowded(judge)
+
+    numbered = [re.search(r"-page-(\d+)-(source|reversed)$", call["stage"]) for call in judge.calls]
+    assert all(numbered), [call["stage"] for call in judge.calls]
+    assert len({match[1] for match in numbered}) > 1
+    assert all(len(call["prompt"]) <= PAGE_CHARS for call in judge.calls)
+
+    assert sum(page["share"] for page in record["pages"]) == 40
+    assert sum(page["offered"] for page in record["pages"]) == 120
+    assert record["pages"][0]["unused_slots"] == 2
+    second = next(call for call in judge.calls if "-page-2-source" in call["stage"])
+    assert int(re.search(r"gets (\d+) picture", second["prompt"])[1]) == (
+        record["pages"][1]["share"] + 2
+    )
+
+    assert len(selected) <= 40
+    assert [c.taken for c in selected] == sorted(c.taken for c in selected)
+
+
+def test_a_small_pick_is_one_request_with_unchanged_bytes():
+    story = {"key": "K01", "title": "A visit", "seen": {"days": 3}}
+    choices = [
+        DepictedChoice(f"choice-{i}", "K01", f"2030-05-01T10:0{i}", f"View {i}", f"asset-{i}")
+        for i in range(1, 10)
+    ]
+    judge = PagingJudge()
+    records = {}
+    pick_story_moments(
+        judge,
+        story=story,
+        choices=choices,
+        count=3,
+        starred=lambda _c: False,
+        contract="Show the visit",
+        record=lambda name, value: records.__setitem__(name, value),
+    )
+
+    rows = [f"M{i:02d} | 2030-05-01T10:0{i} | View {i} | 1 picture(s)" for i in range(1, 10)]
+    listings = ["\n".join(rows), "\n".join(reversed(rows))]
+    assert [call["stage"] for call in judge.calls] == [
+        "story-pick-K01-source",
+        "story-pick-K01-reversed",
+    ]
+    assert [call["prompt"] for call in judge.calls] == [
+        _pick_prompt(
+            "Show the visit", story, listing, count=3, allow_fewer=True, sampled_motion=False
+        )
+        for listing in listings
+    ]
+    assert all("page" not in call["prompt"] for call in judge.calls)
+    assert records["story-pick-K01"]["pages"] == [
+        {"page": 1, "offered": 9, "share": 3, "kept": 3, "unused_slots": 0}
     ]
