@@ -16,6 +16,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck
 from immich_memories.analysis.editorial_story_pick_contract import carries_motion
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_shortlist import (
@@ -202,9 +203,11 @@ class CarrierAdmission:
         slots: int,
         calls: dict[str, int],
         mechanical_picks: bool = False,
+        lookalike: LookAlikeCheck | None = None,
     ) -> None:
         self._judge = judge
         self._mechanical_picks = mechanical_picks
+        self.lookalike = lookalike or LookAlikeCheck(None, slots=slots)
         self.stories = stories
         self.choices_of = choices_of
         self._unit_by_asset = unit_by_asset
@@ -491,17 +494,36 @@ class CarrierAdmission:
                 if not good:
                     continue
                 asset, carrier, rest = self.carrier_for(c, s, index, good)
-                if carrier is None:
+                if carrier is None or self._repeats_the_story(s, c, index, asset, carrier):
                     continue
                 # A spare replaces this carrier rather than joining it, so the pool is read
                 # while its own partition slot is still free.
-                spares = self._spares(s, asset, short_of, open_of)
-                self._taken.add(asset)
-                self.carriers.append(carrier)
-                self.chosen_by_story[s["key"]].append(c.key)
+                self._admit(s, c, carrier, [*rest, *self._spares(s, asset, short_of, open_of)])
                 added += 1
-                self.alternatives_of[asset] = [*rest, *spares]
         return added
+
+    def _admit(self, s, choice, carrier, alternatives) -> None:
+        self._taken.add(carrier["asset_id"])
+        self.carriers.append(carrier)
+        self.chosen_by_story[s["key"]].append(choice.key)
+        self.alternatives_of[carrier["asset_id"]] = alternatives
+
+    def _repeats_the_story(self, s, choice, index, asset, carrier) -> bool:
+        """A further picture of a story that looks like one it already holds waits its turn."""
+        kept = [c for c in self.carriers if c["story_episode"] == s["key"]]
+        repeated = self.lookalike.repeats(carrier, kept) if kept else None
+        if repeated is None:
+            return False
+
+        def readmit() -> bool:
+            asset_id, row, rest = self.carrier_for(choice, s, index, [asset])
+            if row is None:
+                return False
+            self._admit(s, choice, row, rest)
+            return True
+
+        self.lookalike.refuse(s["key"], asset, repeated, readmit)
+        return True
 
     def _spares(self, s, asset, short_of, open_of) -> list[str]:
         """The pool the audience gate draws a replacement from: a spare must stand by itself
@@ -566,12 +588,15 @@ class CarrierAdmission:
         """Pick the moments that tell each story, then one picture per moment that stands by
         itself. A picture carries at most one moment."""
         passes = 0
-        while len(self.carriers) < self.slots and passes < MAX_PASSES:
+        # A refusal for looking alike frees a slot, so it buys the pass that refills it.
+        while len(self.carriers) < self.slots and passes < MAX_PASSES + len(self.lookalike.refused):
             passes += 1
-            if self._one_pass(passes) == 0:
+            refused = len(self.lookalike.refused)
+            if self._one_pass(passes) == 0 and len(self.lookalike.refused) == refused:
                 break
         self.calls["selection_passes"] = passes
         self._keep_occasions()
+        self.lookalike.readmit(lambda: len(self.carriers) < self.slots)
         self.calls["failed_standing"] = len(self.failed_standing)
         self.calls["kept_without_standing"] = len(self.kept_without_standing)
         self.carriers.sort(key=itemgetter("taken"))

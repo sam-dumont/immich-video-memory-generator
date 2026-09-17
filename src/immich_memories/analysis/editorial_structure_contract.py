@@ -215,6 +215,8 @@ class StructurePlannerPorts:
     # The same boundary asked whether two nearby captures repeat each other, which
     # no perceptual distance answers; None leaves the strict question to answer both.
     confirm_episode_pairs: SampledPairConfirmer | None = None
+    # The same question for two pictures of one story that may be days apart.
+    confirm_story_pairs: SampledPairConfirmer | None = None
     sampled_preview_hashes: (
         Callable[[tuple[str, ...], Mapping[str, Mapping[str, Any]]], Mapping[str, str]] | None
     ) = None

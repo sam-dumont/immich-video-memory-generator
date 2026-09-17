@@ -195,7 +195,17 @@ itself. The order is the owner's:
    grant reaches has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
    slot.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
-   and spaced from what is already committed. Freed slots are re-granted across stories in up to
+   and spaced from what is already committed, and, when its story already holds a picture, if it
+   does not look like one (`editorial_story_lookalike.py`). That check reuses the final review's
+   visual repetition question through the same port: a pair of one capture family inside the
+   90-minute window is asked as `episode-similarity-v1` and shares its memo with the final review,
+   any other pair of one story as `story-similarity-v1`, whose premise says the two may be days
+   apart. It has its own bound of twice the film's slots rather than a share of the final review's
+   (that one is over the finished film, replacements and video samples included); a pair both ask
+   is one request. A refusal frees the slot and buys one more pass, so the story's next distinct
+   moment or the next story in funding order takes it; a favourite is never refused against a
+   picture the owner did not star; what nothing else can fill is readmitted, so the check never
+   causes a shortfall on its own. Freed slots are re-granted across stories in up to
    three further passes, never to variants. An occasion whose every candidate failed still shows
    once. The audience is not asked here: the gate reads the cut, not every candidate.
 6. **The audience chain and the final duplicate pass** close the cut — sampled-pair confirmation

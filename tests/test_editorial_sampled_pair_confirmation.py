@@ -173,6 +173,23 @@ def test_a_corroborating_distance_never_shortens_the_episode_question(observed, 
     adapter.close()
 
 
+def test_story_similarity_asks_its_own_premise_in_both_arrangements(observed, monkeypatch):
+    calls = replies(monkeypatch, [answer(), answer(), answer(False)])
+    adapter = confirmer(observed)
+    story, audit = adapter.confirm_story_pairs(
+        (("one", "two"),), observed["records"], corroborating_distances=(0,)
+    )
+    assert story[0].same is True and len(calls) == 2
+    assert audit["scope"].startswith("same-story")
+    assert calls[0]["prompt"] == calls[1]["prompt"]
+    assert "possibly days apart" in calls[0]["prompt"]
+    assert "close in time" not in calls[0]["prompt"]
+    episode, _ = adapter.confirm_episode_pairs((("one", "two"),), observed["records"])
+    assert episode[0].same is False, "the episode question is its own banked answer"
+    assert calls[2]["prompt"] != calls[0]["prompt"]
+    adapter.close()
+
+
 @pytest.mark.parametrize("distance,expected_calls", [(SELECTS_MAX_CORROBORATION, 1), (None, 2)])
 def test_a_corroborating_distance_replaces_the_second_arrangement(
     observed, monkeypatch, distance, expected_calls

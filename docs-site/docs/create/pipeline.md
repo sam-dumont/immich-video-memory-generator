@@ -148,8 +148,8 @@ in the repository.
 ## Twins and near-duplicates
 
 You held the shutter down. You imported the same clip twice. You shot the cake from two steps left.
-None of that should cost three slots in a two-minute film. Sameness is decided in three places,
-cheapest first, and only the last one asks a model.
+None of that should cost three slots in a two-minute film. Sameness is decided in four places,
+cheapest first, and only the first one is free of model calls.
 
 **1. Bursts, on capture time and pixels.** Photos within `photos.burst_window_seconds` of each other
 **and** within `photos.burst_hash_threshold` bits on an average hash of their Immich previews are
@@ -176,7 +176,18 @@ uncertainty lives on pixel-*distant* pairs. At a corroboration distance of 10 th
 all 653 decisions exactly while removing 30 % of the calls, and the first changed decision appears
 at 12. That 10 is a constant in the code, not a setting.
 
-**3. The final film, over what actually shipped.** The pictures in the cut are checked against each
+**3. Inside a story, while the cut can still change.** A story's second or third picture is kept
+only if it does not look like one the story already holds. Trips and long stays are where this
+matters: three one-day stories of a weekend away used to ship three near-identical selfies. The
+question is step 4's repetition question, asked in both arrangements: a pair from the same 90-minute
+episode is asked exactly as step 4 asks it, so the answer is shared, and a pair days apart is asked
+with a premise that says so. A refused picture frees its slot for the story's next distinct moment,
+or for the next story in line. A favourite is never refused for looking like a picture you did not
+star, and when nothing else can take the slot the refused picture comes back, so this check alone
+never makes a film short. It asks at most twice as many pairs as the film has slots and records
+every refusal in the run's `story-selection` record.
+
+**4. The final film, over what actually shipped.** The pictures in the cut are checked against each
 other again. A pair is nominated when any of three signals fires: hashes within 10 bits,
 descriptions that read as the same thing (Jaccard over words of four letters or more, at 0.60), or
 the same capture episode within the 90-minute window. That 0.60 is the knee of a measured curve over

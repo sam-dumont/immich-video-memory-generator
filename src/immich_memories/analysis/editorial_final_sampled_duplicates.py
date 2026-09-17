@@ -217,7 +217,8 @@ def _episode_of(unit: Mapping[str, Any]) -> str:
     return str(unit.get("event") or unit.get("moment") or "")
 
 
-def _nearby_episode(left, right) -> bool:
+def nearby_episode(left, right) -> bool:
+    """Two carriers of one capture family, taken within the 90-minute episode window."""
     episode = _episode_of(left)
     return (
         bool(episode)
@@ -235,7 +236,7 @@ def _nominations(
     for position, keeper in enumerate(ordered):
         for remove in ordered[position + 1 :]:
             kept_id, removed_id = keeper["asset_id"], remove["asset_id"]
-            same_episode = _nearby_episode(keeper, remove)
+            same_episode = nearby_episode(keeper, remove)
             edges = [
                 edge
                 for left in index.members[removed_id]

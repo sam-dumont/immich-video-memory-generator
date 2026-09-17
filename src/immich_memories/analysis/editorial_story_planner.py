@@ -27,6 +27,7 @@ from immich_memories.analysis.editorial_story_carriers import (
     choice_is_starred,
     shortlist_by_partition,
 )
+from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck, PairLooksAlike
 from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
@@ -463,6 +464,7 @@ def select_story_first(
     episode_readings: Mapping[str, Any] | None = None,
     rules=None,
     trips: FilmTrips | None = None,
+    looks_alike: PairLooksAlike | None = None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -472,6 +474,7 @@ def select_story_first(
     background); it is shown to the synthesis and weighs episodes the synthesis left unplaced.
     `record(name, payload)` persists a derived decision under the run's audit directory.
     `trips` are the journeys detected in the pool; each becomes one story before the weighing.
+    `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
     """
     calls = {
         "story_pages": 0,
@@ -604,6 +607,7 @@ def select_story_first(
         record=record,
         slots=slots,
         calls=calls,
+        lookalike=LookAlikeCheck(looks_alike, slots=slots),
     )
     admission.run()
 
@@ -624,6 +628,7 @@ def select_story_first(
         | {
             "standing": gate.scores,
             "passes": admission.pass_records,
+            "lookalike": admission.lookalike.record(),
             "failed_standing": admission.failed_standing,
             "kept_without_standing": admission.kept_without_standing,
             "editorially_closed": [
