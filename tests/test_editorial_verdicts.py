@@ -168,3 +168,119 @@ def test_the_same_reading_still_lends_its_verdict_to_the_next_memory(tmp_path: P
     result = run_cull_decisions(second, (), provenance=_provenance(second, reading), verdicts=store)
 
     assert [candidate.asset_id for candidate in result.survivors] == ["a-keeper"]
+
+
+def test_the_pass_remembers_the_pictures_it_kept(tmp_path: Path) -> None:
+    """A bank of rejects only can never withdraw one; the pass's answer can."""
+    from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+
+    store = EditorialVerdicts(tmp_path / "verdicts.db")
+    reading = _reading("episode-prompt-v1")
+    prepared = _prepared("a-screen", "a-keeper")
+
+    run_cull_decisions(
+        prepared,
+        (CullDecision("a-screen", "notes"),),
+        provenance=_provenance(prepared, reading),
+        verdicts=store,
+        judged_asset_ids=prepared.candidate_ids,
+    )
+
+    assert store.recall(("a-screen", "a-keeper"), pass_version=cull_pass_version(reading)) == {
+        "a-screen": "notes",
+        "a-keeper": "kept",
+    }
+
+
+def test_a_picture_the_reading_never_judged_stays_unasked(tmp_path: Path) -> None:
+    """An episode that failed to read leaves no answer, which is not a keep."""
+    from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+
+    store = EditorialVerdicts(tmp_path / "verdicts.db")
+    reading = _reading("episode-prompt-v1")
+    prepared = _prepared("a-screen", "a-keeper", "unread")
+
+    run_cull_decisions(
+        prepared,
+        (CullDecision("a-screen", "notes"),),
+        provenance=_provenance(prepared, reading),
+        verdicts=store,
+        judged_asset_ids=("a-screen", "a-keeper"),
+    )
+
+    assert store.recall(("unread",), pass_version=cull_pass_version(reading)) == {}
+
+
+def test_a_kept_verdict_is_never_replayed_as_a_reject(tmp_path: Path) -> None:
+    """The bank removes pictures; a remembered keep must remove nothing."""
+    from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+
+    store = EditorialVerdicts(tmp_path / "verdicts.db")
+    reading = _reading("episode-prompt-v1")
+
+    first = _prepared("a-keeper", "another-keeper")
+    run_cull_decisions(
+        first,
+        (),
+        provenance=_provenance(first, reading),
+        verdicts=store,
+        judged_asset_ids=first.candidate_ids,
+    )
+
+    second = _prepared("a-keeper", "another-keeper")
+    result = run_cull_decisions(
+        second,
+        (),
+        provenance=_provenance(second, reading),
+        verdicts=store,
+        judged_asset_ids=second.candidate_ids,
+    )
+
+    assert [candidate.asset_id for candidate in result.survivors] == [
+        "a-keeper",
+        "another-keeper",
+    ]
+
+
+def test_a_newer_reading_withdraws_a_reject_the_bank_was_holding(tmp_path: Path) -> None:
+    """The survivor pool can grow back.
+
+    A standing verdict still decides the cut it turns up in, because what a
+    picture IS does not change between memories. What changed is that the
+    reading disagreeing with it now writes its own answer down, so the
+    disagreement costs one cut instead of standing for ever (#1059).
+    """
+    from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+
+    store = EditorialVerdicts(tmp_path / "verdicts.db")
+    reading = _reading("episode-prompt-v1")
+
+    first = _prepared("argued-over", "a-keeper")
+    run_cull_decisions(
+        first,
+        (CullDecision("argued-over", "notes"),),
+        provenance=_provenance(first, reading),
+        verdicts=store,
+        judged_asset_ids=first.candidate_ids,
+    )
+
+    second = _prepared("argued-over", "a-keeper")
+    disagreeing = run_cull_decisions(
+        second,
+        (),
+        provenance=_provenance(second, reading),
+        verdicts=store,
+        judged_asset_ids=second.candidate_ids,
+    )
+
+    third = _prepared("argued-over", "a-keeper")
+    after = run_cull_decisions(
+        third,
+        (),
+        provenance=_provenance(third, reading),
+        verdicts=store,
+        judged_asset_ids=third.candidate_ids,
+    )
+
+    assert [candidate.asset_id for candidate in disagreeing.survivors] == ["a-keeper"]
+    assert [candidate.asset_id for candidate in after.survivors] == ["argued-over", "a-keeper"]

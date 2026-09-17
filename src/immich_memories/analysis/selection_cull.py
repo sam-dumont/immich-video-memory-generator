@@ -14,7 +14,7 @@ from immich_memories.analysis.editorial_contracts import (
     TraceDecision,
 )
 from immich_memories.analysis.selection_source import PreparedEditorialSource
-from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+from immich_memories.cache.editorial_verdicts import KEPT_VERDICT, EditorialVerdicts
 from immich_memories.store.episode_readings import EpisodeReadingProducer
 
 _REVIEW_STATE_COLOURS = {
@@ -67,6 +67,7 @@ def run_cull_decisions(
     warnings: tuple[str, ...] = (),
     request_traces: tuple[RequestTrace, ...] = (),
     verdicts: EditorialVerdicts | None = None,
+    judged_asset_ids: tuple[str, ...] = (),
     actual_calls: int = 0,
 ) -> CullDecisionResult:
     """Apply the existing Cull laws to provider-neutral typed decisions.
@@ -74,7 +75,12 @@ def run_cull_decisions(
     The bank is read and written under `provenance.pass_version`, so the key
     the trace publishes is the key the rows live under and there is nowhere for
     the two to drift apart. Production composes it with `cull_pass_version`.
+
+    `judged_asset_ids` names the pictures this reading actually looked at, which
+    is what makes a keep sayable: an episode that failed to read leaves its
+    pictures unasked rather than kept.
     """
+    reading = rejects
     # What a picture IS does not change between memories, so a verdict reached
     # once stands for all of them. What it sat beside does change, which is why
     # only the two removing buckets are remembered.
@@ -100,7 +106,7 @@ def run_cull_decisions(
     )
     if verdicts is not None:
         verdicts.remember(
-            ((item.asset_id, item.bucket) for item in ordered_rejects),
+            _this_reading_s_answer(prepared, reading, judged_asset_ids),
             pass_version=provenance.pass_version,
         )
     authoritative_warnings = _authoritative_warnings(prepared)
@@ -140,7 +146,11 @@ def _with_remembered_verdicts(
     added = tuple(
         starmap(
             CullDecision,
-            (pair for pair in remembered.items() if pair[0] not in decided),
+            (
+                (asset_id, bucket)
+                for asset_id, bucket in remembered.items()
+                if asset_id not in decided and bucket != KEPT_VERDICT
+            ),
         )
     )
     warnings = tuple(
@@ -149,13 +159,46 @@ def _with_remembered_verdicts(
     return (*rejects, *added), warnings
 
 
+def _this_reading_s_answer(
+    prepared: PreparedEditorialSource,
+    reading: tuple[CullDecision, ...],
+    judged_asset_ids: tuple[str, ...],
+) -> tuple[tuple[str, str], ...]:
+    """What this reading said about each picture it judged, its keeps included.
+
+    The bank used to take the pass's rejects and nothing else, so a standing
+    verdict could never be withdrawn and the survivor pool could only shrink
+    (#1059). Writing the keeps down lets a later reading of the same question
+    replace an answer it no longer gives. A star or an owner tick is an
+    override rather than an answer about the picture, so what it saved is left
+    exactly as the bank already had it.
+    """
+    protected = _protected_ids(prepared)
+    candidates = set(prepared.candidate_ids)
+    rejected = {decision.asset_id: decision.bucket for decision in reading}
+    kept = tuple(
+        asset_id
+        for asset_id in dict.fromkeys(judged_asset_ids)
+        if asset_id in candidates and asset_id not in rejected
+    )
+    return (
+        *((asset, bucket) for asset, bucket in rejected.items() if asset not in protected),
+        *((asset_id, KEPT_VERDICT) for asset_id in kept if asset_id not in protected),
+    )
+
+
+def _protected_ids(prepared: PreparedEditorialSource) -> frozenset[str]:
+    """Pictures a star or an owner tick holds in, whatever the pass decided."""
+    favourite_ids = {candidate.asset_id for candidate in prepared.candidates if candidate.favourite}
+    return frozenset(favourite_ids | set(prepared.owner_required_asset_ids))
+
+
 def _protect_favourites(
     prepared: PreparedEditorialSource,
     rejects: tuple[CullDecision, ...],
 ) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
     favourite_ids = {candidate.asset_id for candidate in prepared.candidates if candidate.favourite}
-    required_ids = set(prepared.owner_required_asset_ids)
-    protected_ids = favourite_ids | required_ids
+    protected_ids = _protected_ids(prepared)
     protected = tuple(decision for decision in rejects if decision.asset_id in protected_ids)
     accepted = tuple(decision for decision in rejects if decision.asset_id not in protected_ids)
     warnings = tuple(

@@ -222,6 +222,7 @@ class TextEditorialPlanner:
             warnings=episodes.warnings,
             request_traces=() if episodes.request_trace is None else (episodes.request_trace,),
             verdicts=self._verdicts,
+            judged_asset_ids=episodes.judged_asset_ids,
             actual_calls=episodes.actual_calls,
         )
         demanded = frozenset(demanded_ids)

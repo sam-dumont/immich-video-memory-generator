@@ -178,6 +178,22 @@ class TextEpisodeReadResult:
             for decision in episode.reading.cull_decisions
         )
 
+    @property
+    def judged_asset_ids(self) -> tuple[str, ...]:
+        """Every picture a successful reading looked at, rejected or kept.
+
+        The rejects alone cannot say which pictures were judged: an episode
+        that failed to read also rejects nothing.
+        """
+        return tuple(
+            dict.fromkeys(
+                asset_id
+                for episode in self.episodes
+                if episode.reading is not None
+                for asset_id in episode.reading.full_asset_ids
+            )
+        )
+
     def representative_for(
         self,
         candidates: tuple[EditorialCandidate, ...],
