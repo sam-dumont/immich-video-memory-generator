@@ -32,7 +32,11 @@ def source_fingerprint(
 ) -> str:
     """Identify the credential scope and library snapshot without storing secrets."""
     server_digest = hashlib.sha256(server_url.rstrip("/").encode()).hexdigest()
-    credential_digest = hashlib.sha256(api_key.encode()).hexdigest()
+    # WHY: the key is hashed to scope the cache without persisting the secret;
+    # nothing here verifies a password, so stretch cost buys nothing.
+    credential_digest = (
+        hashlib.sha256(api_key.encode()).hexdigest()  # codeql[python/weak-sensitive-data-hashing]
+    )
     identity = {
         "schema_version": _SCHEMA_VERSION,
         "server": server_digest,

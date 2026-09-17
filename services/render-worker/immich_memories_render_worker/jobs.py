@@ -84,9 +84,12 @@ class RenderJobs:
         self.cleanup()
         job_id = job_identity(request)
         material = request.model_dump(mode="json")
+        # WHY: the digest exists so a resubmitted cut can be recognised without
+        # ever storing or logging the scoped key; it is an identity fingerprint,
+        # not password storage.
         material["immich"]["api_key"] = hashlib.sha256(
             request.immich.api_key.get_secret_value().encode()
-        ).hexdigest()
+        ).hexdigest()  # codeql[python/weak-sensitive-data-hashing]
         fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
         status, fresh = self.store.admit(
             JobStatus(
@@ -103,7 +106,10 @@ class RenderJobs:
         return status
 
     def directory(self, job_id: UUID) -> Path:
-        return self.root / str(job_id)
+        path = self.root / str(job_id)
+        if not path.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError("Job id resolves outside the worker workspace")
+        return path
 
     def _render(self, request: RenderRequest, job_id: UUID) -> None:
         directory = self.directory(job_id)

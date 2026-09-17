@@ -483,7 +483,7 @@ def _build_clip_output_path(
     reencode: bool,
 ) -> Path:
     output_dir = private_temp_dir("clips")
-    source_hash = hashlib.md5(str(source_path).encode(), usedforsecurity=False).hexdigest()[:8]  # noqa: S324
+    source_hash = hashlib.sha256(str(source_path).encode()).hexdigest()[:8]
     buffer_suffix = (
         f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
     )

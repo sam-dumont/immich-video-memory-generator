@@ -696,7 +696,11 @@ class TestConfigShowCommand:
         config.immich.api_key = "secret-key"
         result = _invoke(["config", "--show"], config=config)
         assert result.exit_code == 0
-        assert "http://photos.test:2283" in result.output
+        # Exact table cells, not a substring probe: a bare URL literal inside a
+        # string reads as URL sanitization to CodeQL (and tests less precisely).
+        cells = {cell.strip() for line in result.output.splitlines() for cell in line.split("│")}
+        assert "Immich URL" in cells
+        assert "http://photos.test:2283" in cells
         assert "****" in result.output  # API key masked
 
     def test_config_show_no_key(self):
