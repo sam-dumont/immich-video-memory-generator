@@ -6,7 +6,8 @@ wait` on a label selector that matches nothing is an error rather than a wait, a
 the Job controller makes the pod a moment after `apply` returns, so the scheduling
 wait used to lose the race and end the cell with `error: no matching resources
 found`. `kubectl wait job --for=condition=complete` is never satisfied by a Job
-that FAILED, so the runner watched a dead cell until its three-hour ceiling. And
+that FAILED, so the runner watched a dead cell until its three-hour ceiling, and a
+Job deleted mid-run answered NotFound to every status poll for as long. And
 `rollout status` on the inference Deployment says a pod is Available, which is not
 the same as a service that can decide a picture: the models are pulled into its
 cache on the first request, and until they are there every `/facts` call is a 503
@@ -56,6 +57,10 @@ JOB_POLL_S = 15.0
 # The ceiling the old single `kubectl wait` carried. A cell that has not finished
 # in three hours is a finding, not a measurement.
 JOB_TIMEOUT_S = 3 * 60 * 60
+# How kubectl marks an object the API server does not have. A Job deleted while
+# the runner waits answers this to every poll from then on, so it ends the wait.
+# Any other failed poll (an API timeout, a dropped connection) is asked again.
+NOT_FOUND = "(NotFound)"
 
 # The warm-up is a real request, so it is the first cold decision of the run and
 # it can take the time a model download takes.
@@ -149,29 +154,34 @@ def await_job(probe: Callable[[], subprocess.CompletedProcess]) -> subprocess.Co
 
     `probe` runs the status query and returns what it printed. The result is a
     CompletedProcess because the caller logs and grades every step the same way:
-    a Job that failed, or one still running at the ceiling, comes back non-zero.
+    a Job that failed, one that no longer exists, or one still running at the
+    ceiling comes back non-zero. A poll kubectl failed for any other reason is
+    not an answer, and the next one is asked as usual.
     """
     deadline = time.monotonic() + JOB_TIMEOUT_S
     while True:
         proc = probe()
+        if proc.returncode != 0 and NOT_FOUND in (proc.stderr or ""):
+            said = (proc.stderr or "").strip()
+            return _gave_up(proc, f"the job no longer exists, so it will never finish: {said}")
         outcome = job_outcome(proc.stdout or "")
         if outcome == "complete":
             return proc
         if outcome == "failed":
-            return subprocess.CompletedProcess(
-                args=proc.args,
-                returncode=1,
-                stdout=proc.stdout,
-                stderr="the job reports failed=1, so it will never reach condition=complete",
+            return _gave_up(
+                proc, "the job reports failed=1, so it will never reach condition=complete"
             )
         if time.monotonic() >= deadline:
-            return subprocess.CompletedProcess(
-                args=proc.args,
-                returncode=1,
-                stdout=proc.stdout,
-                stderr=f"the job neither completed nor failed within {JOB_TIMEOUT_S / 3600:.0f}h",
+            return _gave_up(
+                proc, f"the job neither completed nor failed within {JOB_TIMEOUT_S / 3600:.0f}h"
             )
         time.sleep(JOB_POLL_S)
+
+
+def _gave_up(proc: subprocess.CompletedProcess, reason: str) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(
+        args=proc.args, returncode=1, stdout=proc.stdout, stderr=reason
+    )
 
 
 def warmup_picture(source: Path) -> bytes:
