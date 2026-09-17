@@ -88,7 +88,14 @@ def test_each_variant_installs_only_its_device_extra() -> None:
     assert "INFERENCE_EXTRA=editorial" in cpu
     assert "INFERENCE_EXTRA=editorial-cuda" in cuda
     assert '".[${INFERENCE_EXTRA}]"' in build
-    assert "--constraint /constraints.txt" in build
+    # The lock export is scoped to exactly the selected extra (never --all-extras,
+    # which would let the CPU and CUDA onnxruntime wheels meet), and its deps are
+    # installed hash-pinned; the project itself rides along with --no-deps because
+    # a local path has no hash to check.
+    assert '--extra "${INFERENCE_EXTRA}"' in build
+    assert "--all-extras" not in build
+    assert "--require-hashes -r /deps-hashes.txt" in build
+    assert "--no-deps" in build
     assert "pip check" in build
     assert "torch" not in build
     assert "pip uninstall" not in build
