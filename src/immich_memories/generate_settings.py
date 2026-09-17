@@ -19,6 +19,7 @@ from immich_memories.processing.assembly_config import (
     TitleScreenSettings,
     TransitionType,
 )
+from immich_memories.processing.clip_caption import resolve_caption_locale
 from immich_memories.processing.encoding_plan import (
     EncodingPlan,
     EncodingRequest,
@@ -176,7 +177,9 @@ def _build_title_settings(
     trip_location_names: list[str] = []
     trip_title_text = None
     if params.memory_type == "trip":
-        trip_locations, trip_location_names = extract_trip_pins(assembly_clips)
+        trip_locations, trip_location_names = extract_trip_pins(
+            assembly_clips, resolve_caption_locale(config.title_screens.locale)
+        )
         trip_title_text = generate_trip_title_text(
             params.memory_preset_params, config.title_screens.locale
         )
@@ -219,7 +222,6 @@ def _build_title_settings(
     holiday = params.memory_preset_params.get("holiday")
     if params.memory_type == "holiday" and params.date_end and holiday:
         from immich_memories.memory_types.factory import holiday_label
-        from immich_memories.processing.clip_caption import resolve_caption_locale
         from immich_memories.titles.text_builder import TITLE_PATTERNS
 
         locale = resolve_caption_locale(settings.locale)
