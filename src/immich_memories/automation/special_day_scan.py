@@ -24,7 +24,9 @@ from immich_memories.analysis.special_day import (
     candidate_days,
     days_covered_by_trips,
     event_window,
+    pictures_inside,
     run_extent,
+    window_that_holds_the_day,
 )
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
@@ -62,6 +64,11 @@ class DiscoveredDay:
     asset_ids: tuple[str, ...] = ()
     event_admission: SpecialEventAdmission | None = None
     judged: bool = True
+    # How many of the day's pictures the recorded window holds, against `photos`.
+    # Zero means a scan from before #1067 that never counted, so its window is
+    # taken as written; every other row can be checked without re-fetching the
+    # day. With no window the whole day is the scope, so this equals `photos`.
+    window_photos: int = 0
     # Which scan produced this. Empty means a scan from before #1065, which
     # stamped nothing and asked a question a pleasant afternoon answered yes to.
     prompt_version: str = ""
@@ -250,18 +257,21 @@ def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
         )
     if not verdict.special or not verdict.title:
         return None
+    # The model read the day's own timestamps and what the lines said was in
+    # the frames; event_window only knows where the pictures were. Either way
+    # the window has to hold the day before it is written down.
+    window = window_that_holds_the_day(verdict.window or event_window(items), items)
     return DiscoveredDay(
         day=day,
         title=verdict.title,
         subtitle=verdict.subtitle,
         what=verdict.what,
         photos=len(items),
-        # The model read the day's own timestamps and what the lines said was
-        # in the frames; event_window only knows where the pictures were.
-        window=verdict.window or event_window(items),
+        window=window,
         active_hours=active_hours(items),
         run_start=started,
         run_end=ended,
+        window_photos=pictures_inside(window, items),
         prompt_version=PROMPT_VERSION,
         app_version=__version__,
     )

@@ -70,6 +70,9 @@ immich-memories generate --memory-type holiday --holiday christmas --years-back 
 # A day the catalogue found (see discover-days); the title comes from the catalogue
 immich-memories generate --memory-type special_day --day 2016-06-12
 
+# A day it never found; the day is the scope and the model writes the title
+immich-memories generate --memory-type special_day --day 2021-04-04
+
 # Vertical, 30 seconds, for Reels or Shorts
 immich-memories generate --year 2025 --month 8 --short-form 30
 ```
@@ -80,9 +83,10 @@ Three things the examples hide:
   date-range memories (months, years, seasons). Trips, albums and single-person presets refuse it.
 - Moving holidays are computed for each year (Easter, Thanksgiving, Mother's and Father's Day), with
   a window of two days either side. A holiday cut runs 60 seconds unless you pass `--duration`.
-- `special_day` refuses to run without `--day`, with a day the catalogue never recorded, or with a
-  day that has no title: a day the model could not name is not rendered. `immich-memories days-due`
-  lists what the catalogue holds.
+- `special_day` works on any day, catalogued or not, and refuses only without `--day`. A day with a
+  catalogue row is scoped and named by it; a day without one is scoped to itself, named by `--title`
+  or by the model from the day's own facts, and never written back to the catalogue.
+  `immich-memories days-due` lists what the catalogue holds.
 
 ## Trips
 

@@ -199,7 +199,10 @@ people's first names.
 
 The model names people and occasion memories by default as soon as a reader is configured, in the
 wizard and on the CLI. `--title` still wins, the template is the fallback whenever the model fails
-or no reader is set, and a special day whose catalogue entry already carries a title keeps it.
+or no reader is set, and a special day whose catalogue entry already carries a title keeps it. A
+special day the catalogue never found is named here too, from the day's own facts and with no
+catalogue entry to read, which is what lets a day the scan missed be filmed at all. Without a
+reader such a day falls back to its own date, which names no event.
 `--llm-title` extends the same treatment to trips; `--no-llm-title` pins the template everywhere,
 which is what a contact-sheet matrix wants so runs months apart stay comparable.
 

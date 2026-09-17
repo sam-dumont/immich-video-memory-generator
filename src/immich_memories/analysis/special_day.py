@@ -240,6 +240,44 @@ _MIN_WINDOW = timedelta(minutes=30)
 _MIN_TRIM = timedelta(minutes=45)
 _MIN_TRIM_SHARE = 0.15
 
+# And a window has to hold the day it is a window on. Clock time is the wrong
+# measure of that: the track day below spends 2.3 hours of a 10.6-hour day in
+# one place and that window still holds 92% of the day's pictures. What went
+# wrong on a real catalogue was the other direction — a five-hour window on a
+# 21-hour, 379-picture day held 24 of them, so the film was cut from 6% of the
+# day and refused for want of material (#1067). Below this share a window is a
+# detail of the day rather than the day, and the day's own run is the scope.
+_MIN_WINDOW_SHARE = 0.5
+
+
+def pictures_inside(window: tuple[datetime, datetime] | None, assets: list) -> int:
+    """How many of a day's pictures a window holds; all of them when there is no window."""
+    if window is None:
+        return len(assets)
+    start, end = window
+    return sum(1 for asset in assets if start <= asset.file_created_at <= end)
+
+
+def window_holds_enough(inside: int, of_the_day: int) -> bool:
+    """Whether a window holding this many of a day's pictures is a film of that day."""
+    return inside >= _MIN_WINDOW_SHARE * of_the_day
+
+
+def window_that_holds_the_day(
+    window: tuple[datetime, datetime] | None, assets: list
+) -> tuple[datetime, datetime] | None:
+    """A window worth recording, or nothing when it would hide the day.
+
+    Only the geometric route below ever tested this, by needing one place to
+    hold 60% of the located pictures. The clock times the model writes went in
+    unchecked, bounded only by being half an hour long and falling inside the
+    day: a reader answering "the ceremony ran 15:34 to 16:14" is answering a
+    different question from "what is this film of".
+    """
+    if window is None or not assets:
+        return None
+    return window if window_holds_enough(pictures_inside(window, assets), len(assets)) else None
+
 
 def event_window(assets: list) -> tuple[datetime, datetime] | None:
     """The part of a day the event actually occupies, or None for all of it.

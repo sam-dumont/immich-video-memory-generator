@@ -417,20 +417,19 @@ def _special_day(
     active_hours: float = 0.0,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
-    """One occasion, named by the catalogue that found it.
+    """One occasion, named by the catalogue that found it, or by its own date.
 
-    Refuse over fake: a day the model could not name is a day that should not
-    be rendered, so there is no "Memories from 12 June 2016" fallback here.
+    Refuse over fake still holds, and the date is not a fake: it names no event
+    and claims nothing the day does not carry. It is the last rung of a ladder
+    the layer above walks first — an explicit title, the catalogue's, then the
+    model writing an occasion title from the day's own facts — so it is only
+    reached when no reader is configured and the catalogue has nothing. That
+    ladder is why a day the scan never found can be filmed at all (#1067).
     """
     if day is None:
         raise ValueError("day is required for SPECIAL_DAY memory type")
 
-    name = (title or "").strip() or (what or "").strip()
-    if not name:
-        raise ValueError(
-            f"The catalogue entry for {day.isoformat()} has neither a title nor a "
-            "'what', so there is nothing truthful to call the memory."
-        )
+    name = (title or "").strip() or (what or "").strip() or f"{day.day} {day:%B %Y}"
 
     from immich_memories.planning.auto_duration import special_day_editorial_duration_seconds
 

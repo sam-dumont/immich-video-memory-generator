@@ -29,16 +29,19 @@ if TYPE_CHECKING:
 def resolve_special_day(
     day: date | None, memory_type: str | None, event_id: str | None = None
 ) -> dict | None:
-    """What the catalogue records about one day, as preset parameters.
+    """One day as preset parameters, from the catalogue where it has a row.
 
     ``--day`` carries a date and the catalogue is re-read here rather than
     having the title passed in, because the runner logs the whole argv and argv
     is readable in `ps` and in launchd's logs. The catalogue's titles name real
     people and places; only a date and opaque event selector travel in argv.
 
-    Refuse over fake throughout: a day the catalogue never found, or one the
-    model could not name, is a day with nothing truthful to put on its title
-    card, so it errors rather than rendering "Memories from 12 June 2016".
+    A day with no row is still that day, and #1067 was opened because it could
+    not be filmed at all: the owner named a race day the scan had never found.
+    It comes back scoped to itself with no title, and the naming ladder above
+    this takes over. Nothing here writes a row: filming a day is not
+    discovering it, and a catalogue built by a render is a catalogue nobody
+    judged.
     """
     from immich_memories.automation.catalogue import default_catalogue_path
 
@@ -55,19 +58,19 @@ def resolve_special_day(
     if memory_type != "special_day":
         raise click.UsageError("--day requires --memory-type special_day or on_this_day")
 
-    path = default_catalogue_path()
-    entry = _catalogued_event(path, day, event_id)
-    name = entry.title.strip() or entry.what.strip()
-    if not name:
-        raise click.UsageError(
-            f"{path} has neither a title nor a 'what' for {day.isoformat()}, so there "
-            "is nothing truthful to call the memory. Re-run `immich-memories "
-            "discover-days --rescan` to name it."
-        )
-    return _special_day_params(entry, name)
+    entry = _catalogued_event(default_catalogue_path(), day, event_id)
+    if entry is None:
+        return {"day": day, "window": None, "title": "", "subtitle": "", "active_hours": 0.0}
+    return _special_day_params(entry, entry.title.strip() or entry.what.strip())
 
 
-def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay:
+def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay | None:
+    """The row for a day, or nothing when the catalogue has never heard of it.
+
+    An explicit --event-id still has to match something: it selects between
+    rows the catalogue holds, so a miss there is a typo rather than a day the
+    scan has not reached.
+    """
     from immich_memories.automation.catalogue import entries_from
 
     matches = [entry for entry in entries_from(path) if entry.day == day]
@@ -79,21 +82,15 @@ def _catalogued_event(path: Path, day: date, event_id: str | None) -> Discovered
         raise click.UsageError(
             f"{day.isoformat()} has multiple catalogued events; choose one with --event-id"
         )
-    if not matches:
-        raise click.UsageError(
-            f"{day.isoformat()} is not one of the days in {path}. Run "
-            "`immich-memories days-due` to see which days it holds, or "
-            "`immich-memories discover-days` to look for more."
-        )
-    return matches[0]
+    return matches[0] if matches else None
 
 
 def _special_day_params(entry: DiscoveredDay, name: str) -> dict[str, Any]:
-    from immich_memories.automation.catalogue import hours_awake
+    from immich_memories.automation.catalogue import hours_awake, scope_window
 
     params: dict[str, Any] = {
         "day": entry.day,
-        "window": entry.window,
+        "window": scope_window(entry),
         "title": name,
         "subtitle": entry.subtitle,
         "active_hours": hours_awake(entry),
@@ -150,11 +147,15 @@ def name_from_catalogue(
     that must never travel on the command line, so it is picked up from the
     file rather than passed in. --title and --subtitle still win: this fills a
     gap, it does not argue.
+
+    A day with no row, or a row the scan could not name, returns None rather
+    than an empty string, because None is what the layer above reads as "ask
+    the model" instead of "the run named it itself".
     """
     if special_day is None:
         return title_override, subtitle_override
     return (
-        title_override or special_day["title"],
+        title_override or special_day["title"] or None,
         subtitle_override or special_day["subtitle"] or None,
     )
 

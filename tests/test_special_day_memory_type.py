@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-import pytest
-
 from immich_memories.cli._date_resolution import (
     default_duration_for_type,
     duration_from_date_range,
@@ -80,11 +78,14 @@ class TestSpecialDayPreset:
 
         assert preset.name == "A very long walk"
 
-    def test_a_day_with_no_name_at_all_is_refused(self) -> None:
-        # Refuse over fake: a generic "Memories from 12 June 2016" card would
-        # claim the library found something it could not describe.
-        with pytest.raises(ValueError, match="nothing truthful"):
-            create_preset(MemoryType.SPECIAL_DAY, day=date(2016, 6, 12))
+    def test_a_day_with_no_name_at_all_falls_back_to_its_own_date(self) -> None:
+        # The last rung of the naming ladder, reached only when no reader is
+        # configured and the catalogue has nothing. A date names no event, so
+        # refuse over fake survives: what it refuses is an invented occasion,
+        # not the day itself (#1067).
+        preset = create_preset(MemoryType.SPECIAL_DAY, day=date(2016, 6, 12))
+
+        assert preset.name == "12 June 2016"
 
 
 class TestSpecialDayDuration:

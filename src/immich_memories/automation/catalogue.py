@@ -81,7 +81,29 @@ def record_for(entry: DiscoveredDay) -> dict:
         "active_hours": entry.active_hours,
         "run_start": entry.run_start.isoformat() if entry.run_start else None,
         "run_end": entry.run_end.isoformat() if entry.run_end else None,
+        "window_photos": entry.window_photos,
     } | stamp
+
+
+def scope_window(entry: DiscoveredDay) -> tuple[datetime, datetime] | None:
+    """The window a film of this day should actually be cut from.
+
+    A recorded window is the scope, and that is the point of it: the memory
+    starts at the circuit rather than at the cat on the balcony that morning.
+    But a window that holds almost none of the day hides the day, and one real
+    catalogue held two of those — a five-hour window over 24 of a 379-picture
+    day, and forty minutes of a twelve-hour one. Both were cut from a sliver
+    and one was refused outright for want of material.
+
+    The count the scan now records is what decides it. Rows written before
+    #1067 have none and are taken as written rather than second-guessed;
+    `discover-days --replace` is what repairs those.
+    """
+    from immich_memories.analysis.special_day import window_holds_enough
+
+    if entry.window is None or not entry.window_photos or not entry.photos:
+        return entry.window
+    return entry.window if window_holds_enough(entry.window_photos, entry.photos) else None
 
 
 def judged_by_this_build(entry: DiscoveredDay) -> bool:
@@ -167,6 +189,7 @@ def _entry_from_record(raw: dict, path: Path) -> DiscoveredDay | None:
         event_admission=SpecialEventAdmission.from_catalogue_record(raw, evidence_ref=str(path))
         if event_id is not None
         else None,
+        window_photos=raw.get("window_photos", 0),
         prompt_version=raw.get("prompt_version", ""),
         app_version=raw.get("app_version", ""),
     )

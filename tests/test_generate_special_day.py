@@ -150,28 +150,29 @@ class TestFlagPairing:
 
 
 class TestRefuseOverFake:
-    """A day the catalogue cannot name is a day that must not be rendered."""
+    """Nothing names an event the facts do not name, and the day is still filmed.
 
-    def test_a_day_that_is_not_in_the_catalogue_names_the_file_it_looked_in(
-        self, run_generate, catalogue_at
-    ) -> None:
-        path = catalogue_at({**ENTRY, "day": "2019-12-31"})
+    The refusals these replace stopped a "Memories from 12 June 2016" card
+    going out over a day nothing could describe. What they also stopped was
+    filming a day the scan had simply never reached (#1067), so the rule moved
+    from the gate to the naming ladder: --title, then the catalogue, then the
+    model writing from the day's own facts, then the date.
+    """
 
-        result = run_generate("--memory-type", "special_day", "--day", DAY_ISO)
+    def test_a_day_that_is_not_in_the_catalogue_is_filmed_as_itself(self, catalogue_at) -> None:
+        catalogue_at({**ENTRY, "day": "2019-12-31"})
 
-        assert result.exit_code != 0
-        assert str(path) in result.output
-        assert DAY_ISO in result.output
+        params = resolve_special_day(DAY, "special_day")
 
-    def test_a_catalogued_day_with_no_name_at_all_is_refused(
-        self, run_generate, catalogue_at
-    ) -> None:
+        assert (params["day"], params["window"]) == (DAY, None)
+        assert name_from_catalogue(params, None, None) == (None, None)
+
+    def test_a_catalogued_day_with_no_name_at_all_claims_nothing(self, catalogue_at) -> None:
         catalogue_at({"day": DAY_ISO, "title": "  ", "what": "", "photos": 210})
 
-        result = run_generate("--memory-type", "special_day", "--day", DAY_ISO)
+        params = resolve_special_day(DAY, "special_day")
 
-        assert result.exit_code != 0
-        assert "nothing truthful" in result.output
+        assert name_from_catalogue(params, None, None) == (None, None)
 
 
 class TestTheWindowIsTheScope:

@@ -505,10 +505,14 @@ def _empty_catalogue_message(path: Path) -> str:
 
 def _choose_special_day(entry: DiscoveredDay) -> None:
     """Scope the wizard to one catalogued day, under the name it was found by."""
+    from immich_memories.automation.catalogue import scope_window
+
     state = get_app_state()
     state.memory_preset_params = {
         "day": entry.day,
-        "window": entry.window,
+        # Through the same helper the CLI uses, so a window that hides its day
+        # is dropped on both surfaces rather than only where it was noticed.
+        "window": scope_window(entry),
         "title": _day_name(entry),
         "subtitle": entry.subtitle,
         "photos": entry.photos,

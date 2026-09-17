@@ -188,7 +188,11 @@ thresholds under `trips:`, so this command and the rest of the app agree on what
 
 Some days are an event and some contain one. A track day put most of its pictures in one place
 inside a couple of hours of a long day, and the memory should start at the circuit, so a discovered
-day can carry a window. The model is asked for the clock times in the same question, reading them off
+day can carry a window. A window is only recorded when it holds at least half the day's pictures,
+and the row says how many it holds. Clock time is the wrong measure of that: the track day spends
+2.3 hours of a 10.6-hour day in one place and still holds 92 % of its pictures, while a five-hour
+window on a 21-hour day once held 24 of its 379 and the film cut from it was refused for want of
+material. The model is asked for the clock times in the same question, reading them off
 the per-picture lines: a circuit's coordinates are identical from the moment the car is parked to the
 moment it leaves, so the map cannot tell arrival from the start of the race and the pictures can.
 Where the model declines, the fallback is the first and last picture of the place that dominates the
