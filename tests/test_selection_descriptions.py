@@ -176,10 +176,7 @@ def test_a_filmstrip_description_classifies_motion_in_the_same_call(tmp_path: Pa
 
     assert asks == 1
     assert len(result.descriptions) == 1
-    assert result.descriptions[0].motion_contribution == "meaningful"
-    assert result.descriptions[0].motion_reason == (
-        "The sequence shows the run ending in the splash."
-    )
+    assert result.descriptions[0].text == "A child runs into the water and splashes."
     assert "camera movement" in prompts[0]
     assert "still_sufficient" in prompts[0]
 
@@ -224,7 +221,7 @@ def test_a_video_filmstrip_classifies_whether_motion_adds_value(tmp_path: Path) 
 
     assert len(prompts) == 1
     assert "still_sufficient" in prompts[0]
-    assert result.descriptions[0].motion_contribution == "meaningful"
+    assert result.descriptions[0].text == "A hiker crosses a stream from one bank to the other."
 
 
 def test_motion_description_survives_when_only_the_explanation_is_missing(
@@ -269,8 +266,6 @@ def test_motion_description_survives_when_only_the_explanation_is_missing(
 
     assert len(result.descriptions) == 1
     assert result.descriptions[0].text == "A child runs through a sprinkler."
-    assert result.descriptions[0].motion_contribution == "meaningful"
-    assert result.descriptions[0].motion_reason is None
     assert result.warnings == ()
 
 
@@ -343,8 +338,8 @@ def test_a_new_filmstrip_cannot_reuse_a_still_only_description(tmp_path: Path) -
         )
 
     assert asks == 2
-    assert still.descriptions[0].motion_contribution == "not_observed"
-    assert moving.descriptions[0].motion_contribution == "meaningful"
+    assert still.descriptions[0].text == "A person facing sideways."
+    assert moving.descriptions[0].text == "A person turns and smiles."
     assert replay.descriptions[0].provenance.cache_hit is True
 
 
@@ -722,7 +717,6 @@ def test_a_filmstrip_setting_rides_beside_the_motion_verdict(tmp_path: Path) -> 
         )
 
     assert result.descriptions[0].setting == "a snow-covered hillside"
-    assert result.descriptions[0].motion_contribution == "meaningful"
 
 
 def test_a_rejected_credential_is_not_captioned_as_missing_evidence(tmp_path: Path) -> None:

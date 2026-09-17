@@ -59,6 +59,7 @@ producer that made it (`store/editorial_preparation.py`):
 | `flags` | two CPU detectors: sensitive content, document/figure | `det-v1`, run in their own interpreter |
 | `pixel_facts` | pixel measurements at one fixed JPEG recipe | `editorial.pixel_producer_key` |
 | `asset_people`, `motion_bursts` | who Immich says is in it; Live Photo burst structure | Immich metadata |
+| `motion_lines` | one sentence about what happens in a video, from three keyframes read by byte range | `motion-line-v1` on the caption server, keyed by the picture's source metadata |
 
 Preparation (`editorial_preparation*.py`) is the first stage of every run: it produces what is
 missing, reuses what is complete, and a producer that is not available stops the run with a
@@ -91,7 +92,7 @@ These are the strings the run reports (`attempt.stage(...)` then `on_stage`), an
 Memory page shows beside its active phase row:
 
 1. **Preparing source metadata** — the source model above, then preparation, which reports
-   `Preparing captions|public_heads|detectors: n/N` as it goes.
+   `Preparing captions|public_heads|detectors|motion: n/N` as it goes.
 2. **Reading event evidence** — `text_episode_reader.py`. Temporal source groups are reading
    envelopes; the reader pages through their annotation lines and connects them into lived
    episodes, keeping every source reference before any picture budget exists. The cull
@@ -169,7 +170,8 @@ itself. The order is the owner's:
    chooses which moments tell the story from a shortlist that names each source truthfully
    (video with its length, a live photo that plays or is shown as a still, still), favourites
    marked there. Moments that play (a true video, or a Live Photo above the motion discriminant)
-   lead its rows, every offered video carries its sampled sequence whatever the grant, and the
+   lead its rows, each carries its banked motion line whatever the grant (the plain facts when
+   the tier has no caption server), and the
    contract says to choose the moving record over a still of the same moment: this is a video
    product. Where the two orders split, a moment that plays takes the slot before a still. It is
    asked whatever the owner starred; only a story offering a single moment its
@@ -196,8 +198,9 @@ A carrier is one picture holding one interval in the cut, with: `kind` (`still`,
 weight and role, its `standing`, and `why` — the one line the editor wrote for it, which the
 Memory page prints under the thumbnail. Motion is measured only for chosen Live carriers
 (`editorial_motion_facts.py`); attached Live material is demanded for the final checks without
-widening the selection or granting audience clearance (`editorial_final_attached.py`); a video's
-sequence evidence is literal and source-bound (`editorial_story_motion.py`). Owner edits on the
+widening the selection or granting audience clearance (`editorial_final_attached.py`); what a
+video shows reaches the pick as the caption server's banked sentence
+(`editorial_preparation_motion.py`), so the reader never sees a video frame. Owner edits on the
 pool page are projected back onto the bound render plan, not re-planned.
 
 ## Durable attempts

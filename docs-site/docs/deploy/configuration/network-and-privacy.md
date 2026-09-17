@@ -16,11 +16,11 @@ you find a call that is not here,
 
 | Destination | When | What leaves your network | Opt out |
 |---|---|---|---|
-| Your Immich server | always | metadata, previews and originals down; the finished video and an album up, only with upload-back | `upload.enabled: false` (default) |
+| Your Immich server | always | metadata, previews and originals down, and at preparation the index and three keyframes of each video's playback, by byte range; the finished video and an album up, only with upload-back | `upload.enabled: false` (default) |
 | `nominatim.openstreetmap.org` | only with `network.geocoding: true`: trip detection, and the places on the cut | each trip cluster's centroid, and the rounded coordinates of the places the film shows | off by default |
 | `server.arcgisonline.com` (World Imagery) | only with `network.map_tiles: true`: the trip fly-over, the static trip map, the background of location cards | tile requests covering the trip area and your home base | off by default |
 | `cdn.jsdelivr.net` (Fontsource) | only with `network.font_downloads: true`: a title font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | off by default; `titles test --download-fonts` fetches on request whatever the switch says |
-| `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, a `/models` probe, and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
+| `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once; a strip of three keyframes of every video, and of every Live Photo whose motion plays, once; a `/models` probe; and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
 | `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names, plus the names of the Immich albums holding each episode's pictures | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `llm.base_url` | the opening title of a people or occasion memory, by default whenever a reader is configured (both the wizard and the CLI); trips only with `--llm-title` | text, no images: first names, birth dates and ages, the relationships your people file records between the people in the film, the people condition, the span, place names, the catalogue's words, the name of the Immich album most of the cut sits in, and the clip descriptions on the trip path | `--no-llm-title`, `--title` of your own, or no reader configured |
 | `api.anthropic.com` | the reader, with `provider: anthropic` and no `base_url` of your own | the same tiles and lines, to Anthropic | name a host of your own in `llm.base_url` |
@@ -42,8 +42,8 @@ the host does not publish one.
 
 | Seat | Setting | What it is shown |
 |---|---|---|
-| reader | `llm.base_url` | 800 px tiles, the annotation lines beside them with the names of people and places, and the album names your library gives those pictures |
-| captioner | `editorial.preparation.caption_base_url` | 400 px tiles, no metadata, and `caption_api_key` if set |
+| reader | `llm.base_url` | 800 px tiles of stills, the annotation lines beside them with the names of people and places, and the album names your library gives those pictures. No video frames: what a video shows reaches it as the captioner's banked sentence |
+| captioner | `editorial.preparation.caption_base_url` | 400 px tiles, a 960 × 320 strip of three keyframes per video, no metadata, and `caption_api_key` if set |
 
 Both default to this machine. Pointing either at another host (a box on your LAN, a container, a
 hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing

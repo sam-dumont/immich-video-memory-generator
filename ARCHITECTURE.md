@@ -167,7 +167,8 @@ src/immich_memories/
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
-│   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts
+│   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
+│   │                               # motion lines (one caption-seat sentence per video, read by the pick)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
@@ -230,6 +231,7 @@ src/immich_memories/
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
 │   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
 │   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
+│   ├── playback_keyframes.py   # A playback's index and a few keyframes by byte range, decoded from a sparse copy
 │   ├── frame_preview.py        # Frame extraction for previews
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
 │   ├── scaling_utilities.py    # Resolution, aspect ratio, smart crop
@@ -409,6 +411,7 @@ src/immich_memories/
 │
 ├── store/                      # The annotation store: every banked fact and reading
 │   ├── caption_provenance.py   # What served each caption (served /models row + control digest), grouped
+│   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest
 │                               # (annotations.sqlite; see docs/research for the design)
 │
 ├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads

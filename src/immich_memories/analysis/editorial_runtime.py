@@ -7,6 +7,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import asdict, dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
@@ -565,6 +566,7 @@ class _EvidencePreparation:
             description_model=config.editorial.description_model,
             pixel_producer_key=config.editorial.pixel_producer_key,
             fetch_preview=lambda asset_id: self.ports.fetch_preview(self.client, asset_id),
+            read_playback=partial(self.ports.fetch_playback_range, self.client),
             progress=progress,
             on_asset=live.note_asset,
         )

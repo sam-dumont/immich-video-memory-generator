@@ -516,6 +516,11 @@ class ImmichClient:
     async def get_video_playback(self, asset_id: str) -> bytes:
         return await self.assets.get_video_playback(asset_id)
 
+    async def get_video_playback_range(
+        self, asset_id: str, start: int, length: int
+    ) -> tuple[bytes, int]:
+        return await self.assets.get_video_playback_range(asset_id, start, length)
+
     async def download_asset(
         self, asset_id: str, output_path: Path, *, expected_size_bytes: int | None = None
     ) -> Path:

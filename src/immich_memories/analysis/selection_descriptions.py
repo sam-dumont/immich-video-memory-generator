@@ -248,8 +248,6 @@ class AssetDescription:
     asset_id: str
     text: str
     provenance: DecisionProvenance
-    motion_contribution: Literal["meaningful", "still_sufficient", "not_observed"] = "not_observed"
-    motion_reason: str | None = None
     setting: str | None = None
 
 
@@ -426,8 +424,6 @@ def _describe_packed(
                     rendered.candidate.asset_id,
                     parsed["description"],
                     provenance,
-                    motion_contribution=parsed.get("motion_contribution", "not_observed"),
-                    motion_reason=parsed.get("motion_reason"),
                     setting=parsed.get("setting"),
                 ),
             )
@@ -634,15 +630,8 @@ def _describe_one(
         motion = _read_motion_description(answer.raw_text)
         if motion is None:
             return f"!! asset description unreadable: {asset_id}"
-        text, contribution, reason, setting = motion
-        return AssetDescription(
-            asset_id,
-            text,
-            answer.provenance,
-            motion_contribution=contribution,
-            motion_reason=reason,
-            setting=setting,
-        )
+        text, _contribution, _reason, setting = motion
+        return AssetDescription(asset_id, text, answer.provenance, setting=setting)
     static = _read_description(answer.raw_text)
     if static is None:
         return f"!! asset description unreadable: {asset_id}"

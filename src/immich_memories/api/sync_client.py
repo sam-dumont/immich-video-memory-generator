@@ -132,6 +132,9 @@ class SyncImmichClient:
     def get_video_playback(self, asset_id: str) -> bytes:
         return self._run(self._async_client.get_video_playback(asset_id))
 
+    def get_video_playback_range(self, asset_id: str, start: int, length: int) -> tuple[bytes, int]:
+        return self._run(self._async_client.get_video_playback_range(asset_id, start, length))
+
     def download_asset(
         self, asset_id: str, output_path: Path, *, expected_size_bytes: int | None = None
     ) -> Path:

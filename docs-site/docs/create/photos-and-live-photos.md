@@ -72,8 +72,9 @@ asset that has already won its place.
 4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default
    3.5 s) is a motion candidate; anything shorter renders as the photograph it is. The editor then
    measures how much actually moves (median optical flow over 12 frames). A candidate plays at 1.5
-   or more, is offered to the story pick as motion and listed first beside the videos; below 1.5 it
-   is offered and rendered as a photograph
+   or more, is offered to the story pick as motion and listed first beside the videos, and the next
+   preparation writes it the same one-sentence motion line a video gets; below 1.5 it is offered and
+   rendered as a photograph
 5. **One carrier per burst**: a burst collapses to a single unit before the editor ever chooses. One
    photograph carries it, the favourite if there is one and otherwise the sharpest, best-exposed,
    and the siblings are not separately selectable

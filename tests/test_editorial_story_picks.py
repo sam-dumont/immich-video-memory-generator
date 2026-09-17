@@ -111,7 +111,7 @@ def pick_occasion(judge, *, count=1, star="quiet-p1", stars=(), groups=("quiet",
         contract="Show the spring",
         record=lambda name, value: records.append((name, value)),
         kind_of=lambda c: source_kind_marker(by_asset[c.primary]),
-        is_video=lambda c: by_asset[c.primary]["kind"] == "video",
+        plays=lambda c: carries_motion(by_asset[c.primary]),
     )
     return selected, records
 
@@ -529,7 +529,6 @@ def pick_moving_story(judge, *, kinds, count=1):
         contract="Show the visit",
         record=lambda _name, _value: None,
         kind_of=lambda c: source_kind_marker(units[c.primary]),
-        is_video=lambda c: units[c.primary]["kind"] == "video",
         plays=lambda c: carries_motion(units[c.primary]),
         motion_of=lambda c: read.append(c.primary) or "A toss, a catch and a bend.",
     )
@@ -545,7 +544,7 @@ def test_a_one_slot_story_reads_the_motion_of_its_video_and_leads_the_rows_with_
     selected, read = pick_moving_story(judge, kinds=("still", "video", "still"))
 
     assert read == ["asset-2"]  # the grant no longer decides whether motion is evidence
-    assert "Sampled sequence: A toss, a catch and a bend." in judge.prompts[0]
+    assert "Motion: A toss, a catch and a bend." in judge.prompts[0]
     assert offered_rows(judge.prompts[0])[0].startswith("M02 | ")
     assert selected == ["choice-2"]
 
@@ -577,11 +576,12 @@ def test_a_live_photo_is_offered_as_motion_only_once_it_passed_the_discriminant(
     kind, marker, leads
 ):
     judge = GroupJudge(prefer="View 1")
-    _selected, _read = pick_moving_story(judge, kinds=("still", kind, "still"))
+    _selected, read = pick_moving_story(judge, kinds=("still", kind, "still"))
 
     rows = offered_rows(judge.prompts[0])
     assert [row for row in rows if row.startswith("M02 | ")][0].endswith(marker)
     assert rows[0].startswith("M02 | ") is leads
+    assert (read == ["asset-2"]) is leads  # its motion line is read only when it plays
 
 
 class LastRowJudge:

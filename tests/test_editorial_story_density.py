@@ -130,7 +130,9 @@ def test_normal_planner_does_not_reopen_declined_depth_in_later_passes(tmp_path)
         (3, 2, (), ["0", "1"]),
     ],
 )
-def test_every_offered_video_is_sampled_whatever_the_grant(count, videos, stars, expected):
+def test_every_offered_moment_that_plays_carries_its_motion_line_whatever_the_grant(
+    count, videos, stars, expected
+):
     choices = [
         DepictedChoice(str(i), "K01", f"2030-05-01T10:{i}0:00", "A different cover pose", str(i))
         for i in range(3)
@@ -145,12 +147,12 @@ def test_every_offered_video_is_sampled_whatever_the_grant(count, videos, stars,
         starred=lambda c: c.key in stars,
         contract="Family",
         record=lambda _, r: records.append(r),
-        is_video=lambda c: int(c.key) < videos,
+        plays=lambda c: int(c.key) < videos,
         motion_of=lambda c: reads.append(c.key) or "The same toss, catch and bend sequence.",
     )
     assert reads == expected
     for _stage, prompt in judge.calls:
-        assert ("Sampled sequence:" in prompt) == bool(expected)
+        assert ("Motion:" in prompt) == bool(expected)
         if expected:
             assert (
                 "A cover's pose or inventory label cannot establish a separate activity" in prompt

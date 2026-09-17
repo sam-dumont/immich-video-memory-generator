@@ -105,8 +105,10 @@ decisions are cached by producer and input.
 
 **Videos lead the pick.** This is a film. When a story chooses its moments, the ones a video
 carries, or a Live Photo whose motion passed the check, are listed ahead of the stills, each with a
-line of sampled frames saying what happens in it, and the reader is told to choose the video over a
-still of the same moment. The pick is asked in two orders; when they disagree, the moment that moves
+sentence saying what happens in it, and the reader is told to choose the video over a still of the
+same moment. That sentence is written once per video at preparation by the caption server, from
+three keyframes, so the reader never sees a video frame. On `no_captions` and `metadata_only` the
+row carries the plain facts instead: how long the clip is, and how much a Live Photo moves. The pick is asked in two orders; when they disagree, the moment that moves
 wins. That holds at every length: a 90-second memory gives most stories one picture, and that one
 slot is still a choice between a video and a still. Only the question is reordered; the film still
 plays in the order things happened. A chosen video holds about 6 seconds where a photo holds 4,
@@ -233,7 +235,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Every video a pick offers is sampled once and described, banked; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

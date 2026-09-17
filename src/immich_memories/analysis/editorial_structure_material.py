@@ -25,7 +25,7 @@ from immich_memories.analysis.editorial_person_period_facts import (
     render_person_period_facts,
 )
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
-from immich_memories.analysis.editorial_structure_budget import NOMINAL_STILL_SECONDS
+from immich_memories.analysis.editorial_structure_budget import NOMINAL_STILL_SECONDS, RESIDUAL_MIN
 from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
     StructurePlanningInput,
@@ -34,7 +34,6 @@ from immich_memories.analysis.editorial_structure_lines import AnchorRows, UnitL
 from immich_memories.analysis.motion_rendering import motion_renderings
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
 
-RESIDUAL_MIN = 1.5
 MOTION_CAP_SECONDS = 6.0
 STILL_SECONDS = NOMINAL_STILL_SECONDS
 

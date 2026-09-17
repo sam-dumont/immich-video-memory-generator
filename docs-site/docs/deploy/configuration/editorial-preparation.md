@@ -24,7 +24,7 @@ the audience gate, which may only ever tighten.
 
 ```mermaid
 flowchart TB
-    full["full<br/>previews, pixel facts, the encoder and its six heads,<br/>the two detectors, one caption per picture that has none"]
+    full["full<br/>previews, pixel facts, the encoder and its six heads,<br/>the two detectors, one caption per picture that has none,<br/>one motion line per video that has none"]
     full -->|"stop the captions: nothing is sent to the caption server"| nocap
     nocap["no_captions<br/>previews, pixel facts, the encoder and its six heads, the two detectors"]
     nocap -->|"stop the ONNX models too: nothing looks at the picture"| meta
@@ -138,6 +138,33 @@ the seam.
 completion; left blank, no header is sent. The reader's `llm.api_key` is never borrowed for it:
 same machine, different endpoint. A 401 or 403 names `caption_api_key` rather than reporting the
 endpoint as unreachable. `${MY_KEY}` reads the value out of the environment.
+
+## Motion lines
+
+On `full`, every video in the period gets one banked sentence about what happens in it, from the
+same caption server and model. So does every Live Photo whose motion an earlier cut measured at
+1.5 or more; one nobody measured yet is not known to play and gets none. The story pick reads that
+sentence beside the video's row, so the reader compares a video with a still in text and never
+sees a video frame.
+
+The app does not download the video for it. Immich answers byte ranges on its playback rendition,
+so preparation reads the index (tens of kilobytes), picks the three keyframes nearest a quarter,
+half and three quarters of the clip, reads only those, and has FFmpeg decode them from a sparse
+local copy. Measured on ten real playbacks of 6 to 49 seconds: 235 to 528 KB and 0.1 to 0.4 s
+each, against 10 to 60 MB for the whole file. A clip with a single keyframe is a short one, and
+is read whole (0.5 to 2.2 MB for the Live Photo companions measured). The three frames go to the
+server as one 960 × 320 JPEG strip with a one-field schema (`description`, 120 characters), under
+the same temperature, penalty, token cap and `caption_api_key` as captions.
+
+The bank keys on the picture, its complete source metadata and
+`motion-line-v1@smolvlm2-500m-base-public/3-keyframes-320px`, so a changed source is asked again
+and nothing else is. Two invalid answers, a playback Immich answers 404 for, or an index the app
+cannot read are banked as settled; timeouts and transport failures stay missing and stop the run
+like a missing caption. `caption_concurrency` bounds the requests in flight; keyframe reads run
+four at a time.
+
+`no_captions` and `metadata_only` ask for no motion line. The pick then reads the video's plain
+facts instead: its length, and the measured motion of a Live Photo that has one.
 
 ## Editing without a language model
 
