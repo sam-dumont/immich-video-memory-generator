@@ -70,8 +70,8 @@ A few common variables are also supported without the full prefix:
 |----------|-----------|
 | `IMMICH_URL` | `immich.url` |
 | `IMMICH_API_KEY` | `immich.api_key` |
-| `OPENAI_API_KEY` | `llm.api_key` |
-| `ANTHROPIC_API_KEY` | `llm.api_key`, and wins over `OPENAI_API_KEY` when `llm.provider` is `anthropic` or `zai` |
+| `OPENAI_API_KEY` | `llm.api_key`, only when the config file states no key |
+| `ANTHROPIC_API_KEY` | `llm.api_key` under the same rule, and it is the name read instead of `OPENAI_API_KEY` when `llm.provider` is `anthropic` or `zai` |
 | `MUSICGEN_ENABLED` | `musicgen.enabled` |
 | `MUSICGEN_BASE_URL` | `musicgen.base_url` |
 | `MUSICGEN_API_KEY` | `musicgen.api_key` |
@@ -81,14 +81,18 @@ A few common variables are also supported without the full prefix:
 | `ACE_STEP_API_KEY` | `ace_step.api_key` |
 | `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
 
-:::caution Shorthand vars are skipped with an explicit config path, except in the UI
-The table above applies only when the app loads its default config path
-(`~/.immich-memories/config.yaml`). `immich-memories --config PATH generate …` and a scheduler
-daemon started with an explicit config file ignore every row, including the basic-auth shortcut.
-`immich-memories --config PATH ui` cuts the other way: it reloads the default config path for
-everything except host and port, so the shorthand *does* apply there and the `auth:` block in
-`PATH` does not. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
+:::caution An LLM key written in the file beats its shorthand
+`OPENAI_API_KEY` is the name every OpenAI-SDK client reads, a local mlx or vLLM server included, so
+on a machine that exports it for that server it says nothing about the endpoint the key will be
+sent to. A key in `llm.api_key` therefore wins, and the variable fills the field only where the
+file leaves it empty or holds a `${VAR}` nobody set. `ANTHROPIC_API_KEY` works the same way. To
+replace a key that is in the file, use `IMMICH_MEMORIES_LLM__API_KEY`. Every other row in the table
+still overrides whatever the file holds.
 :::
+
+The rows apply whatever file the process loaded: `--config PATH` installs PATH as its single
+configuration source and reads the same variables the default `~/.immich-memories/config.yaml`
+does. The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
 
 ## Other environment variables
 
@@ -125,4 +129,5 @@ Highest wins:
 5. Built-in defaults
 
 So `IMMICH_URL=http://a` beats `IMMICH_MEMORIES_IMMICH__URL=http://b`, which beats `immich.url` in
-the YAML file.
+the YAML file. `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are the exception noted above: they sit
+below the config file rather than above it.

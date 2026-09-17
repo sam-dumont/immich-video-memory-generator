@@ -18,7 +18,12 @@ import yaml
 from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from immich_memories.config_models import CacheConfig, HardwareAccelConfig, ImmichConfig
+from immich_memories.config_models import (
+    CacheConfig,
+    HardwareAccelConfig,
+    ImmichConfig,
+    has_unresolved_env_reference,
+)
 from immich_memories.config_models_analysis import AnalysisConfig, SpeechConfig
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_models_automation import (
@@ -434,14 +439,21 @@ def _arm_log_redaction(config: Config | None) -> None:
     install_secret_redaction(configured_secret_values(config))
 
 
-def _llm_key_from_env(provider: str) -> str | None:
-    """Read the configured provider's own alias, never another host's key.
+def _llm_key_from_env(llm: LLMConfig) -> str | None:
+    """The alias a key may come from, when the config file names none itself.
 
-    Falling back to the other name put an unrelated credential in the request
-    headers of whichever endpoint was selected, overriding a key the operator
-    had configured explicitly.
+    Two rules, each learned from a 401. Read the configured provider's own
+    alias and never the other family's, because falling back put an unrelated
+    credential in the request headers of whichever endpoint was selected. And
+    yield to a key the file states: `OPENAI_API_KEY` is the name every
+    OpenAI-SDK client reads, a local mlx or vLLM server included, so it does
+    not say which endpoint its key belongs to and cannot outrank a file that
+    names the host. A `${VAR}` nobody set is not a key, so it does not count
+    as one the file stated.
     """
-    messages_api = provider in ("anthropic", "zai")
+    if llm.api_key and not has_unresolved_env_reference(llm.api_key):
+        return None
+    messages_api = llm.provider in ("anthropic", "zai")
     name = "ANTHROPIC_API_KEY" if messages_api else "OPENAI_API_KEY"
     return os.environ.get(name) or None
 
@@ -452,7 +464,7 @@ def _apply_env_overrides(config: Config) -> None:
         config.immich.url = url
     if api_key := os.environ.get("IMMICH_API_KEY"):
         config.immich.api_key = api_key
-    if llm_key := _llm_key_from_env(config.llm.provider):
+    if llm_key := _llm_key_from_env(config.llm):
         config.llm.api_key = llm_key
 
     # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)

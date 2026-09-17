@@ -287,3 +287,47 @@ def test_the_full_load_does_not_borrow_another_providers_key(
     config = config_loader.get_config(reload=True)
 
     assert config.llm.api_key == configured_key
+
+
+def test_a_hosted_key_the_config_file_states_survives_the_local_servers_alias(
+    tmp_path: Path, monkeypatch
+):
+    """`OPENAI_API_KEY` is what every OpenAI-SDK client reads, local servers included.
+
+    On a machine whose shell exports it for an mlx/vLLM server, the name says
+    nothing about which endpoint the key belongs to, so it cannot outrank a key
+    the config file names next to `provider: openai`. It did, and the hosted
+    reader spent a whole run sending a local bearer token to api.openai.com,
+    401 per call, ending as "no readable episode evidence".
+    """
+    from immich_memories.config import load_config, set_config
+
+    monkeypatch.setenv("OPENAI_API_KEY", "the-local-servers-bearer-token")
+    source = tmp_path / "config.yaml"
+    source.write_text("llm:\n  provider: openai\n  model: gpt-5.6-luna\n  api_key: sk-hosted\n")
+
+    try:
+        config = load_config(source)
+    finally:
+        set_config(None)
+
+    assert config.llm.api_key == "sk-hosted"
+
+
+def test_the_alias_still_supplies_a_key_the_file_left_to_the_environment(
+    tmp_path: Path, monkeypatch
+):
+    """A `${VAR}` nobody set is not a key, so the shorthand is still free to fill it."""
+    from immich_memories.config import load_config, set_config
+
+    monkeypatch.delenv("OPENAI_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", FROM_ENV)
+    source = tmp_path / "config.yaml"
+    source.write_text("llm:\n  provider: openai\n  api_key: ${OPENAI_KEY}\n")
+
+    try:
+        config = load_config(source)
+    finally:
+        set_config(None)
+
+    assert config.llm.api_key == FROM_ENV
