@@ -1,8 +1,12 @@
-"""Ask the LLM for a title on the CLI path, when the run asked for one.
+"""Ask the model for a title on the CLI path, and decide when to.
 
-Kept opt-in rather than mirroring the wizard's "an LLM is configured, so use
-it" rule. The contact-sheet matrix runs the CLI, and a default that started
-inventing titles would make every run before and after it incomparable.
+A memory about people or an occasion is named by the model as soon as a reader
+is configured: the template opens a three-person film on a date span with three
+full names stacked underneath, and the family record holds enough to write
+"<child> and her grandparents" instead. Trips keep their own prompt and their
+own opt-in, and `--no-llm-title` pins the template for the contact-sheet
+matrix, where a run that starts inventing titles makes every run before and
+after it incomparable.
 """
 
 from __future__ import annotations
@@ -33,33 +37,51 @@ def _ask_the_llm(**kwargs: Any) -> Any:
     return asyncio.run(generate_title_with_llm(**kwargs))
 
 
+def _asks_the_model(*, enabled: bool | None, memory_type: str | None, configured: bool) -> bool:
+    """Whether this run should put the question to the reader at all."""
+    if enabled is False:
+        return False
+    if not configured:
+        if enabled:
+            logger.warning("--llm-title needs an LLM configured; using the template title")
+        return False
+    if enabled:
+        return True
+
+    from immich_memories.titles.llm_titles import OCCASION_MEMORY_TYPES, PEOPLE_MEMORY_TYPES
+
+    return memory_type in PEOPLE_MEMORY_TYPES or memory_type in OCCASION_MEMORY_TYPES
+
+
 def resolve_cli_title(
     *,
-    enabled: bool,
+    enabled: bool | None,
     title_override: str | None,
     subtitle_override: str | None = None,
     clips: list[Any],
     config: Config,
     memory_type: str | None,
     date_range: DateRange,
-    person_name: str | None,
+    person_names: list[str],
+    memory_preset_params: dict | None = None,
     ask: Callable[..., Any] = _ask_the_llm,
 ) -> tuple[str | None, str | None]:
     """Return the (title, subtitle) the run should use.
 
     Owns the whole precedence so the caller gains no branches: an explicit
-    title wins, then the LLM's, then the template (signalled by ``None``). The
-    subtitle falls back to ``subtitle_override`` on every path.
+    title wins, then the model's, then the template (signalled by ``None``).
+    The subtitle falls back to ``subtitle_override`` on every path.
     """
     if title_override:
         return title_override, subtitle_override
-    if not enabled:
-        return None, subtitle_override
 
     llm_config = config.title_llm if config.title_llm and config.title_llm.model else config.llm
-    if not llm_config.model:
-        logger.warning("--llm-title needs an LLM configured; using the template title")
+    if not _asks_the_model(
+        enabled=enabled, memory_type=memory_type, configured=bool(llm_config.model)
+    ):
         return None, subtitle_override
+
+    from immich_memories.titles.llm_titles import memory_title_facts
 
     start, end = date_range.start.date(), date_range.end.date()
     try:
@@ -69,8 +91,9 @@ def resolve_cli_title(
             start_date=str(start),
             end_date=str(end),
             duration_days=(end - start).days,
-            person_names=[person_name] if person_name else None,
+            person_names=person_names or None,
             clip_descriptions=_descriptions(clips) or None,
+            facts=memory_title_facts(memory_preset_params),
             llm_config=llm_config,
         )
     except Exception:  # WHY: an optional title must not fail the whole run

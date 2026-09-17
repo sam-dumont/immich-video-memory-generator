@@ -86,27 +86,31 @@ class TestBuildTitlePrompt:
         assert "French" not in prompt  # locale=en → English
         assert "hiking along cliffs" in prompt
 
-    def test_person_prompt_includes_names(self):
-        from immich_memories.titles.llm_titles import build_title_prompt
+    def test_person_prompt_includes_names(self, tmp_path):
+        from immich_memories.titles.llm_titles import MemoryTitleFacts, build_title_prompt
+
+        empty_record = tmp_path / "people.yaml"
+        empty_record.write_text("people: []\n", encoding="utf-8")
 
         prompt = build_title_prompt(
-            memory_type="person",
+            memory_type="multi_person",
             locale="fr",
             start_date="2019-01-01",
             end_date="2025-12-31",
             duration_days=2556,
-            person_names=["Alice", "Noah"],
+            person_names=["Ada Example", "Noah Example"],
             clip_descriptions=["playing in park", "birthday party"],
+            facts=MemoryTitleFacts(people_path=empty_record),
         )
-        assert "Alice" in prompt
-        assert "Noah" in prompt
+        assert "Ada Example" in prompt
+        assert "Noah Example" in prompt
         assert "French" in prompt
 
     def test_includes_rules(self):
         from immich_memories.titles.llm_titles import build_title_prompt
 
         prompt = build_title_prompt(
-            memory_type="year",
+            memory_type="trip",
             locale="en",
             start_date="2024-01-01",
             end_date="2024-12-31",

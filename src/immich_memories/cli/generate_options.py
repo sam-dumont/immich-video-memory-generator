@@ -276,10 +276,13 @@ def run_options(command: FC) -> FC:
             help="Override video title text",
         ),
         click.option(
-            "--llm-title",
-            is_flag=True,
-            default=False,
-            help="Ask the LLM for the title instead of using a template (--title still wins)",
+            "--llm-title/--no-llm-title",
+            default=None,
+            help=(
+                "People and occasion memories are named by the model whenever a reader "
+                "is configured. --llm-title adds trips, --no-llm-title pins the template "
+                "everywhere (--title still wins)"
+            ),
         ),
         click.option(
             "--subtitle",

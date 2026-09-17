@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.cache.judgment_cache import verdicts_beside
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.titles.llm_titles import generate_title_with_llm
+from immich_memories.titles.llm_titles import generate_title_with_llm, memory_title_facts
 
 if TYPE_CHECKING:
     from datetime import date
@@ -320,6 +320,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
                 d for c in state.get_selected_clips() if (d := getattr(c, "llm_description", None))
             ]
             or None,
+            facts=memory_title_facts(state.memory_preset_params, album_name=state.album_name),
             llm_config=llm_cfg,
         )
     except Exception:  # WHY: UI graceful degradation

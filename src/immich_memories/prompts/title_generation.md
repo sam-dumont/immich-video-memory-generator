@@ -4,6 +4,7 @@ Generate a title for a personal memory video. Language: {lang}.
 
 ## Rules
 - Write title and subtitle in {lang}. Be creative, varied, and specific to THIS trip.
+- Place names below are English as the camera recorded them; write them as {lang} would (Cyprus → Chypre, Brussels → Bruxelles).
 - NEVER start with generic formulas like 'Échos de', 'Voyage en', 'Découverte de'.
 - Title: max 50 chars. Short, punchy, evocative. Use the region name, not the country.
 - Subtitle: max 50 chars. One short phrase adding context. Can be null.

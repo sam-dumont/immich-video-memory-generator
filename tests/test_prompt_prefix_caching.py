@@ -252,6 +252,11 @@ def _synthesis_prompts() -> tuple[str, str]:
 
 
 def _title_prompts() -> tuple[str, str]:
+    """Both trips: people and occasion titles are a stage of their own.
+
+    Their proven layout puts the facts ahead of the rules, so two of them share
+    only their opening line and no floor here would mean anything.
+    """
     from immich_memories.titles.llm_titles import build_title_prompt
 
     return (
@@ -264,11 +269,12 @@ def _title_prompts() -> tuple[str, str]:
             country="France",
         ),
         build_title_prompt(
-            memory_type="year",
+            memory_type="trip",
             locale="en",
-            start_date="2024-01-01",
-            end_date="2024-12-31",
-            duration_days=366,
+            start_date="2024-06-01",
+            end_date="2024-06-09",
+            duration_days=9,
+            country="Spain",
         ),
     )
 
