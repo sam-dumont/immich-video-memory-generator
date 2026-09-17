@@ -166,6 +166,30 @@ class LLMIncompleteResponse(ValueError):
 # provider that stopped answering is announced on the first drop (provider_status).
 TRANSPORT_RETRIES = 3
 
+# Completion URLs this process has had an answer out of, the same per-endpoint
+# memory shape as PARAM_ADAPTATIONS. What it decides is whether a 404 means the
+# URL is wrong or the edge dropped one request.
+ANSWERED_ENDPOINTS: set[str] = set()
+
+
+def transient_404(url: str, response: httpx.Response) -> bool:
+    """Whether this 404 is one dropped request rather than a URL that is not there.
+
+    Measured 2026-09-17 against api.openai.com: roughly one hosted reader call
+    in five came back 404 with no body at all, and the identical request
+    answered 200 a second later. Nothing retried it, so a single edge blip
+    ended a whole run, and the setup matrix's reader probe refused a working
+    cell three times running.
+
+    Two things keep a wrong base URL failing fast, which is the reason this is
+    not simply "retry every 404": a 404 that carries a body names what is
+    missing and is final, and a 404 from a URL that has never answered is the
+    URL, not the edge.
+    """
+    return (
+        response.status_code == 404 and not response.content.strip() and url in ANSWERED_ENDPOINTS
+    )
+
 
 @dataclass(frozen=True)
 class LLMTransportAttempt:
