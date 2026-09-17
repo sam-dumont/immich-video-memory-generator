@@ -7,6 +7,7 @@ from immich_memories.analysis.editorial_story_slots import allocate_slots
 def story(key, *, day, weight="major", gate="remarkable", moments=1, favourites=0):
     return {
         "key": key,
+        "episodes": [f"S-{key}"],
         "weight": weight,
         "gate": gate,
         "first_day": day,
@@ -50,3 +51,34 @@ def test_the_weight_word_and_the_gate_still_come_before_chronology():
         "november-background",
         "december-minor",
     ]
+
+
+def test_ties_inside_a_weight_word_follow_the_readers_own_order():
+    stories = [
+        story("january", day="2024-01-05", moments=4),
+        story("march", day="2024-03-05", gate="maybe"),
+        story("may", day="2024-05-05"),
+        story("july-minor", day="2024-07-05", weight="minor"),
+    ]
+    # The reader listed the March story first, then May; January is not on its list.
+    priorities = [
+        {"episodes": ["S-march"]},
+        {"episodes": ["S-may"]},
+        {"episodes": ["S-july-minor"]},
+    ]
+
+    assert [s["key"] for s in funding_order(stories, priorities)] == [
+        "march",
+        "may",
+        "january",
+        "july-minor",
+    ]
+
+
+def test_stories_the_reader_did_not_rank_keep_the_current_order():
+    stories = [
+        story("june", day="2024-06-02", gate="maybe"),
+        story("february", day="2024-02-11"),
+    ]
+
+    assert [s["key"] for s in funding_order(stories, [])] == ["february", "june"]

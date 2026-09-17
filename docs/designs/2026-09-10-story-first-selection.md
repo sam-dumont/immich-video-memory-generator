@@ -184,7 +184,10 @@ itself. The order is the owner's:
 1. **Words to slots** (`editorial_story_slots.py`) — the only arithmetic in the route. A story's
    weight becomes a number of pictures, capped by the moments the story actually holds; where a
    product limits how much one calendar partition may carry (a year's months), that capacity is
-   reserved in the same order. Depth per weight class, never per day. A trip weighed dominant or
+   reserved in the same order. Depth per weight class, never per day. Stories are funded by weight
+   word, then in the reader's own order (`story.priorities`, which lists each weight's stories as
+   the grouping named them), and only a story off that list falls back to the gate's word, its
+   moments and its first day (`funding_order`). A trip weighed dominant or
    major reserves `round(slots / 2 * sqrt(trip days / film days))` pictures (at least one), counted
    in photographed days, and takes them at its own turn in the presence pass, before the stories
    after it take their first. A trip that is the whole film would get the dominant cap; the square

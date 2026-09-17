@@ -149,18 +149,23 @@ def _first_day(story_units: Mapping[str, list[dict]], s) -> str:
     return min((u["taken"][:10] for u in story_units.get(s["key"]) or []), default="")
 
 
-def funding_order(stories: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The order a film funds its stories in: the weight word, then the memory-worthy gate's
-    word, then the moments the story holds, then the day it starts on.
+def funding_order(
+    stories: Sequence[dict[str, Any]], priorities: Sequence[Mapping[str, Any]] = ()
+) -> list[dict[str, Any]]:
+    """The order a film funds its stories in: the weight word, then the reader's own order of
+    its stories (`priorities`), then the memory-worthy gate's word, the moments the story holds
+    and the day it starts on for a story the reader did not rank.
 
     A star is an indicator of a picture — it wins its moment inside a story, never the story's
-    place in this queue. So when there are more stories than slots, equal stories fund in time
-    order and the film keeps the whole period instead of its starrier half.
+    place in this queue. So when there are more stories than slots, equal stories fund in the
+    reader's order, and without one in time order, instead of the starrier half first.
     """
+    rank = {tuple(p["episodes"]): n for n, p in enumerate(priorities)}
     return sorted(
         stories,
         key=lambda s: (
             WEIGHTS.index(s["weight"]),
+            rank.get(tuple(s["episodes"]), len(rank)),
             GATE_ORDER.get(s["gate"], 3),
             -s["seen"]["moments"],
             s["first_day"],
@@ -185,7 +190,9 @@ def _weighed_stories(
             "favourites": sum(1 for u in story_units[s["key"]] if u.get("favourite")),
         }
         s["first_day"] = _first_day(story_units, s)
-    stories = funding_order([s for s in story.stories if story_units.get(s["key"])])
+    stories = funding_order(
+        [s for s in story.stories if story_units.get(s["key"])], story.priorities
+    )
     return stories, story_units
 
 

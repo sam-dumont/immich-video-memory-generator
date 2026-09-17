@@ -58,9 +58,9 @@ does not do is buy the moment. The editor is still asked which moments tell a st
 story offers a single moment and the grant reaches it, because a dense tail of favourites would
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
 source and audience eligibility, but they do not order which stories a film funds. When a period
-holds more stories than the film has slots, stories of the same weight and the same memory-worthy
-reading are funded in the order they happened, so a well starred December cannot push January out of
-the year.
+holds more stories than the film has slots, stories of the same weight are funded in the order the
+reader listed them; a story it did not list goes by the memory-worthy reading, then by the order
+things happened. A well starred December cannot push January out of the year.
 
 **A trip is one story, and it gets room for its length.** The editor runs the app's own trip
 detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
