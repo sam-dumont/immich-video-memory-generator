@@ -734,7 +734,7 @@ immich-memories titles test [OPTIONS]
 | `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |
-| `--download-fonts` | boolean | false | Download fonts before generating |
+| `--download-fonts` | boolean | false | Fetch every supported family from cdn.jsdelivr.net before generating |
 | `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |
 
 ## `ui`

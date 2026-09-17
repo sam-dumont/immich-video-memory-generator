@@ -194,7 +194,10 @@ def _render_satellite(lat: float, lon: float, zoom: float, w: int, h: int) -> Im
 
     try:
         img = sm.render(zoom=z_int, center=[lon, lat])
-    except (OSError, RuntimeError) as e:
+    except Exception as e:  # noqa: BLE001
+        # WHY so broad: the tiles come through a third-party HTTP client and a
+        # decoder, and an offline box has produced OSError, RuntimeError and a
+        # ValueError out of a truncated body. One grey frame beats a dead render.
         logger.warning("Tile fetch failed z=%d (%.2f,%.2f): %s", z_int, lat, lon, e)
         img = Image.new("RGB", (rw, rh), (40, 50, 60))
 

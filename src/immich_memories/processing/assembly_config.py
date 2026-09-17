@@ -101,6 +101,11 @@ class TitleScreenSettings:
     show_location_cards: bool = True  # Insert location cards between clips
     home_lat: float | None = None  # Homebase latitude — fly-over departure point
     home_lon: float | None = None  # Homebase longitude — fly-over departure point
+    # `network.map_tiles`. Off means no satellite tile is ever requested: the
+    # trip opens on its title card and location cards keep the style's own
+    # background. It defaults to off so a settings object built without the
+    # config cannot reach a third-party host by omission.
+    map_tiles: bool = False
 
 
 @dataclass

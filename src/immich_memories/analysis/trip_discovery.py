@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.trip_detection import DetectedTrip, detect_trips
+from immich_memories.analysis.trip_detection import DetectedTrip, Geocoder, detect_trips
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
@@ -19,11 +19,13 @@ def discover_year_trips(
     year: int,
     *,
     person_names: list[str] | None = None,
+    geocoder: Geocoder | None = None,
 ) -> list[DetectedTrip]:
     """Find trips overlapping a year, using GPS from every asset type.
 
     A month on each side keeps New Year trips whole. Optional people narrow
     discovery only; the finished memory still uses the trip's full window.
+    Without a geocoder the names come from EXIF and no coordinate leaves the host.
     """
     config.validate_homebase()
     date_range = DateRange(
@@ -47,6 +49,7 @@ def discover_year_trips(
         min_distance_km=config.min_distance_km,
         min_duration_days=config.min_duration_days,
         max_gap_days=config.max_gap_days,
+        geocoder=geocoder,
     )
     return [
         trip

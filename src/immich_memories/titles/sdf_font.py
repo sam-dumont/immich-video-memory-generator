@@ -118,6 +118,15 @@ FONT_MAPPINGS = {
 }
 
 
+_WEIGHT_NAMES = {
+    "light": "Light",
+    "regular": "Regular",
+    "medium": "Medium",
+    "semibold": "SemiBold",
+    "bold": "Bold",
+}
+
+
 def _build_font_candidates(family: str, weight: str) -> list[str]:
     """Build a list of candidate font filenames for a family and weight."""
     candidates = list(
@@ -169,24 +178,27 @@ def find_font(family: str, weight: str = "regular", _seen: set[str] | None = Non
         return None
     _seen.add(family)
 
+    # The bundled families are named latin-<n>-normal.ttf, which no candidate
+    # spelling matches, so searching the directories first walked straight past
+    # the fonts the wheel ships and out to the CDN.
+    named_weight = _WEIGHT_NAMES.get(weight, "Regular")
+    with contextlib.suppress(Exception):
+        from immich_memories.titles.fonts import bundled_font_path
+
+        bundled = bundled_font_path(family, named_weight)  # type: ignore[arg-type]
+        if bundled:
+            return bundled
+
     candidates = _build_font_candidates(family, weight)
     result = _search_font_paths(candidates)
     if result:
         return result
 
-    # Try CDN download before system fallback (headless Linux has no system fonts)
+    # Only now the CDN, and only when network.font_downloads allows it.
     with contextlib.suppress(Exception):
         from immich_memories.titles.fonts import get_font_path
 
-        weight_map = {
-            "light": "Light",
-            "regular": "Regular",
-            "medium": "Medium",
-            "semibold": "SemiBold",
-            "bold": "Bold",
-        }
-        cdn_weight = weight_map.get(weight, "Regular")
-        cdn_result = get_font_path(family, cdn_weight)  # type: ignore[arg-type]
+        cdn_result = get_font_path(family, named_weight)  # type: ignore[arg-type]
         if cdn_result:
             return cdn_result
 

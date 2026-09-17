@@ -323,6 +323,7 @@ class TestBuildTitleSettings:
 
     def test_trip_memory_type_extracts_locations(self):
         config = Config()
+        config.network.map_tiles = True  # the pins only exist for a map
         clips = [
             AssemblyClip(path=Path("/a.mp4"), duration=3.0, latitude=48.85, longitude=2.35),
         ]

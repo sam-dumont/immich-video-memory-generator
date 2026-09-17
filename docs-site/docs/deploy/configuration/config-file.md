@@ -43,7 +43,7 @@ always SDR and tone-maps HDR sources.
 ## Tiers
 
 Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`, `title_screens`,
-`title_llm`, `cache`, `upload`, `trips`, `photos`, `scheduler`). Tuning sections go under
+`title_llm`, `cache`, `upload`, `trips`, `network`, `photos`, `scheduler`). Tuning sections go under
 `advanced:` (`analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
 `notifications`, `triage`, `editorial`, `inference`). The app writes them that way; on read both
 placements work and merge setting by setting, and the top-level value wins a tie.
@@ -160,6 +160,21 @@ upload:
 
 Trip detection needs both homebase coordinates. Preflight warns when either is missing
 or they are left at the placeholder `(0, 0)`; trips stay disabled until you set them.
+
+## Outside calls
+
+```yaml
+network:
+  geocoding: false        # nominatim.openstreetmap.org
+  map_tiles: false        # server.arcgisonline.com
+  font_downloads: false   # cdn.jsdelivr.net
+```
+
+All three are off, so a default run reaches your Immich server, the endpoints named elsewhere in
+this file, and nothing else. `geocoding` buys better trip names and place names in the film's
+language; `map_tiles` buys the trip fly-over and the map behind location cards; `font_downloads`
+buys a title family the wheel does not carry.
+[Network & Privacy](network-and-privacy.md) says exactly what each host receives.
 
 ## Reader concurrency
 
