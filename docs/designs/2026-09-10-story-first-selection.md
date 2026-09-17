@@ -155,15 +155,18 @@ itself. The order is the owner's:
 2. **A funded story is inventoried over the capture groups it can spend a slot on**
    (`editorial_moment_inventory.py`) — the depicted-moment inventory is read only where a slot
    lands, and inside a funded story only over the groups its own shortlist keeps (whole groups,
-   so a nearby competitor still has one); a story whose favourites already fill its grant is not
-   read at all. That is where the reading budget went from "too slow" to affordable.
+   so a nearby competitor still has one); stars exempt nothing, because a shortlist that only
+   just covers its grant is exactly where the inventory finds a further moment inside a group the
+   story already holds. That is where the reading budget went from "too slow" to affordable.
 3. **The standing gate rejects before the pick** (`editorial_story_carriers.StandingGate`) —
    "does each picture stand by itself?", reject-only, two orders. A favourite lowers the bar; a
    texture slot raises it.
 4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`) — the model
    chooses which moments tell the story from a shortlist that names each source truthfully
-   (video with its length, live photo, still); the favourite or the most-photographed moment
-   leads.
+   (video with its length, live photo, still), favourites leading its rows and marked there. It
+   is asked whatever the owner starred; only a story offering a single moment its grant reaches
+   has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
+   slot.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
    and spaced from what is already committed. Freed slots are re-granted across stories in up to
    three further passes, never to variants. An occasion whose every candidate failed still shows

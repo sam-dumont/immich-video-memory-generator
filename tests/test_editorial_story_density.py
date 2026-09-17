@@ -60,11 +60,12 @@ def test_explicit_one_picture_votes_do_not_get_refilled_to_three(second):
     assert records[-1]["editorial_limit"] == 1
 
 
-def test_explicit_shortfall_cannot_displace_the_favourite_floor():
+def test_an_explicit_shortfall_keeps_only_what_the_pick_named_beside_stars():
+    """Stars are indicators: they do not reserve the slots a complete shortfall gave back."""
     judge = DensityJudge([vote("M04", unused=2)] * 2)
     result, records = choose(judge, stars={"0", "1"})
-    assert [c.key for c in result] == ["0", "1"]
-    assert records[-1]["editorial_limit"] == 2
+    assert [c.key for c in result] == ["3"]
+    assert records[-1]["editorial_limit"] == 1
 
 
 def test_available_capacity_does_not_force_every_unstarred_view_into_the_pick():
@@ -125,7 +126,7 @@ def test_normal_planner_does_not_reopen_declined_depth_in_later_passes(tmp_path)
     [
         (1, 3, (), []),
         (2, 1, (), []),
-        (2, 3, ("0", "1"), []),
+        (2, 3, ("0", "1"), ["0", "1", "2"]),  # stars settle nothing: the depth is still contested
         (3, 2, (), ["0", "1"]),
     ],
 )

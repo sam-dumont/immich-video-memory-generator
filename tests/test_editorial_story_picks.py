@@ -1,14 +1,16 @@
-"""Mechanical pick rules do not need a model when favourites already fill the grant."""
+"""A pick asks the model unless one moment is all a story offers; stars never settle it."""
 
 import json
 import re
 
 import pytest
 
+from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
 from immich_memories.analysis.editorial_story_pick_pages import page_shares
 from immich_memories.analysis.editorial_story_reading import PAGE_CHARS
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
+    _capture_group_moments,
     _pick_prompt,
     pick_story_moments,
 )
@@ -55,26 +57,109 @@ def pick(
     return [choice.key for choice in selected], records
 
 
-@pytest.mark.parametrize(
-    "days,count,stars,expected",
-    [
-        (1, 2, ("choice-1", "choice-2"), ["choice-1", "choice-2"]),
-        (5, 1, ("choice-2",), ["choice-2"]),
-    ],
-)
-def test_favourites_that_fill_the_grant_skip_both_model_orders(days, count, stars, expected):
-    judge = PickJudge(keep=("M03",))
-    selected, records = pick(judge, days=days, count=count, stars=stars)
-    assert selected == expected
+class GroupJudge:
+    # WHY: the model boundary. A scripted reader keeps the rows whose text carries a named
+    # marker, so the pick's own rules run over real capture groups without a connection.
+    def __init__(self, prefer):
+        self.prefer = prefer
+        self.calls = []
+        self.prompts = []
+
+    def ask(self, stage, prompt, **_kwargs):
+        self.calls.append(stage)
+        self.prompts.append(prompt)
+        count = int(re.search(r"gets (\d+) picture", prompt)[1])
+        rows = re.findall(r"^(M\d{2}) \| (.*)$", prompt, re.MULTILINE)
+        return json.dumps({"keep": [label for label, row in rows if self.prefer in row][:count]})
+
+
+def occasion_units(*, star="quiet-p1", stars=(), groups=("quiet", "race", "walk")):
+    """A long story's three capture groups: a quiet afternoon, the race itself, the walk home."""
+    starred = {star, *stars}
+    captured = [
+        {"asset_id": "quiet-p0", "taken": "2030-05-03T15:00:00", "moment": "quiet"},
+        {"asset_id": "quiet-p1", "taken": "2030-05-03T15:04:00", "moment": "quiet"},
+        {"asset_id": "race-v", "taken": "2030-05-14T10:00:00", "moment": "race", "duration": 12},
+        {"asset_id": "walk-p0", "taken": "2030-05-21T18:00:00", "moment": "walk"},
+        {"asset_id": "walk-p1", "taken": "2030-05-21T18:03:00", "moment": "walk"},
+    ]
+    return [
+        unit
+        | {
+            "kind": "video" if unit["asset_id"] == "race-v" else "photo",
+            "favourite": unit["asset_id"] in starred,
+        }
+        for unit in captured
+        if unit["moment"] in groups
+    ]
+
+
+def pick_occasion(judge, *, count=1, star="quiet-p1", stars=(), groups=("quiet", "race", "walk")):
+    """The real capture-group moments of one 23-day story, picked with one slot by default."""
+    units = occasion_units(star=star, stars=stars, groups=groups)
+    by_asset = {u["asset_id"]: u for u in units}
+    records = []
+    selected = pick_story_moments(
+        judge,
+        story={"key": "K09", "title": "The spring race", "seen": {"days": 23}},
+        choices=_capture_group_moments(units, quality=lambda _asset: 1.0),
+        count=count,
+        starred=lambda c: any(by_asset[a]["favourite"] for a in c.members),
+        contract="Show the spring",
+        record=lambda name, value: records.append((name, value)),
+        kind_of=lambda c: source_kind_marker(by_asset[c.primary]),
+        is_video=lambda c: by_asset[c.primary]["kind"] == "video",
+    )
+    return selected, records
+
+
+def test_a_star_on_a_quiet_moment_does_not_settle_a_story_with_more_moments_than_slots():
+    judge = GroupJudge(prefer="video")
+    selected, records = pick_occasion(judge)
+
+    assert len(judge.calls) == 2
+    assert [c.key for c in selected] == ["race:cg"]
+    assert selected[0].primary == "race-v"
+    assert records[0][1]["orders"] == [["race:cg"], ["race:cg"]]
+
+
+def test_a_star_wins_the_frame_of_the_moment_the_pick_chooses():
+    judge = GroupJudge(prefer="favourite")
+    selected, _ = pick_occasion(judge)
+
+    assert len(judge.calls) == 2
+    marked = [row for row in judge.prompts[0].splitlines() if "| favourite" in row]
+    assert len(marked) == 1 and marked[0].startswith("M01")  # the star leads its own row
+    assert [c.key for c in selected] == ["quiet:cg"]
+    # the star is the second picture of its capture group; it still carries the moment
+    assert selected[0].primary == "quiet-p1"
+
+
+@pytest.mark.parametrize("star", ["quiet-p1", ""])
+def test_a_story_with_no_more_moments_than_slots_asks_nothing_star_or_not(star):
+    """One capture group and three slots: there is no moment to choose and none to decline."""
+    judge = GroupJudge(prefer="video")
+    selected, records = pick_occasion(judge, count=3, star=star, groups=("quiet",))
+
     assert judge.calls == []
-    assert records[0][1]["orders"] == []
-    assert records[0][1]["chosen"] == expected
+    assert records == []
+    assert [c.key for c in selected] == ["quiet:cg"]
+    assert selected[0].primary == ("quiet-p1" if star else "quiet-p0")
 
 
-def test_multiday_favourites_leave_the_remaining_slot_to_both_model_orders():
+def test_a_choice_between_two_favourites_is_asked_rather_than_settled():
+    """Every moment starred, one slot: an ambiguous preference, not a lost favourite."""
+    judge = GroupJudge(prefer="video")
+    selected, _ = pick_occasion(judge, stars=("race-v", "walk-p0"))
+
+    assert len(judge.calls) == 2
+    assert [c.key for c in selected] == ["race:cg"]
+
+
+def test_the_vote_decides_the_slots_that_a_run_of_favourites_cannot_reserve():
     judge = PickJudge(keep=("M03", "M02"))
     selected, _ = pick(judge, days=5, stars=("choice-1", "choice-2"))
-    assert selected == ["choice-1", "choice-3"]
+    assert selected == ["choice-2", "choice-3"]
     assert len(judge.calls) == 2
 
 

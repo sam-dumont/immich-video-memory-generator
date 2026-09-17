@@ -263,7 +263,7 @@ def nearby_picture_alternatives(
 
 
 class _Chosen:
-    """The keys picked so far, under a ceiling that the model's larger vote can raise."""
+    """The keys picked so far, under a ceiling the grant sets and the larger vote settles."""
 
     def __init__(self, by_key: Mapping[str, DepictedChoice], compatible, limit: int) -> None:
         self.keys: list[str] = []
@@ -589,39 +589,6 @@ def _uncontested_moments(
     return sorted(kept, key=lambda c: c.taken)
 
 
-def _favourites_lead(
-    choices: Sequence[DepictedChoice],
-    *,
-    story,
-    count: int,
-    starred,
-    compatible=lambda _c, _others: True,
-) -> _Chosen:
-    """Favourites lead every slot on one day, or half the slots over several days. When they
-    already fill the grant, neither model order can change the resulting choice."""
-    chosen = _Chosen({c.key: c for c in choices}, compatible, count)
-    days = int((story.get("seen") or {}).get("days") or 1)
-    lead = count if days <= 1 else max(1, count // 2)
-    for c in choices:
-        if starred(c) and len(chosen) < lead:
-            chosen.add(c.key)
-    return chosen
-
-
-def favourites_fill_grant(
-    choices: Sequence[DepictedChoice],
-    *,
-    story: Mapping[str, Any],
-    count: int,
-    starred: Callable[[DepictedChoice], bool],
-) -> bool:
-    """Whether the owner's stars alone answer the grant, so the pick asks nothing."""
-    if count <= 0 or not choices:
-        return False
-    chosen = _favourites_lead(choices, story=story, count=count, starred=starred)
-    return len(chosen) == count
-
-
 def _pick_material(
     choices: Sequence[DepictedChoice], *, count: int, motion_of, is_video
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -643,10 +610,11 @@ def _pick_material(
 def _fill_from_votes(
     chosen: _Chosen, choices: Sequence[DepictedChoice], *, agreed, kept_by_order
 ) -> None:
-    """The favourite wins its moment. In a one-day story every starred moment leads; over several
-    days half the slots stay free for the span, so four favourites in a story's tail cannot hide
-    its beginning: starred moments lead, then what both orders named, then the rest of either
-    order, then even spacing."""
+    """What both orders named, then the rest of either order, then even spacing.
+
+    A star buys no slot here: it leads the rows the pick reads, and it wins the frame of the
+    moment the pick chooses, so a dense tail of favourites cannot hide a story's beginning.
+    """
     for k in (*agreed, *kept_by_order[0], *kept_by_order[1]):
         if len(chosen) >= chosen.limit:
             break
@@ -675,32 +643,21 @@ def pick_story_moments(
     motion_of: Callable[[DepictedChoice], str] | None = None,
     is_video: Callable[[DepictedChoice], bool] = lambda _c: False,
 ) -> list[DepictedChoice]:
-    """Compare contributions within a ceiling, preserving the favourite floor.
+    """Compare contributions within a ceiling; only one offered moment leaves nothing to ask.
 
     Both orders may explicitly decline repetitive depth. Their larger complete
     vote caps the result; disagreement about identity cannot manufacture depth.
     """
-    if count >= len(choices) and (len(choices) <= 1 or all(starred(c) for c in choices)):
+    # A grant that reaches the only moment offered has nothing to ask. Everything else is a
+    # question: which moments tell the story, and whether a further view earns a slot at all.
+    # Stars answer neither. The favourite wins the frame of its own moment, not its story's slot.
+    if count >= len(choices) and len(choices) <= 1:
         return _uncontested_moments(choices, starred=starred, compatible=compatible)
     if count <= 0:
         return []
     count = min(count, len(choices))
     by_key = {c.key: c for c in choices}
-    chosen = _favourites_lead(
-        choices, story=story, count=count, starred=starred, compatible=compatible
-    )
-    if len(chosen) == count:
-        record(
-            f"story-pick-{story['key']}",
-            {
-                "count": count,
-                "orders": [],
-                "agreed": [],
-                "chosen": chosen.keys,
-                "reason": "favourites fill the grant",
-            },
-        )
-        return sorted((c for c in choices if c.key in chosen.keys), key=lambda c: c.taken)
+    chosen = _Chosen(by_key, compatible, count)
     labels, motions = _pick_material(choices, count=count, motion_of=motion_of, is_video=is_video)
     vote_records: list = []
     kept_by_order, page_audit = _vote_the_shortlist(
@@ -715,9 +672,9 @@ def pick_story_moments(
         contract=contract,
         vote_records=vote_records,
     )
-    # Respect the larger complete vote, while preserving the owner's favourite floor.
+    # Respect the larger complete vote, never more.
     # Disagreement over *which* one view wins cannot turn two one-view votes into two slots.
-    chosen.limit = max(len(chosen), *(len(order) for order in kept_by_order))
+    chosen.limit = max(len(order) for order in kept_by_order)
     agreed = [k for k in kept_by_order[0] if k in set(kept_by_order[1])]
     _fill_from_votes(chosen, choices, agreed=agreed, kept_by_order=kept_by_order)
     chosen_keys = chosen.keys[: chosen.limit]

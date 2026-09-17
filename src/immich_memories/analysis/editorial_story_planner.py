@@ -37,7 +37,6 @@ from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE, WEIGHT
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
     _capture_group_moments,
-    favourites_fill_grant,
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
 
@@ -277,8 +276,9 @@ def _shortlisted_units(
 ) -> dict[str, set[str]]:
     """Per funded story, the pictures its slots can still land on: every member of the capture
     groups its own shortlist keeps. A group is offered whole, because a competing nearby view
-    exists only inside one. A story whose stars already answer its grant is left out: its pick is
-    settled before any reading, so its capture groups stay as they are."""
+    exists only inside one. Every funded story is read, whatever the owner starred: a shortlist
+    that only just covers the grant is exactly where the inventory, not the pick, finds the story
+    a further moment inside a group it already holds."""
     allowed: dict[str, set[str]] = {}
     for s in stories:
         if granted[s["key"]] == 0:
@@ -292,25 +292,8 @@ def _shortlisted_units(
             life=life,
             kind_of=kind_of,
         )
-        if not _favourites_settle(s, short, partition_grants[s["key"]], parts, starred=starred):
-            allowed[s["key"]] = {a for c in short for a in c.members}
+        allowed[s["key"]] = {a for c in short for a in c.members}
     return allowed
-
-
-def _favourites_settle(s, short, grants_by_part, parts, *, starred) -> bool:
-    """The pick's own no-call rule, asked before the reading rather than after it.
-
-    A partition whose groups only just cover its grant is read anyway: there the inventory, not
-    the pick, is what would find the story a further moment inside a group it already holds.
-    """
-    if not short:
-        return False
-    return all(
-        len(choices) > grants_by_part[part]
-        and favourites_fill_grant(choices, story=s, count=grants_by_part[part], starred=starred)
-        for part, choices in parts.split(short).items()
-        if grants_by_part.get(part, 0)
-    )
 
 
 def _inventory_scope(stories, granted, choices_of, allowed) -> dict[str, dict[str, Any]]:
@@ -325,7 +308,6 @@ def _inventory_scope(stories, granted, choices_of, allowed) -> dict[str, dict[st
                 1 for c in choices_of[s["key"]] if not spendable.isdisjoint(c.members)
             ),
             "units_inventoried": len(spendable),
-            "skipped_for_favourites": s["key"] not in allowed,
         }
     return scope
 
@@ -333,7 +315,7 @@ def _inventory_scope(stories, granted, choices_of, allowed) -> dict[str, dict[st
 def _inventory_jobs(stories, granted, *, partition_grants, episode_of, units, parts, allowed):
     jobs = []
     for s in stories:
-        if granted[s["key"]] == 0 or s["key"] not in allowed:
+        if granted[s["key"]] == 0 or not allowed.get(s["key"]):
             continue
         for key in s["episodes"]:
             e = episode_of[key]

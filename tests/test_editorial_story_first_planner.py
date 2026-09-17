@@ -315,7 +315,6 @@ def test_inventory_reads_only_the_shortlisted_capture_groups(tmp_path):
         assert row["groups_offered"] == 8
         assert row["groups_shortlisted"] == 6
         assert row["units_inventoried"] == 30
-        assert row["skipped_for_favourites"] is False
 
     offers = _inventory_offers(judge)
     assert len(offers) == 2
@@ -328,8 +327,19 @@ def test_inventory_reads_only_the_shortlisted_capture_groups(tmp_path):
     assert plan["calls_by_stage"]["moment-inventory"]["asked"] == 4
 
 
-def test_a_story_the_favourites_already_fill_is_not_inventoried(tmp_path):
-    """One slot, one starred outing: the pick is settled, so nothing is read for that story."""
+class LastMomentJudge(StoryJudge):
+    """Keeps the last moment every story offers, in either reading order."""
+
+    def answer(self, stage, prompt):
+        if stage.startswith("story-pick-"):
+            count = int(re.search(r"gets (\d+) picture", prompt).group(1))
+            labels = sorted(re.findall(r"^(M\d{2}) \|", prompt, re.MULTILINE))
+            return json.dumps({"keep": labels[-count:]})
+        return super().answer(stage, prompt)
+
+
+def test_a_starred_story_is_inventoried_and_its_pick_is_still_asked(tmp_path):
+    """One slot, one starred outing, two outings to choose between: the star settles nothing."""
     captured = make_source(tmp_path, seconds=8, occasions=4, pictures=3)
     captured = replace(
         captured,
@@ -338,23 +348,23 @@ def test_a_story_the_favourites_already_fill_is_not_inventoried(tmp_path):
             for key, asset in captured.assets.items()
         },
     )
-    judge = StoryJudge()
+    judge = LastMomentJudge()
     plan = run(captured, judge)
 
-    scope = json.loads(
-        next(captured.artifact_dir.rglob("story-inventory-scope.private.json")).read_text()
-    )
-    assert sorted(row["skipped_for_favourites"] for row in scope.values()) == [False, True]
-
-    offers = _inventory_offers(judge)
-    assert len(offers) == 1  # only the story without a favourite is read
     starred = {  # the starred story holds the first and third outings
         captured.assets[f"o{occasion}-p{picture}"].file_created_at.isoformat()
         for occasion in (0, 2)
         for picture in range(3)
     }
-    assert not next(iter(offers.values()))["taken"] & starred
-    assert "o0-p1" in {row["asset_id"] for row in plan["carriers"]}
+    offers = _inventory_offers(judge)
+    assert len(offers) == 2  # the starred story is read like any other
+    assert set().union(*(offer["taken"] for offer in offers.values())) & starred
+
+    asked = [call["stage"] for call in judge.calls if call["stage"].startswith("story-pick-")]
+    assert len(asked) == 2 * len(offers)  # two reading orders per story, the starred one included
+    carried = {row["asset_id"] for row in plan["carriers"]}
+    assert "o2-p2" in carried  # the last moment of the starred story, which the pick named
+    assert "o0-p1" not in carried  # the star is an indicator, not the story's slot
 
 
 @pytest.mark.parametrize("old_switch", [None, "0", "1"])
