@@ -1,6 +1,7 @@
 """The picker must see original duration and return a complete valid choice."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -258,3 +259,28 @@ def test_one_label_where_a_list_belongs_is_one_pick():
     assert ask_moment_pick(judge, "pick", "Choose one row.", labels={"M01", "M02"}, count=1) == [
         "M01"
     ]
+
+
+def test_a_valid_shortfall_without_a_reason_survives_its_repair():
+    """Thirteen of fourteen named moments are a choice; a missing sentence is not worth a film."""
+    answers = iter(
+        [
+            json.dumps({"keep": ["M01", "M02"], "unused_slots": 1, "why_fewer": None}),
+            json.dumps({"keep": ["M01", "M02"], "unused_slots": 1, "why_fewer": ""}),
+        ]
+    )
+    recorded: list[dict] = []
+    judge = SimpleNamespace(ask=lambda *_args, **_kwargs: next(answers))
+
+    kept = ask_moment_pick(
+        judge,
+        "story-pick-K01",
+        "question",
+        labels={"M01", "M02", "M03"},
+        count=3,
+        allow_fewer=True,
+        record=recorded.append,
+    )
+
+    assert kept == ["M01", "M02"]
+    assert recorded == [{"keep": ["M01", "M02"], "unused_slots": 1, "why_fewer": "not given"}]
