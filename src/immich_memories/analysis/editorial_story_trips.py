@@ -104,7 +104,14 @@ def detect_film_trips(assets: Iterable[Asset], trips_config, *, journey: bool) -
 
 
 def trip_allowance(days: int, film_days: int, slots: int) -> int:
-    """How many pictures a trip of `days` photographed days may take of the film's `slots`."""
+    """How many pictures a trip of `days` photographed days may take of the film's `slots`.
+
+    Both numbers come from the film: its slots and the days it holds pictures of. The halving is
+    the dominant weight's own cap (`weight_caps`), which is what a trip filling the whole film
+    would be; the square root is the curve between that and nothing which meets the owner's 09-04
+    calibration, a ten-day trip in a five-minute year at about five pictures. Nothing here is set
+    per film, per product or per duration.
+    """
     if days <= 0 or film_days <= 0 or slots <= 0:
         return 0
     share = min(1.0, days / film_days)

@@ -50,6 +50,8 @@ class LookAlikeCheck:
 
     def __init__(self, looks_alike: PairLooksAlike | None, *, slots: int) -> None:
         self._looks_alike = looks_alike
+        # The same work bound the final duplicate review uses over the finished film: twice the
+        # pictures it may hold. Nothing about a particular film sets it.
         self.limit = 2 * slots
         self.checks = 0
         self._answers: dict[tuple[str, str], bool | None] = {}

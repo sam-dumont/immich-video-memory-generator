@@ -39,6 +39,8 @@ from immich_memories.analysis.editorial_story_replies import (
 from immich_memories.analysis.editorial_story_weighing import story_priorities
 
 THREAD_QUESTION_VERSION = "recurring-activity-v3"
+# Four letters, the length the final duplicate review already calls a meaningful word: shorter
+# ones carry grammar and setting rather than what a day was about.
 _WORD = re.compile(r"[^\W\d_]{4,}")
 _NAMES = re.compile(r"\| with ([^|]+)")
 # Not the activity: grammar, company, when and where, and the container nouns a title uses to say

@@ -88,7 +88,6 @@ def _candidate(asset: Asset) -> EditorialCandidate:
         rendering_family_id=None,
         favourite=False,
         source=asset,
-        proposed_segment=None,
         shippable_duration=0,
         grounded_annotations=(),
     )

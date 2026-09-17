@@ -17,6 +17,7 @@ from itertools import zip_longest
 from operator import attrgetter, itemgetter
 from typing import Any, Protocol
 
+# The owner's depth ladder: a moment is banked as its top three, never one winner.
 RUNGS_PER_MOMENT = 3
 
 
