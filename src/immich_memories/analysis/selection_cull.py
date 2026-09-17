@@ -15,6 +15,7 @@ from immich_memories.analysis.editorial_contracts import (
 )
 from immich_memories.analysis.selection_source import PreparedEditorialSource
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+from immich_memories.store.episode_readings import EpisodeReadingProducer
 
 _REVIEW_STATE_COLOURS = {
     "KEEP": (45, 65, 75),
@@ -30,6 +31,21 @@ _REVIEW_FAVOURITE_COLOUR = (180, 130, 0)
 # (both 2026-09-01) — a remembered verdict answered a different question and
 # must not replay against it.
 CULL_PASS_VERSION = "pass-1-cull-v3"  # noqa: S105 - editorial pass identity
+
+
+def cull_pass_version(reading: EpisodeReadingProducer) -> str:
+    """The bank key for verdicts this reading produced.
+
+    The laws above are only half the question; the reading that answers them is
+    the other half. #1041 bumped the episode prompt and left the constant
+    alone, so one catalogued day's pictures carried the old reading's 61
+    rejects AND the new reading's 36 at the same time, and a seven-carrier cut
+    became three (#1059). Composing the reading's identity in retires the old
+    rows instead of unioning with them, and it does so for every input the
+    reading is made of: prompt, model, schema, the annotation renderer and the
+    annotation producers behind its evidence.
+    """
+    return f"{CULL_PASS_VERSION}/{reading.prompt_version}/{reading.key()[:16]}"
 
 
 @dataclass(frozen=True)
@@ -53,11 +69,18 @@ def run_cull_decisions(
     verdicts: EditorialVerdicts | None = None,
     actual_calls: int = 0,
 ) -> CullDecisionResult:
-    """Apply the existing Cull laws to provider-neutral typed decisions."""
+    """Apply the existing Cull laws to provider-neutral typed decisions.
+
+    The bank is read and written under `provenance.pass_version`, so the key
+    the trace publishes is the key the rows live under and there is nowhere for
+    the two to drift apart. Production composes it with `cull_pass_version`.
+    """
     # What a picture IS does not change between memories, so a verdict reached
     # once stands for all of them. What it sat beside does change, which is why
     # only the two removing buckets are remembered.
-    rejects, remembered_warnings = _with_remembered_verdicts(prepared, rejects, verdicts)
+    rejects, remembered_warnings = _with_remembered_verdicts(
+        prepared, rejects, verdicts, provenance.pass_version
+    )
     pass_one_warnings = _ordered_unique((*warnings, *remembered_warnings))
     rejects, favourite_warnings = _protect_favourites(prepared, rejects)
     pass_one_warnings = _ordered_unique((*pass_one_warnings, *favourite_warnings))
@@ -78,7 +101,7 @@ def run_cull_decisions(
     if verdicts is not None:
         verdicts.remember(
             ((item.asset_id, item.bucket) for item in ordered_rejects),
-            pass_version=CULL_PASS_VERSION,
+            pass_version=provenance.pass_version,
         )
     authoritative_warnings = _authoritative_warnings(prepared)
     return CullDecisionResult(
@@ -107,12 +130,13 @@ def _with_remembered_verdicts(
     prepared: PreparedEditorialSource,
     rejects: tuple[CullDecision, ...],
     verdicts: EditorialVerdicts | None,
+    pass_version: str,
 ) -> tuple[tuple[CullDecision, ...], tuple[str, ...]]:
     """This run's rejects, plus the standing verdicts about the same pictures."""
     if verdicts is None:
         return rejects, ()
     decided = {decision.asset_id for decision in rejects}
-    remembered = verdicts.recall(prepared.candidate_ids, pass_version=CULL_PASS_VERSION)
+    remembered = verdicts.recall(prepared.candidate_ids, pass_version=pass_version)
     added = tuple(
         starmap(
             CullDecision,
