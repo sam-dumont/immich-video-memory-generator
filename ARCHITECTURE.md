@@ -281,6 +281,7 @@ src/immich_memories/
 │   ├── renderer_kernels.py     # KernelTitleRenderer: background + frame pipeline
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
+│   ├── text_layout.py          # Where the two text blocks sit, and the gate that refuses an overlap
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)

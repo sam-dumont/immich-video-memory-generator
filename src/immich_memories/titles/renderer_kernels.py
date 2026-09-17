@@ -35,6 +35,7 @@ from .kernels import (
 from .kernels import (
     init_kernels as init_kernels,
 )
+from .text_layout import DEFAULT_GAP_RATIO
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,9 @@ class KernelTitleConfig:
     text_color: str = "#FFFFFF"
     title_size_ratio: float = 0.12
     subtitle_size_ratio: float = 0.06
+    # Ink kept between the title block and the subtitle block, in title heights.
+    # See text_layout.DEFAULT_GAP_RATIO for where the number comes from.
+    title_subtitle_gap_ratio: float = DEFAULT_GAP_RATIO
     font_family: str = "Montserrat"
     use_sdf_text: bool = False  # PIL text = pixel-sharp (matches map titles)
     enable_shadow: bool = False
