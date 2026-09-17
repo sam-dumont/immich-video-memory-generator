@@ -351,11 +351,17 @@ def _render_trip_params(state: AppState) -> None:
                 ).classes("text-sm")
 
         try:
+            from immich_memories.analysis.trip_detection import geocoder_for
             from immich_memories.analysis.trip_discovery import discover_year_trips
             from immich_memories.api.immich import SyncImmichClient
+            from immich_memories.processing.clip_caption import resolve_caption_locale
 
             assert state.config is not None  # set in initialize_app
             trips_config = state.config.trips
+            trip_geocoder = geocoder_for(
+                enabled=state.config.network.geocoding,
+                language=resolve_caption_locale(state.config.title_screens.locale),
+            )
 
             def do_detect() -> list[DetectedTrip]:
                 with SyncImmichClient(
@@ -363,7 +369,9 @@ def _render_trip_params(state: AppState) -> None:
                     api_key=state.immich_api_key,
                     api_version=state.immich_api_version,
                 ) as client:
-                    return discover_year_trips(client, trips_config, year_val)
+                    return discover_year_trips(
+                        client, trips_config, year_val, geocoder=trip_geocoder
+                    )
 
             detected = await io_bound_result(do_detect)
         except Exception as exc:  # WHY: UI graceful degradation

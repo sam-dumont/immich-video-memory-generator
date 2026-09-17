@@ -27,7 +27,7 @@ The editor reads the period as a story, keeps the pictures that carry it, and sh
 
 ## What leaves your machine
 
-Nothing, unless you point it somewhere. No telemetry, no cloud API: the app talks to your Immich server over your LAN. Two optional model endpoints can receive pictures, both `localhost` by default: a caption server gets a 400 px tile of every picture in the period, once, and a reader gets 800 px tiles of a few dozen candidates plus their annotation lines, which name people and places. Trip detection geocodes GPS clusters at `nominatim.openstreetmap.org`, and satellite title screens fetch map tiles. Every switch is on [Network & Privacy](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/network-and-privacy).
+Nothing, unless you point it somewhere. No telemetry, no cloud API: the app talks to your Immich server over your LAN. Two optional model endpoints can receive pictures, both `localhost` by default: a caption server gets a 400 px tile of every picture in the period, once, and a reader gets 800 px tiles of a few dozen candidates plus their annotation lines, which name people and places. Three outside hosts sit behind `network:` switches, all off in a fresh install: Nominatim for trip and place names, ArcGIS for the satellite map, jsDelivr for a font the app does not bundle. Every switch is on [Network & Privacy](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/network-and-privacy).
 
 ## Three ways to run it
 

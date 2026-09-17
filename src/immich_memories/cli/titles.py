@@ -15,8 +15,10 @@ from immich_memories.cli._helpers import console, print_error, print_info, print
 
 def _download_and_report_fonts(download_all_fonts) -> None:
     """Download fonts and print success/failure for each."""
-    print_info("Downloading fonts...")
-    results = download_all_fonts()
+    print_info("Downloading fonts from cdn.jsdelivr.net...")
+    # Asking for the download IS the consent, so this one call does not consult
+    # network.font_downloads; nothing else on the render path reaches the CDN.
+    results = download_all_fonts(allowed=True)
     for font, success in results.items():
         if success:
             print_success(f"Font ready: {font}")
@@ -172,7 +174,11 @@ def register_titles_commands(main: click.Group) -> None:
         default="title",
         help="Screen type",
     )
-    @click.option("--download-fonts", is_flag=True, help="Download fonts before generating")
+    @click.option(
+        "--download-fonts",
+        is_flag=True,
+        help="Fetch every supported family from cdn.jsdelivr.net before generating",
+    )
     @click.option(
         "--no-animated-background",
         is_flag=True,

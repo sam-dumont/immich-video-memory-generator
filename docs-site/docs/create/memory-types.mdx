@@ -192,8 +192,9 @@ That film came out of the real renderer over the CC0 test library in `tests/e2e/
 week camped by a lake in Upper Savoy, 590 km from the test home. The view starts wide over home,
 travels to where you went, and drops a labelled pin on every distinct GPS cluster in the cut. The
 tiles are ArcGIS World Imagery, fetched while the title renders, which makes the opening the one
-part of the pipeline that wants the network even when the rest runs on your own machine. With no
-tiles there is no fly-over, only the title on a flat panel.
+part of the pipeline that wants the network even when the rest runs on your own machine. That is
+why it is off until you set `network.map_tiles: true`. With no tiles there is no fly-over, only the
+title on a flat panel.
 
 Detection is three stages, no clustering:
 
@@ -205,8 +206,10 @@ Detection is three stages, no clustering:
 3. **Discard the short ones**: a group survives if the nights it spans reach `min_duration_days`
    (default 2, so three calendar days). `1` catches a weekend away and is the floor.
 
-The name comes from reverse geocoding the centroid of the cluster through Nominatim, and that name
-is what the title screen shows.
+The name comes from the city and country Immich stored on the pictures themselves, which is what
+the title screen shows. Set `network.geocoding: true` and the centroid of the cluster goes to
+Nominatim instead, which names a region rather than whichever village the cluster happens to centre
+on, and names it in the film's language. The nightly `auto run` trip detector geocodes the same way.
 
 ```yaml
 trips:

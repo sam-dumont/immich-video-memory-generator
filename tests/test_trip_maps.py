@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 from PIL import Image
 
 
@@ -174,23 +176,22 @@ class TestRenderTripMapFrame:
         assert result.size == (1920, 1080)
 
 
-class TestFontAutoDownload:
-    """Font auto-download ensures Montserrat is available."""
+class TestMapLabelFont:
+    """The pin labels take Montserrat out of the wheel, never off the network."""
 
-    def test_get_font_downloads_if_missing(self):
-        """_get_font should auto-download Montserrat if not cached."""
-        from unittest.mock import patch as mock_patch
-
+    def test_get_font_uses_the_bundled_family(self, tmp_path, monkeypatch):
+        # WHY: cdn.jsdelivr.net is the host this must not need; a downloader that
+        # raises proves the label font is found without it.
+        monkeypatch.setattr(
+            "immich_memories.titles.fonts.download_font",
+            lambda *_a, **_k: pytest.fail("the map labels must not download a font"),
+        )
+        monkeypatch.setenv("HOME", str(tmp_path))
         from immich_memories.titles.map_renderer import _get_font
 
-        # Mock the font cache to not exist, and mock download
-        with (
-            mock_patch("immich_memories.titles.map_renderer._ensure_montserrat") as mock_ensure,
-        ):
-            mock_ensure.return_value = True
-            font = _get_font(48, bold=True)
-            mock_ensure.assert_called_once()
-            assert font is not None
+        font = _get_font(48, bold=True)
+
+        assert Path(getattr(font, "path", "")).parent.parent.name == "bundled_fonts"
 
 
 class TestLocationCardWithMap:

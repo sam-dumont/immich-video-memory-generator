@@ -6,16 +6,20 @@ title: Network & Privacy
 # Data leaving your network
 
 The app runs locally and talks to your Immich server over your LAN. No telemetry, no update check,
-no analytics. Some features make outbound requests; every one is below, with what is sent and how
-to turn it off. The list comes from a sweep of the source and is kept by hand: if you find a call
-that is not here, [open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
+no analytics.
+
+**A default run makes no outside call at all.** It reaches your Immich server, the endpoints you
+configured yourself, and localhost. Everything else is a switch you turn on, and every switch says
+here what it sends and to whom. The list comes from a sweep of the source and is kept by hand: if
+you find a call that is not here,
+[open an issue](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 | Destination | When | What leaves your network | Opt out |
 |---|---|---|---|
 | Your Immich server | always | metadata, previews and originals down; the finished video and an album up, only with upload-back | `upload.enabled: false` (default) |
-| `nominatim.openstreetmap.org` | trip detection | the real GPS of each trip cluster's centroid, for a place name | do not use the Trip type |
-| `server.arcgisonline.com` (World Imagery) | the map fly-in of a trip title | tile requests covering the trip area and your home base | `title_screens.enabled: false` |
-| `cdn.jsdelivr.net` (Fontsource) | a title needs a font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | keep a bundled family (Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) or drop TTFs in that folder |
+| `nominatim.openstreetmap.org` | only with `network.geocoding: true`: trip detection, and the places on the cut | each trip cluster's centroid, and the rounded coordinates of the places the film shows | off by default |
+| `server.arcgisonline.com` (World Imagery) | only with `network.map_tiles: true`: the trip fly-over, the static trip map, the background of location cards | tile requests covering the trip area and your home base | off by default |
+| `cdn.jsdelivr.net` (Fontsource) | only with `network.font_downloads: true`: a title font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, unpinned (`@latest`) | off by default; `titles test --download-fonts` fetches on request whatever the switch says |
 | `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once, a `/models` probe, and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
 | `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `llm.base_url` | the opening title of a people or occasion memory, by default whenever a reader is configured (both the wizard and the CLI); trips only with `--llm-title` | text, no images: first names, birth dates and ages, the relationships your people file records between the people in the film, the people condition, the span, place names, the catalogue's words, the name of the Immich album most of the cut sits in, and the clip descriptions on the trip path | `--no-llm-title`, `--title` of your own, or no reader configured |
@@ -57,10 +61,41 @@ Two features can reach a vision seat without being the editor, and both prefer t
 
 ## Geocoding and maps
 
-Trip detection reverse-geocodes each cluster's centroid so trips get names; home-base coordinates
-feed the map animation only and are never geocoded. Disabling title screens does not stop the
-geocoding, and neither does privacy mode: detection runs before anonymisation. The map fly-in
-requests hundreds of World Imagery tiles per animated title, of the fake city in privacy mode.
+Both are off, and both are worth turning on if you are comfortable with what they send.
+
+```yaml
+network:
+  geocoding: false
+  map_tiles: false
+  font_downloads: false
+```
+
+**`geocoding`** sends each trip cluster's centroid to Nominatim, and the rounded coordinates
+(2 decimals, about a kilometre) of the distinct places your cut actually shows. One request per
+place, at Nominatim's one-per-second policy, cached on disk. It buys two things: trip names that
+read like places rather than like EXIF tags, and place names in the film's language, so a French
+film says "Chypre" instead of "Cyprus". With it off, names come from the city and country Immich
+already stored, which are always English.
+
+The automation trip detector is a trigger too: a nightly `auto run` that finds trips geocodes them
+the same way a `--memory-type trip` run does.
+
+Neither privacy mode nor `title_screens.enabled: false` used to stop any of this, because detection
+ran before anonymisation. Now the switch does.
+
+**`map_tiles`** fetches satellite imagery from ArcGIS World Imagery: hundreds of tiles for one
+fly-over, a handful for a static map or a location card, covering the trip area and your home base.
+With it off, a trip opens on the ordinary title card carrying the trip title, and location cards
+keep their text on the style's own background. In privacy mode the tiles are of the fake city, not
+of yours.
+
+**`font_downloads`** is the narrowest of the three. Five families ship inside the wheel
+(Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) and every lookup starts there, then looks in
+`~/.immich-memories/fonts/`, then falls back to a font this host already has. The CDN is reached
+only for a family outside that list, and only with this switch on.
+
+`preflight` prints one row per switch you turned on, naming the host it will contact. A default
+install gets no such row.
 
 ## Thumbnails inside the web UI
 
@@ -99,7 +134,8 @@ own clips is a clip and gets the same blur.
 
 Two things it does not cover. The output file name is built before anonymization, so it can still
 carry the real place or person names: rename the file before sharing it. And it changes what the
-film shows, not what the app sends: trip detection and its geocoding have already run by then.
+film shows, not what the app sends: with `network.geocoding: true`, trip detection has already
+asked Nominatim about the real coordinates by the time the fake city is chosen.
 
 ## CI only
 

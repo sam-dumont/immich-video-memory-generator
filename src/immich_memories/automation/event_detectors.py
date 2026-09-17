@@ -43,7 +43,8 @@ class TripDetector:
             return []
 
         # Lazy import to avoid circular deps and keep module lightweight
-        from immich_memories.analysis.trip_detection import detect_trips
+        from immich_memories.analysis.trip_detection import detect_trips, geocoder_for
+        from immich_memories.processing.clip_caption import resolve_caption_locale
 
         trips = detect_trips(
             assets=assets,
@@ -52,6 +53,10 @@ class TripDetector:
             min_distance_km=trips_cfg.min_distance_km,
             min_duration_days=trips_cfg.min_duration_days,
             max_gap_days=trips_cfg.max_gap_days,
+            geocoder=geocoder_for(
+                enabled=config.network.geocoding,
+                language=resolve_caption_locale(config.title_screens.locale),
+            ),
         )
 
         candidates: list[MemoryCandidate] = []

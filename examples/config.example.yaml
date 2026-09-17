@@ -37,6 +37,15 @@ trips:                             # needed for --memory-type trip only
   min_duration_days: 2
   max_gap_days: 2
 
+# Third-party hosts. All off: a default run reaches your Immich server, the
+# endpoints named in this file, and nothing else.
+network:
+  geocoding: false                 # nominatim.openstreetmap.org: trip names, and
+                                   # place names in the film's language
+  map_tiles: false                 # server.arcgisonline.com: the trip fly-over,
+                                   # the static map, location card backgrounds
+  font_downloads: false            # cdn.jsdelivr.net: a font the wheel does not carry
+
 advanced:
   # The reader: reads the period, weighs its stories, picks the moments.
   # Any OpenAI-compatible chat endpoint. It is also sent picture tiles, so this

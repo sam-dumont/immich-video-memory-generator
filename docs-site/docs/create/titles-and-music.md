@@ -53,8 +53,9 @@ nostalgic and romantic get `warm_dark`; calm and peaceful get `deep_teal`; energ
 `midnight`; exciting gets `cinematic_dark`. `style_mode: random` picks a named style at random, and
 `--style elegant_minimal` on the titles CLI forces one.
 
-`title_screens.enabled` turns the whole thing off including the map fly-over and its tile requests.
-The rest of the keys are in the
+`title_screens.enabled` turns the whole thing off. The fly-over has a switch of its own,
+`network.map_tiles`, and it is off in a fresh install: see
+[The map fly-over](#the-map-fly-over). The rest of the keys are in the
 [config reference](../reference/config-reference.md#title-screens).
 
 Preview a card without running a pipeline:
@@ -103,6 +104,17 @@ without place captions, skips the scan.
 
 ## The map fly-over
 
+The fly-over needs satellite tiles from a third party, so it waits for your permission:
+
+```yaml
+network:
+  map_tiles: true
+```
+
+Without it a trip memory opens on the ordinary title card carrying the trip title, and location
+cards keep their text on the style's own background. Nothing is requested, and nothing about where
+you went leaves the machine. What follows is what the switch buys.
+
 A trip memory opens on your home location at city-level zoom, flies out and across to the
 destinations, and settles at a zoom that shows every pin. It runs for `title_duration`, 3.5 seconds
 by default. Each endpoint gets a red pin with a white outline and a city label, and the title text
@@ -114,7 +126,9 @@ rather than interpolating linearly, so the further apart the two points the furt
 out mid-flight. **Linear pan** for short hops, when the mid-transit zoom would stay at level 10 or
 above.
 
-Imagery is ArcGIS World Imagery, no API key, cached in memory during rendering. The static map
+Imagery is ArcGIS World Imagery at `server.arcgisonline.com`, no API key, cached in memory during
+rendering. One fly-over is hundreds of tiles covering the trip area and your home base. A host that
+cannot reach it renders grey frames rather than failing the run. The static map
 renderer also knows `osm` and `topo` for the pin-and-label frames, but both are internal today:
 `map_style` is a parameter on the renderer functions in `titles/map_renderer.py`, not a
 `title_screens` key, so a generate run always gets satellite.
