@@ -37,6 +37,17 @@ def _ask_the_llm(**kwargs: Any) -> Any:
     return asyncio.run(generate_title_with_llm(**kwargs))
 
 
+def _album_of_the_cut(lookup: Callable[[], str | None] | None) -> str | None:
+    """The album the cut mostly sits in, when the run can ask Immich for it."""
+    if lookup is None:
+        return None
+    try:
+        return lookup()
+    except Exception:  # WHY: a title fact must not fail the whole run
+        logger.debug("Album lookup failed; the title goes without it", exc_info=True)
+        return None
+
+
 def _asks_the_model(*, enabled: bool | None, memory_type: str | None, configured: bool) -> bool:
     """Whether this run should put the question to the reader at all."""
     if enabled is False:
@@ -64,6 +75,7 @@ def resolve_cli_title(
     date_range: DateRange,
     person_names: list[str],
     memory_preset_params: dict | None = None,
+    album_lookup: Callable[[], str | None] | None = None,
     ask: Callable[..., Any] = _ask_the_llm,
 ) -> tuple[str | None, str | None]:
     """Return the (title, subtitle) the run should use.
@@ -81,7 +93,13 @@ def resolve_cli_title(
     ):
         return None, subtitle_override
 
+    from dataclasses import replace
+
     from immich_memories.titles.llm_titles import memory_title_facts
+
+    facts = memory_title_facts(memory_preset_params)
+    if facts.album_name is None and memory_type != "album":
+        facts = replace(facts, album_name=_album_of_the_cut(album_lookup))
 
     start, end = date_range.start.date(), date_range.end.date()
     try:
@@ -93,7 +111,7 @@ def resolve_cli_title(
             duration_days=(end - start).days,
             person_names=person_names or None,
             clip_descriptions=_descriptions(clips) or None,
-            facts=memory_title_facts(memory_preset_params),
+            facts=facts,
             llm_config=llm_config,
         )
     except Exception:  # WHY: an optional title must not fail the whole run

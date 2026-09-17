@@ -351,15 +351,15 @@ def _people_prompt(
     facts: MemoryTitleFacts,
 ) -> str:
     condition = facts.people_condition or _plain_condition(person_names, facts.person_match)
+    known = people_title_facts(person_names, start, end, people_path=facts.people_path)
+    if facts.album_name:
+        known += f"\nAlbum this film sits in: {facts.album_name}"
     return (
         _load_prompt_template("title_people.md")
         .replace("{lang}", lang)
         .replace("{memory_type}", memory_type)
         .replace("{condition}", condition)
-        .replace(
-            "{people_facts}",
-            people_title_facts(person_names, start, end, people_path=facts.people_path),
-        )
+        .replace("{people_facts}", known)
         .replace(
             "{span}",
             span_title_facts(

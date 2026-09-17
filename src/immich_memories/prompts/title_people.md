@@ -13,5 +13,6 @@ Rules
 - Title: at most 40 characters. Subtitle: at most 50 characters or null; never a list of full names; never an age, a count or a span the facts do not state. Null beats a guess.
 - Dates belong in the title only when the span IS the subject: a calendar year, a month, a season, a first year. A whole life so far, or a span that ends today, gets no dates.
 - No generic openers such as "Souvenirs de", "Moments avec", "Memories of".
+- The only proper nouns allowed are first names, place names, and the album's name when the album is what the occasion was called.
 
 Return ONLY JSON: {"title": "...", "subtitle": "..." or null, "reason": "one sentence"}

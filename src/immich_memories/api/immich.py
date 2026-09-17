@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -437,6 +437,9 @@ class ImmichClient:
 
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         return await self.albums.resolve_album(name_or_id)
+
+    async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
+        return await self.albums.album_holding_most(asset_ids, limit=limit)
 
     async def iter_videos_for_date_range(
         self,

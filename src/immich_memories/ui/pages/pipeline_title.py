@@ -7,7 +7,7 @@ title suggestion. Fire-and-forget: failures are logged and ignored.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from immich_memories.cache.judgment_cache import verdicts_beside
@@ -242,6 +242,34 @@ def _extract_single_country(state: AppState) -> str | None:
     return seen[0] if len(seen) == 1 else None
 
 
+async def _album_of_the_cut(state: AppState) -> str | None:
+    """The album most of the cut sits in, when Immich can answer.
+
+    A family day is often named by nothing but the album somebody filed it
+    under. Reading that name is not inventing one.
+    """
+    config = state.config
+    if config is None or not config.immich.url or not config.immich.api_key:
+        return None
+    asset_ids = [
+        asset.id for clip in state.get_selected_clips() if (asset := getattr(clip, "asset", None))
+    ]
+    if not asset_ids:
+        return None
+    from immich_memories.api.immich import ImmichClient
+
+    try:
+        async with ImmichClient(
+            base_url=config.immich.url,
+            api_key=config.immich.api_key,
+            api_version=config.immich.api_version,
+        ) as client:
+            return await client.album_holding_most(asset_ids)
+    except Exception:  # WHY: UI graceful degradation
+        logger.debug("Album lookup failed; the title goes without it", exc_info=True)
+        return None
+
+
 def _apply_suggestion(state: AppState, suggestion) -> None:
     """Write TitleSuggestion fields into AppState."""
     state.title_suggestion_title = suggestion.title
@@ -249,6 +277,49 @@ def _apply_suggestion(state: AppState, suggestion) -> None:
     state.title_suggestion_trip_type = suggestion.trip_type
     state.title_suggestion_map_mode = suggestion.map_mode
     logger.info("LLM title generated: %r", suggestion.title)
+
+
+async def _model_title(
+    state: AppState,
+    start_date: date,
+    end_date: date,
+    person_names: list[str] | None,
+):
+    """Ask the reader to name this memory, or return None when it cannot."""
+    config = state.config
+    if config is None:
+        return None
+    llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
+    if not llm_cfg.model:
+        logger.debug("LLM model not configured — using template title")
+        return None
+
+    trip = _gather_trip_context(state)
+    facts = memory_title_facts(state.memory_preset_params, album_name=state.album_name)
+    if facts.album_name is None:
+        facts = replace(facts, album_name=await _album_of_the_cut(state))
+
+    try:
+        return await generate_title_with_llm(
+            memory_type=state.memory_type or "year",
+            locale=config.title_screens.locale if config.title_screens else "en",
+            start_date=str(start_date),
+            end_date=str(end_date),
+            duration_days=(end_date - start_date).days,
+            cache_path=verdicts_beside(config.cache.cache_path),
+            daily_locations=trip.daily_locations,
+            country=trip.country,
+            person_names=person_names,
+            clip_descriptions=[
+                d for c in state.get_selected_clips() if (d := getattr(c, "llm_description", None))
+            ]
+            or None,
+            facts=facts,
+            llm_config=llm_cfg,
+        )
+    except Exception:  # WHY: UI graceful degradation
+        logger.warning("LLM title generation failed — keeping template title", exc_info=True)
+        return None
 
 
 async def generate_title_after_pipeline(state: AppState) -> None:
@@ -296,37 +367,6 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         # descriptions, and asking it would rename the occasion.
         return
 
-    # Step 2: Try LLM (overwrites template on success)
-    llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
-    if not llm_cfg.model:
-        logger.debug("LLM model not configured — using template title")
-        return
-
-    trip = _gather_trip_context(state)
-    locale = config.title_screens.locale if config.title_screens else "en"
-
-    try:
-        suggestion = await generate_title_with_llm(
-            memory_type=state.memory_type or "year",
-            locale=locale,
-            start_date=str(start_date),
-            end_date=str(end_date),
-            duration_days=(end_date - start_date).days,
-            cache_path=verdicts_beside(config.cache.cache_path),
-            daily_locations=trip.daily_locations,
-            country=trip.country,
-            person_names=person_names,
-            clip_descriptions=[
-                d for c in state.get_selected_clips() if (d := getattr(c, "llm_description", None))
-            ]
-            or None,
-            facts=memory_title_facts(state.memory_preset_params, album_name=state.album_name),
-            llm_config=llm_cfg,
-        )
-    except Exception:  # WHY: UI graceful degradation
-        logger.warning("LLM title generation failed — keeping template title", exc_info=True)
-        return
-
-    # Only overwrite if LLM produced a non-empty title
+    suggestion = await _model_title(state, start_date, end_date, person_names)
     if suggestion and suggestion.title and suggestion.title.strip():
         _apply_suggestion(state, suggestion)

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections import Counter
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -142,6 +143,39 @@ class AlbumService:
 
     async def get_albums(self) -> list[dict]:
         return await self._request("GET", "/albums")
+
+    async def albums_containing(self, asset_id: str) -> list[AlbumRef]:
+        """Every album holding one asset."""
+        data = await self._request("GET", "/albums", params={"assetId": asset_id})
+        albums = data if isinstance(data, list) else []
+        return [_album_ref(a) for a in albums if isinstance(a, dict) and a.get("id")]
+
+    async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
+        """The name of the album a majority of these assets sit in, if there is one.
+
+        Answers "what did this family day get called" for a title, from a name
+        somebody typed rather than anything invented. One request per asset, so
+        the sample is capped; this runs once per film, not once per picture. An
+        album holding fewer than half of them did not name the occasion.
+        """
+        sampled = list(dict.fromkeys(asset_ids))[:limit]
+        counts: Counter[str] = Counter()
+        names: dict[str, str] = {}
+        for asset_id in sampled:
+            for ref in await self._albums_of(asset_id):
+                counts[ref.id] += 1
+                names[ref.id] = ref.name
+        if not counts:
+            return None
+        album_id, held = counts.most_common(1)[0]
+        return names[album_id] if held * 2 >= len(sampled) else None
+
+    async def _albums_of(self, asset_id: str) -> list[AlbumRef]:
+        try:
+            return await self.albums_containing(asset_id)
+        except Exception:  # WHY: one deleted asset must not cost the whole answer
+            logger.debug("Album lookup failed for %s", asset_id, exc_info=True)
+            return []
 
     async def list_albums(self) -> list[AlbumRef]:
         """Albums that could make a memory, largest first.

@@ -157,7 +157,10 @@ birth dates Immich holds and the span.
 
 An occasion (a special day, an album, a holiday, a month, a season, a year, an On This Day) gets
 the same treatment from what the occasion already is: the name the special-day catalogue gave it,
-the album's own name, the holiday, the places by day. Both prompts are told that place names arrive
+the album's own name, the holiday, the places by day. Any memory whose material mostly sits in one
+Immich album is also told that album's name: a family day is often called nothing else, and reading
+a name somebody typed is not inventing one. The app asks Immich which albums hold each of the first
+40 selected assets and keeps the album holding at least half of them. Both prompts are told that place names arrive
 in English as the camera recorded them and should be written in your locale, which is what turns
 "Cyprus et Grèce" into "Chypre et Grèce".
 

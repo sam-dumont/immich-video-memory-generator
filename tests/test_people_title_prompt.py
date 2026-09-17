@@ -141,6 +141,29 @@ def test_the_films_own_reading_of_the_period_never_reaches_the_title_prompt(tmp_
     assert "banner" not in prompt
 
 
+def test_a_people_film_is_told_the_album_it_sits_in(tmp_path):
+    """The owner's family day was named by nothing but the album it was filed under."""
+    prompt = build_title_prompt(
+        memory_type="multi_person",
+        locale="fr",
+        start_date="2024-02-07",
+        end_date="2026-09-17",
+        duration_days=953,
+        person_names=["Ada Example", "Grace Example"],
+        facts=MemoryTitleFacts(
+            album_name="Sunday at the lake",
+            people_path=_people_file(tmp_path),
+            today=date(2026, 9, 17),
+        ),
+    )
+
+    assert "Album this film sits in: Sunday at the lake" in prompt
+
+
+def test_a_people_film_in_no_album_is_told_nothing_about_albums(tmp_path):
+    assert "Album this film sits in" not in _people_prompt(tmp_path)
+
+
 def test_a_special_day_is_told_what_the_catalogue_called_it(tmp_path):
     prompt = build_title_prompt(
         memory_type="special_day",

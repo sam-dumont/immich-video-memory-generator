@@ -174,6 +174,67 @@ def test_a_catalogued_day_hands_the_model_what_the_catalogue_saw() -> None:
     assert seen["facts"].occasion_name == "an afternoon at a themed bowling alley"
 
 
+def test_the_album_the_cut_sits_in_reaches_the_facts() -> None:
+    """WHY the lambda: it stands in for the Immich album read, the only boundary."""
+    ask, seen = _answers()
+
+    resolve_cli_title(
+        enabled=None,
+        title_override=None,
+        clips=[make_clip("clip-1")],
+        config=_config_with_llm(),
+        memory_type="multi_person",
+        date_range=_RANGE,
+        person_names=["Ada Example"],
+        album_lookup=lambda: "Sunday at the lake",
+        ask=ask,
+    )
+
+    assert seen["facts"].album_name == "Sunday at the lake"
+
+
+def test_an_album_memory_never_pays_for_the_lookup() -> None:
+    """Its own name is already known; one request per asset is not free."""
+    asked = []
+
+    resolve_cli_title(
+        enabled=None,
+        title_override=None,
+        clips=[make_clip("clip-1")],
+        config=_config_with_llm(),
+        memory_type="album",
+        date_range=_RANGE,
+        person_names=[],
+        memory_preset_params={"album_name": "Old Negatives 75"},
+        album_lookup=lambda: asked.append("asked") or "Something Else",
+        ask=_answers()[0],
+    )
+
+    assert asked == []
+
+
+def test_an_unanswerable_album_lookup_leaves_the_rest_of_the_facts_alone() -> None:
+    ask, seen = _answers()
+
+    def explode() -> str:
+        raise RuntimeError("Immich is down")
+
+    resolve_cli_title(
+        enabled=None,
+        title_override=None,
+        clips=[make_clip("clip-1")],
+        config=_config_with_llm(),
+        memory_type="multi_person",
+        date_range=_RANGE,
+        person_names=["Ada Example"],
+        album_lookup=explode,
+        ask=ask,
+    )
+
+    assert seen["facts"].album_name is None
+    assert seen["person_names"] == ["Ada Example"]
+
+
 def test_the_model_answering_without_a_subtitle_leaves_no_subtitle_line() -> None:
     """Null beats a guess: the name list must not come back as a consolation."""
     ask, _seen = _answers(subtitle=None)

@@ -289,6 +289,9 @@ class SyncImmichClient:
     def resolve_album(self, name_or_id: str) -> AlbumRef:
         return self._run(self._async_client.resolve_album(name_or_id))
 
+    def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
+        return self._run(self._async_client.album_holding_most(asset_ids, limit=limit))
+
     def create_album(self, name: str, description: str | None = None) -> str:
         return self._run(self._async_client.create_album(name, description))
 
