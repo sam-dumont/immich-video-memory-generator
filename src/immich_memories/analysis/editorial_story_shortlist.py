@@ -123,6 +123,21 @@ def _replaceable_sample(
     )
 
 
+def _reach_for_motion(
+    picked: list[DepictedChoice], moving: Sequence[DepictedChoice], grant: int
+) -> None:
+    """Add the moments that play which the sample's own ordering never reached.
+
+    The sample is capped at three times the grant, so a story dense in favourites can fill it
+    without ever offering a video. These are appended, never swapped in: no favourite is
+    displaced and the spread already chosen is untouched. The reach is the story's grant,
+    because that is the most moments the story can show, so one grant's worth of motion is the
+    most that could change what it shows.
+    """
+    unreached = [c for c in moving if c not in picked]
+    picked.extend(_spread(unreached, min(grant, len(unreached))))
+
+
 def shortlist_story_moments(
     choices: list[DepictedChoice],
     grant: int,
@@ -135,8 +150,9 @@ def shortlist_story_moments(
     """Keep the favourite/motion/life/time sample, inserting early relationship opportunities.
 
     The chronological input is capped at three times the grant (floor six). A moment that
-    plays is taken before a still that would otherwise fill its place: this is a video product.
-    Relationship markers nominate opportunities; standing and audience admission come after.
+    plays is taken before a still that would otherwise fill its place, and motion the cap shut
+    out is reached for afterwards: this is a video product. Relationship markers nominate
+    opportunities; standing and audience admission come after.
     """
     limit = max(6, 3 * grant)
     if len(choices) <= limit:
@@ -149,6 +165,7 @@ def shortlist_story_moments(
     picked.extend(_spread(moving, limit - len(picked)))
     picked.extend(_spread(lively, limit - len(picked)))
     picked.extend(_spread(rest, limit - len(picked)))
+    _reach_for_motion(picked, moving, grant)
     if len(stars) >= limit:
         return sorted(picked, key=lambda c: c.taken)
 
@@ -169,9 +186,15 @@ def _capture_group_moments(
     quality: Callable[[str], float],
     flagged: Callable[[str], bool] = lambda _a: False,
     life: Callable[[str], bool] = lambda _a: True,
+    plays: Callable[[dict], bool] = lambda _u: False,
 ) -> list[DepictedChoice]:
     """Without a model inventory a capture group is the moment; the favourite, else the best unflagged
-    picture that shows life, carries it."""
+    picture that shows life, carries it.
+
+    Between two pictures that are otherwise equally entitled to the frame, the one that plays
+    takes it: a second of the thing happening beats a sharper frame of it having happened. A
+    video keeps losing on sharpness alone otherwise, because a video has no pixel facts.
+    """
     groups: dict[str, list[dict]] = {}
     for u in units:
         groups.setdefault(u.get("moment") or u["asset_id"], []).append(u)
@@ -183,6 +206,7 @@ def _capture_group_moments(
                 not u.get("favourite"),
                 flagged(u["asset_id"]),
                 not life(u["asset_id"]),
+                not plays(u),
                 -quality(u["asset_id"]),
                 u["taken"],
             ),

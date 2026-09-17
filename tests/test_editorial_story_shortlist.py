@@ -242,3 +242,76 @@ def test_a_video_behind_a_still_keeps_its_capture_group_in_the_sample():
     )
 
     assert 2 in keys(selected)
+
+
+def test_motion_the_plain_sample_missed_still_reaches_the_shortlist():
+    """Six favourites fill a grant-of-one sample; the videos behind them still compete.
+
+    The reach is the story's own grant, so one more moment can change what it shows.
+    """
+    selected = shortlist_story_moments(
+        choices(12),
+        1,
+        starred=lambda c: int(c.key) in {1, 2, 3, 4, 5, 6},
+        life=lambda _asset: True,
+        plays=lambda c: int(c.key) in {8, 11},
+    )
+
+    assert {1, 2, 3, 4, 5, 6} <= set(keys(selected))  # no favourite is displaced
+    assert len({8, 11} & set(keys(selected))) == 1
+    assert keys(selected) == sorted(keys(selected))
+
+
+def test_the_motion_reach_is_the_story_grant_not_a_constant():
+    """A grant of three reaches for three of the moments the sample did not take."""
+    selected = shortlist_story_moments(
+        choices(40),
+        3,
+        starred=lambda c: int(c.key) <= 9,
+        life=lambda _asset: True,
+        plays=lambda c: int(c.key) in {20, 25, 30, 35, 40},
+    )
+
+    assert len({20, 25, 30, 35, 40} & set(keys(selected))) == 3
+
+
+def _group(**kinds):
+    """One capture group, one unit per asset id, in the order given."""
+    return [
+        {
+            "asset_id": asset,
+            "taken": f"2030-05-01T10:00:0{index}",
+            "moment": "m1",
+            "kind": kind,
+            "favourite": asset.startswith("star"),
+        }
+        for index, (asset, kind) in enumerate(kinds.items())
+    ]
+
+
+def test_a_capture_group_that_holds_a_video_is_led_by_the_video():
+    """A sharper still used to take the frame; a group that plays now leads with its motion."""
+    from immich_memories.analysis.editorial_story_pick_contract import carries_motion
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(sharp="still", clip="video"),
+        quality=lambda asset: 1.0 if asset == "sharp" else 0.0,
+        plays=carries_motion,
+    )
+
+    assert choice.primary == "clip"
+    assert choice.alternatives == ["sharp"]
+
+
+def test_a_favourite_keeps_the_frame_of_its_own_moment_against_a_video():
+    from immich_memories.analysis.editorial_story_pick_contract import carries_motion
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(starred="still", clip="video"),
+        quality=lambda _asset: 0.0,
+        plays=carries_motion,
+    )
+
+    assert choice.primary == "starred"

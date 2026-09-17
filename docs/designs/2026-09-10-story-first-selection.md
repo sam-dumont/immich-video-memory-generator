@@ -206,6 +206,12 @@ itself. The order is the owner's:
    so a nearby competitor still has one); stars exempt nothing, because a shortlist that only
    just covers its grant is exactly where the inventory finds a further moment inside a group the
    story already holds. That is where the reading budget went from "too slow" to affordable.
+   Because that shortlist is the whole funnel, motion competes inside it: a moment that plays is
+   sampled before an equivalent still, and when the cap fills anyway the shortlist reaches for as
+   many more playable moments as the story has slots, appended so no favourite is displaced and
+   the spread already chosen is untouched. Inside a group, the picture that plays takes the frame
+   unless a favourite claims it, because a video carries no sharpness measurement and lost every
+   other tie to a still (#1066).
 3. **The standing gate rejects before the pick** (`editorial_story_carriers.StandingGate`) —
    "does each picture stand by itself?", reject-only, two orders. A favourite lowers the bar; a
    texture slot raises it.

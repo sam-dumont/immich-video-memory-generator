@@ -146,6 +146,16 @@ longer when someone is mid-sentence at the cut. When the videos push the cut pas
 longest holds are shaved half a second at a time, never below 3.5 seconds or through a sentence; a
 video is never dropped for being long.
 
+**Motion reaches the pick.** Before the reader is asked anything, a story samples the moments its
+grant can reach, and that sample used to be where the motion went. Three things carry it through
+now. A moment that holds something playable is taken ahead of a still that would otherwise fill its
+place. When the sample fills up anyway, on a story dense in favourites, it reaches for as many more
+playable moments as the story has slots, appended rather than swapped in, so no favourite loses its
+place and the spread of times and people already chosen is left alone. And when a capture group
+holds both a still and a video of the same instant, the video takes the frame unless a favourite
+claims it: a video carries no sharpness measurement, so on a tie of everything else it used to lose
+to any still in the group.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 

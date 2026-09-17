@@ -29,7 +29,10 @@ from immich_memories.analysis.editorial_story_carriers import (
     shortlist_by_partition,
 )
 from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck, PairLooksAlike
-from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
+from immich_memories.analysis.editorial_story_pick_contract import (
+    carries_motion,
+    source_kind_marker,
+)
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     read_period_story,
@@ -274,6 +277,9 @@ class _DayInventory:
                 not self._unit_by_asset[a][1].get("favourite"),
                 self._flagged(a),
                 not self._life(a),
+                # the inventory names a moment, not which of its pictures shows it: between
+                # two equals the one that plays takes the frame, as in a capture group
+                not carries_motion(self._unit_by_asset[a][1]),
                 order[a],
             )
         )
@@ -607,7 +613,12 @@ def select_story_first(
     stories, story_units = _weighed_stories(story, story.audit.get("hints") or {}, units)
 
     # 3. Cheap moments first (capture groups); the model inventory runs only where slots land.
-    picking: dict[str, Any] = {"quality": quality, "flagged": flagged, "life": life}
+    picking: dict[str, Any] = {
+        "quality": quality,
+        "flagged": flagged,
+        "life": life,
+        "plays": carries_motion,
+    }
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
     slots = max(1, int(target_seconds // seconds_per_slot))
