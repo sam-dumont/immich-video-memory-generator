@@ -141,10 +141,29 @@ def _first_day(story_units: Mapping[str, list[dict]], s) -> str:
     return min((u["taken"][:10] for u in story_units.get(s["key"]) or []), default="")
 
 
+def funding_order(stories: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The order a film funds its stories in: the weight word, then the memory-worthy gate's
+    word, then the moments the story holds, then the day it starts on.
+
+    A star is an indicator of a picture — it wins its moment inside a story, never the story's
+    place in this queue. So when there are more stories than slots, equal stories fund in time
+    order and the film keeps the whole period instead of its starrier half.
+    """
+    return sorted(
+        stories,
+        key=lambda s: (
+            WEIGHTS.index(s["weight"]),
+            GATE_ORDER.get(s["gate"], 3),
+            -s["seen"]["moments"],
+            s["first_day"],
+        ),
+    )
+
+
 def _weighed_stories(
     story: PeriodStory, hints: Mapping[str, dict], units: _MomentUnits
 ) -> tuple[list[dict], dict[str, list[dict]]]:
-    """The stories in weight order, with the units they span over every day they touch."""
+    """The stories in funding order, with the units they span over every day they touch."""
     episode_of = {e.key: e for e in story.episodes}
     story_units: dict[str, list[dict]] = {}
     for s in story.stories:
@@ -157,20 +176,8 @@ def _weighed_stories(
             "pictures": len(story_units[s["key"]]),
             "favourites": sum(1 for u in story_units[s["key"]] if u.get("favourite")),
         }
-    stories = sorted(
-        (s for s in story.stories if story_units.get(s["key"])),
-        # Inside a weight class the owner's stars order first (stars order, never gate), then the
-        # gate's reading, then how much was captured, then chronology.
-        key=lambda s: (
-            WEIGHTS.index(s["weight"]),
-            -s["seen"]["favourites"],
-            GATE_ORDER.get(s["gate"], 3),
-            -s["seen"]["moments"],
-            _first_day(story_units, s),
-        ),
-    )
-    for s in stories:
         s["first_day"] = _first_day(story_units, s)
+    stories = funding_order([s for s in story.stories if story_units.get(s["key"])])
     return stories, story_units
 
 

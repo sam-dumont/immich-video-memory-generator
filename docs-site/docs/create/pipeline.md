@@ -57,7 +57,10 @@ on, is never displaced by a replacement, and wins the frame of the moment the pi
 does not do is buy the moment. The editor is still asked which moments tell a story, unless that
 story offers a single moment and the grant reaches it, because a dense tail of favourites would
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
-source and audience eligibility.
+source and audience eligibility, but they do not order which stories a film funds. When a period
+holds more stories than the film has slots, stories of the same weight and the same memory-worthy
+reading are funded in the order they happened, so a well starred December cannot push January out of
+the year.
 
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
