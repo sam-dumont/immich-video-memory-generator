@@ -515,12 +515,14 @@ def read_period_story(
     enrich: Callable[[list[StoryEpisode]], Mapping[str, Mapping[str, Any]]] | None = None,
     allow_gaps: bool = False,
     journey: bool = False,
+    fold: Callable[[list[dict], list[StoryEpisode], Mapping], list[dict]] | None = None,
 ) -> PeriodStory:
     """Read the period a month at a time, then interpret what those months add up to.
 
     `enrich(episodes)` runs between the page reading and the synthesis and returns, per episode
     key, the facts the synthesis weighs with (day, place, moments, pictures, favourites, and the
-    memory-worthy gate's reading); they are shown on the episode's card.
+    memory-worthy gate's reading); they are shown on the episode's card. `fold` regroups the
+    reader's stories before they are weighed.
     """
     episodes: dict[str, StoryEpisode] = {}
     book = month_pages(evidence)
@@ -566,6 +568,7 @@ def read_period_story(
             hints=hints,
             allow_gaps=allow_gaps,
             journey=journey,
+            fold=fold,
         )
     except ValueError as exc:
         audit.update(status="incomplete", failure=str(exc))

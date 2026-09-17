@@ -62,6 +62,17 @@ holds more stories than the film has slots, stories of the same weight and the s
 reading are funded in the order they happened, so a well starred December cannot push January out of
 the year.
 
+**A trip is one story, and it gets room for its length.** The editor runs the app's own trip
+detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
+network: a trip is named from the place names its pictures carry. Every day of a detected trip is one
+story whatever the reader grouped, and the weighing sees it as a trip, with its days and stops on the
+row. A trip weighed as an occasion takes more than one picture where the other stories take their
+first: half the film for a trip that is the whole film, the square root of its share of the film's
+photographed days below that. A ten-day trip in a five-minute year gets about five, a six-day
+holiday in a 90-second year two or three, and never more than the distinct moments it holds. With no
+home base configured nothing is away from home, so there are no trip stories, and the run's
+`trip-stories` record says so. A trip film is already one journey: its days stay the stories.
+
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
 is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
@@ -239,7 +250,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

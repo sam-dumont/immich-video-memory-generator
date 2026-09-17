@@ -91,6 +91,7 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
             f"{seen['moments']} moments | {seen['pictures']} pictures | {seen['favourites']} favourites | "
             f"reading: {gate or 'none'} | {story['title']} | {story.get('purpose') or ''}"
             + (f" | people: {people_text}" if people_text else "")
+            + (f" | trip: {story['trip']['summary']}" if story.get("trip") else "")
             + (f" | facts: {facts}" if facts else "")
         )
     return rows
@@ -464,7 +465,11 @@ def _floor_one(story, *, anyone_known: bool, journey: bool) -> list[str]:
     # street scene, signs) is at most a glimpse, unless the owner starred it or the memory is a
     # journey, where places are the subject.
     strangers_only = (
-        anyone_known and not story.get("people_counts") and not favourites and not journey
+        anyone_known
+        and not story.get("people_counts")
+        and not favourites
+        and not journey
+        and not story.get("trip")
     )
     if (
         strangers_only

@@ -39,6 +39,11 @@ from immich_memories.analysis.editorial_story_shortlist import (
     _capture_group_moments,
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+from immich_memories.analysis.editorial_story_trips import (
+    FilmTrips,
+    reserve_trip_depth,
+    trip_fold,
+)
 
 STORY_PLANNER_VERSION = "story-first-selection-v6-videos-first"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
@@ -360,6 +365,10 @@ def _inventory_funded_stories(
             choices_of[key] = sorted(choices, key=lambda c: c.taken)
 
 
+def _photographed_days(event_units: Mapping[str, list[dict]]) -> int:
+    return len({u["taken"][:10] for units in event_units.values() for u in units})
+
+
 def _check_partition_request(partition_limit, partition_of) -> None:
     if partition_limit is not None and (
         type(partition_limit) is not int or partition_limit < 1 or partition_of is None
@@ -390,8 +399,16 @@ def _episodes_record(
             "granted": len(chosen_by_story[s["key"]]),
             "chosen": chosen_by_story[s["key"]],
         }
+        | _kind_of_story(s)
         for s in stories
     ]
+
+
+def _kind_of_story(s) -> dict[str, Any]:
+    """A trip or a recurring thread says so on its row, with what it was allowed."""
+    if s.get("trip"):
+        return {"kind": "trip", "trip": s["trip"], "reserve": s.get("reserve", 0)}
+    return {"kind": "story"}
 
 
 def _kind_marker_of(unit_by_asset, lines) -> Callable[[DepictedChoice], str]:
@@ -445,6 +462,7 @@ def select_story_first(
     motion_line: Callable[[dict], str] | None = None,
     episode_readings: Mapping[str, Any] | None = None,
     rules=None,
+    trips: FilmTrips | None = None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -453,6 +471,7 @@ def select_story_first(
     `family_tier` is the memory-worthy gate's reading per family (0 remarkable, 1 maybe, 2
     background); it is shown to the synthesis and weighs episodes the synthesis left unplaced.
     `record(name, payload)` persists a derived decision under the run's audit directory.
+    `trips` are the journeys detected in the pool; each becomes one story before the weighing.
     """
     calls = {
         "story_pages": 0,
@@ -485,6 +504,7 @@ def select_story_first(
         favourite=lambda asset: bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite")),
     )
     read_story = rules.read_story if rules is not None else read_period_story
+    trips, fold = trip_fold(trips, moment_assets, rules=rules is not None)
     story = read_story(
         judge,
         evidence=evidence,
@@ -496,7 +516,9 @@ def select_story_first(
         ),
         allow_gaps=allow_story_gaps,
         journey=journey,
+        fold=fold,
     )
+    record("trip-stories", trips.record())
     calls["story_pages"] = len(story.audit.get("pages") or [])
     calls["story_pages_fresh"] = (story.audit.get("reading_calls") or {}).get("fresh", 0)
 
@@ -508,6 +530,7 @@ def select_story_first(
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
     slots = max(1, int(target_seconds // seconds_per_slot))
+    reserve_trip_depth(stories, slots=slots, film_days=_photographed_days(event_units))
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
     # 4. The model inventory, per day episode inside a funded story, over the capture groups that

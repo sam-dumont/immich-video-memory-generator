@@ -37,6 +37,7 @@ from immich_memories.analysis.editorial_story_planner import (
     select_story_first,
     trim_to_timing_budget,
 )
+from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
     close_share_log,
@@ -683,6 +684,12 @@ def _story_selection(
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
+    pool_assets = {a for ids in pool.moment_assets.values() for a in ids if a in source.assets}
+    trips = detect_film_trips(
+        (source.assets[a] for a in sorted(pool_assets)),
+        source.config.trips,
+        journey=source.case.product == "trip",
+    )
     return select_story_first(
         judge=ports.judge,
         rules=ports.rules,
@@ -724,6 +731,7 @@ def _story_selection(
             if (part := source.intent.partition_for(datetime.fromisoformat(taken).date()))
             else None
         ),
+        trips=trips,
     )
 
 

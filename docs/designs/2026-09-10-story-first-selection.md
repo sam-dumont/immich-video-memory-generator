@@ -126,6 +126,18 @@ each story **in its own words**: `dominant`, `major`, `minor`, `glimpse`, `none`
 fold the grouping — and it may join two adjacent stories. Words map to roles: dominant and
 major are central, minor supports, glimpse is texture, none is incidental.
 
+**Trips carry their own weight.** Before the weighing, `editorial_story_trips.py` runs the app's
+trip detection (`trip_detection.detect_trips`) over the film's pool with the configured `trips` home
+base, distance, duration and gap, naming each trip from its pictures' EXIF places and never over the
+network. Every day episode holding one of a trip's pictures, or falling on a trip day with no
+position at all, leaves whatever story the reader filed it in and joins that trip's story; what a
+straddling story keeps outside the trip stays a story of its own. The trip row the weighing reads
+carries `trip: N days away, first -> last, stops: place (days); ...`, and the same line opens the
+story's purpose, which the pick reads, with the owner's 09-01 instruction to cover the whole span if
+the pictures allow. The strangers-only ceiling does not apply to a trip. Without a configured home
+base there are no trip stories, and `derived-decisions/trip-stories.private.json` records why; a
+trip film skips detection, because it already is the journey.
+
 Two properties of the ask are load-bearing:
 
 - **Judgments that matter are asked in two orders.** The memory-worthy gate and the standing gate
@@ -156,7 +168,12 @@ itself. The order is the owner's:
 1. **Words to slots** (`editorial_story_slots.py`) — the only arithmetic in the route. A story's
    weight becomes a number of pictures, capped by the moments the story actually holds; where a
    product limits how much one calendar partition may carry (a year's months), that capacity is
-   reserved in the same order. Depth per weight class, never per day.
+   reserved in the same order. Depth per weight class, never per day. A trip weighed dominant or
+   major reserves `round(slots / 2 * sqrt(trip days / film days))` pictures (at least one), counted
+   in photographed days, and takes them at its own turn in the presence pass, before the stories
+   after it take their first. A trip that is the whole film would get the dominant cap; the square
+   root is the curve that meets the owner's 09-04 calibration, a ten-day trip in a five-minute year
+   at about five, where a pro-rata share gives two.
 2. **A funded story is inventoried over the capture groups it can spend a slot on**
    (`editorial_moment_inventory.py`) — the depicted-moment inventory is read only where a slot
    lands, and inside a funded story only over the groups its own shortlist keeps (whole groups,
