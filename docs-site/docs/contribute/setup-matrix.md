@@ -184,8 +184,8 @@ Two untracked files outside the repo hold the rest. `~/.immich-memories-matrix/.
 `MELIOUS_AI_BASE_URL`, `MELIOUS_AI_KEY`, `ZAI_API_KEY`, `ZAI_BASE_URL`, `OPENAI_KEY` and the two
 homebase coordinates. `~/.immich-memories-matrix/matrix.env` holds `MATRIX_NAS_SSH`,
 `MATRIX_NAS_DOCKER`, `MATRIX_NAS_CACHE`, `MATRIX_NAS_OUT`, `MATRIX_NAS_DOCKER_LIMITS` (optional),
-`MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` and
-`MATRIX_MAC_ALT_MODELS`. Point at others with `--env-file`, repeatable. In the YAML, `$env:NAME` is
+`MATRIX_K8S_CONTEXT`, `MATRIX_K8S_NAMESPACE`, `MATRIX_K8S_DATA_STORAGE` (optional),
+`MATRIX_OMLX_BASE_URL`, `MATRIX_CAPTION_BASE_URL` and `MATRIX_MAC_ALT_MODELS`. Point at others with `--env-file`, repeatable. In the YAML, `$env:NAME` is
 resolved by the runner before it executes and is for anything the app will not expand itself;
 `${NAME}` is written into the pinned config verbatim and is for credentials only, so a key is never
 written to a file.
@@ -193,12 +193,18 @@ written to a file.
 A variable a cell needs and cannot find is not a crash: the cell stays in the table with a
 `skip_reason` and is listed under `unmeasured`, because a lane that could not run is a result.
 
-Three environment notes that cost an afternoon each. `MATRIX_NAS_SSH` is an ssh destination and not
+Four environment notes that cost an afternoon each. `MATRIX_NAS_SSH` is an ssh destination and not
 an ssh command line, so use a `Host` alias in `~/.ssh/config` and put only the alias in the variable.
 The NAS lane moves files with tar over ssh rather than `scp`, because a Synology runs an OpenSSH 8.2
 server with the SFTP subsystem off and a modern `scp` client speaks SFTP. And
 `MATRIX_NAS_DOCKER_LIMITS` defaults to `--cpus 4 --memory 4g`, which a Synology kernel built without
 the CFS bandwidth controller refuses; such a host wants `--cpuset-cpus 0-3 --memory 4g` instead.
+Last, `MATRIX_K8S_DATA_STORAGE` is the size a cluster cell's data claim is applied at, `10Gi` when
+unset. A claim can grow and never shrink, so once you grow the one on the cluster (a February
+preview pool outgrew 10Gi), set the variable to at least that size. Otherwise every apply is refused
+with `field can not be less than status.capacity` and no cluster cell starts. A cell with claims of
+its own gets the same size, so its storage class has to allow volume expansion once its claim
+exists.
 
 `--library demo` is the stock June 2024 fixture library, public and needing no anonymising;
 `--serve-fixture` puts it on `0.0.0.0:8078` so the NAS and the cluster can read it over the LAN.

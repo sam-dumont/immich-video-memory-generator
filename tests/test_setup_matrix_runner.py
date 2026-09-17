@@ -27,6 +27,8 @@ from setup_matrix_plan import (  # noqa: E402
     CellPlan,
     Plan,
     Step,
+    build_plan,
+    load_manifest,
 )
 
 # Excerpts of the first real Mac lane run, copied out of its own logs.
@@ -693,6 +695,49 @@ def test_a_cluster_cell_is_handed_the_operators_immich_at_the_last_moment(tmp_pa
     assert written == "data:\n  url: http://immich.invalid:2283\n"
     assert "operator-key" not in written
     assert f"--from-literal={IMMICH_KEY_ENV}=operator-key" in created
+
+
+@pytest.mark.parametrize(
+    ("named", "applied"),
+    [("40Gi", "40Gi"), (None, "10Gi"), ("  ", "10Gi")],
+)
+def test_the_data_claim_is_applied_at_the_size_the_environment_names(
+    tmp_path: Path, named: str | None, applied: str
+) -> None:
+    """A bound claim can grow and never shrink.
+
+    The owner grew the shared data claim past 10Gi when a February preview pool
+    outgrew it, and from then on every apply at the hard-coded size was refused
+    with "field can not be less than status.capacity": no cluster cell started.
+    """
+    environment = {
+        "MATRIX_K8S_CONTEXT": "a-context",
+        "MATRIX_K8S_NAMESPACE": "a-namespace",
+        "MATRIX_FIXTURE_BASE_URL": "http://a-fixture.invalid:8078",
+    }
+    if named is not None:
+        environment["MATRIX_K8S_DATA_STORAGE"] = named
+    out_dir = tmp_path / "out"
+    plan = build_plan(
+        manifest=load_manifest(),
+        library="demo",
+        month=None,
+        lanes=("k8s",),
+        cell_ids=("k8s-rules-local",),
+        out_dir=out_dir,
+        image="image:tag",
+        environment=environment,
+    )
+    source = tmp_path / "operator.yaml"
+    source.write_text(yaml.safe_dump({"immich": {"url": "http://immich.invalid:2283"}}))
+
+    setup_matrix._write_cell_config(plan.cells[0], plan, out_dir, source)
+
+    written = (out_dir / "k8s-rules-local" / "claims.yaml").read_text()
+    data, output = (doc for doc in yaml.safe_load_all(written) if doc)
+    assert data["metadata"]["name"] == "setup-matrix-data"
+    assert data["spec"]["resources"]["requests"]["storage"] == applied
+    assert output["spec"]["resources"]["requests"]["storage"] == "10Gi", "only the data claim"
 
 
 def test_the_dry_run_says_which_captioner_the_full_tier_cells_will_get(tmp_path, capsys) -> None:
