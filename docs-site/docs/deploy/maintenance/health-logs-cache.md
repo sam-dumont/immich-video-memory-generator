@@ -71,6 +71,16 @@ cache:
 
 `cache.max_age_days` is still accepted and nothing reads it.
 
+### What a second cut asks again
+
+Nothing in `annotations.sqlite` is keyed to a run. The period reading is one page per calendar month
+and no page carries anything from the page before it, so the bank answers a month it has already
+read: a year read twice asks no page again, and a monthly cut after a yearly one asks nothing again
+for that month. Standing votes are banked per picture rather than per block, so a moved candidate
+set still hits. A warm cut therefore asks the model nothing, and its remaining minutes are the video
+work after the cut. Measured, selection only, on a 60-second February 2024: 3.7 minutes cold and
+40 seconds warm. Deleting that file re-asks all of it.
+
 ### The preview cache scales with your library
 
 Generating a memory reads each candidate's preview several times (sharpness, the heads, the

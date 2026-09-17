@@ -112,7 +112,7 @@ def register_generate_commands(main: click.Group) -> None:
         privacy_mode: bool,
         title_override: str | None,
         subtitle_override: str | None,
-        llm_title: bool,
+        llm_title: bool | None,
         include_live_photos: bool | None,
         include_photos: bool | None,
         accept_any_provenance: bool,
