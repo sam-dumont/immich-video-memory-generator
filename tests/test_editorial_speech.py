@@ -190,20 +190,20 @@ def test_speech_facts_transport_and_decode_failures_are_unavailable(tmp_path):
     def failing_fetch(asset_id):
         raise httpx.ConnectError("server down")
 
-    facts = SpeechFacts(assets=assets, cache_dir=tmp_path, fetch=failing_fetch, config=config)
+    store = tmp_path / "annotations.sqlite"
+    facts = SpeechFacts(assets=assets, store_path=store, fetch=failing_fetch, config=config)
     facts.detector = stub_detector()
     with pytest.raises(SpeechMeasurementUnavailable):
         facts("v")
 
-    facts = SpeechFacts(assets=assets, cache_dir=tmp_path, fetch=lambda _: None, config=config)
+    facts = SpeechFacts(assets=assets, store_path=store, fetch=lambda _: None, config=config)
     facts.detector = stub_detector()
     with pytest.raises(SpeechMeasurementUnavailable):
         facts("v")
 
 
-def test_speech_facts_still_fail_loudly_when_the_cache_identity_drifts(tmp_path, monkeypatch):
-    """A tampered/mismatched cache record is an invariant break, not an unavailable source."""
-    import json
+def test_a_changed_source_retires_its_banked_speech_and_is_measured_again(tmp_path):
+    """The bank answers for the source it measured, and only for that exact source."""
     import subprocess
 
     from immich_memories.config_models_analysis import SpeechConfig
@@ -238,33 +238,31 @@ def test_speech_facts_still_fail_loudly_when_the_cache_identity_drifts(tmp_path,
         check=True,
         capture_output=True,
     )
+    store = tmp_path / "annotations.sqlite"
+    fetched = []
 
-    facts = SpeechFacts(
-        assets=assets,
-        cache_dir=tmp_path,
-        fetch=lambda _: silent.read_bytes(),
-        config=config,
-    )
-    assert facts("v") == [], "the silent source measures no speech regions"
+    def speech_facts():
+        return SpeechFacts(
+            assets=assets,
+            store_path=store,
+            # WHY: Immich playback is the one boundary replaced; the probe, the audio
+            # extraction and the detector all run for real on the file below.
+            fetch=lambda asset_id: fetched.append(asset_id) or silent.read_bytes(),
+            config=config,
+        )
 
-    # The same call replays the banked answer without measuring again...
-    assert facts("v") == []
+    assert speech_facts()("v") == [], "the silent source measures no speech regions"
+    assert fetched == ["v"]
 
-    # ...but a cache row whose identity no longer matches its input is refused
-    # loudly by a fresh process (whose memo does not already hold the answer).
-    cache_files = [p for p in tmp_path.glob("*.json") if p.name != "silent.mp4"]
-    assert len(cache_files) == 1
-    record = json.loads(cache_files[0].read_text())
-    record["identity"]["source"] = "tampered"
-    cache_files[0].write_text(json.dumps(record))
-    refetched = SpeechFacts(
-        assets=assets,
-        cache_dir=tmp_path,
-        fetch=lambda _: silent.read_bytes(),
-        config=config,
-    )
-    with pytest.raises(ValueError, match="Speech cache source changed"):
-        refetched("v")
+    # A second run reads the measured answer instead of measuring it again...
+    assert speech_facts()("v") == []
+    assert fetched == ["v"]
+
+    # ...and "no speech" is an answer, not the absence of one: only a changed source
+    # retires the row, exactly as it retires a caption.
+    assets["v"] = assets["v"].model_copy(update={"duration_seconds": 9.5})
+    assert speech_facts()("v") == []
+    assert fetched == ["v", "v"]
 
 
 def test_real_planner_budgets_video_lengths_and_fits_after_speech_detection(tmp_path):

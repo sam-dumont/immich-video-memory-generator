@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from immich_memories.processing.live_material import LiveRenderMaterial
 from immich_memories.speech.cuts import safe_end, set_duration
@@ -35,6 +36,35 @@ def _stitched_ranges(material: LiveRenderMaterial, regions_for):
                 ranges.append((offset + left - entry.start, offset + right - entry.start))
         offset += entry.end - entry.start
     return ranges
+
+
+def speech_buffer(config) -> float:
+    """How far either side of an utterance a cut must stay, from the detector's own pause."""
+    return min(0.3, config.speech.min_silence_ms / 1000 * 0.4)
+
+
+def banked_unit_regions(
+    unit: Mapping[str, Any],
+    banked: Mapping[str, tuple[tuple[float, float], ...]],
+    *,
+    buffer: float,
+) -> list[list[float]] | None:
+    """The speech a cut already measured in this unit, on the unit's own clock.
+
+    None means nobody measured this unit's sources yet, which is not the same answer as an
+    empty list: that one says the detector listened to the whole clip and heard no speech.
+    """
+    if unit.get("kind") == "video":
+        if unit["asset_id"] not in banked:
+            return None
+        return _merged_ranges(banked[unit["asset_id"]], unit.get("raw_seconds") or 0.0, buffer)
+    if not str(unit.get("kind", "")).startswith("live") or not unit.get("live_material"):
+        return None
+    material = LiveRenderMaterial.from_dict(unit["live_material"])
+    if not any(entry.video_id in banked for entry in material.segments):
+        return None
+    ranges = _stitched_ranges(material, lambda video_id: banked.get(video_id, ()))
+    return _merged_ranges(ranges, material.duration_seconds, buffer)
 
 
 def resolve_speech_cuts(

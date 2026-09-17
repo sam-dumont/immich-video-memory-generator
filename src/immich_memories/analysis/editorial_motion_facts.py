@@ -7,16 +7,25 @@ import json
 import sqlite3
 import tempfile
 import time
+from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
 from immich_memories.analysis.editorial_motion_outcomes import MotionAttemptOutcomes
 from immich_memories.api.immich import ImmichAPIError
+from immich_memories.store.cut_measurements import (
+    banked_motion_residuals,
+    open_cut_measurements,
+    remember_motion_residual,
+)
 
 METHOD = "median-flow-v1-12frames-320x240"
+# The bank key carries what produced the number, so a changed method retires its own rows.
+RESIDUAL_PRODUCER = f"motion-residual-v1@{METHOD}"
 
 
 def measure_motion(payload: bytes) -> dict:
@@ -146,14 +155,7 @@ class DemandedMotionResolver:
             "decode_seconds": 0.0,
             "sample_limit_per_carrier": self.sample_limit,
         }
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.touch(mode=0o600, exist_ok=True)
-        self.cache_path.chmod(0o600)
-        with sqlite3.connect(self.cache_path) as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute(
-                "CREATE TABLE IF NOT EXISTS demanded_motion_facts (source_key TEXT PRIMARY KEY, facts_json TEXT NOT NULL)"
-            )
+        with closing(open_cut_measurements(self.cache_path)) as connection:
             attempt = _MotionAttempt(connection, metrics)
             output = [self._resolved_carrier(carrier, attempt) for carrier in carriers]
         metrics["sampled_sources"] = len(attempt.sampled_keys)
@@ -211,12 +213,11 @@ class DemandedMotionResolver:
             self.outcomes.observed(unit_key, source_key, fact, error=prior)
             metrics["unavailable_sources"] += 1
             return fact
-        row = attempt.connection.execute(
-            "SELECT facts_json FROM demanded_motion_facts WHERE source_key=?",
-            (source_key,),
-        ).fetchone()
-        if row is not None:
-            fact = json.loads(row[0])
+        banked = banked_motion_residuals(
+            attempt.connection, {asset.id: source_metadata_digest(asset)}, RESIDUAL_PRODUCER
+        )
+        if asset.id in banked:
+            fact = banked[asset.id]
             metrics["cache_hits"] += 1
             if self.outcomes is not None:
                 self.outcomes.observed(unit_key, source_key, fact)
@@ -258,11 +259,14 @@ class DemandedMotionResolver:
                     unit_key, source_key, fact, error=_unavailable_outcome(exc, phase)
                 )
             return fact
-        attempt.connection.execute(
-            "INSERT OR REPLACE INTO demanded_motion_facts VALUES (?,?)",
-            (source_key, json.dumps(fact, sort_keys=True)),
+        # Each completed measurement survives an interrupted run, and answers the next plan.
+        remember_motion_residual(
+            attempt.connection,
+            asset_id=asset.id,
+            producer=RESIDUAL_PRODUCER,
+            source_digest=source_metadata_digest(asset),
+            measured=fact,
         )
-        attempt.connection.commit()  # Each completed measurement survives an interrupted run.
         if self.outcomes is not None:
             self.outcomes.observed(unit_key, source_key, fact)
         return fact
@@ -321,7 +325,7 @@ def production_motion_resolver(source, *, on_playback=None):
         try:
             return DemandedMotionResolver(
                 assets=source.assets,
-                cache_path=source.bank_dir.parent / "demanded-motion.sqlite",
+                cache_path=source.store_path,
                 fetch_video=fetch,
                 threshold=threshold,
                 sample_limit=sample_limit,

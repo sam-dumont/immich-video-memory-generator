@@ -25,6 +25,7 @@ from immich_memories.analysis.editorial_person_period_facts import (
     render_person_period_facts,
 )
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
+from immich_memories.analysis.editorial_speech import banked_unit_regions, speech_buffer
 from immich_memories.analysis.editorial_structure_budget import NOMINAL_STILL_SECONDS, RESIDUAL_MIN
 from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
@@ -136,6 +137,8 @@ class UnitBuilder:
     ) -> None:
         self._assets = source.assets
         self._residuals = source.motion_residuals
+        self._speech = source.speech_regions
+        self._speech_buffer = speech_buffer(source.config)
         self._pixel_facts = source.pixel_facts
         self._event_assets = wall.event_assets
         self._moment_of_asset = wall.moment_of_asset
@@ -244,7 +247,12 @@ class UnitBuilder:
                         "residual": None,
                     }
                 )
-        return units
+        return [self._with_banked_speech(unit) for unit in units]
+
+    def _with_banked_speech(self, unit: dict) -> dict:
+        """A unit whose speech a cut has already measured knows where its sentences end."""
+        regions = banked_unit_regions(unit, self._speech, buffer=self._speech_buffer)
+        return unit if regions is None else unit | {"speech_regions": regions}
 
     def _distinct(self, units: list[dict]) -> list[dict]:
         # the favourite wins its moment

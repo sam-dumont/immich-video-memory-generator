@@ -52,7 +52,7 @@ Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):
 
 | Directory or file | What it holds | Cap |
 |---|---|---|
-| `annotations.sqlite` | every caption, head answer, detector verdict and reading the editor banked, keyed by producer and exact input | none; this is the file to keep |
+| `annotations.sqlite` | every caption, head answer, detector verdict, measurement and reading the editor banked, keyed by producer and exact input | none; this is the file to keep |
 | `thumbnails/` | one Immich preview per candidate a memory's scope can reach | `thumbnail_cache_max_size_mb`, 10 GB |
 | `video-cache/` | downloaded Immich clips | `video_cache_max_size_gb` 10 GB, `video_cache_max_age_days` 7 |
 | `preview-cache/`, `previews/` | clip previews for the web UI | `preview_cache_max_size_mb`, 2 GB |
@@ -104,6 +104,44 @@ sqlite3 ~/.immich-memories/cache/annotations.sqlite \
 ```
 
 The next cut over those pictures asks the cull again.
+
+### The two facts a cut measures
+
+Two facts about a picture can only be measured once a cut has chosen it: a Live Photo's motion
+residual, and where the speech sits in a clip. Both are banked per picture in `annotations.sqlite`,
+beside the captions and the motion sentences.
+
+| Table | What it holds | Written when |
+|---|---|---|
+| `motion_residuals` | the optical flow measured on one Live Photo's companion video, the residual the 1.5 discriminant reads included | a cut measures a chosen Live carrier |
+| `speech_regions` | the utterances a clip holds, in its own seconds. An empty list is an answer: the detector listened and heard none | a cut measures a retained video or a playing Live Photo |
+
+Each row is keyed by the picture, the exact source metadata it was measured from, and a producer
+version carrying what produced it: `motion-residual-v1@median-flow-v1-12frames-320x240` for the
+residual, `speech-regions-v1@firered-aed-utterances-v1/` plus a digest of the detector settings for
+the speech, which is where `speech.vad_threshold` and `speech.min_silence_ms` land. Change the
+picture in Immich, the method, or those settings, and the old row stops being an answer: the next
+cut measures again and writes the new one in its place.
+
+The next cut reads them before it plans. A Live Photo whose banked residual is under 1.5 is planned
+as a still from the start, rather than planned as motion and found out at the cut, and a clip whose
+speech is banked carries its sentence boundaries into the shortlist and the shave. A picture with no
+row is not measured, which is not the same answer as measured as nothing: the planner treats it
+exactly as it did before and the cut measures it.
+
+Nothing measures these ahead of time for a whole library. Only the pictures a cut reaches are
+measured, and what one cut pays for, every later cut reads for free.
+
+Releases up to 0.102.0 kept the residual in `structure-banks/demanded-motion.sqlite` and the speech
+in `structure-banks/speech-facts/`, keyed so that only the resolver that wrote them could read them.
+Neither is read any more, and both are safe to delete:
+
+```bash
+rm -f ~/.immich-memories/cache/structure-banks/demanded-motion.sqlite
+rm -rf ~/.immich-memories/cache/structure-banks/speech-facts
+```
+
+The first cut over those pictures measures them again, into the bank the planner reads.
 
 ### The preview cache scales with your library
 

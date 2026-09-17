@@ -542,11 +542,9 @@ class _MotionScope:
         *,
         demanded: bool,
     ) -> None:
-        # The demanded-motion bank lives beside the structure banks, where the resolver writes it.
-        bank = store_path.parent / "structure-banks" / "demanded-motion.sqlite"
         self._read_playback = read_playback
         self._sources = (
-            motion_sources(assets, residual_of=banked_residuals(bank))
+            motion_sources(assets, residual_of=banked_residuals(store_path))
             if read_playback and demanded
             else ()
         )

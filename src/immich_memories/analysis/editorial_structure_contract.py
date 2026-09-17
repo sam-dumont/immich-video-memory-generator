@@ -155,6 +155,10 @@ class StructurePlanningInput:
     lineage: Mapping[str, Any]
     bank_dir: Path
     artifact_dir: Path
+    # The per-asset fact bank: where a cut's own measurements are read from and written back.
+    store_path: Path | None = None
+    # What a cut already measured of each clip's speech; a missing clip is not measured.
+    speech_regions: Mapping[str, tuple[tuple[float, float], ...]] = field(default_factory=dict)
     motion_outcome_replay: MotionOutcomeReplay | None = None
     prior_plan: Mapping[str, Any] | None = None
     prior_plan_ref: Path | None = None

@@ -14,12 +14,14 @@ from immich_memories.analysis.editorial_case import Case, _adapt_production_card
 from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_moment_wall import ProductionMomentWallRenderer
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
+from immich_memories.analysis.editorial_preparation_motion import read_motion_residuals
 from immich_memories.analysis.editorial_shareability import load_flags
 from immich_memories.analysis.editorial_structure_contract import (
     EpisodeReadingCard,
     StructurePlanningInput,
 )
 from immich_memories.api.models import Asset, VideoClipInfo
+from immich_memories.speech.facts import read_speech_regions, speech_producer
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_orchestration import TextEditorialWorkprint
@@ -144,7 +146,13 @@ def capture_structure_input(
         gps=gps,
         pixel_facts=read_pixel_facts(store_path, config.editorial.pixel_producer_key),
         shareability_flags=load_flags(store_path, {*assets, *companions}),
-        motion_residuals={},
+        motion_residuals=read_motion_residuals(store_path, assets.values()),
+        speech_regions=read_speech_regions(
+            store_path,
+            [*assets.values(), *companions.values()],
+            speech_producer(config.speech),
+        ),
+        store_path=store_path,
         period_evidence=insight.evidence,
         episode_readings=episode_reading_cards(workprint.episodes, workprint.cards, wall.aliases),
         lineage={

@@ -79,6 +79,7 @@ def runtime(monkeypatch, tmp_path):
         assets=assets,
         artifact_dir=tmp_path / "artifacts",
         bank_dir=tmp_path / "shared/derived",
+        store_path=tmp_path / "shared/annotations.sqlite",
         motion_outcome_replay=None,
         config=SimpleNamespace(
             immich=SimpleNamespace(url="unused", api_key="unused", api_version=None)
@@ -100,8 +101,8 @@ def test_failure_is_exactly_replayed_before_later_global_success_and_fresh_attem
     assert calls == ["video-0", "video-1", "video-2"]
     assert cost["new_motion_downloads"] == 2 and cost["unavailable_sources"] == 1
     assert cold[0]["kind"] == "live-motion" and cold[0]["motion_evidence"]["available"] == 2
-    with sqlite3.connect(source.bank_dir.parent / "demanded-motion.sqlite") as c:
-        assert c.execute("SELECT COUNT(*) FROM demanded_motion_facts").fetchone()[0] == 2
+    with sqlite3.connect(source.store_path) as c:
+        assert c.execute("SELECT COUNT(*) FROM motion_residuals").fetchone()[0] == 2
     # A fresh normal attempt in the SAME product artifact directory retries the transient failure.
     failed.clear()
     fresh, fresh_cost = motion.production_motion_resolver(source)([carrier])
@@ -201,8 +202,8 @@ def test_tampered_or_incomplete_snapshot_and_changed_measurement_fail_closed(run
     if change == "bytes":
         ref.path.write_bytes(ref.path.read_bytes() + b" ")
     elif change == "measurement":
-        with sqlite3.connect(source.bank_dir.parent / "demanded-motion.sqlite") as c:
-            c.execute("UPDATE demanded_motion_facts SET facts_json=?", ('{"residual":0.1}',))
+        with sqlite3.connect(source.store_path) as c:
+            c.execute("UPDATE motion_residuals SET measured=?", ('{"residual":0.1}',))
     else:
         if change == "schema":
             record["unsupported"] = True

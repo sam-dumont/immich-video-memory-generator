@@ -308,7 +308,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -425,8 +425,8 @@ timing trim included, and the selection sheet prints it.
 
 | Cache | Location | Holds |
 |---|---|---|
-| Annotation store | `~/.immich-memories/cache/annotations.sqlite` | every fact per picture and producer; the episode, period, cull and judgment banks |
-| Structure banks | `~/.immich-memories/cache/structure-banks/` | the memory-worthy and standing votes, thumbnail hashes, demanded motion |
+| Annotation store | `~/.immich-memories/cache/annotations.sqlite` | every fact per picture and producer, the motion residuals and speech regions a cut measured included; the episode, period, cull and judgment banks |
+| Structure banks | `~/.immich-memories/cache/structure-banks/` | the memory-worthy and standing votes, thumbnail hashes |
 | Attempts | `~/.immich-memories/cache/editorial-runs/` | one directory per cut |
 | Downloaded videos | `~/.immich-memories/cache/video-cache` | 10 GB, 7 days |
 | Immich previews | `~/.immich-memories/cache/thumbnails` | 10 GB |
@@ -435,6 +435,15 @@ timing trim included, and the selection sheet prints it.
 
 Facts are keyed by producer version, so changing a version names a new fact generation and the next
 cut produces it. Readings are keyed by the exact request, prompt included.
+
+Two of those facts are measured during a cut rather than at preparation, because only the cut knows
+which pictures it needs: a Live Photo's motion residual, and where the speech is in a clip. Both are
+banked per picture the moment a cut measures them, and the next cut reads them instead of measuring
+again. A Live Photo whose banked residual is under 1.5 is planned as a still from the start rather
+than planned as motion and found out at the cut, and a clip whose speech is banked carries its
+sentence boundaries into the shortlist and the shave. A picture with no row is not measured, which
+is not the same answer as measured as nothing, and the planner treats it exactly as it did before.
+[What invalidates them](../deploy/maintenance/health-logs-cache.md#the-two-facts-a-cut-measures).
 
 The cull bank is the one that follows a picture out of the memory it was judged in: a photographed
 receipt is a receipt in every cut that could reach it, so the verdict is remembered per picture

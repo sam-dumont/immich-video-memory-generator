@@ -1,17 +1,52 @@
-"""Cache local VAD measurements by captured source metadata and detector settings."""
+"""Measure speech on a cut's carriers once, and bank it per picture for the next cut."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import sqlite3
 import tempfile
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
+from immich_memories.api.models import Asset
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
-from immich_memories.security import write_secret_file
 from immich_memories.speech.fireredvad import FireRedSpeechDetector
 from immich_memories.speech.vad import VAD_SAMPLE_RATE, extract_audio_16k
+from immich_memories.store.cut_measurements import (
+    banked_speech_regions,
+    open_cut_measurements,
+    reading_cut_measurements,
+    remember_speech_regions,
+)
+
+logger = logging.getLogger(__name__)
+
+METHOD = "firered-aed-utterances-v1"
+
+Regions = list[tuple[float, float]]
+
+
+def speech_producer(config: Any) -> str:
+    """The detector and the exact settings behind an answer, composed into its bank key."""
+    settings = json.dumps(config.model_dump(), sort_keys=True, separators=(",", ":"))
+    return f"speech-regions-v1@{METHOD}/{hashlib.sha256(settings.encode()).hexdigest()[:12]}"
+
+
+def read_speech_regions(
+    store_path: Path, assets: Iterable[Asset], producer: str
+) -> dict[str, tuple[tuple[float, float], ...]]:
+    """The speech a cut already measured in these clips, keyed by clip."""
+    digests = {asset.id: source_metadata_digest(asset) for asset in assets}
+    if not digests:
+        return {}
+    return reading_cut_measurements(
+        store_path, lambda c: banked_speech_regions(c, digests, producer)
+    )
 
 
 class SpeechMeasurementUnavailable(RuntimeError):
@@ -24,36 +59,53 @@ class SpeechMeasurementUnavailable(RuntimeError):
 
 
 class SpeechFacts:
-    """Only retained motion pays for audio extraction; successful facts survive reruns."""
+    """Only retained motion pays for audio extraction; what it measures is banked per clip."""
 
-    def __init__(self, *, assets, cache_dir: Path, fetch, config):
-        self.assets, self.cache_dir, self.fetch = assets, cache_dir, fetch
+    def __init__(
+        self,
+        *,
+        assets: Mapping[str, Asset],
+        store_path: Path,
+        fetch,
+        config,
+        measure: Callable[[str], Regions] | None = None,
+    ):
+        self.assets, self.store_path, self.fetch = assets, Path(store_path), fetch
         self.detector = FireRedSpeechDetector(config.vad_threshold, config.min_silence_ms)
-        self.settings = config.model_dump()
-        self.memo: dict[str, list[tuple[float, float]]] = {}
+        self.producer = speech_producer(config)
+        self.memo: dict[tuple[str, str], Regions] = {}
+        self._measure_source = measure or self._measure
 
-    def __call__(self, asset_id: str) -> list[tuple[float, float]]:
-        identity = {
-            "method": "firered-aed-utterances-v1",
-            "source": source_metadata_digest(self.assets[asset_id]),
-            "settings": self.settings,
-        }
-        key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-        if key in self.memo:
-            return self.memo[key]
-        cache = self.cache_dir / f"{key}.json"
-        if cache.exists():
-            record = json.loads(cache.read_text())
-            if record["identity"] != identity:
-                raise ValueError("Speech cache source changed")
-            regions = [tuple(pair) for pair in record["regions"]]
+    def __call__(self, asset_id: str) -> Regions:
+        digest = source_metadata_digest(self.assets[asset_id])
+        if (asset_id, digest) in self.memo:
+            return self.memo[(asset_id, digest)]
+        banked = read_speech_regions(self.store_path, (self.assets[asset_id],), self.producer)
+        if asset_id in banked:
+            regions = list(banked[asset_id])
         else:
-            regions = self._measure(asset_id)
-            write_secret_file(cache, json.dumps({"identity": identity, "regions": regions}))
-        self.memo[key] = regions
+            regions = self._measure_source(asset_id)
+            self._remember(asset_id, digest, regions)
+        self.memo[(asset_id, digest)] = regions
         return regions
 
-    def _measure(self, asset_id: str) -> list[tuple[float, float]]:
+    def _remember(self, asset_id: str, digest: str, regions: Regions) -> None:
+        try:
+            with closing(open_cut_measurements(self.store_path)) as connection:
+                remember_speech_regions(
+                    connection,
+                    asset_id=asset_id,
+                    producer=self.producer,
+                    source_digest=digest,
+                    regions=regions,
+                )
+        except (OSError, sqlite3.Error) as error:
+            # An unwritable bank costs the next cut a measurement, never this cut.
+            logger.debug(
+                "Speech regions for %s were not banked: %s", asset_id, type(error).__name__
+            )
+
+    def _measure(self, asset_id: str) -> Regions:
         try:
             payload = self.fetch(asset_id)
         except Exception as error:

@@ -17,7 +17,7 @@ import tempfile
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from contextvars import copy_context
@@ -30,7 +30,7 @@ from PIL import Image
 
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
 from immich_memories.analysis.editorial_description_contract import API_MODEL, REPETITION_PENALTY
-from immich_memories.analysis.editorial_motion_facts import motion_source_key
+from immich_memories.analysis.editorial_motion_facts import RESIDUAL_PRODUCER
 from immich_memories.analysis.editorial_numbers import exact_number
 from immich_memories.analysis.editorial_preparation_captions import (
     CAPTION_KEY_HINT,
@@ -40,6 +40,10 @@ from immich_memories.analysis.editorial_preparation_captions import (
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
 from immich_memories.api.models import Asset
 from immich_memories.processing.playback_keyframes import SampledKeyframes, sample_keyframes
+from immich_memories.store.cut_measurements import (
+    banked_motion_residuals,
+    reading_cut_measurements,
+)
 from immich_memories.store.motion_lines import (
     DESCRIBED,
     UNAVAILABLE,
@@ -97,23 +101,24 @@ def motion_sources(
     return tuple(sources)
 
 
-def banked_residuals(bank: Path) -> Callable[[Asset], float | None]:
-    """A Live still's residual from the demanded-motion bank, read only; None when unmeasured."""
+def banked_residuals(store_path: Path) -> Callable[[Asset], float | None]:
+    """A Live still's residual as a cut measured it, read only; None when nobody measured it."""
 
     def residual_of(asset: Asset) -> float | None:
-        if not bank.exists():
-            return None
-        try:
-            with closing(sqlite3.connect(f"file:{bank}?mode=ro", uri=True)) as connection:
-                row = connection.execute(
-                    "SELECT facts_json FROM demanded_motion_facts WHERE source_key=?",
-                    (motion_source_key(asset),),
-                ).fetchone()
-        except sqlite3.Error:
-            return None
-        return exact_number(json.loads(row[0]).get("residual")) if row else None
+        measured = read_motion_residuals(store_path, (asset,))
+        return exact_number(measured[asset.id].get("residual")) if asset.id in measured else None
 
     return residual_of
+
+
+def read_motion_residuals(store_path: Path, assets: Iterable[Asset]) -> dict[str, dict[str, Any]]:
+    """What a cut already measured about these pictures' motion, keyed by picture."""
+    digests = {asset.id: source_metadata_digest(asset) for asset in assets}
+    if not digests:
+        return {}
+    return reading_cut_measurements(
+        store_path, lambda c: banked_motion_residuals(c, digests, RESIDUAL_PRODUCER)
+    )
 
 
 def missing_motion(

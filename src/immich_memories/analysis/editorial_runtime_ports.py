@@ -222,7 +222,7 @@ def production_speech_resolver(source, *, resources):
     """Detect retained speech before final timing, with lazy transport and local inference."""
     import logging
 
-    from immich_memories.analysis.editorial_speech import resolve_speech_cuts
+    from immich_memories.analysis.editorial_speech import resolve_speech_cuts, speech_buffer
     from immich_memories.speech.facts import SpeechFacts
 
     if not source.config.speech.enabled:
@@ -243,7 +243,7 @@ def production_speech_resolver(source, *, resources):
 
     facts = SpeechFacts(
         assets=dict(source.assets) | dict(source.companion_assets),
-        cache_dir=source.bank_dir.parent / "speech-facts",
+        store_path=source.store_path,
         fetch=fetch,
         config=source.config.speech,
     )
@@ -257,8 +257,6 @@ def production_speech_resolver(source, *, resources):
                 "Install immich-memories[editorial] to enable the local detector."
             )
             return carriers
-        return resolve_speech_cuts(
-            carriers, facts, buffer=min(0.3, source.config.speech.min_silence_ms / 1000 * 0.4)
-        )
+        return resolve_speech_cuts(carriers, facts, buffer=speech_buffer(source.config))
 
     return resolve

@@ -6,13 +6,15 @@ import io
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from datetime import UTC, datetime
 
 import httpx
 import pytest
 from PIL import Image
 
-from immich_memories.analysis.editorial_motion_facts import motion_source_key
+from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
+from immich_memories.analysis.editorial_motion_facts import RESIDUAL_PRODUCER
 from immich_memories.analysis.editorial_preparation_motion import (
     BankedMotionLines,
     banked_residuals,
@@ -22,6 +24,10 @@ from immich_memories.analysis.editorial_preparation_motion import (
 )
 from immich_memories.api.models import Asset, AssetType
 from immich_memories.processing.playback_keyframes import SampledKeyframes
+from immich_memories.store.cut_measurements import (
+    open_cut_measurements,
+    remember_motion_residual,
+)
 from immich_memories.store.editorial_preparation import initialize, private_database_path
 
 
@@ -219,14 +225,14 @@ def test_a_refused_seat_credential_stops_the_stage_rather_than_one_video(store):
 
 def test_a_live_photo_plays_by_the_residual_its_last_cut_measured(tmp_path):
     moving, quiet = picture("moving", live="c1"), picture("quiet", live="c2")
-    bank = tmp_path / "demanded-motion.sqlite"
-    with sqlite3.connect(bank) as connection:
-        connection.execute(
-            "CREATE TABLE demanded_motion_facts (source_key TEXT PRIMARY KEY, facts_json TEXT)"
-        )
-        connection.execute(
-            "INSERT INTO demanded_motion_facts VALUES (?,?)",
-            (motion_source_key(moving), json.dumps({"residual": 1.9})),
+    bank = tmp_path / "annotations.sqlite"
+    with closing(open_cut_measurements(bank)) as connection:
+        remember_motion_residual(
+            connection,
+            asset_id=moving.id,
+            producer=RESIDUAL_PRODUCER,
+            source_digest=source_metadata_digest(moving),
+            measured={"residual": 1.9},
         )
 
     residual_of = banked_residuals(bank)
