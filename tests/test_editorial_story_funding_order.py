@@ -7,6 +7,7 @@ from immich_memories.analysis.editorial_story_slots import allocate_slots
 def story(key, *, day, weight="major", gate="remarkable", moments=1, favourites=0):
     return {
         "key": key,
+        "episodes": [f"S-{key}"],
         "weight": weight,
         "gate": gate,
         "first_day": day,
@@ -50,3 +51,38 @@ def test_the_weight_word_and_the_gate_still_come_before_chronology():
         "november-background",
         "december-minor",
     ]
+
+
+def test_ties_inside_a_weight_word_follow_the_readers_own_order():
+    stories = [
+        story("january", day="2024-01-05", moments=2),
+        story("march", day="2024-03-05", moments=2),
+        story("may", day="2024-05-05", moments=2),
+        story("july-busy", day="2024-07-05", moments=5),
+    ]
+    # The reader listed May first, then March; January is not on its list.
+    priorities = [{"episodes": ["S-may"]}, {"episodes": ["S-march"]}]
+
+    assert [s["key"] for s in funding_order(stories, priorities)] == [
+        "july-busy",
+        "may",
+        "march",
+        "january",
+    ]
+
+
+def test_a_trip_is_funded_before_the_other_stories_of_its_weight():
+    home = [story(f"home-{n}", day=f"2024-0{n + 1}-01", moments=9) for n in range(3)]
+    trip = story("weekend-away", day="2024-11-01", gate="maybe", moments=2) | {"trip": {"days": 3}}
+    priorities = [{"episodes": [f"S-home-{n}"]} for n in range(3)]
+
+    assert funding_order([*home, trip], priorities)[0]["key"] == "weekend-away"
+
+
+def test_stories_the_reader_did_not_rank_keep_the_current_order():
+    stories = [
+        story("june", day="2024-06-02", gate="maybe"),
+        story("february", day="2024-02-11"),
+    ]
+
+    assert [s["key"] for s in funding_order(stories, [])] == ["february", "june"]

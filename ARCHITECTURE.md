@@ -25,6 +25,15 @@ months read in parallel through `reader_map`, the judgment bank answers a month 
 and one changed asset invalidates one month instead of every page after it. The one-day rule is
 applied to the answer (`_split_by_day`), not asked for in the prompt.
 
+Before the weighing, `editorial_story_trips.py` runs the app's trip detection over the film's pool
+and folds every trip's day episodes into one story; the trip reserves
+`round(slots / 2 * sqrt(trip days / film days))` pictures at its turn in the presence pass. After
+the weighing, `editorial_story_threads.py` asks the reader whether stories of one place and era
+that its own words link are one recurring activity, and folds each confirmed group. At
+carrier admission, `editorial_story_lookalike.py` asks the final review's repetition question
+(through `confirm_episode_pairs`, or `confirm_story_pairs` for pairs days apart) before a story takes
+a further picture, bounded at twice the slots; a refusal frees the slot for another moment.
+
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
 candidates, and keeps join-compatible stories together. Both orders of every page must validate
@@ -176,6 +185,11 @@ src/immich_memories/
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
+│   ├── editorial_story_trips.py     # Detected trips become one story each, with a reserve for their length
+│   ├── editorial_story_lookalike.py # A story's further picture is refused when it repeats one it holds
+│   ├── editorial_story_depth.py     # A short film's free slots as verified-different frames inside shown moments
+│   ├── editorial_story_trim.py      # The allocation in reverse when the production budget is tighter
+│   ├── editorial_story_threads.py   # A recurring activity at one place is one story per era, if the reader agrees
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once

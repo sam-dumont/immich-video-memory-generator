@@ -203,6 +203,8 @@ class StoryJudge(AnnualJudge):
             return json.dumps({"keep": labels[:count]})
         if stage.startswith("standing-"):
             return json.dumps({"weak": {}})  # every canal picture stands
+        if stage.startswith("story-threads"):
+            return json.dumps({"same": []})  # separate days stay separate stories
         if stage.startswith("moment-inventory"):
             sources = re.findall(r'"source": "(U\d+)"', prompt.split("NEW SOURCES", 1)[1])
             return json.dumps(
@@ -476,7 +478,7 @@ def test_standing_gate_is_reject_only_and_scores_by_how_often_a_picture_is_named
 
 
 def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_the_budget():
-    from immich_memories.analysis.editorial_story_planner import trim_to_timing_budget
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
     carriers = [
         {

@@ -16,6 +16,7 @@ import json
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from operator import itemgetter
 from typing import Any
 
@@ -27,6 +28,7 @@ from immich_memories.analysis.editorial_story_carriers import (
     choice_is_starred,
     shortlist_by_partition,
 )
+from immich_memories.analysis.editorial_story_lookalike import LookAlikeCheck, PairLooksAlike
 from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
@@ -39,6 +41,12 @@ from immich_memories.analysis.editorial_story_shortlist import (
     _capture_group_moments,
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+from immich_memories.analysis.editorial_story_threads import fold_threads, thread_scope
+from immich_memories.analysis.editorial_story_trips import (
+    FilmTrips,
+    reserve_trip_depth,
+    trip_fold,
+)
 
 STORY_PLANNER_VERSION = "story-first-selection-v6-videos-first"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
@@ -141,20 +149,28 @@ def _first_day(story_units: Mapping[str, list[dict]], s) -> str:
     return min((u["taken"][:10] for u in story_units.get(s["key"]) or []), default="")
 
 
-def funding_order(stories: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The order a film funds its stories in: the weight word, then the memory-worthy gate's
-    word, then the moments the story holds, then the day it starts on.
+def funding_order(
+    stories: Sequence[dict[str, Any]], priorities: Sequence[Mapping[str, Any]] = ()
+) -> list[dict[str, Any]]:
+    """The order a film funds its stories in: the weight word; inside a word, a detected trip
+    first (a trip carries its own weight), then the memory-worthy gate's word and the moments the
+    story holds, then the reader's own order of its stories (`priorities`), then the day it
+    starts on.
 
-    A star is an indicator of a picture — it wins its moment inside a story, never the story's
-    place in this queue. So when there are more stories than slots, equal stories fund in time
-    order and the film keeps the whole period instead of its starrier half.
+    The reader's order breaks ties rather than leading: it is the order the grouping named its
+    stories in, and a period the reader filed as one story and the day rule split comes first in
+    it, which on a year of more stories than slots pushed a weekend away out of the film. A star is
+    an indicator of a picture: it wins its moment inside a story, never the story's place here.
     """
+    rank = {tuple(p["episodes"]): n for n, p in enumerate(priorities)}
     return sorted(
         stories,
         key=lambda s: (
             WEIGHTS.index(s["weight"]),
+            not s.get("trip"),
             GATE_ORDER.get(s["gate"], 3),
             -s["seen"]["moments"],
+            rank.get(tuple(s["episodes"]), len(rank)),
             s["first_day"],
         ),
     )
@@ -177,7 +193,9 @@ def _weighed_stories(
             "favourites": sum(1 for u in story_units[s["key"]] if u.get("favourite")),
         }
         s["first_day"] = _first_day(story_units, s)
-    stories = funding_order([s for s in story.stories if story_units.get(s["key"])])
+    stories = funding_order(
+        [s for s in story.stories if story_units.get(s["key"])], story.priorities
+    )
     return stories, story_units
 
 
@@ -360,6 +378,23 @@ def _inventory_funded_stories(
             choices_of[key] = sorted(choices, key=lambda c: c.taken)
 
 
+def _near_home_of_moments(near_home, units: _MomentUnits, unit_by_asset):
+    """Whether most of the pictures of some moments were taken near home; None when unknown."""
+
+    def of(moments: Sequence[str]) -> bool | None:
+        if near_home is None:
+            return None
+        votes = [near_home(unit_by_asset[u["asset_id"]][0]) for u in units.of(moments)]
+        known = [vote for vote in votes if vote is not None]
+        return 2 * sum(known) >= len(known) if known else None
+
+    return of
+
+
+def _photographed_days(event_units: Mapping[str, list[dict]]) -> int:
+    return len({u["taken"][:10] for units in event_units.values() for u in units})
+
+
 def _check_partition_request(partition_limit, partition_of) -> None:
     if partition_limit is not None and (
         type(partition_limit) is not int or partition_limit < 1 or partition_of is None
@@ -390,8 +425,18 @@ def _episodes_record(
             "granted": len(chosen_by_story[s["key"]]),
             "chosen": chosen_by_story[s["key"]],
         }
+        | _kind_of_story(s)
         for s in stories
     ]
+
+
+def _kind_of_story(s) -> dict[str, Any]:
+    """A trip or a recurring thread says so on its row, with what it was allowed."""
+    if s.get("trip"):
+        return {"kind": "trip", "trip": s["trip"], "reserve": s.get("reserve", 0)}
+    if s.get("thread"):
+        return {"kind": "thread", "thread": s["thread"]}
+    return {"kind": "story"}
 
 
 def _kind_marker_of(unit_by_asset, lines) -> Callable[[DepictedChoice], str]:
@@ -411,6 +456,51 @@ def _kind_marker_of(unit_by_asset, lines) -> Callable[[DepictedChoice], str]:
         return text
 
     return marker
+
+
+def _read_the_period(
+    judge,
+    rules,
+    *,
+    evidence: list[dict],
+    contract: str,
+    record: Callable[[str, Mapping[str, Any]], None],
+    enrich: Callable[[list], Mapping[str, Mapping[str, Any]]],
+    stories_across_gaps: bool,
+    journey: bool,
+    trips: FilmTrips | None,
+    moment_assets: Mapping[str, Sequence[str]],
+    film_span: tuple[date, date] | None,
+    lines: list[str],
+    calls: dict[str, int],
+    near_home: Callable[[Sequence[str]], bool | None],
+) -> PeriodStory:
+    """The weighed stories of the period, with its trips and recurring activities folded."""
+    read_story = rules.read_story if rules is not None else read_period_story
+    trips, fold = trip_fold(trips, moment_assets, rules=rules is not None)
+    story = read_story(
+        judge,
+        evidence=evidence,
+        contract=contract,
+        prior={},
+        record=lambda value: record("period-story", value),
+        enrich=enrich,
+        allow_gaps=stories_across_gaps,
+        journey=journey,
+        fold=fold,
+    )
+    record("trip-stories", trips.record())
+    calls["thread_questions"] = fold_threads(
+        judge,
+        story,
+        contract=contract,
+        span=film_span,
+        lines=lines,
+        record=record,
+        near_home=near_home,
+        skip=thread_scope(rules=rules is not None, journey=journey, gapped=stories_across_gaps),
+    )
+    return story
 
 
 def select_story_first(
@@ -445,6 +535,10 @@ def select_story_first(
     motion_line: Callable[[dict], str] | None = None,
     episode_readings: Mapping[str, Any] | None = None,
     rules=None,
+    trips: FilmTrips | None = None,
+    looks_alike: PairLooksAlike | None = None,
+    film_span: tuple[date, date] | None = None,
+    near_home: Callable[[str], bool | None] | None = None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -453,6 +547,10 @@ def select_story_first(
     `family_tier` is the memory-worthy gate's reading per family (0 remarkable, 1 maybe, 2
     background); it is shown to the synthesis and weighs episodes the synthesis left unplaced.
     `record(name, payload)` persists a derived decision under the run's audit directory.
+    `trips` are the journeys detected in the pool; each becomes one story before the weighing.
+    `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
+    `film_span` is the requested period; a recurring activity is one thread per era of it.
+    `near_home(family)` says whether a happening was photographed near the home base.
     """
     calls = {
         "story_pages": 0,
@@ -484,18 +582,23 @@ def select_story_first(
         lines=lines,
         favourite=lambda asset: bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite")),
     )
-    read_story = rules.read_story if rules is not None else read_period_story
-    story = read_story(
+    story = _read_the_period(
         judge,
+        rules,
         evidence=evidence,
         contract=contract,
-        prior={},
-        record=lambda value: record("period-story", value),
+        record=record,
         enrich=lambda episodes: _episode_hints(
             episodes, units=units, place_of_moment=place_of_moment, lines=story_lines
         ),
-        allow_gaps=allow_story_gaps,
+        stories_across_gaps=allow_story_gaps,
         journey=journey,
+        trips=trips,
+        moment_assets=moment_assets,
+        film_span=film_span,
+        lines=[story_lines.get(asset, "") for asset in unit_by_asset],
+        calls=calls,
+        near_home=_near_home_of_moments(near_home, units, unit_by_asset),
     )
     calls["story_pages"] = len(story.audit.get("pages") or [])
     calls["story_pages_fresh"] = (story.audit.get("reading_calls") or {}).get("fresh", 0)
@@ -508,6 +611,7 @@ def select_story_first(
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
     slots = max(1, int(target_seconds // seconds_per_slot))
+    reserve_trip_depth(stories, slots=slots, film_days=_photographed_days(event_units))
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
     # 4. The model inventory, per day episode inside a funded story, over the capture groups that
@@ -581,6 +685,7 @@ def select_story_first(
         record=record,
         slots=slots,
         calls=calls,
+        lookalike=LookAlikeCheck(looks_alike, slots=slots),
     )
     admission.run()
 
@@ -601,6 +706,7 @@ def select_story_first(
         | {
             "standing": gate.scores,
             "passes": admission.pass_records,
+            "lookalike": admission.lookalike.record(),
             "failed_standing": admission.failed_standing,
             "kept_without_standing": admission.kept_without_standing,
             "editorially_closed": [
@@ -613,63 +719,6 @@ def select_story_first(
         },
     )
     return selection
-
-
-def trim_to_timing_budget(
-    carriers: list[dict],
-    content_budget_of: Callable[[list[dict]], float],
-    min_seconds: float,
-    protected: frozenset[str] = frozenset(),
-) -> tuple[list[dict], list[dict]]:
-    """Drop carriers until their minimum content fits the production content budget of what remains.
-
-    The budget depends on the selection (a month divider per month shown), so it is re-resolved
-    after every drop. Drop order: the least weighed story first, and inside a story its latest
-    picture; a story's only picture goes only when no lighter story still has one. A protected
-    carrier (one the owner required) is never a victim; when only those remain the trim stops.
-    A dropped carrier carries the reason it was cut, which the selection sheet prints.
-    """
-    from immich_memories.speech.cuts import minimum_duration
-
-    kept = carriers.copy()
-    dropped: list[dict] = []
-    while kept:
-        budget = content_budget_of(kept)
-        if sum(minimum_duration(c, min_seconds) for c in kept) <= budget + 1e-6:
-            break
-        counts: dict[str, int] = {}
-        for c in kept:
-            counts[c.get("story_episode") or ""] = counts.get(c.get("story_episode") or "", 0) + 1
-        ranked = [(_drop_rank(c, counts), c) for c in kept if c["asset_id"] not in protected]
-        if not ranked:
-            break
-        best = min(rank for rank, _c in ranked)
-        if best >= 14 and len(kept) == 1:
-            break  # the dominant story's only picture stays whatever the budget says
-        victim = max(
-            (c for rank, c in ranked if rank == best), key=lambda c: c.get("taken") or ""
-        )  # latest first
-        kept.remove(victim)
-        dropped.append(
-            victim
-            | {
-                "reason": f"Cut to fit the film's {budget:.1f} s of content",
-                "review_stage": "timing-trim",
-            }
-        )
-    return kept, dropped
-
-
-_DROP_ORDER = {"none": 0, "glimpse": 1, "minor": 2, "major": 3, "dominant": 4}
-
-
-def _drop_rank(c: Mapping[str, Any], counts: Mapping[str, int]) -> int:
-    """The allocation in reverse: glimpses first, then extra pictures lightest story first,
-    then only pictures lightest story first; the dominant story's only picture last of all."""
-    weight = _DROP_ORDER.get(str(c.get("story_weight")), 0)
-    if weight <= 1:
-        return 0
-    return weight if counts[c.get("story_episode") or ""] > 1 else 10 + weight
 
 
 def alternatives_pool(

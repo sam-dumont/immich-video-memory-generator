@@ -37,6 +37,7 @@ SELECTS_PASS_NAME = "pass-2-selects"  # noqa: S105 - public editorial pass ident
 SELECTS_PASS_VERSION = "pass-2-selects-v1"  # noqa: S105 - editorial pass identity
 PAIR_PROMPT_VERSION = "pair-prompt-v3"  # noqa: S105 - wire contract identity
 EPISODE_PROMPT_VERSION = "episode-similarity-v1"  # noqa: S105 - wire contract identity
+STORY_PROMPT_VERSION = "story-similarity-v1"  # noqa: S105 - wire contract identity
 PAIR_SCHEMA_VERSION = "pair-v3"  # noqa: S105 - wire contract identity
 
 # The answer moved between 150px and 400px in 4 of 4 moments and stopped moving
@@ -93,6 +94,19 @@ _EPISODE_PROMPT = (
     "Return only one complete JSON object, using exactly these keys and no others:\n" + _PAIR_SHAPE
 )
 
+# The same repetition question for two pictures of one story that may be days apart (a trip, a
+# recurring activity). Only the premise differs: stating "close in time" there would be false.
+_STORY_PROMPT = (
+    "These two numbered pictures belong to the same story of one memory, possibly days apart. "
+    "Do they show similar visual content, so keeping one would avoid repetition? "
+    "Return only one complete JSON object, using exactly these keys and no others:\n" + _PAIR_SHAPE
+)
+_QUESTIONS = {
+    "picture": (_PAIR_PROMPT, PAIR_PROMPT_VERSION),
+    "episode": (_EPISODE_PROMPT, EPISODE_PROMPT_VERSION),
+    "story": (_STORY_PROMPT, STORY_PROMPT_VERSION),
+}
+
 
 @dataclass(frozen=True)
 class _PendingPair:
@@ -114,7 +128,7 @@ class _PairBatchReader:
     sheet_output_dir: Path
     limits: VisionRequestLimits
     concurrency: int
-    episode_similarity: bool = False
+    question: str = "picture"
 
     def ask(self, task: _PendingPair, arrangement: str) -> bool | None:
         pair = (task.earlier, task.later) if arrangement == "ab" else (task.later, task.earlier)
@@ -126,7 +140,7 @@ class _PairBatchReader:
             self.requester,
             self.sheet_output_dir,
             self.limits,
-            episode_similarity=self.episode_similarity,
+            question=self.question,
         )
 
     def ask_many(self, indices: Sequence[int], arrangement: str) -> tuple[bool | None, ...]:
@@ -160,6 +174,7 @@ def confirm_same_picture_pairs(
     limits: VisionRequestLimits | None = None,
     concurrency: int = 1,
     episode_similarity: bool = False,
+    story_similarity: bool = False,
 ) -> tuple[SamePicturePairDecision, ...]:
     """Confirm arbitrary candidate pairs with the measured two-order contract.
 
@@ -168,12 +183,14 @@ def confirm_same_picture_pairs(
     omit it and retain the conservative two-order contract. Disagreement or an
     unreadable answer never permits removing a picture.
     Episode similarity asks about repetition instead, after the caller has
-    established nearby captures in one episode. The corroboration cap was
-    measured on the same-picture question, so it buys no arrangement here.
+    established nearby captures in one episode; story similarity asks the same
+    about two pictures of one story that may be days apart. The corroboration cap
+    was measured on the same-picture question, so it buys no arrangement there.
     """
     nominated = tuple(pairs)
+    question = "story" if story_similarity else "episode" if episode_similarity else "picture"
     distances = _aligned_distances(
-        nominated, None if episode_similarity else corroborating_distances
+        nominated, None if question != "picture" else corroborating_distances
     )
     if not nominated:
         return ()
@@ -196,7 +213,7 @@ def confirm_same_picture_pairs(
         sheet_output_dir=sheet_output_dir,
         limits=limits or VisionRequestLimits(),
         concurrency=max(1, concurrency),
-        episode_similarity=episode_similarity,
+        question=question,
     )
     indices = tuple(range(len(tasks)))
     forwards = reader.ask_many(indices, "ab")
@@ -267,7 +284,7 @@ def _ask_one_pair(
     sheet_output_dir: Path,
     limits: VisionRequestLimits,
     *,
-    episode_similarity: bool = False,
+    question: str = "picture",
 ) -> bool | None:
     """One arrangement of one pair. `None` means no usable answer, never "different"."""
     from immich_memories.analysis.editorial_gateway import VisualEditorialRequest
@@ -292,14 +309,13 @@ def _ask_one_pair(
             output_dir=sheet_output_dir / evidence_key / arrangement_key,
             tile_px=SELECTS_TILE_PX,
         )[0]
+        prompt, prompt_version = _QUESTIONS[question]
         answer = requester.ask(
             VisualEditorialRequest(
                 pass_name=SELECTS_PASS_NAME,
                 pass_version=SELECTS_PASS_VERSION,
-                prompt=_EPISODE_PROMPT if episode_similarity else _PAIR_PROMPT,
-                prompt_version=EPISODE_PROMPT_VERSION
-                if episode_similarity
-                else PAIR_PROMPT_VERSION,
+                prompt=prompt,
+                prompt_version=prompt_version,
                 schema_version=PAIR_SCHEMA_VERSION,
                 pages=(page,),
                 ordered_input_ids=tuple(candidate.asset_id for candidate in pair),

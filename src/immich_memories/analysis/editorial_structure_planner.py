@@ -32,11 +32,10 @@ from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceO
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
-from immich_memories.analysis.editorial_story_planner import (
-    alternatives_pool,
-    select_story_first,
-    trim_to_timing_budget,
-)
+from immich_memories.analysis.editorial_story_lookalike import picture_pair_relation
+from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
+from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
     close_share_log,
@@ -288,6 +287,7 @@ def _final_duplicate_review(
     ports: StructurePlannerPorts,
     *,
     source_relation,
+    episode_relation,
     picture_records,
     attached: AttachedMaterialEvidence,
     prior,
@@ -322,9 +322,7 @@ def _final_duplicate_review(
         picture_records=final_records,
         preview_hashes=ports.sampled_preview_hashes(displayed_ids, final_records),
         confirm_relation=source_relation,
-        confirm_episode_relation=sampled_source_relation(
-            ports.confirm_episode_pairs, picture_records=final_records
-        ),
+        confirm_episode_relation=episode_relation,
         bound_sample_members=final_members,
         protected_asset_ids=sorted(
             (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())
@@ -526,6 +524,10 @@ def _select(
     pool = _subject_pool(marker, tier, wall, material)
     if pool.record is not None:
         record_story("subject-pool", pool.record)
+    # One memo for the repetition question, shared by the story check and the final review.
+    episode_relation = sampled_source_relation(
+        ports.confirm_episode_pairs, picture_records=relation_records
+    )
     selection = _story_selection(
         source,
         ports,
@@ -538,6 +540,13 @@ def _select(
         marker=marker,
         record=record_story,
         partition_limit=partition_limit,
+        looks_alike=picture_pair_relation(
+            observe=material.picture_evidence.observe if ports.observe_picture else None,
+            episode_relation=episode_relation,
+            story_relation=sampled_source_relation(
+                ports.confirm_story_pairs, picture_records=relation_records
+            ),
+        ),
     )
     run.carriers = list(selection.carriers)
     required = frozenset(source.owner_required_asset_ids)
@@ -585,6 +594,7 @@ def _select(
         run,
         ports,
         source_relation=source_relation,
+        episode_relation=episode_relation,
         picture_records=material.picture_evidence.records,
         attached=attached,
         prior=source.prior_plan,
@@ -677,12 +687,19 @@ def _story_selection(
     marker: str,
     record,
     partition_limit: int | None,
+    looks_alike=None,
 ):
     bank_path = source.bank_dir / "picture-stands.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
+    pool_assets = {a for ids in pool.moment_assets.values() for a in ids if a in source.assets}
+    trips = detect_film_trips(
+        (source.assets[a] for a in sorted(pool_assets)),
+        source.config.trips,
+        journey=source.case.product == "trip",
+    )
     return select_story_first(
         judge=ports.judge,
         rules=ports.rules,
@@ -724,6 +741,10 @@ def _story_selection(
             if (part := source.intent.partition_for(datetime.fromisoformat(taken).date()))
             else None
         ),
+        trips=trips,
+        looks_alike=looks_alike,
+        film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
+        near_home=_near_home_test(source, wall),
     )
 
 
