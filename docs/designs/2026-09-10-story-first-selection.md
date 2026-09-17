@@ -222,7 +222,8 @@ itself. The order is the owner's:
    slot.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
    and spaced from what is already committed, and, when its story already holds a picture, if it
-   does not look like one (`editorial_story_lookalike.py`). That check reuses the final review's
+   does not look like the frames around it (`editorial_story_lookalike.py`: its own moment's, and
+   the kept frame just before and just after it in capture time). That check reuses the final review's
    visual repetition question through the same port: a pair of one capture family inside the
    90-minute window is asked as `episode-similarity-v1` and shares its memo with the final review,
    any other pair of one story as `story-similarity-v1`, whose premise says the two may be days

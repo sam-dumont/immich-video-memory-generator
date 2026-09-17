@@ -513,7 +513,7 @@ class CarrierAdmission:
     def _repeats_the_story(self, s, choice, index, asset, carrier) -> bool:
         """A further picture of a story that looks like one it already holds waits its turn."""
         kept = [c for c in self.carriers if c["story_episode"] == s["key"]]
-        repeated = self.lookalike.repeats(carrier, kept) if kept else None
+        repeated = self.lookalike.repeats(carrier, neighbours(carrier, kept)) if kept else None
         if repeated is None:
             return False
 

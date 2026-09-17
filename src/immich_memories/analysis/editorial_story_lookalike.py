@@ -5,6 +5,11 @@ still be refilled: two pictures of the same capture family within the 90-minute 
 exactly as the final review asks them (so the answer is shared), and any other pair of one story
 is asked the story-scoped version, whose premise does not claim the two were close in time.
 
+A picture is compared with the frames its story already holds around it: those of its own moment,
+and the kept frame just before and just after it in capture time. That is where a repetition
+lives, and it keeps the fixed bound (twice the film's slots) for the pairs worth asking about
+rather than spending it on every pair of a long story.
+
 A refused picture frees its slot for the story's next distinct moment, or for the next story in
 funding order. When nothing else can take the slot, the refused picture comes back: the check
 alone never makes a film short.

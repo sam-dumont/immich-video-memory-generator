@@ -199,8 +199,10 @@ episode is asked exactly as step 4 asks it, so the answer is shared, and a pair 
 with a premise that says so. A refused picture frees its slot for the story's next distinct moment,
 or for the next story in line. A favourite is never refused for looking like a picture you did not
 star, and when nothing else can take the slot the refused picture comes back, so this check alone
-never makes a film short. It asks at most twice as many pairs as the film has slots and records
-every refusal in the run's `story-selection` record.
+never makes a film short. A picture is compared with the frames its story
+already holds around it: its own moment's, and the kept frame just before and just after it in time,
+which is where a repetition lives. The check asks at most twice as many pairs as the film has slots
+and records every refusal in the run's `story-selection` record.
 
 The same question lets a dense occasion fill its film. Five minutes of spacing inside a capture group
 keeps a burst from taking several slots, and on a busy afternoon it also kept every moment after the
