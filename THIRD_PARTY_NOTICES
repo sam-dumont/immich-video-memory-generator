@@ -244,7 +244,7 @@ of public domain, BSD and GPL parts. Nothing here changes the project's MIT
 licence for its own code, but a downstream that vendors the environment
 should know.
 
-138 packages, computed from uv.lock: everything reachable from
+139 packages, computed from uv.lock: everything reachable from
 immich-memories through the runtime extras (never the dev tools). Regenerate
 with `make notices`; `make notices-check` fails when this list is stale.
 
@@ -291,6 +291,10 @@ attrs 25.4.0
 authlib 1.7.2
   License: BSD
   URL: https://github.com/authlib/authlib
+
+babel 2.18.0
+  License: BSD
+  URL: https://github.com/python-babel/babel
 
 bidict 0.23.1
   License: MPL-2.0

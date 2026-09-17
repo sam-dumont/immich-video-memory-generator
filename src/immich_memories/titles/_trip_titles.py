@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from immich_memories.i18n import get_month_name
+from immich_memories.i18n_places import localise_place
 from immich_memories.processing.clip_caption import resolve_caption_locale
 
 # Duration thresholds for human-readable text
@@ -102,6 +103,6 @@ def generate_trip_title(
     days = (end_date - start_date).days + 1
     duration = _get_duration_label(days, locale)
     time_label = _get_time_label(start_date, end_date, locale)
-    location_upper = location_name.upper()
+    location_upper = (localise_place(location_name, locale) or location_name).upper()
     preposition = "À" if locale == "fr" else "IN"
     return f"{duration} {preposition} {location_upper}, {time_label}"

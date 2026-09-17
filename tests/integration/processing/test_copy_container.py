@@ -12,6 +12,18 @@ from tests.integration.conftest import requires_ffmpeg
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
+def _decoded_frames(clip) -> int:
+    """Count frames FFmpeg actually decodes, so a file that only muxes cannot pass."""
+    counted = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
+            "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(clip),
+        ],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    return int(counted.stdout.strip())
+
+
 @pytest.mark.parametrize("entry_point", ["function", "extractor"])
 def test_a_prores_mov_cut_preserves_hdr_and_pcm_audio(tmp_path, entry_point):
     source = tmp_path / "camera.MOV"
@@ -44,3 +56,36 @@ def test_a_prores_mov_cut_preserves_hdr_and_pcm_audio(tmp_path, entry_point):
     assert probe.hdr_type == "hlg"
     assert probe.audio_codec == "pcm_s16le"
     assert probe.video_duration_seconds == pytest.approx(1.0, abs=1 / 30)
+
+
+@pytest.mark.parametrize("entry_point", ["function", "extractor"])
+def test_a_vp9_mov_cut_is_re_encoded_instead_of_copied(tmp_path, entry_point):
+    """QuickTime refuses a VP9 stream copy, so the cut has to go through the encoder."""
+    source = tmp_path / "phone.MOV"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=30:duration=3",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=3",
+            # A .MOV holding VP9 is written by the MP4 muxer; QuickTime mode rejects it.
+            "-c:v", "libvpx-vp9", "-b:v", "150k", "-c:a", "aac", "-f", "mp4",
+            str(source),
+        ],
+        check=True,
+    )  # fmt: skip
+    config = Config()
+    assert ProbeCache().get(source).codec == "vp9"
+
+    if entry_point == "function":
+        cut = extract_clip(source, 0.5, 2.0, config=config)
+    else:
+        cut = ClipExtractor(tmp_path / "cuts", config=config).extract(
+            ClipSegment(source, 0.5, 2.0, "phone")
+        )
+
+    probe = ProbeCache().get(cut)
+    assert cut.suffix == ".mp4"
+    assert probe.codec == "h264"
+    assert probe.has_audio
+    assert probe.video_duration_seconds == pytest.approx(1.5, abs=2 / 30)
+    assert _decoded_frames(cut) == 45

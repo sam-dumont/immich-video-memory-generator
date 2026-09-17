@@ -181,7 +181,8 @@ src/immich_memories/
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
 │   ├── progress.py             # ProgressTracker: the run clock the stage reporter reads
-│   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
+│   ├── trip_detection.py       # GPS-based trip detection (clustering, injected geocoder)
+│   ├── place_name_cache.py     # Localised names for the places one cut shows, one ask each
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
 │   ├── special_day.py          # Which days had something happen: active hours, not photo volume
 │   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
@@ -480,6 +481,7 @@ src/immich_memories/
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization
+├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check
