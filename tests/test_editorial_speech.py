@@ -1,10 +1,28 @@
 """Duration fitting must keep speech boundaries and the selected interval together."""
 
 import logging
+import signal
+from contextlib import contextmanager
 
 import pytest
 
 from immich_memories.analysis.editorial_structure_record import shave_content_duration
+
+
+@contextmanager
+def _must_finish(seconds: float):
+    """Fail the test rather than hang the suite when the code under test never returns."""
+
+    def _ran_out(_signum, _frame):
+        raise AssertionError(f"shave_content_duration did not return within {seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, _ran_out)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def test_budget_trim_moves_to_a_pause_and_keeps_the_interval_consistent():
@@ -20,6 +38,33 @@ def test_budget_trim_moves_to_a_pause_and_keeps_the_interval_consistent():
     shave_content_duration([video], 6.0)
     assert 3.5 <= video["seconds"] <= 5.0
     assert video["end_time"] - video["start_time"] == video["seconds"]
+
+
+def test_shaving_terminates_when_speech_holds_every_cut_point():
+    """One utterance that holds every cut point must retire, not spin the shave forever."""
+    # The measured utterance runs from before the minimum hold to a hair inside the end:
+    # closer than the timeline's microsecond, so every speech-safe shave it allows rounds
+    # straight back to the duration the carrier already has.
+    spoken = {
+        "asset_id": "toast",
+        "kind": "video",
+        "seconds": 12.0,
+        "start_time": 0.0,
+        "end_time": 12.0,
+        "raw_seconds": 12.0,
+        "speech_regions": [[1.0, 12.0 - 3e-7]],
+    }
+    stills = [
+        {"asset_id": "left", "kind": "image", "seconds": 6.0, "start_time": 0.0, "end_time": 6.0},
+        {"asset_id": "right", "kind": "image", "seconds": 6.0, "start_time": 0.0, "end_time": 6.0},
+    ]
+
+    with _must_finish(20.0):
+        shaved = shave_content_duration([spoken, *stills], 15.0)
+
+    assert spoken["seconds"] == 12.0, "no cut point in the utterance may be moved"
+    assert [c["seconds"] for c in stills] == [3.5, 3.5], "the shavable holds still go to minimum"
+    assert shaved == 10, "only real reductions count; the held carrier never shaved"
 
 
 def test_speech_spanning_a_live_stitch_join_uses_the_stitched_clock():

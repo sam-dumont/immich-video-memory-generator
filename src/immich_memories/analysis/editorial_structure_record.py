@@ -14,7 +14,6 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
-from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +58,8 @@ REVIEW: dict[str, Any] = {
     "refused_under_contract": [],
 }
 COMPLETION_DISCOVERY: dict[str, Any] = {"status": "not_started", "limited_events": []}
+# The finest interval the timeline keeps: durations are recorded to the microsecond.
+TIMELINE_SECONDS = 1e-6
 _SEARCH_LIMITED_ASSEMBLY = {"candidate_limit_reached", "invalid_verdict"}
 _SEARCH_LIMITED_DISCOVERY = {"page_limit_reached", "event_limit_reached"}
 
@@ -76,18 +77,31 @@ def provider_metrics(counters):
     }
 
 
+def _speech_safe_shave(carrier: dict) -> float | None:
+    """The duration half a second off this hold would leave, or None if it cannot move."""
+    from immich_memories.speech.cuts import minimum_duration, safe_end
+
+    seconds = carrier["seconds"]
+    floor = minimum_duration(carrier, MIN_CARRIER_SECONDS)
+    if seconds <= floor:
+        return None
+    duration = safe_end(carrier, max(floor, seconds - 0.5)) - carrier.get("start_time", 0.0)
+    # One utterance can hold every cut point in a carrier: the shave it leaves room for is
+    # finer than the timeline records, so the carrier would stay movable and be offered the
+    # same non-move forever. It is done moving; the overshoot goes to the timing trim.
+    return duration if seconds - duration >= TIMELINE_SECONDS else None
+
+
 def shave_content_duration(carriers, content_cap):
     """Shorten holds before inspection, preserving speech and exact source intervals."""
-    from immich_memories.speech.cuts import minimum_duration, safe_end, set_duration
+    from immich_memories.speech.cuts import set_duration
 
     shaved = 0
     while sum(x["seconds"] for x in carriers) > content_cap:
-        movable = [c for c in carriers if c["seconds"] > minimum_duration(c, MIN_CARRIER_SECONDS)]
-        if not movable:
+        offers = [(c, d) for c in carriers if (d := _speech_safe_shave(c)) is not None]
+        if not offers:
             break
-        longest = max(movable, key=itemgetter("seconds"))
-        desired = max(minimum_duration(longest, MIN_CARRIER_SECONDS), longest["seconds"] - 0.5)
-        duration = safe_end(longest, desired) - longest.get("start_time", 0.0)
+        longest, duration = max(offers, key=lambda offer: offer[0]["seconds"])
         set_duration(longest, duration)
         shaved += 1
     return shaved
