@@ -20,6 +20,7 @@ from immich_memories.audio.mixer import (
     get_video_duration,
     loop_audio_to_duration,
 )
+from immich_memories.delivery_timestamp import CARRY_CONTAINER_METADATA
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ def mix_audio_with_stem_ducking(
         "aac",
         "-b:a",
         "192k",
+        *CARRY_CONTAINER_METADATA,
         str(output_path),
     ]
 
@@ -324,6 +326,7 @@ def mix_audio_with_4stem_ducking(
         "aac",
         "-b:a",
         "192k",
+        *CARRY_CONTAINER_METADATA,
         str(output_path),
     ]
 

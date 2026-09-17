@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.config_models_render import normalize_scale_mode
+from immich_memories.delivery_timestamp import film_capture_instant
 from immich_memories.generate_music import MusicSource
 from immich_memories.generate_privacy import (
     extract_trip_pins,
@@ -34,6 +35,8 @@ from immich_memories.processing.hdr_utilities import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
@@ -126,6 +129,7 @@ def _build_assembly_settings(
 
     return AssemblySettings(
         encoding_plan=encoding_plan,
+        captured_at=film_capture_instant(clip.asset for clip in params.clips),
         transition=transition_type,
         transition_duration=params.transition_duration,
         auto_resolution=auto_resolution,
@@ -376,7 +380,10 @@ def _upload_to_immich(
     client: SyncImmichClient,
     video_path: Path,
     album_name: str | None,
+    captured_at: datetime | None = None,
 ) -> dict:
-    result = client.upload_memory(video_path=video_path, album_name=album_name)
+    result = client.upload_memory(
+        video_path=video_path, album_name=album_name, captured_at=captured_at
+    )
     logger.info(f"Uploaded to Immich: asset={result.get('asset_id')}, album={album_name}")
     return result

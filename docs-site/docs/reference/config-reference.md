@@ -683,6 +683,10 @@ upload:
   album_name: null               # Created if missing, reused if exists
 ```
 
+An uploaded memory is filed on the day of its last picture, in the timezone most of its pictures
+share, so it lands in your timeline where the memory ends instead of on the day it was rendered.
+The render day is what you get when no picture in the cut carries a usable time.
+
 ## Scheduler
 
 ```yaml

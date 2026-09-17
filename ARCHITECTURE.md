@@ -129,6 +129,7 @@ these helper modules:
 - `processing/remote_render_plan.py`: frozen cut serialization, including certified Live material
 - `generate_timeline.py`: final-duration validation and content budget guards
 - `generate_delivery.py`: Immich upload of a finished artifact + delivered/pending/failed run state
+- `delivery_timestamp.py`: the capture instant a film is filed under, and the container tags carrying it
 
 ## Package Structure
 
@@ -466,6 +467,7 @@ src/immich_memories/
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
 ├── generate_delivery.py        # Immich upload + delivered/pending/failed run state
+├── delivery_timestamp.py       # The day a memory is filed under: its last picture, in the zone most share
 ├── generate_downloads.py       # Parallel asset downloads
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging

@@ -55,16 +55,21 @@ class AlbumRef:
 
 
 def build_upload_fields(
-    version: ResolvedApiVersion, file_path: Path, modified_at: datetime
+    version: ResolvedApiVersion,
+    file_path: Path,
+    modified_at: datetime,
+    captured_at: datetime | None = None,
 ) -> dict[str, str]:
     """Build deterministic request fields without opening or reading file contents.
 
+    ``captured_at`` is when the content itself happened, offset included; it is
+    what files the asset in the Immich timeline. Without one the file's own
+    mtime stands in, which puts the asset on the day it was written.
     V2 identity intentionally retains the legacy hash of the real filename and file size.
     """
-    timestamp = modified_at.isoformat()
     common_fields = {
-        "fileCreatedAt": timestamp,
-        "fileModifiedAt": timestamp,
+        "fileCreatedAt": (captured_at or modified_at).isoformat(),
+        "fileModifiedAt": modified_at.isoformat(),
     }
     if version is ResolvedApiVersion.V3:
         return {"filename": file_path.name} | common_fields
@@ -109,8 +114,12 @@ class AlbumService:
         self._request = request_fn
         self._get_api_version = api_version_fn
 
-    async def upload_asset(self, file_path: Path) -> str:
-        """Upload a file to Immich. Returns the asset ID."""
+    async def upload_asset(self, file_path: Path, *, captured_at: datetime | None = None) -> str:
+        """Upload a file to Immich. Returns the asset ID.
+
+        ``captured_at`` files the asset on the day its content happened; without
+        one it lands on the day the file was written.
+        """
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -118,7 +127,7 @@ class AlbumService:
         version = await self._get_api_version()
         stat = file_path.stat()
         modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
-        fields = build_upload_fields(version, file_path, modified_at)
+        fields = build_upload_fields(version, file_path, modified_at, captured_at)
 
         with file_path.open("rb") as f:
             data = await self._request(
@@ -244,13 +253,17 @@ class AlbumService:
         await self._request("DELETE", "/assets", json={"ids": asset_ids, "force": False})
 
     async def upload_memory(
-        self, video_path: Path, album_name: str | None = None
+        self,
+        video_path: Path,
+        album_name: str | None = None,
+        *,
+        captured_at: datetime | None = None,
     ) -> dict[str, str | None]:
         """Upload a generated memory video, optionally adding it to an album.
 
         Reuses existing album if one with the same name exists.
         """
-        asset_id = await self.upload_asset(video_path)
+        asset_id = await self.upload_asset(video_path, captured_at=captured_at)
 
         album_id = None
         if album_name:
