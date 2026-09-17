@@ -609,14 +609,19 @@ class CarrierAdmission:
     # -- depth inside moments ---------------------------------------------------------
 
     def _deepen_moments(self, index: int, s) -> None:
-        """A film still short spends a free slot on another frame of a moment this story shows,
-        only when it shows something new (`editorial_story_depth`)."""
+        """A film still short spends its free slots on further frames of the moments this story
+        shows, only when they show something new (`editorial_story_depth`). A moment admitted as
+        depth earns its own rungs, so the ladder is read again while it still adds a frame."""
+        while self._deepen_once(index, s):
+            pass
+
+    def _deepen_once(self, index: int, s) -> bool:
         if (
             len(self.carriers) >= self.slots
             or s["weight"] not in WEIGHED_STORY_WEIGHTS
             or not self.chosen_by_story[s["key"]]
         ):
-            return
+            return False
         ladder = list(
             depth_ladder(
                 self.choices_of[s["key"]],
@@ -627,9 +632,10 @@ class CarrierAdmission:
             )
         )
         self.gate.ensure([asset for _choice, asset in ladder if self.free(asset)])
+        added = False
         for choice, asset in ladder:
             if len(self.carriers) >= self.slots:
-                return
+                break
             if not (self.free(asset) and self.gate.stands(asset, s["weight"], s["key"])):
                 continue
             family, unit = self._unit_by_asset[asset]
@@ -638,6 +644,8 @@ class CarrierAdmission:
             if self.lookalike.shows_something_new(s["key"], row, neighbours(row, kept)):
                 self._used_choice_keys.add(choice.key)
                 self._admit(s, choice, row | {"depth": True}, [])
+                added = True
+        return added
 
     # -- occasion integrity -----------------------------------------------------------
 

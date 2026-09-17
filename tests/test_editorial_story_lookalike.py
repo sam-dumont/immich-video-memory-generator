@@ -121,7 +121,7 @@ def test_a_one_occasion_film_spends_its_free_slots_as_depth_inside_its_moments(t
     plan = _run(source, PairAnswers(_never))
 
     assert plan["story"]["slots"] == 10
-    assert len(plan["carriers"]) == 10
+    assert len(plan["carriers"]) == 10  # a moment admitted as depth earns its own rungs too
     per_group = Counter(c["asset_id"].rsplit("-", 1)[0] for c in plan["carriers"])
     assert sorted(per_group.values()) == [5, 5]
     record = _lookalike_record(source)
