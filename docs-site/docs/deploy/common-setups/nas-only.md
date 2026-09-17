@@ -127,6 +127,16 @@ Moving the picture facts to a GPU box with the
 [inference service](../installation/inference-service.md) took this NAS from 1.4404 s a picture to
 1.0865 on the demo month.
 
+### Long films
+
+One 75-minute album spent 11 hours encoding on a two-core Celeron. After the encode, the app
+decodes the whole film once more to prove it plays: on a DS423+ held to two cores that runs at 3.8x
+realtime for 1080p HEVC, about 20 minutes for that album, and 1.07x for 4K. The same check runs
+again after the music mix and before the upload, so count it two or three times. It may take as
+long as the encode did, logs `Checking the finished film: ... decoded` once a minute, and a film
+that fails it stays on disk:
+[Troubleshooting](../../reference/troubleshooting.md#a-long-render-ends-with-ffprobe-failed-to-inspect-output-artifact).
+
 ## Let the GPU box render
 
 Deploy the

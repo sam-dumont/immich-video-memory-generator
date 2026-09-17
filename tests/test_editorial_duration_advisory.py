@@ -9,6 +9,7 @@ from immich_memories import generate_render as generate_render_module
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
 from immich_memories.analysis.editorial_source_route import EditorialSourcePlan
 from immich_memories.operations.editorial_attempt import EditorialAttempt, read_editorial_attempt
+from tests.output_tools_fake import output_tools
 from tests.test_editorial_source_route_surfaces import (
     _config,
     _finished_selection,
@@ -162,8 +163,6 @@ def test_reopening_completed_run_keeps_shortfall_with_other_warnings(tmp_path):
 def test_direct_generation_persists_advisory_without_changing_completed_artifact(
     tmp_path, monkeypatch, status
 ):
-    import json
-    import subprocess
 
     from immich_memories import generate as generate_module
     from immich_memories.generate import GenerationParams, generate_memory
@@ -210,10 +209,7 @@ def test_direct_generation_persists_advisory_without_changing_completed_artifact
         "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2", "duration": "41.3", "size": "4096"},
     }
 
-    def probe(command, **_kwargs):
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
-
-    monkeypatch.setattr(output_contract.subprocess, "run", probe)
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload))
     # WHY: replaces the download cache and render internals `generate_memory` reaches directly.
     with (
         # WHY: VideoDownloadCache would otherwise fetch real Immich video bytes to assemble.

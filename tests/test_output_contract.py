@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from tests.output_tools_fake import is_decode_check, output_tools
 
 
 def _h264_plan():
@@ -107,50 +108,11 @@ def _probe_payload(**overrides: object) -> dict[str, object]:
     return {"streams": [stream], "format": format_data}
 
 
-def _install_probe(monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]) -> list[list[str]]:
+def _install_probe(monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]) -> None:
     from immich_memories.processing import output_contract
 
-    calls: list[list[str]] = []
-
-    def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
-
-    monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
-    return calls
-
-
-def test_probe_output_reads_the_video_contract_in_one_json_pass(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A second probe or omitted metadata would make publication internally inconsistent."""
-    from immich_memories.processing.output_contract import OutputProbe, probe_output
-
-    output = tmp_path / "memory.mp4"
-    output.write_bytes(b"encoded-video")
-    calls = _install_probe(monkeypatch, _probe_payload())
-
-    assert probe_output(output) == OutputProbe(
-        codec="h264",
-        container="mp4",
-        duration_seconds=12.0,
-        size_bytes=4096,
-        pixel_format="yuv420p",
-        color_transfer="bt709",
-        color_primaries="bt709",
-        width=1920,
-        height=1080,
-        decoded_frames=360,
-    )
-    assert len(calls) == 1
-    assert "-count_frames" in calls[0]
-    assert "-of" in calls[0] and "json" in calls[0]
-    entries = calls[0][calls[0].index("-show_entries") + 1]
-    assert (
-        "stream=codec_type,codec_name,pix_fmt,color_transfer,color_primaries,width,height,"
-        "nb_read_frames" in entries
-    )
-    assert "format=format_name,duration,size:format_tags=major_brand" in entries
+    # WHY: ffprobe and ffmpeg are the external processes the contract shells out to.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload))
 
 
 def test_codec_mismatch_keeps_the_previous_published_artifact(
@@ -254,7 +216,7 @@ def test_ffprobe_failure_is_reported_as_an_invalid_artifact(
 ) -> None:
     """Tool failure must remain a validation failure, not a JSON implementation traceback."""
     from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"corrupt-container")
@@ -265,7 +227,7 @@ def test_ffprobe_failure_is_reported_as_an_invalid_artifact(
     monkeypatch.setattr(output_contract.subprocess, "run", fail_probe)
 
     with pytest.raises(InvalidOutputArtifact, match="ffprobe failed"):
-        probe_output(staged)
+        validate_output(staged, _h264_plan())
 
 
 def test_ffprobe_decode_errors_are_rejected_even_with_a_zero_exit(
@@ -273,7 +235,7 @@ def test_ffprobe_decode_errors_are_rejected_even_with_a_zero_exit(
 ) -> None:
     """ffprobe reports truncated-frame errors on stderr while still returning zero."""
     from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"partially-decodable-container")
@@ -289,7 +251,7 @@ def test_ffprobe_decode_errors_are_rejected_even_with_a_zero_exit(
     monkeypatch.setattr(output_contract.subprocess, "run", damaged_probe)
 
     with pytest.raises(InvalidOutputArtifact, match="decode errors"):
-        probe_output(staged)
+        validate_output(staged, _h264_plan())
 
 
 def test_zero_duration_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -524,7 +486,7 @@ def test_malformed_ffprobe_json_is_reported_as_an_invalid_artifact(
 ) -> None:
     """A successful process exit with unusable metadata still fails the contract cleanly."""
     from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"broken-metadata")
@@ -535,14 +497,14 @@ def test_malformed_ffprobe_json_is_reported_as_an_invalid_artifact(
     monkeypatch.setattr(output_contract.subprocess, "run", malformed_probe)
 
     with pytest.raises(InvalidOutputArtifact, match="invalid ffprobe metadata"):
-        probe_output(staged)
+        validate_output(staged, _h264_plan())
 
 
 def test_incomplete_ffprobe_metadata_is_reported_as_an_invalid_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Missing required typed fields must not leak a parser KeyError to callers."""
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"incomplete-metadata")
@@ -551,55 +513,30 @@ def test_incomplete_ffprobe_metadata_is_reported_as_an_invalid_artifact(
     _install_probe(monkeypatch, payload)
 
     with pytest.raises(InvalidOutputArtifact, match="invalid ffprobe metadata"):
-        probe_output(staged)
+        validate_output(staged, _h264_plan())
 
 
 def test_missing_decoded_frame_evidence_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A probe without frame-count evidence cannot certify decodability."""
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    """A decode that leaves no frame count cannot certify decodability."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"metadata-without-frame-count")
-    payload = _probe_payload()
-    del payload["streams"][0]["nb_read_frames"]
-    _install_probe(monkeypatch, payload)
+    answer = output_tools(_probe_payload())
+
+    def silent_decode(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if is_decode_check(command):
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return answer(command, **kwargs)
+
+    # WHY: ffmpeg is the external process whose progress file is the frame evidence.
+    monkeypatch.setattr(output_contract.subprocess, "run", silent_decode)
 
     with pytest.raises(InvalidOutputArtifact, match="missing decoded frame evidence"):
-        probe_output(staged)
-
-
-def test_long_memory_full_decode_has_a_fifteen_minute_budget_without_waiting(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A valid long memory must not inherit the old metadata-only 30-second timeout."""
-    from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import probe_output
-
-    staged = tmp_path / "memory.assembling.mp4"
-    staged.write_bytes(b"ten-minute-memory")
-    observed_timeouts: list[object] = []
-
-    def simulated_long_probe(
-        command: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        timeout = kwargs["timeout"]
-        observed_timeouts.append(timeout)
-        if not isinstance(timeout, int) or timeout < 90:
-            raise subprocess.TimeoutExpired(command, timeout)
-        payload = _probe_payload(
-            stream={"nb_read_frames": "18000"},
-            format={"duration": "600.0"},
-        )
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
-
-    monkeypatch.setattr(output_contract.subprocess, "run", simulated_long_probe)
-
-    probe = probe_output(staged)
-
-    assert probe.duration_seconds == 600.0
-    assert observed_timeouts == [15 * 60]
+        validate_output(staged, _h264_plan())
 
 
 def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
@@ -607,7 +544,7 @@ def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
 ) -> None:
     """A wedged probe cannot leave the caller treating an unverified file as valid."""
     from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
 
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"slow-container")
@@ -618,7 +555,7 @@ def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
     monkeypatch.setattr(output_contract.subprocess, "run", timeout_probe)
 
     with pytest.raises(InvalidOutputArtifact, match="ffprobe failed"):
-        probe_output(staged)
+        validate_output(staged, _h264_plan())
 
 
 def test_missing_output_is_reported_as_an_invalid_artifact(tmp_path: Path) -> None:
@@ -819,8 +756,12 @@ def test_unsupported_directory_open_does_not_undo_publication(
     staged.write_bytes(b"validated-video")
     _install_probe(monkeypatch, _probe_payload())
 
-    def unsupported_open(_path: Path, _flags: int) -> int:
-        raise OSError(errno.EINVAL, "directory open is unsupported")
+    real_open = output_contract.os.open
+
+    def unsupported_open(path: Path, flags: int, *args: object, **kwargs: object) -> int:
+        if Path(path) == final.parent:
+            raise OSError(errno.EINVAL, "directory open is unsupported")
+        return real_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(output_contract.os, "open", unsupported_open)
 

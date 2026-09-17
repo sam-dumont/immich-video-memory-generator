@@ -27,6 +27,7 @@ from immich_memories.generate_timeline import (
 )
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.processing.clip_validation import validate_clips
+from immich_memories.processing.output_contract import DecodeCheck
 from immich_memories.processing.probe_cache import ProbeCache
 
 if TYPE_CHECKING:
@@ -314,15 +315,26 @@ def render_local(
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
         )
+        encode_started = _time.monotonic()
         staged_result_path = assembler.assemble_with_titles(
             assembly_clips,
             staged_output_path,
             assembly_cb,
             frame_preview_callback=params.frame_preview_callback,
         )
+        # Titles included: every second of it was this machine producing the
+        # film, and decoding the result can only be faster.
+        encode_seconds = _time.monotonic() - encode_started
         plan = settings.encoding_plan
         metrics, duration_warning = publish_and_check_duration(
-            params, staged_result_path, result_output_path, plan
+            params,
+            staged_result_path,
+            result_output_path,
+            plan,
+            DecodeCheck(
+                encode_seconds=encode_seconds,
+                progress=lambda message: pp.report("assembly", 1.0, message),
+            ),
         )
         result_path = result_output_path
         run_tracker.complete_phase(items_processed=len(assembly_clips), extra_metrics=metrics)
@@ -342,6 +354,7 @@ def render_local(
             music_mute_windows=settings.music_mute_windows,
             duration_warning=duration_warning,
             render_metrics=metrics,
+            encode_seconds=encode_seconds,
         )
     finally:
         try:

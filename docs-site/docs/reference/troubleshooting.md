@@ -90,6 +90,36 @@ If audio mixing dies at the end of a long album on a small container, that is th
 The mixer runs one FFmpeg process per clip and merges in bounded groups; the failure names the clip
 and the exit reason.
 
+## A long render ends with "ffprobe failed to inspect output artifact"
+
+The film was fine. Before this fix, the app checked a finished film with one `ffprobe -count_frames`
+call, which decodes every frame on a single thread, and gave up after 15 minutes. That is 2.25x
+realtime on a Celeron J4125 whatever its core count, so a 75-minute album needs about 33 minutes.
+The render that had just spent 11 hours encoding was marked failed and its upload skipped, while
+`ffprobe -show_entries format=duration` on the `.assembling.mp4` beside the run answered at once.
+
+The check now has two steps:
+
+1. `ffprobe` reads container, codec, pixel format, colour and duration without decoding and
+   compares them with the encoding plan. A wrong codec fails here, in under a second.
+2. FFmpeg decodes the video on every core and fails the run on any decode error. It may take as
+   long as the render's own encode (15 minutes at least), and logs
+   `Checking the finished film: 12:34 of 1:14:46 decoded` once a minute. A film a
+   [render worker](../deploy/running-modes.md#rendering-on-another-machine) made gets four times
+   its duration instead.
+
+Measured on a Celeron J4125 with two cores, the decode runs at 3.8x realtime for 1080p HEVC
+(a 75-minute film in about 20 minutes) and 1.07x for 4K.
+
+If it still runs out, the error reads `the decode check did not finish within the render's own
+encode time` and starts with the path of the film. Nothing deletes that file. Check it yourself:
+
+```bash
+ffmpeg -v error -i memory.assembling.mp4 -map 0:v:0 -f null -
+```
+
+No output means every frame decoded. Rename it without `.assembling` and upload it by hand.
+
 ## FFmpeg not found
 
 FFmpeg is called by name off `PATH`; a missing binary surfaces as

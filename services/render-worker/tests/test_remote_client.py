@@ -135,6 +135,55 @@ def test_a_changed_worker_result_cannot_replace_a_good_output(tmp_path, changed)
     assert not list(tmp_path.glob("*.receiving.mp4"))
 
 
+def test_a_received_film_that_fails_local_validation_is_kept(tmp_path, monkeypatch):
+    """Hours of worker time are not deleted because this machine could not check them in time."""
+    import subprocess
+
+    from immich_memories.config_models_render import RenderWorkerConfig
+    from immich_memories.generate import GenerationError
+    from immich_memories.processing.remote_render import RemoteRenderClient
+
+    params = manual_params(tmp_path)
+    real_run = subprocess.run
+
+    def local_decode_runs_out(command, **kwargs):
+        source = command[command.index("-i") + 1] if "-i" in command else ""
+        if command[0] == "ffmpeg" and "-progress" in command and ".receiving." in source:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return real_run(command, **kwargs)
+
+    class Renderer:
+        def health(self):
+            return {"ready": True}
+
+        def render(self, request, directory, progress):
+            return stub_artifact(
+                directory,
+                size="720x720",
+                seconds=3.25,
+                clips=(
+                    {"asset_id": params.clips[0].asset.id, "duration": 3.25, "is_photo": False},
+                ),
+            )
+
+    settings = RenderWorkerConfig(worker_base_url="http://127.0.0.1", worker_token=WORKER_TOKEN)
+    # WHY: ffmpeg is the external process; only the app's check of the received file runs out.
+    monkeypatch.setattr(subprocess, "run", local_decode_runs_out)
+    with (
+        TestClient(worker_app(tmp_path / "worker", Renderer())) as http,
+        pytest.raises(GenerationError) as caught,
+    ):
+        RemoteRenderClient(settings, client=http).render(
+            params, tmp_path / "received.mp4", lambda *_: None
+        )
+    kept = list(tmp_path.glob("*.receiving.mp4"))
+    assert len(kept) == 1
+    assert kept[0].stat().st_size > 0
+    assert str(kept[0]) in str(caught.value)
+    assert "decode check did not finish within its 15:00 budget" in str(caught.value)
+    assert not (tmp_path / "received.mp4").exists()
+
+
 @pytest.mark.parametrize(
     "failure", ["version", "not_ready", "redirect", "timeout", "failed", "failed_separate_settings"]
 )

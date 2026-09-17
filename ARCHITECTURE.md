@@ -221,7 +221,7 @@ src/immich_memories/
 │   ├── probe_cache.py          # ProbeCache: run-scoped normalized source probing (injected into FFmpegProber)
 │   ├── encoding_plan.py        # EncodingPlan / resolve_encoding_plan(): immutable output encoding contract
 │   ├── output_canvas.py        # Resolve the single pixel canvas used by one run
-│   ├── output_contract.py      # probe/validate/atomically publish finished video artifacts
+│   ├── output_contract.py      # metadata probe, render-bounded full decode check, atomic publish
 │   ├── timeline_budget.py      # plan_timeline(): pure planning of content + title-screen timeline
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
 │   ├── title_background_renderer.py # TitleBackgroundRenderer: pre-renders the clip a title reveals into

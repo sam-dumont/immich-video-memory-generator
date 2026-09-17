@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from immich_memories.generate import GenerationParams
     from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.encoding_plan import EncodingPlan
+    from immich_memories.processing.output_contract import DecodeCheck
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,7 @@ def publish_and_check_duration(
     staged_path: Path,
     final_path: Path,
     plan: EncodingPlan,
+    decode_check: DecodeCheck | None = None,
 ) -> tuple[dict[str, object], str | None]:
     """Publish the rendered artifact and check its runtime against the budget.
 
@@ -205,5 +207,5 @@ def publish_and_check_duration(
     (music remuxes audio with `-c:v copy`), and rejecting later means discarding
     a render that has also paid for ACE-Step, Demucs and the mix.
     """
-    probe = publish_validated_output(staged_path, final_path, plan)
+    probe = publish_validated_output(staged_path, final_path, plan, decode_check=decode_check)
     return probe.render_metrics(plan), validate_final_duration(params, probe.duration_seconds)

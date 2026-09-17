@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import subprocess
@@ -19,6 +18,7 @@ from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunMetadata, RunTracker
 from tests.conftest import make_clip
+from tests.output_tools_fake import is_decode_check, output_tools
 
 
 def test_run_metadata_delivery_state_round_trips_through_json() -> None:
@@ -992,16 +992,18 @@ def _prepare_generation(
 
     original_run = subprocess.run
 
+    answer_probe = output_tools(_probe_payload())
+
     def run_probe(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if command[0] == "ffprobe":
-            return subprocess.CompletedProcess(command, 0, json.dumps(_probe_payload()), "")
+        if command[0] == "ffprobe" or is_decode_check(command):
+            return answer_probe(command, **kwargs)
         return original_run(command, **kwargs)  # type: ignore[call-overload]
 
     def music_phase(*_args: object, **_kwargs: object) -> MusicPhaseResult:
         events.append("music")
         return MusicPhaseResult(applied=False, warning=music_warning)
 
-    def final_validate(path: Path, encoding_plan: object) -> OutputProbe:
+    def final_validate(path: Path, encoding_plan: object, _decode_check: object) -> OutputProbe:
         assert path.name == "memory.mp4"
         assert encoding_plan is plan
         events.append("final-probe")

@@ -301,6 +301,11 @@ queue instead of overlapping.
 - **Assembly and encode** stream: one FFmpeg decode per clip at a time, crossfades blended into one
   preallocated buffer, raw frames piped into one encode process. Memory stays flat with clip count,
   which is what makes 4K output possible.
+- **The finished film is checked** before it replaces anything. `ffprobe` reads container, codec,
+  pixel format, colour and duration without decoding and compares them with the encoding plan.
+  Then FFmpeg decodes every video frame, and a decode error fails the run. That decode may take as
+  long as the encode just did (15 minutes at least) and logs its position once a minute. A film
+  that fails stays on disk under its `.assembling` name, and the error starts with its path.
 
 Encoder selection is a real probe: NVIDIA, Apple, QSV, VAAPI, each having to encode one 256x256
 frame before it is used. A hardware encoder that fails mid-run is retried once in software with the

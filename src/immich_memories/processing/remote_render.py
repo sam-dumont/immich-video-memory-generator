@@ -18,7 +18,11 @@ from immich_memories.generate import GenerationError, PreparedGeneration
 from immich_memories.generate_delivery import _safe_delivery_message
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-from immich_memories.processing.output_contract import publish_validated_output
+from immich_memories.processing.output_contract import (
+    DecodeCheck,
+    InvalidOutputArtifact,
+    publish_validated_output,
+)
 from immich_memories.processing.remote_render_plan import build_render_request
 
 if TYPE_CHECKING:
@@ -85,6 +89,8 @@ class RemoteRenderClient:
     ) -> PreparedGeneration:
         """Send the frozen cut, wait within the configured deadline, then retrieve it."""
         staged = output_path.with_name(f".{output_path.stem}.receiving.mp4")
+        # A received film that fails validation stays on disk, and the error names it.
+        keep_staged = False
         try:
             self.health()
             request = build_render_request(params)
@@ -102,9 +108,19 @@ class RemoteRenderClient:
                 _validate_result(params, request, status, clips, probe, plan)
                 validate_final_duration(params, probe.duration_seconds)
 
-            probe = publish_validated_output(
-                staged, output_path, plan, validate_probe=check_received
-            )
+            try:
+                probe = publish_validated_output(
+                    staged,
+                    output_path,
+                    plan,
+                    validate_probe=check_received,
+                    decode_check=DecodeCheck(
+                        progress=lambda message: progress("assembly", 1.0, message)
+                    ),
+                )
+            except InvalidOutputArtifact:
+                keep_staged = True
+                raise
             warning = validate_final_duration(params, probe.duration_seconds)
             logger.info("Render worker completed: %s, %.2fs", plan.encoder, probe.duration_seconds)
             for message in status.get("degradations", ()):
@@ -124,7 +140,8 @@ class RemoteRenderClient:
                 "Render worker failed: " + self._safe_message(exc, params)
             ) from None
         finally:
-            staged.unlink(missing_ok=True)
+            if not keep_staged:
+                staged.unlink(missing_ok=True)
 
     def _wait(self, params, request, status, deadline, progress) -> dict:
         job_id = str(UUID(status["job_id"]))

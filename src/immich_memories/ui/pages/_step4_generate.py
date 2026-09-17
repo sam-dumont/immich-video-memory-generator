@@ -15,7 +15,7 @@ from nicegui import run as run  # re-exported test seam shared by nicegui_compat
 from nicegui import ui
 
 from immich_memories.generate import PreparedGeneration, generate_memory
-from immich_memories.processing.output_contract import validate_output
+from immich_memories.processing.output_contract import DecodeCheck, validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.ui.components import (
     im_info_card,
@@ -495,9 +495,13 @@ async def finalize_ui_generation(
 ):
     """Finish UI-managed post-processing on the caller-owned run."""
     from immich_memories.generate_music import MusicPhaseResult
-    from immich_memories.generate_progress import emit_operational_phase
+    from immich_memories.generate_progress import _report, emit_operational_phase
     from immich_memories.operations.phases import OperationalPhase
 
+    decode_check = DecodeCheck(
+        encode_seconds=prepared.encode_seconds,
+        progress=lambda message: _report(params, "music", 0.95, message),
+    )
     music_result = MusicPhaseResult(applied=False)
     music_source = state.generation_options.get("music_source", "None")
     emit_operational_phase(
@@ -522,6 +526,7 @@ async def finalize_ui_generation(
             encoding_plan=prepared.encoding_plan,
             mute_windows=prepared.music_mute_windows,
             source=(MusicSource.BUNDLED if music_source == "Bundled" else MusicSource.AUTO),
+            decode_check=decode_check,
         )
         emit_operational_phase(
             params,
@@ -531,7 +536,9 @@ async def finalize_ui_generation(
             total=1,
             message=music_result.warning or "Music ready",
         )
-    final_probe = await io_bound_result(validate_output, prepared.path, prepared.encoding_plan)
+    final_probe = await io_bound_result(
+        validate_output, prepared.path, prepared.encoding_plan, decode_check
+    )
     from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
     from immich_memories.generate_timeline import validate_final_duration
 

@@ -14,6 +14,7 @@ from immich_memories import generate_render as generate_render_module
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
 from tests.conftest import make_clip
+from tests.output_tools_fake import output_tools
 
 
 def _h264_output_plan():
@@ -44,7 +45,7 @@ def _prores_output_plan():
     )
 
 
-def _publish_fake_music_mix(video_path: Path, encoding_plan: object) -> None:
+def _publish_fake_music_mix(video_path: Path, encoding_plan: object, *_args: object) -> None:
     """Emulate successful validated publication for path-only unit tests."""
     container = encoding_plan.container
     video_path.with_suffix(f".with_music.{container}").replace(video_path)
@@ -79,30 +80,12 @@ def test_music_mix_drifting_from_base_identity_is_rejected(
 ) -> None:
     from immich_memories.generate_music import apply_music_file
     from immich_memories.processing import output_contract
-    from immich_memories.processing.output_contract import InvalidOutputArtifact, OutputProbe
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
 
     video = tmp_path / "memory.mp4"
     music = tmp_path / "music.wav"
     video.write_bytes(b"validated-h264-base")
     music.write_bytes(b"music")
-    # WHY: probing shells out to ffprobe; publish_validated_output resolves it in output_contract.
-    monkeypatch.setattr(
-        "immich_memories.processing.output_contract.probe_output",
-        MagicMock(
-            return_value=OutputProbe(
-                codec="hevc",
-                container="mp4",
-                duration_seconds=5.0,
-                size_bytes=1024,
-                pixel_format="yuv420p",
-                color_transfer="bt709",
-                color_primaries="bt709",
-                width=1920,
-                height=1080,
-                decoded_frames=120,
-            )
-        ),
-    )
     plan = _h264_output_plan()
 
     def write_mix(*, output_path: Path, **_kwargs: object) -> None:
@@ -225,7 +208,7 @@ def test_music_publication_rejects_unproven_audio_decode(
     )
     monkeypatch.setattr(
         "immich_memories.generate_music.publish_validated_output",
-        lambda _staged_path, _final_path, _plan: None,
+        lambda _staged_path, _final_path, _plan, **_kwargs: None,
     )
 
     with pytest.raises(InvalidOutputArtifact):
@@ -508,9 +491,7 @@ class TestApplyMusicFileAtomic:
         monkeypatch.setattr(
             output_contract.subprocess,
             "run",
-            lambda command, **_kwargs: subprocess.CompletedProcess(
-                command, 0, json.dumps(_final_probe_payload()), ""
-            ),
+            output_tools(_final_probe_payload()),
         )
 
         def fake_mix(*, output_path: Path, **_kwargs: object) -> None:
@@ -544,9 +525,7 @@ class TestApplyMusicFileAtomic:
         monkeypatch.setattr(
             output_contract.subprocess,
             "run",
-            lambda command, **_kwargs: subprocess.CompletedProcess(
-                command, 0, json.dumps(_final_probe_payload()), ""
-            ),
+            output_tools(_final_probe_payload()),
         )
         unlink_calls: list[Path] = []
         original_unlink = Path.unlink
@@ -814,7 +793,13 @@ def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -
 
     assert result == generate_music.MusicPhaseResult(applied=True)
     apply_music.assert_called_once_with(
-        base_video, music_file, params.music_volume, plan, mute_windows=None, stems=None
+        base_video,
+        music_file,
+        params.music_volume,
+        plan,
+        mute_windows=None,
+        stems=None,
+        decode_check=None,
     )
     tracker.complete_phase.assert_called_once_with(items_processed=1)
 
@@ -862,9 +847,7 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
     monkeypatch.setattr(
         output_contract.subprocess,
         "run",
-        lambda command, **_kwargs: subprocess.CompletedProcess(
-            command, 0, json.dumps(_final_probe_payload()), ""
-        ),
+        output_tools(_final_probe_payload()),
     )
     tracker = MagicMock()
     uploaded: list[bytes] = []
@@ -938,9 +921,7 @@ def test_no_music_skips_core_music_phase_entirely(
     monkeypatch.setattr(
         output_contract.subprocess,
         "run",
-        lambda command, **_kwargs: subprocess.CompletedProcess(
-            command, 0, json.dumps(_final_probe_payload()), ""
-        ),
+        output_tools(_final_probe_payload()),
     )
     with (
         patch("immich_memories.tracking.RunTracker", return_value=MagicMock()),

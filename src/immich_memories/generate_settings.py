@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_music import MusicPhaseResult
     from immich_memories.processing.encoding_plan import EncodingPlan
+    from immich_memories.processing.output_contract import DecodeCheck
     from immich_memories.processing.probe_cache import ProbeCache
     from immich_memories.tracking import RunTracker
 
@@ -308,6 +309,7 @@ def _run_music_phase(
     encoding_plan: EncodingPlan,
     mute_windows: list[tuple[float, float]] | None = None,
     source: MusicSource = MusicSource.AUTO,
+    decode_check: DecodeCheck | None = None,
 ) -> MusicPhaseResult:
     """Resolve and apply music to the assembled video."""
     from immich_memories.generate_music import (
@@ -360,6 +362,7 @@ def _run_music_phase(
             encoding_plan,
             mute_windows=mute_windows,
             stems=selection.stems,
+            decode_check=decode_check,
         )
     except Exception as exc:  # WHY: optional music must not invalidate the base artifact
         return _complete_music_failure(

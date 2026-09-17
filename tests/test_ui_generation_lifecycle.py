@@ -9,7 +9,7 @@ import pytest
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams, PreparedGeneration
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-from immich_memories.processing.output_contract import OutputProbe
+from immich_memories.processing.output_contract import DecodeCheck, OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunTracker
 from immich_memories.ui.state import AppState
 from tests.conftest import make_clip
@@ -113,6 +113,7 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         assembly_clips=(),
         clips_analyzed=3,
         clips_selected=2,
+        encode_seconds=38_946.0,
     )
     phase_events = []
     params = GenerationParams(
@@ -140,8 +141,9 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         complete_calls += 1
         return complete_artifact(*args, **kwargs)
 
-    def validate(path: Path, encoding_plan: EncodingPlan) -> OutputProbe:
+    def validate(path: Path, encoding_plan: EncodingPlan, decode_check: DecodeCheck) -> OutputProbe:
         assert path == output_path
+        assert decode_check.encode_seconds == 38_946.0
         seen_plans.append(encoding_plan)
         return _probe()
 
@@ -313,6 +315,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         encoding_plan,
         mute_windows=None,
         source=None,
+        decode_check=None,
     ) -> MusicPhaseResult:
         assert run_tracker is tracker
         assert encoding_plan is plan
@@ -322,7 +325,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         run_tracker.complete_phase(items_processed=0, errors=[{"error": warning}])
         return MusicPhaseResult(applied=False, warning=warning)
 
-    def validate(path: Path, encoding_plan: EncodingPlan) -> OutputProbe:
+    def validate(path: Path, encoding_plan: EncodingPlan, _decode_check: object) -> OutputProbe:
         assert encoding_plan is plan
         assert path.read_bytes() == b"validated-base"
         events.append("final-validation")

@@ -40,7 +40,7 @@ from immich_memories.generate_settings import (
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.operations.run_index import record_run_attempt
 from immich_memories.processing.output_canvas import OutputCanvas
-from immich_memories.processing.output_contract import validate_output
+from immich_memories.processing.output_contract import DecodeCheck, validate_output
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_planner import EditorialSelection
@@ -184,6 +184,9 @@ class PreparedGeneration:
     music_mute_windows: list[tuple[float, float]] | None = None
     duration_warning: str | None = None
     render_metrics: dict[str, object] = field(default_factory=dict)
+    # Wall time this machine spent rendering the film; None when a worker did.
+    # Every later decode check of the same film is bounded by it.
+    encode_seconds: float | None = None
 
 
 class GenerationError(Exception):
@@ -309,6 +312,7 @@ def _complete_music_phase(
     operational: _OperationalProgress,
     progress: _PipelineProgress,
     mute_windows: list[tuple[float, float]] | None = None,
+    decode_check: DecodeCheck | None = None,
 ):
     """Run or explicitly skip music while emitting the shared outer phase."""
     if params.no_music:
@@ -327,6 +331,7 @@ def _complete_music_phase(
         run_tracker,
         encoding_plan=encoding_plan,
         mute_windows=mute_windows,
+        decode_check=decode_check,
     )
     progress.report("music", 1.0, result.warning or "Music ready")
     operational.emit(OperationalPhase.MUSIC, 1, 1, result.warning or "Music ready")
@@ -455,6 +460,11 @@ def _generate_memory_inner(
         if defer_finalization:
             return prepared
 
+        decode_check = DecodeCheck(
+            encode_seconds=prepared.encode_seconds,
+            progress=lambda message: pp.report("music", 1.0, message),
+        )
+
         # Phase 3: Music
         _t = _time.monotonic()
         music_result = _complete_music_phase(
@@ -467,10 +477,11 @@ def _generate_memory_inner(
             operational,
             pp,
             mute_windows=prepared.music_mute_windows,
+            decode_check=decode_check,
         )
         _phase_times["music"] = _time.monotonic() - _t
 
-        final_probe = validate_output(result_path, prepared.encoding_plan)
+        final_probe = validate_output(result_path, prepared.encoding_plan, decode_check)
         artifact_warnings = _artifact_warnings(params, duration_warning, music_result.warning)
         run_tracker.complete_artifact(
             result_path,
