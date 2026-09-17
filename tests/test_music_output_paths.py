@@ -148,13 +148,14 @@ def test_music_publication_requires_positive_decoded_audio_frames(
     )
     monkeypatch.setattr("immich_memories.generate_music.subprocess.run", audio_probe)
     monkeypatch.setattr(
-        "immich_memories.generate_music.publish_validated_output",
+        "immich_memories.generate_music.check_output",
         MagicMock(return_value=expected),
     )
 
     result = publish_music_mix(video, _h264_output_plan())
 
     assert result == expected
+    assert video.read_bytes() == b"staged-mix"
     assert len(commands) == 1
     assert probe_kwargs == [
         {
@@ -207,8 +208,8 @@ def test_music_publication_rejects_unproven_audio_decode(
         ),
     )
     monkeypatch.setattr(
-        "immich_memories.generate_music.publish_validated_output",
-        lambda _staged_path, _final_path, _plan, **_kwargs: None,
+        "immich_memories.generate_music.check_output",
+        lambda _staged_path, _plan: None,
     )
 
     with pytest.raises(InvalidOutputArtifact):
@@ -571,7 +572,7 @@ class TestApplyMusicFileAtomic:
             write_invalid_mix,
         )
         monkeypatch.setattr(
-            "immich_memories.generate_music.publish_validated_output",
+            "immich_memories.generate_music.check_output",
             MagicMock(side_effect=InvalidOutputArtifact("missing audio/video stream")),
         )
         monkeypatch.setattr(
@@ -627,7 +628,7 @@ class TestApplyMusicFileAtomic:
             write_invalid_mix,
         )
         monkeypatch.setattr(
-            "immich_memories.generate_music.publish_validated_output",
+            "immich_memories.generate_music.check_output",
             MagicMock(side_effect=validation_error),
         )
         monkeypatch.setattr(
@@ -799,7 +800,6 @@ def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -
         plan,
         mute_windows=None,
         stems=None,
-        decode_check=None,
     )
     tracker.complete_phase.assert_called_once_with(items_processed=1)
 

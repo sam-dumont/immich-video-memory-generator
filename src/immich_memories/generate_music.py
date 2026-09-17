@@ -20,10 +20,9 @@ from typing import TYPE_CHECKING
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.encoding_plan import EncodingPlan
 from immich_memories.processing.output_contract import (
-    DecodeCheck,
     InvalidOutputArtifact,
     OutputProbe,
-    publish_validated_output,
+    check_output,
 )
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 from immich_memories.security import configured_secret_values, sanitize_error_message
@@ -336,19 +335,19 @@ def _clip_month_from_date(date_str: str | None) -> int | None:
 def publish_music_mix(
     video_path: Path,
     encoding_plan: EncodingPlan,
-    decode_check: DecodeCheck | None = None,
 ) -> OutputProbe:
-    """Validate the staged music sibling before atomically replacing the base.
+    """Check the staged music sibling, then atomically replace the film it was mixed from.
 
-    A mix that fails is removed: the base film it was made from is already
-    published and stays the deliverable.
+    The audio is decoded in full and the container checked against the plan;
+    the video, copied from the film, is decoded once later, before the film is
+    published. A mix that fails is removed and the film stays as it was.
     """
     staged_path = music_staging_path(video_path, encoding_plan)
     try:
         _require_audio_stream(staged_path)
-        return publish_validated_output(
-            staged_path, video_path, encoding_plan, decode_check=decode_check
-        )
+        probe = check_output(staged_path, encoding_plan)
+        staged_path.replace(video_path)
+        return probe
     except Exception:
         try:
             staged_path.unlink(missing_ok=True)
@@ -432,7 +431,6 @@ def apply_music_file(
     mute_windows: list[tuple[float, float]] | None = None,
     *,
     stems: MusicStems | None = None,
-    decode_check: DecodeCheck | None = None,
 ) -> OutputProbe:
     """Mix a music file and publish it only when it matches the encoding plan."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
@@ -468,4 +466,4 @@ def apply_music_file(
                 output_path=staged_path,
                 config=mix_config,
             )
-        return publish_music_mix(video_path, encoding_plan, decode_check)
+        return publish_music_mix(video_path, encoding_plan)

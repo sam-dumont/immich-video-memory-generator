@@ -1,4 +1,4 @@
-"""A local render hands its own encode time to every decode check of its film."""
+"""A local run decodes its film once, on the bytes it publishes, within its encode time."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 from immich_memories.config_loader import Config
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from tests.conftest import make_clip
-from tests.output_tools_fake import is_decode_check, output_tools
+from tests.output_tools_fake import decoded_file_of, is_decode_check, output_tools
 
 _ENCODE_SECONDS = 38_946.0
 
@@ -103,22 +103,103 @@ def render_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return params, tracker, tmp_path / "memory_fixed-run"
 
 
-def test_every_decode_check_of_a_local_render_gets_its_encode_time(
-    render_run, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from immich_memories.generate import generate_memory
+class _Tools:
+    """ffprobe and ffmpeg, remembering what each decode read and how long it was given."""
+
+    def __init__(self) -> None:
+        self.answer = output_tools(_payload())
+        self.decoded: list[bytes] = []
+        self.budgets: list[object] = []
+
+    def run(self, command: list[str], **kwargs: object):
+        if is_decode_check(command):
+            self.decoded.append(decoded_file_of(command).read_bytes())
+            self.budgets.append(kwargs["timeout"])
+        return self.answer(command, **kwargs)
+
+
+@pytest.fixture
+def tools(monkeypatch: pytest.MonkeyPatch) -> _Tools:
     from immich_memories.processing import output_contract
 
-    params, tracker, _run_dir = render_run
-    calls: list[tuple[list[str], dict[str, object]]] = []
+    tools = _Tools()
     # WHY: ffprobe and ffmpeg are the external processes that read the finished film.
-    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(_payload(), calls=calls))
+    monkeypatch.setattr(output_contract.subprocess, "run", tools.run)
+    return tools
+
+
+@pytest.fixture
+def uploads(render_run, monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
+    params, _tracker, _run_dir = render_run
+    params.client = object()
+    params.upload_enabled = True
+    sent: list[bytes] = []
+
+    def upload(_client: object, video_path: Path, _album: object) -> dict[str, str]:
+        sent.append(video_path.read_bytes())
+        return {"asset_id": "asset-1"}
+
+    # WHY: the Immich upload is the write this run ends with.
+    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
+    return sent
+
+
+def test_a_run_without_music_decodes_its_film_once_within_the_encode_time(
+    render_run, tools: _Tools, uploads: list[bytes]
+) -> None:
+    from immich_memories.generate import generate_memory
+
+    params, tracker, run_dir = render_run
 
     result = generate_memory(params, run_tracker=tracker)
 
     assert result.read_bytes() == b"assembled-video"
-    budgets = [kwargs["timeout"] for command, kwargs in calls if is_decode_check(command)]
-    assert budgets == [_ENCODE_SECONDS, _ENCODE_SECONDS]
+    assert tools.budgets == [_ENCODE_SECONDS]
+    assert uploads == [b"assembled-video"]
+    assert not (run_dir / "memory.assembling.mp4").exists()
+
+
+def test_a_run_with_music_decodes_only_the_mixed_film_and_publishes_nothing_before(
+    render_run, tools: _Tools, uploads: list[bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from immich_memories.generate import generate_memory
+
+    params, tracker, run_dir = render_run
+    params.no_music = False
+    params.music_path = run_dir.parent / "music.wav"
+    params.music_path.write_bytes(b"music")
+    published_during_mix: list[bool] = []
+
+    def mix(*, video_path: Path, music_path: Path, output_path: Path, config: object) -> None:
+        published_during_mix.append((run_dir / "memory.mp4").exists())
+        output_path.write_bytes(video_path.read_bytes() + b"+music")
+
+    # WHY: the FFmpeg audio mix is a write; its output is what the check must read.
+    monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", mix)
+
+    result = generate_memory(params, run_tracker=tracker)
+
+    assert published_during_mix == [False]
+    assert tools.decoded == [b"assembled-video+music"]
+    assert result.read_bytes() == b"assembled-video+music"
+    assert uploads == [b"assembled-video+music"]
+    assert sorted(path.name for path in run_dir.glob("memory*.mp4")) == ["memory.mp4"]
+
+
+def test_a_film_changed_after_its_check_is_decoded_again_before_upload(
+    render_run, tools: _Tools, uploads: list[bytes]
+) -> None:
+    from immich_memories.generate import generate_memory
+
+    params, tracker, _run_dir = render_run
+    tracker.complete_artifact.side_effect = lambda path, *_a, **_k: Path(path).write_bytes(
+        b"rewritten after the check"
+    )
+
+    generate_memory(params, run_tracker=tracker)
+
+    assert tools.decoded == [b"assembled-video", b"rewritten after the check"]
+    assert uploads == [b"rewritten after the check"]
 
 
 def test_a_render_whose_decode_check_runs_out_keeps_its_film(

@@ -24,8 +24,19 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def file_sha256(path: Path) -> str:
+    """Digest of the film as published, so the app can prove it holds the decoded bytes."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _plan_record(artifact: RenderArtifact, probe) -> dict:
     plan = artifact.encoding_plan
+    # The stamp names an inode on this machine; it means nothing to the app.
+    probe_record = {key: value for key, value in asdict(probe).items() if key != "stamp"}
     return {
         "encoding_plan": {
             **asdict(plan),
@@ -36,7 +47,7 @@ def _plan_record(artifact: RenderArtifact, probe) -> dict:
                 plan.codec_substituted_from.value if plan.codec_substituted_from else None
             ),
         },
-        "probe": asdict(probe),
+        "probe": probe_record,
         "render_metrics": probe.render_metrics(plan),
         "encoder": plan.encoder,
         "music_mute_windows": artifact.music_mute_windows,
@@ -135,7 +146,9 @@ class RenderJobs:
     def _publish(self, job_id: UUID, directory: Path, artifact: RenderArtifact) -> None:
         if not artifact.path.resolve().is_relative_to(directory.resolve()):
             raise ValueError("Renderer returned a file outside its job workspace")
-        probe = validate_output(artifact.path, artifact.encoding_plan)
+        # One decode per film on this side: a renderer that already decoded
+        # these bytes vouches for them, and only a changed file is decoded again.
+        probe = validate_output(artifact.path, artifact.encoding_plan, verified=artifact.probe)
         if self.store.get(job_id).state != "running":
             raise RuntimeError("Job was already closed before its output arrived")
         os.link(artifact.path, directory / "film.mp4")
@@ -146,12 +159,14 @@ class RenderJobs:
             progress=1,
             message="Ready to retrieve",
             finished_at=_now(),
+            output_sha256=file_sha256(artifact.path),
             **_plan_record(artifact, probe),
         )
 
-    def output(self, job_id: UUID) -> Path:
-        self.store.claim(job_id)
-        return self.directory(job_id) / "film.mp4"
+    def output(self, job_id: UUID) -> tuple[Path, str | None]:
+        """Claim the film once; return it with the SHA-256 recorded when it was published."""
+        claimed = self.store.claim(job_id)
+        return self.directory(job_id) / "film.mp4", claimed.output_sha256
 
     def discard(self, job_id: UUID) -> None:
         shutil.rmtree(self.directory(job_id), ignore_errors=True)

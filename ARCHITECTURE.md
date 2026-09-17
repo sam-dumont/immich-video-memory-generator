@@ -125,7 +125,8 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_render.py`: local source preparation/assembly or configured worker handoff
-- `processing/remote_render.py`: authenticated jobs, bounded polling and local output validation
+- `processing/remote_render.py`: authenticated jobs, bounded polling, a SHA-256-checked download,
+  and a staged film that reuses the worker's decode when the bytes match
 - `processing/remote_render_plan.py`: frozen cut serialization, including certified Live material
 - `generate_timeline.py`: final-duration validation and content budget guards
 - `generate_delivery.py`: Immich upload of a finished artifact + delivered/pending/failed run state
@@ -579,7 +580,8 @@ clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it
 versioned job API. `admission.py` names a job after its cut (`memory_key` plus
 the binding digest) and refuses an envelope that drifted from the binding it
 carries, before any byte is fetched. `jobs.py` serializes GPU work, validates
-artifacts, enforces the job deadline and sweeps scratch at boot; `store.py`
+artifacts (one decode per film, reused when the renderer already decoded it),
+records the film's SHA-256 and sends it as `Repr-Digest`, enforces the job deadline and sweeps scratch at boot; `store.py`
 keeps atomic job transitions behind a repository contract ready for a future
 PostgreSQL implementation, with a per-job JSON record so a restart can say a
 render died with its process. `native.py` and `native_plan.py` adapt selected

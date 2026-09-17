@@ -46,6 +46,38 @@ def write_decode_progress(
     )
 
 
+def decoded_file_of(command: list[str]) -> Path:
+    """Return the film an ffmpeg decode command reads."""
+    return Path(command[command.index("-i") + 1])
+
+
+_AUDIO_PAYLOAD = {"streams": [{"codec_type": "audio", "nb_read_frames": "240"}]}
+
+
+def payload_of(probe: object) -> dict[str, object]:
+    """The ffprobe answer that the output contract reads back as ``probe``."""
+    return {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": probe.codec,
+                "pix_fmt": probe.pixel_format,
+                "color_transfer": probe.color_transfer,
+                "color_primaries": probe.color_primaries,
+                "width": probe.width,
+                "height": probe.height,
+                "nb_frames": str(probe.decoded_frames),
+            }
+        ],
+        "format": {
+            "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+            "duration": str(probe.duration_seconds),
+            "size": str(probe.size_bytes),
+            "tags": {"major_brand": "qt  " if probe.container == "mov" else "isom"},
+        },
+    }
+
+
 def output_tools(
     probe_payload: dict[str, object],
     *,
@@ -53,11 +85,17 @@ def output_tools(
     decode_stderr: str = "",
     calls: list[tuple[list[str], dict[str, object]]] | None = None,
 ) -> RunFn:
-    """Answer ffprobe with ``probe_payload`` and an ffmpeg decode with a frame count."""
+    """Answer ffprobe with ``probe_payload`` and an ffmpeg decode with a frame count.
+
+    An ffprobe of the audio stream, which the music mix runs, gets one decoded
+    audio stream back.
+    """
 
     def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if calls is not None:
             calls.append((command, kwargs))
+        if command[0] == "ffprobe" and "a:0" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(_AUDIO_PAYLOAD), "")
         if is_decode_check(command):
             frames = _payload_frames(probe_payload) if decoded_frames is None else decoded_frames
             write_decode_progress(command, frames)

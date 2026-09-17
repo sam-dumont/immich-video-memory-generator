@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import logging
 import math
 import time
@@ -19,9 +22,10 @@ from immich_memories.generate_delivery import _safe_delivery_message
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.output_contract import (
-    DecodeCheck,
+    FileStamp,
     InvalidOutputArtifact,
-    publish_validated_output,
+    OutputProbe,
+    check_output,
 )
 from immich_memories.processing.remote_render_plan import build_render_request
 
@@ -34,7 +38,7 @@ Progress = Callable[[str, float, str], None]
 
 
 class RemoteRenderClient:
-    """Own one worker connection; return only a locally validated base film."""
+    """Own one worker connection; return a checked base film, staged for its one decode."""
 
     def __init__(self, settings: RenderWorkerConfig, *, client: httpx.Client | None = None):
         self.settings = settings
@@ -87,9 +91,14 @@ class RemoteRenderClient:
     def render(
         self, params: GenerationParams, output_path: Path, progress: Progress
     ) -> PreparedGeneration:
-        """Send the frozen cut, wait within the configured deadline, then retrieve it."""
+        """Send the frozen cut, wait within the configured deadline, then retrieve it.
+
+        The film stays staged: music is mixed into it there, and ``publish`` on
+        the result decodes it once, or not at all when the worker's decode
+        provably covers the same bytes.
+        """
         staged = output_path.with_name(f".{output_path.stem}.receiving.mp4")
-        # A received film that fails validation stays on disk, and the error names it.
+        # A received film that is returned, or that fails its check, stays on disk.
         keep_staged = False
         try:
             self.health()
@@ -101,32 +110,26 @@ class RemoteRenderClient:
             clips = _assembly_clips(status["clips"], output_path.parent)
             windows = status.get("music_mute_windows")
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            self._download(status["job_id"], staged, deadline)
+            digest, expected_digest = self._download(status["job_id"], staged, deadline)
+            if expected_digest and expected_digest != digest:
+                raise GenerationError("Render worker output does not match its digest")
             from immich_memories.generate_timeline import validate_final_duration
 
-            def check_received(probe):
-                _validate_result(params, request, status, clips, probe, plan)
-                validate_final_duration(params, probe.duration_seconds)
-
             try:
-                probe = publish_validated_output(
-                    staged,
-                    output_path,
-                    plan,
-                    validate_probe=check_received,
-                    decode_check=DecodeCheck(
-                        progress=lambda message: progress("assembly", 1.0, message)
-                    ),
-                )
+                probe = check_output(staged, plan)
             except InvalidOutputArtifact:
                 keep_staged = True
                 raise
+            _validate_result(params, request, status, clips, probe, plan)
             warning = validate_final_duration(params, probe.duration_seconds)
             logger.info("Render worker completed: %s, %.2fs", plan.encoder, probe.duration_seconds)
             for message in status.get("degradations", ()):
                 logger.warning("Render worker: %s", self._safe_message(str(message), params))
+            keep_staged = True
             return PreparedGeneration(
                 path=output_path,
+                staged_path=staged,
+                verified=_worker_decode(status, probe, staged) if expected_digest else None,
                 encoding_plan=plan,
                 assembly_clips=clips,
                 clips_analyzed=len(params.clips),
@@ -163,7 +166,12 @@ class RemoteRenderClient:
             time.sleep(min(0.5, max(0, deadline - time.monotonic())))
             status = self._json("GET", f"/jobs/{job_id}")
 
-    def _download(self, job_id: str, path: Path, deadline: float) -> None:
+    def _download(self, job_id: str, path: Path, deadline: float) -> tuple[str, str | None]:
+        """Write the worker's film to ``path``.
+
+        Returns the SHA-256 of what was written and the one the worker sent with it.
+        """
+        digest = hashlib.sha256()
         with self._http.stream(
             "GET",
             self._url(f"/jobs/{job_id}/output"),
@@ -172,10 +180,36 @@ class RemoteRenderClient:
         ) as response:
             if response.status_code != 200:
                 raise GenerationError(f"Render worker output returned HTTP {response.status_code}")
+            announced = _announced_sha256(response.headers.get("repr-digest"))
             with path.open("wb") as handle:
                 for chunk in response.iter_bytes(1024 * 1024):
                     _check_deadline(deadline)
                     handle.write(chunk)
+                    digest.update(chunk)
+        return digest.hexdigest(), announced
+
+
+def _announced_sha256(header: str | None) -> str | None:
+    """The hex SHA-256 in a ``Repr-Digest: sha-256=:<base64>:`` header, if it names one."""
+    for member in (header or "").split(","):
+        name, _, value = member.strip().partition("=")
+        if name != "sha-256":
+            continue
+        if len(value) < 2 or not value.startswith(":") or not value.endswith(":"):
+            raise GenerationError("Render worker sent an unreadable digest")
+        try:
+            return base64.b64decode(value[1:-1], validate=True).hex()
+        except binascii.Error as exc:
+            raise GenerationError("Render worker sent an unreadable digest") from exc
+    return None
+
+
+def _worker_decode(status: dict, probe: OutputProbe, staged: Path) -> OutputProbe | None:
+    """The worker's decode, stamped for the file here, whose digest matched the worker's."""
+    frames = (status.get("probe") or {}).get("decoded_frames")
+    if isinstance(frames, bool) or not isinstance(frames, int) or frames <= 0:
+        return None
+    return replace(probe, decoded_frames=frames, stamp=FileStamp.of(staged))
 
 
 def _check_deadline(deadline: float) -> None:

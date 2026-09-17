@@ -129,12 +129,12 @@ Moving the picture facts to a GPU box with the
 
 ### Long films
 
-One 75-minute album spent 11 hours encoding on a two-core Celeron. After the encode, the app
-decodes the whole film once more to prove it plays: on a DS423+ held to two cores that runs at 3.8x
-realtime for 1080p HEVC, about 20 minutes for that album, and 1.07x for 4K. The same check runs
-again after the music mix and before the upload, so count it two or three times. It may take as
-long as the encode did, logs `Checking the finished film: ... decoded` once a minute, and a film
-that fails it stays on disk:
+One 75-minute album spent 11 hours encoding on a two-core Celeron. Once the music is mixed in, the
+app decodes the whole film once to prove it plays: on a DS423+ held to two cores that runs at 3.8x
+realtime for 1080p HEVC, about 20 minutes for that album, and 1.07x for 4K. The checks before and
+after it only read the file's metadata, under a second each. The decode may take as long as the
+encode did, logs `Checking the finished film: ... decoded` once a minute, and a film that fails it
+stays on disk:
 [Troubleshooting](../../reference/troubleshooting.md#a-long-render-ends-with-ffprobe-failed-to-inspect-output-artifact).
 
 ## Let the GPU box render
@@ -152,8 +152,9 @@ render:
 
 Pass the same worker token to both processes, then run `immich-memories preflight -v`.
 The NAS sends the selected cut and its scoped Immich key. The worker downloads
-the originals directly, renders and returns the film; the NAS checks the result
-before music or upload. Selection, speech-safe cuts and stitched Live durations
+the originals directly, renders and returns the film with a SHA-256 of it; the NAS
+checks the result before music or upload. When the download matches that digest, the NAS
+keeps the worker's full decode instead of decoding the film itself, unless music was mixed in. Selection, speech-safe cuts and stitched Live durations
 stay intact.
 
 A real Synology-to-NVIDIA T1000 replay completed a 55-second, 15-clip 1080p H.265

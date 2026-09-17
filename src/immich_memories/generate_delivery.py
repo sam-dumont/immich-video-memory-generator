@@ -9,11 +9,13 @@ that has already been rendered.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, NoReturn
 
 from immich_memories.generate_progress import _report
 from immich_memories.generate_settings import _upload_to_immich
 from immich_memories.operations.phases import OperationalPhase
+from immich_memories.processing.output_contract import InvalidOutputArtifact
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
@@ -72,8 +74,13 @@ def deliver_completed_artifact(
     params: GenerationParams,
     result_path: Path,
     run_tracker: RunTracker,
+    recheck: Callable[[], object] | None = None,
 ) -> dict | None:
-    """Deliver a completed artifact and persist exactly one API attempt."""
+    """Deliver a completed artifact and persist exactly one API attempt.
+
+    ``recheck`` runs first; a film it refuses is not uploaded and the delivery
+    stays pending with the reason.
+    """
     if not params.upload_enabled:
         return None
     if params.client is None:
@@ -82,6 +89,13 @@ def deliver_completed_artifact(
             "no Immich client is configured",
             attempted=False,
         )
+    if recheck is not None:
+        try:
+            recheck()
+        except InvalidOutputArtifact as exc:
+            _raise_delivery_error(
+                run_tracker, _safe_delivery_message(exc, params.config), attempted=False
+            )
 
     _report(params, "upload", 0.95, "Uploading to Immich...")
     delivery_error: DeliveryError | None = None
@@ -130,9 +144,10 @@ def _deliver_completed_artifact(
     params: GenerationParams,
     result_path: Path,
     run_tracker: RunTracker,
+    recheck: Callable[[], object] | None = None,
 ) -> dict | None:
     """Compatibility wrapper for the original internal delivery boundary."""
-    return deliver_completed_artifact(params, result_path, run_tracker)
+    return deliver_completed_artifact(params, result_path, run_tracker, recheck)
 
 
 def _deliver_with_operational_progress(
@@ -140,6 +155,7 @@ def _deliver_with_operational_progress(
     result_path: Path,
     run_tracker: RunTracker,
     operational: _OperationalProgress,
+    recheck: Callable[[], object] | None = None,
 ) -> None:
     """Expose optional delivery while preserving its existing error boundary."""
     operational.emit(
@@ -148,6 +164,6 @@ def _deliver_with_operational_progress(
         1 if params.upload_enabled else 0,
         "Uploading to Immich" if params.upload_enabled else "Delivery not requested",
     )
-    _deliver_completed_artifact(params, result_path, run_tracker)
+    _deliver_completed_artifact(params, result_path, run_tracker, recheck)
     if params.upload_enabled:
         operational.emit(OperationalPhase.DELIVERY, 1, 1, "Delivered to Immich")

@@ -335,3 +335,80 @@ def test_a_finished_decode_check_logs_its_frames_and_time(
     validate_output(staged, _h264_plan())
 
     assert "Checked the finished film in 0:00: 360 frames decoded" in caplog.messages
+
+
+def _decodes(calls: list[tuple[list[str], dict[str, object]]]) -> int:
+    return sum(1 for command, _ in calls if is_decode_check(command))
+
+
+def test_the_metadata_check_decodes_nothing(staged: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import check_output
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    # WHY: ffprobe and ffmpeg are the external processes the contract shells out to.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(_payload(), calls=calls))
+
+    probe = check_output(staged, _h264_plan())
+
+    assert _decodes(calls) == 0
+    assert probe.decoded_frames is None
+    assert probe.duration_seconds == 12.0
+
+
+def test_a_checked_film_that_has_not_changed_is_not_decoded_again(
+    staged: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import validate_output
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    # WHY: ffprobe and ffmpeg are the external processes the contract shells out to.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(_payload(), calls=calls))
+    checked = validate_output(staged, _h264_plan())
+    moved = staged.with_name("memory.mp4")
+    staged.rename(moved)
+
+    again = validate_output(moved, _h264_plan(), verified=checked)
+
+    assert _decodes(calls) == 1
+    assert [command[0] for command, _ in calls] == ["ffprobe", "ffmpeg", "ffprobe"]
+    assert again.decoded_frames == checked.decoded_frames == 360
+
+
+def test_a_checked_film_that_changed_is_decoded_again(
+    staged: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import validate_output
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    # WHY: ffprobe and ffmpeg are the external processes the contract shells out to.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(_payload(), calls=calls))
+    checked = validate_output(staged, _h264_plan())
+    staged.write_bytes(b"re-encoded by something else")
+
+    validate_output(staged, _h264_plan(), verified=checked)
+
+    assert _decodes(calls) == 2
+
+
+def test_a_film_written_to_during_its_decode_is_not_passed(
+    staged: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded stamp must describe the bytes that were decoded."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
+
+    answer = output_tools(_payload())
+
+    def decode_while_written(command: list[str], **kwargs: object):
+        if is_decode_check(command):
+            staged.write_bytes(b"encoded-video, still being written")
+        return answer(command, **kwargs)
+
+    # WHY: ffmpeg is the external process; the write stands in for a second writer.
+    monkeypatch.setattr(output_contract.subprocess, "run", decode_while_written)
+
+    with pytest.raises(InvalidOutputArtifact, match="changed while it was being checked"):
+        validate_output(staged, _h264_plan())

@@ -22,12 +22,11 @@ from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
 from immich_memories.generate_timeline import (
-    publish_and_check_duration,
+    check_rendered_film,
     validate_certified_content,
 )
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.processing.clip_validation import validate_clips
-from immich_memories.processing.output_contract import DecodeCheck
 from immich_memories.processing.probe_cache import ProbeCache
 
 if TYPE_CHECKING:
@@ -326,17 +325,7 @@ def render_local(
         # film, and decoding the result can only be faster.
         encode_seconds = _time.monotonic() - encode_started
         plan = settings.encoding_plan
-        metrics, duration_warning = publish_and_check_duration(
-            params,
-            staged_result_path,
-            result_output_path,
-            plan,
-            DecodeCheck(
-                encode_seconds=encode_seconds,
-                progress=lambda message: pp.report("assembly", 1.0, message),
-            ),
-        )
-        result_path = result_output_path
+        metrics, duration_warning = check_rendered_film(params, staged_result_path, plan)
         run_tracker.complete_phase(items_processed=len(assembly_clips), extra_metrics=metrics)
         operational.emit(
             OperationalPhase.RENDER,
@@ -346,7 +335,8 @@ def render_local(
         )
         phase_times["assembly"] = _time.monotonic() - _t
         return PreparedGeneration(
-            path=result_path,
+            path=result_output_path,
+            staged_path=staged_result_path,
             encoding_plan=plan,
             assembly_clips=tuple(assembly_clips),
             clips_analyzed=len(params.clips),

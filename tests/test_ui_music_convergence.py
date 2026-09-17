@@ -15,11 +15,13 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams, PreparedGeneration
+from immich_memories.processing import output_contract
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import RunTracker
 from immich_memories.ui.state import AppState
 from tests.conftest import make_clip
+from tests.output_tools_fake import output_tools, payload_of
 
 _WINDOWS = [(3.0, 4.2), (11.5, 12.0)]
 
@@ -96,9 +98,8 @@ async def test_the_wizard_mixes_with_the_runs_mute_windows(
 
     # WHY: mixing runs real ffmpeg; the contract under test is which windows reach it.
     monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", spy)
-    monkeypatch.setattr(
-        step4, "validate_output", lambda _path, _encoding_plan, _decode_check: _probe()
-    )
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
     monkeypatch.setattr(step4.run, "io_bound", io_bound)
 
     await step4.finalize_ui_generation(
@@ -147,9 +148,8 @@ async def test_choosing_no_music_never_reaches_the_music_phase(
 
     # WHY: the shared phase is the boundary under inspection; it must not be entered.
     monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", spy)
-    monkeypatch.setattr(
-        step4, "validate_output", lambda _path, _encoding_plan, _decode_check: _probe()
-    )
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
 
     await step4.finalize_ui_generation(
         state, params, prepared, tracker, progress_bar=object(), status_label=object()
@@ -212,9 +212,8 @@ async def test_choosing_bundled_asks_the_shared_phase_for_bundled(
 
     # WHY: the shared phase is the boundary; only which source it is handed matters here.
     monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", spy)
-    monkeypatch.setattr(
-        step4, "validate_output", lambda _path, _encoding_plan, _decode_check: _probe()
-    )
+    # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
+    monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
     monkeypatch.setattr(step4.run, "io_bound", io_bound)
 
     await step4.finalize_ui_generation(

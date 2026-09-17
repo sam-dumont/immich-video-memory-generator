@@ -498,9 +498,10 @@ async def finalize_ui_generation(
     from immich_memories.generate_progress import _report, emit_operational_phase
     from immich_memories.operations.phases import OperationalPhase
 
+    plan = prepared.encoding_plan
     decode_check = DecodeCheck(
         encode_seconds=prepared.encode_seconds,
-        progress=lambda message: _report(params, "music", 0.95, message),
+        progress=lambda message: _report(params, "check", 0.95, message),
     )
     music_result = MusicPhaseResult(applied=False)
     music_source = state.generation_options.get("music_source", "None")
@@ -520,13 +521,12 @@ async def finalize_ui_generation(
             _run_music_phase,
             params,
             list(prepared.assembly_clips),
-            prepared.path,
+            prepared.current_path,
             prepared.path.parent,
             run_tracker,
-            encoding_plan=prepared.encoding_plan,
+            encoding_plan=plan,
             mute_windows=prepared.music_mute_windows,
             source=(MusicSource.BUNDLED if music_source == "Bundled" else MusicSource.AUTO),
-            decode_check=decode_check,
         )
         emit_operational_phase(
             params,
@@ -536,9 +536,7 @@ async def finalize_ui_generation(
             total=1,
             message=music_result.warning or "Music ready",
         )
-    final_probe = await io_bound_result(
-        validate_output, prepared.path, prepared.encoding_plan, decode_check
-    )
+    final_probe = await io_bound_result(prepared.publish, decode_check)
     from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
     from immich_memories.generate_timeline import validate_final_duration
 
@@ -582,6 +580,9 @@ async def finalize_ui_generation(
             run_tracker,
             progress_bar,
             status_label,
+            recheck=lambda: validate_output(
+                prepared.path, plan, decode_check, verified=final_probe
+            ),
         )
         if completed.delivery_status is not DeliveryStatus.DELIVERED:
             emit_operational_phase(

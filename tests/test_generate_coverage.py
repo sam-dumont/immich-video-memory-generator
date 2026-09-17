@@ -1350,7 +1350,6 @@ class TestRunMusicPhase:
             encoding_plan,
             mute_windows=None,
             stems=None,
-            decode_check=None,
         )
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)

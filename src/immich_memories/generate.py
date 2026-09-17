@@ -40,7 +40,12 @@ from immich_memories.generate_settings import (
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.operations.run_index import record_run_attempt
 from immich_memories.processing.output_canvas import OutputCanvas
-from immich_memories.processing.output_contract import DecodeCheck, validate_output
+from immich_memories.processing.output_contract import (
+    DecodeCheck,
+    OutputProbe,
+    publish_validated_output,
+    validate_output,
+)
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_planner import EditorialSelection
@@ -171,7 +176,11 @@ class GenerationParams:
 
 @dataclass(frozen=True, slots=True)
 class PreparedGeneration:
-    """Published base artifact awaiting caller-managed post-processing."""
+    """A rendered film awaiting caller-managed post-processing and its one decode check.
+
+    ``path`` is where the film is published. Until ``publish`` runs, the film
+    sits at ``staged_path``, and music is mixed into it there.
+    """
 
     path: Path
     encoding_plan: EncodingPlan
@@ -185,8 +194,35 @@ class PreparedGeneration:
     duration_warning: str | None = None
     render_metrics: dict[str, object] = field(default_factory=dict)
     # Wall time this machine spent rendering the film; None when a worker did.
-    # Every later decode check of the same film is bounded by it.
+    # The decode check of the same film is bounded by it.
     encode_seconds: float | None = None
+    # None when the film is already at ``path``.
+    staged_path: Path | None = None
+    # A decode that already vouches for these bytes: the worker's, bound by digest.
+    verified: OutputProbe | None = None
+
+    @property
+    def current_path(self) -> Path:
+        """Where the film is now, and where post-processing writes."""
+        return self.staged_path or self.path
+
+    def publish(self, decode_check: DecodeCheck | None = None) -> OutputProbe:
+        """Decode the film once, as it stands after its last write, then publish it at ``path``.
+
+        A decode that already vouches for the same bytes is reused. A film that
+        fails stays where it is, and the error names it.
+        """
+        if self.staged_path is None:
+            return validate_output(
+                self.path, self.encoding_plan, decode_check, verified=self.verified
+            )
+        return publish_validated_output(
+            self.staged_path,
+            self.path,
+            self.encoding_plan,
+            decode_check=decode_check,
+            verified=self.verified,
+        )
 
 
 class GenerationError(Exception):
@@ -271,7 +307,9 @@ def generate_memory(
     """Run the full video generation pipeline synchronously.
 
     Acquires a file lock to prevent concurrent runs, then executes
-    the full pipeline: extract → assemble → music → upload.
+    the full pipeline: extract → assemble → music → one decode check and
+    publish → upload. With ``defer_finalization`` it returns after assembly,
+    and the caller owns the music and ``PreparedGeneration.publish``.
     """
     if not params.clips:
         raise GenerationError("No clips provided for generation")
@@ -312,7 +350,6 @@ def _complete_music_phase(
     operational: _OperationalProgress,
     progress: _PipelineProgress,
     mute_windows: list[tuple[float, float]] | None = None,
-    decode_check: DecodeCheck | None = None,
 ):
     """Run or explicitly skip music while emitting the shared outer phase."""
     if params.no_music:
@@ -331,7 +368,6 @@ def _complete_music_phase(
         run_tracker,
         encoding_plan=encoding_plan,
         mute_windows=mute_windows,
-        decode_check=decode_check,
     )
     progress.report("music", 1.0, result.warning or "Music ready")
     operational.emit(OperationalPhase.MUSIC, 1, 1, result.warning or "Music ready")
@@ -456,32 +492,32 @@ def _generate_memory_inner(
         )
         assembly_clips = list(prepared.assembly_clips)
         result_path = prepared.path
+        plan = prepared.encoding_plan
         duration_warning = prepared.duration_warning
         if defer_finalization:
             return prepared
 
         decode_check = DecodeCheck(
             encode_seconds=prepared.encode_seconds,
-            progress=lambda message: pp.report("music", 1.0, message),
+            progress=lambda message: pp.report("check", 1.0, message),
         )
 
-        # Phase 3: Music
+        # Phase 3: Music, mixed into the film before it is published
         _t = _time.monotonic()
         music_result = _complete_music_phase(
             params,
             assembly_clips,
-            result_path,
+            prepared.current_path,
             run_output_dir,
             run_tracker,
-            prepared.encoding_plan,
+            plan,
             operational,
             pp,
             mute_windows=prepared.music_mute_windows,
-            decode_check=decode_check,
         )
         _phase_times["music"] = _time.monotonic() - _t
 
-        final_probe = validate_output(result_path, prepared.encoding_plan, decode_check)
+        final_probe = prepared.publish(decode_check)
         artifact_warnings = _artifact_warnings(params, duration_warning, music_result.warning)
         run_tracker.complete_artifact(
             result_path,
@@ -497,7 +533,13 @@ def _generate_memory_inner(
         )
 
         # Phase 4: Upload (if requested)
-        _deliver_with_operational_progress(params, result_path, run_tracker, operational)
+        _deliver_with_operational_progress(
+            params,
+            result_path,
+            run_tracker,
+            operational,
+            recheck=lambda: validate_output(result_path, plan, decode_check, verified=final_probe),
+        )
 
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))

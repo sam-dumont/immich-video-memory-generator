@@ -95,8 +95,36 @@ class _Metadata:
 
 
 @dataclass(frozen=True, slots=True)
+class FileStamp:
+    """Which bytes a check read: a rename keeps all three, a rewrite changes one."""
+
+    size_bytes: int
+    mtime_ns: int
+    inode: int
+
+    @classmethod
+    def of(cls, path: Path) -> FileStamp:
+        """Stamp the file as it is on disk now."""
+        stat = path.stat()
+        return cls(stat.st_size, stat.st_mtime_ns, stat.st_ino)
+
+    def matches(self, path: Path) -> bool:
+        """Whether the file on disk is still the one stamped."""
+        stat = path.stat()
+        return (stat.st_size, stat.st_mtime_ns, stat.st_ino) == (
+            self.size_bytes,
+            self.mtime_ns,
+            self.inode,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class OutputProbe:
-    """Normalized metadata and decoded-frame evidence for one finished film."""
+    """Normalized metadata, and decoded-frame evidence once the film was decoded.
+
+    ``decoded_frames`` is None for a metadata-only check. ``stamp`` names the
+    bytes that were decoded, so a later step can tell whether they changed.
+    """
 
     codec: str
     container: str
@@ -107,7 +135,8 @@ class OutputProbe:
     color_primaries: str | None
     width: int
     height: int
-    decoded_frames: int
+    decoded_frames: int | None
+    stamp: FileStamp | None = None
 
     def render_metrics(self, plan: EncodingPlan) -> dict[str, object]:
         """Describe the effective render contract with validated artifact facts."""
@@ -391,14 +420,17 @@ def _validate_color_metadata(metadata: _Metadata, plan: EncodingPlan) -> None:
         )
 
 
-def _validated_probe(path: Path, plan: EncodingPlan, check: DecodeCheck) -> OutputProbe:
+def _checked_metadata(path: Path, plan: EncodingPlan) -> _Metadata:
     metadata = _read_metadata(path)
     _validate_media_shape(metadata)
     _validate_encoding_identity(metadata, plan)
     _validate_color_metadata(metadata, plan)
-    decoded_frames = _decode_video_stream(path, metadata, check)
-    if decoded_frames <= 0:
-        raise InvalidOutputArtifact("output artifact must have a positive decoded frame count")
+    return metadata
+
+
+def _probe_of(
+    metadata: _Metadata, decoded_frames: int | None, stamp: FileStamp | None
+) -> OutputProbe:
     return OutputProbe(
         codec=metadata.codec,
         container=metadata.container,
@@ -410,23 +442,66 @@ def _validated_probe(path: Path, plan: EncodingPlan, check: DecodeCheck) -> Outp
         width=metadata.width,
         height=metadata.height,
         decoded_frames=decoded_frames,
+        stamp=stamp,
     )
 
 
+def _still_verified(path: Path, verified: OutputProbe | None) -> bool:
+    if verified is None or verified.stamp is None or not verified.decoded_frames:
+        return False
+    return verified.stamp.matches(path)
+
+
+def _decoded_probe(
+    path: Path, plan: EncodingPlan, check: DecodeCheck, verified: OutputProbe | None
+) -> OutputProbe:
+    metadata = _checked_metadata(path, plan)
+    if _still_verified(path, verified):
+        assert verified is not None  # _still_verified is False without it
+        return _probe_of(metadata, verified.decoded_frames, verified.stamp)
+    stamp = FileStamp.of(path)
+    decoded_frames = _decode_video_stream(path, metadata, check)
+    if decoded_frames <= 0:
+        raise InvalidOutputArtifact("output artifact must have a positive decoded frame count")
+    if not stamp.matches(path):
+        raise InvalidOutputArtifact("output artifact changed while it was being checked")
+    return _probe_of(metadata, decoded_frames, stamp)
+
+
+def _naming_the_file(path: Path, check: Callable[[], OutputProbe]) -> OutputProbe:
+    try:
+        return check()
+    except InvalidOutputArtifact as exc:
+        raise InvalidOutputArtifact(f"{path}: {exc}") from exc
+
+
+def check_output(path: Path, plan: EncodingPlan) -> OutputProbe:
+    """Read the film's container, without decoding, and check it against its plan.
+
+    This is the check for every step before the film's last write: a second at
+    most, and the returned probe carries no decoded-frame evidence.
+    """
+    return _naming_the_file(path, lambda: _probe_of(_checked_metadata(path, plan), None, None))
+
+
 def validate_output(
-    path: Path, plan: EncodingPlan, decode_check: DecodeCheck | None = None
+    path: Path,
+    plan: EncodingPlan,
+    decode_check: DecodeCheck | None = None,
+    *,
+    verified: OutputProbe | None = None,
 ) -> OutputProbe:
     """Return the film's metadata only when it matches its plan and decodes cleanly.
 
     The container is read first, without decoding, and checked against the plan,
     so a wrong codec fails in a second. Only then is the video stream decoded end
-    to end, within the budget ``decode_check`` sets. Every failure names the
+    to end, within the budget ``decode_check`` sets. When ``verified`` is an
+    earlier decoded probe of the same bytes (same size, mtime and inode), that
+    decode stands and the stream is not decoded again. Every failure names the
     file, and nothing here deletes it.
     """
-    try:
-        return _validated_probe(path, plan, decode_check or DecodeCheck())
-    except InvalidOutputArtifact as exc:
-        raise InvalidOutputArtifact(f"{path}: {exc}") from exc
+    check = decode_check or DecodeCheck()
+    return _naming_the_file(path, lambda: _decoded_probe(path, plan, check, verified))
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -454,8 +529,8 @@ def publish_validated_output(
     final_path: Path,
     plan: EncodingPlan,
     *,
-    validate_probe: Callable[[OutputProbe], None] | None = None,
     decode_check: DecodeCheck | None = None,
+    verified: OutputProbe | None = None,
 ) -> OutputProbe:
     """Validate a staged sibling before atomically replacing the final path.
 
@@ -470,9 +545,7 @@ def publish_validated_output(
         raise InvalidOutputArtifact(
             f"final suffix must be {expected_suffix}, got {final_path.suffix or 'missing'}"
         )
-    probe = validate_output(staged_path, plan, decode_check)
-    if validate_probe is not None:
-        validate_probe(probe)
+    probe = validate_output(staged_path, plan, decode_check, verified=verified)
     os.replace(staged_path, final_path)
     _fsync_directory(final_path.parent)
     return probe
