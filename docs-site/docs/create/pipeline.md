@@ -134,12 +134,21 @@ all 653 decisions exactly while removing 30 % of the calls, and the first change
 at 12. That 10 is a constant in the code, not a setting.
 
 **3. The final film, over what actually shipped.** The pictures in the cut are checked against each
-other again. A pair is nominated when either signal fires: hashes within 10 bits, or descriptions
-that read as the same thing (Jaccard over words of four letters or more, at 0.60). That 0.60 is the
-knee of a measured curve over 1,124,250 real pairs from the cache: 0.60 collapses 33 pairs, 0.55
-collapses 74, 0.50 collapses 135. The count triples per step below it, which is where genuinely
-different shots start merging. Nominated pairs are then asked as pairs, by the same question as
-step 2.
+other again. A pair is nominated when any of three signals fires: hashes within 10 bits,
+descriptions that read as the same thing (Jaccard over words of four letters or more, at 0.60), or
+the same capture episode within the 90-minute window. That 0.60 is the knee of a measured curve over
+1,124,250 real pairs from the cache: 0.60 collapses 33 pairs, 0.55 collapses 74, 0.50 collapses 135.
+The count triples per step below it, which is where genuinely different shots start merging.
+Nominated pairs are then asked as pairs, by the same question as step 2.
+
+The episode signal is there because the other two miss the obvious case. Two frames of the same
+minute on a dark bus, shot from slightly different angles, have distant hashes and get two
+unrelated descriptions, so nothing ever put them side by side and both shipped. A pair that only
+its episode nominated is asked a different question, whether the two show similar content so that
+keeping one avoids repetition, and it always needs both arrangements to agree: the corroboration
+distance of step 2 was measured on the same-picture question, so it buys nothing here. Pair work
+stays inside the same fixed bound of twice the number of pictures in the cut, and a comparison the
+bound cut short keeps both pictures and says so in the record.
 
 Which one survives, in order: protected carriers, favourites, pictures with a known quality figure,
 quality itself, capture time, then asset id. A favourited copy wins even at a lower resolution: you

@@ -13,6 +13,7 @@ from typing import Any
 
 from immich_memories.analysis.duplicate_hashing import hamming_distance
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
+from immich_memories.analysis.moment_grouping import EPISODE_WINDOW_MINUTES
 from immich_memories.analysis.selection_same_picture import SELECTS_MAX_CORROBORATION
 
 # Jaccard over description tokens, at the knee of the measured curve. On
@@ -82,11 +83,13 @@ def _material(unit: Mapping[str, Any]) -> tuple[tuple[str, ...], str | None]:
     return members, "unsupported_rendered_kind"
 
 
+def _captured_at(unit):
+    taken = datetime.fromisoformat(unit["taken"])
+    return taken if taken.tzinfo is not None else taken.replace(tzinfo=UTC)
+
+
 def _priority(unit, protected, quality):
     asset_id = unit["asset_id"]
-    taken = datetime.fromisoformat(unit["taken"])
-    if taken.tzinfo is None:
-        taken = taken.replace(tzinfo=UTC)
     value = quality.get(asset_id)
     if value is not None and (
         isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
@@ -97,18 +100,18 @@ def _priority(unit, protected, quality):
         not bool(unit.get("favourite")),
         value is None,
         -float(value) if value is not None else 0.0,
-        taken.timestamp(),
+        _captured_at(unit).timestamp(),
         asset_id,
     )
 
 
-def _nomination_edge(left, right, hashes, records):
+def _nomination_edge(left, right, hashes, records, *, same_episode=False):
     distance = (
         hamming_distance(hashes[left], hashes[right])
         if left in hashes and right in hashes
         else None
     )
-    signals = []
+    signals = ["same-episode"] if same_episode else []
     if distance is not None and distance <= SELECTS_MAX_CORROBORATION:
         signals.append("hash")
     left_own = records.get(left, {}).get("description")
@@ -208,6 +211,22 @@ def _material_index(
     return _MaterialIndex(material, unavailable, is_protected, hashes, picture_records)
 
 
+def _episode_of(unit: Mapping[str, Any]) -> str:
+    # Event families come from capture time and place, independent of the
+    # model splitting similar views into differently named stories or moments.
+    return str(unit.get("event") or unit.get("moment") or "")
+
+
+def _nearby_episode(left, right) -> bool:
+    episode = _episode_of(left)
+    return (
+        bool(episode)
+        and episode == _episode_of(right)
+        and abs((_captured_at(left) - _captured_at(right)).total_seconds())
+        <= EPISODE_WINDOW_MINUTES * 60
+    )
+
+
 def _nominations(
     ordered: Sequence[dict[str, Any]], index: _MaterialIndex
 ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], dict[str, Any]]]:
@@ -216,11 +235,17 @@ def _nominations(
     for position, keeper in enumerate(ordered):
         for remove in ordered[position + 1 :]:
             kept_id, removed_id = keeper["asset_id"], remove["asset_id"]
+            same_episode = _nearby_episode(keeper, remove)
             edges = [
                 edge
                 for left in index.members[removed_id]
                 for right in index.members[kept_id]
-                if (edge := _nomination_edge(left, right, index.hashes, index.records)) is not None
+                if (
+                    edge := _nomination_edge(
+                        left, right, index.hashes, index.records, same_episode=same_episode
+                    )
+                )
+                is not None
             ]
             if edges:
                 row = {
@@ -236,25 +261,32 @@ def _nominations(
 
 
 class _RelationCache:
-    """One conserved outcome per source pair, inside a fixed comparison work bound."""
+    """One conserved outcome per source pair and question, inside a fixed work bound."""
 
     def __init__(
-        self, confirm: Callable[[str, str, int | None], Mapping[str, Any]], limit: int
+        self,
+        confirm: Callable[[str, str, int | None], Mapping[str, Any]],
+        limit: int,
+        confirm_episode: Callable[[str, str, int | None], Mapping[str, Any]] | None = None,
     ) -> None:
-        self._confirm, self._limit = confirm, limit
+        self._confirm = {"picture": confirm, "episode": confirm_episode or confirm}
+        self._limit = limit
         self._results: dict[tuple[str, ...], dict[str, Any]] = {}
         self.checks_used = 0
 
-    def __call__(self, left: str, right: str, distance: int | None = None) -> dict[str, Any] | None:
+    def __call__(
+        self, left: str, right: str, distance: int | None = None, *, same_episode: bool = False
+    ) -> dict[str, Any] | None:
+        mode = "episode" if same_episode else "picture"
         earlier, later = sorted((left, right))
-        key = (earlier, later)
+        key = (mode, earlier, later)
         if left == right:
             return {"same": True, "basis": "identical_source_material_member"}
         if key not in self._results:
             if self.checks_used >= self._limit:
                 return None
             self.checks_used += 1
-            outcome = deepcopy(dict(self._confirm(earlier, later, distance)))
+            outcome = deepcopy(dict(self._confirm[mode](earlier, later, distance)))
             if "same" not in outcome or type(outcome["same"]) not in (bool, type(None)):
                 raise ValueError("sampled relation must report same/different/unavailable")
             self._results[key] = outcome
@@ -280,7 +312,14 @@ def _matched_member(
     for edge in matches:
         # Only a hash nomination's distance corroborates; a description match is not pixels.
         corroborating = edge["distance"] if "hash" in edge["signals"] else None
-        outcome = relation(member, edge["keeper_member"], corroborating)
+        # Corroborated pixels keep the measured same-picture question and its second
+        # vote; the episode question is for pairs only the capture family nominated.
+        outcome = relation(
+            member,
+            edge["keeper_member"],
+            corroborating,
+            same_episode="same-episode" in edge["signals"] and corroborating is None,
+        )
         if outcome is None:
             row["status"] = "work_limit"
             return False
@@ -392,6 +431,7 @@ def reduce_final_sampled_duplicates(
     picture_records: Mapping[str, Mapping[str, Any]],
     preview_hashes: Mapping[str, str | None],
     confirm_relation: Callable[[str, str, int | None], Mapping[str, Any]],
+    confirm_episode_relation: Callable[[str, str, int | None], Mapping[str, Any]] | None = None,
     protected_asset_ids: Sequence[str] = (),
     objective_quality: Mapping[str, float | None] | None = None,
     max_relation_checks: int | None = None,
@@ -399,10 +439,12 @@ def reduce_final_sampled_duplicates(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Retain original order and source fields; only direct sampled proof permits removal.
 
-    All selected dates, events and media kinds can nominate one another. Existing own-description
-    similarity is a discovery signal only; a hash nomination also hands the callback its own
-    distance, which the callback may spend instead of a second arrangement. The callback owns
-    exact conserved pixels and relation reuse; its returned evidence must be stable, with
+    All selected dates, events and media kinds can nominate one another. Shared capture
+    episode and existing own-description similarity are discovery signals only; a hash
+    nomination also hands the callback its own distance, which the callback may spend
+    instead of a second arrangement. A pair nominated by its episode alone asks the
+    episode callback instead, because no pixels corroborate it. The callbacks own
+    exact conserved pixels and relation reuse; their returned evidence must be stable, with
     operational metrics kept elsewhere.
     A positive is editorial sampled redundancy, never equality of unseen video motion.
     Each removed material member must directly match a member of a surviving keeper.
@@ -428,16 +470,17 @@ def reduce_final_sampled_duplicates(
         original, key=lambda unit: _priority(unit, index.protected[unit["asset_id"]], qualities)
     )
     nominations, by_pair = _nominations(ordered, index)
-    relation = _RelationCache(confirm_relation, limit)
+    relation = _RelationCache(confirm_relation, limit, confirm_episode_relation)
     kept, removals, conflicts = _survivors(ordered, by_pair, index, relation)
     removed_ids = {row["asset_id"] for row in removals}
     unresolved = _closed_nominations(nominations, removed_ids)
     survivors = [unit for unit in original if unit["asset_id"] not in removed_ids]
     return survivors, {
-        "policy": "final-displayed-sampled-duplicates-v2",
+        "policy": "final-displayed-sampled-duplicates-v3",
         "scope": "direct sampled editorial redundancy only; no equality of unseen video motion",
         "maximum_hash_distance": SELECTS_MAX_CORROBORATION,
         "description_nomination": "existing describes_the_same_thing on own description only",
+        "episode_nomination": "shared capture time/place family within the 90-minute window",
         "relation_check_limit": limit,
         "relation_checks": relation.checks_used,
         "input_carriers": len(original),

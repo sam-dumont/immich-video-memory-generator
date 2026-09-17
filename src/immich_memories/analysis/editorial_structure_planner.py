@@ -322,6 +322,9 @@ def _final_duplicate_review(
         picture_records=final_records,
         preview_hashes=ports.sampled_preview_hashes(displayed_ids, final_records),
         confirm_relation=source_relation,
+        confirm_episode_relation=sampled_source_relation(
+            ports.confirm_episode_pairs, picture_records=final_records
+        ),
         bound_sample_members=final_members,
         protected_asset_ids=sorted(
             (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())

@@ -212,6 +212,9 @@ class StructurePlannerPorts:
     story_motion_metrics: Callable[[], Mapping[str, Any]] | None = None
     confirm_sampled_pairs: SampledPairConfirmer | None = None
     sampled_pair_metrics: Callable[[], Mapping[str, Any]] | None = None
+    # The same boundary asked whether two nearby captures repeat each other, which
+    # no perceptual distance answers; None leaves the strict question to answer both.
+    confirm_episode_pairs: SampledPairConfirmer | None = None
     sampled_preview_hashes: (
         Callable[[tuple[str, ...], Mapping[str, Mapping[str, Any]]], Mapping[str, str]] | None
     ) = None
