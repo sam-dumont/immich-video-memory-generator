@@ -30,6 +30,7 @@ from immich_memories.config_models_automation import (
 from immich_memories.config_models_editorial import EditorialConfig
 from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.config_models_llm import LLMConfig  # noqa: F401
+from immich_memories.config_models_network import NetworkConfig
 from immich_memories.config_models_render import (
     DefaultsConfig,
     OutputConfig,
@@ -333,6 +334,7 @@ class Config(BaseSettings):
     photos: PhotoConfig = Field(default_factory=PhotoConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)

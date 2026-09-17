@@ -79,9 +79,11 @@ def test_pin_names_line_up_with_the_pins_they_label() -> None:
     de-duplicated by the same rule or the two lists drift apart and every pin
     after the first duplicate is captioned with somebody else's city.
     """
+    config = Config()
+    config.network.map_tiles = True  # the pins only exist for a map
     settings = _build_title_settings(
-        _trip_params(),
-        Config(),
+        _trip_params(config=config),
+        config,
         [
             _gps_clip(48.8566, 2.3522, "Paris"),
             _gps_clip(48.8566, 2.3522, "Paris"),

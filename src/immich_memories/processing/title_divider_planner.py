@@ -274,9 +274,12 @@ class TitleDividerPlanner:
         """Return an AssemblyClip for a location card, using cache to avoid duplicates.
 
         Coordinates turn the card's background from a flat grey panel into a
-        satellite map of the place it names. Cached by name, so a place seen
-        twice keeps the first card rather than re-rendering the same map.
+        satellite map of the place it names, so they are withheld unless
+        `network.map_tiles` allows the tile request. Cached by name, so a place
+        seen twice keeps the first card rather than re-rendering the same map.
         """
+        if not getattr(self._title_settings, "map_tiles", False):
+            lat = lon = None
         if name not in cache:
             card = self._generator.generate_location_card_screen(name, lat=lat, lon=lon)
             cache[name] = card.path

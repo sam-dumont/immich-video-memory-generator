@@ -127,7 +127,7 @@ def _render_base_map(
 
     try:
         image = m.render()
-    except (OSError, RuntimeError) as e:
+    except Exception as e:  # noqa: BLE001 -- see _render_satellite: same transport
         logger.warning("Map tile fetch failed, using solid background: %s", e)
         image = Image.new("RGB", (width, height), color=(40, 50, 60))
         return image, None
@@ -351,45 +351,22 @@ def _add_attribution(image: Image.Image, width: int, height: int) -> None:
     draw.text((x, y), _OSM_ATTRIBUTION, fill=(200, 200, 200), font=font)
 
 
-_montserrat_checked = False
-
-
-def _ensure_montserrat() -> bool:
-    """Download Montserrat if not already cached. Returns True if available."""
-    global _montserrat_checked  # noqa: PLW0603
-    if _montserrat_checked:
-        return True
-
-    from pathlib import Path
-
-    cache_dir = Path.home() / ".immich-memories" / "fonts" / "Montserrat"
-    if (cache_dir / "Montserrat-Bold.ttf").exists():
-        _montserrat_checked = True
-        return True
-
-    try:
-        from immich_memories.titles.fonts import download_font
-
-        ok = download_font("Montserrat")
-        _montserrat_checked = ok
-        return ok
-    except (ImportError, OSError, RuntimeError) as e:
-        logger.warning("Could not auto-download Montserrat font: %s", e)
-        return False
-
-
 def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    """Load a font at the given size, preferring Montserrat (OFL)."""
+    """Load a font at the given size, preferring Montserrat (OFL).
+
+    The wheel carries Montserrat, so the pin labels never needed a download;
+    the user's own font directory still overrides it.
+    """
     from pathlib import Path
 
-    _ensure_montserrat()
+    from immich_memories.titles.fonts import FontWeight, bundled_font_path
 
-    # Prefer Montserrat from our font cache (open source, OFL)
-    cache_dir = Path.home() / ".immich-memories" / "fonts" / "Montserrat"
-    montserrat = cache_dir / ("Montserrat-Bold.ttf" if bold else "Montserrat-Regular.ttf")
-    if montserrat.exists():
-        with contextlib.suppress(OSError):
-            return ImageFont.truetype(str(montserrat), size)
+    weight: FontWeight = "Bold" if bold else "Regular"
+    cached = Path.home() / ".immich-memories" / "fonts" / "Montserrat" / f"Montserrat-{weight}.ttf"
+    for montserrat in (bundled_font_path("Montserrat", weight), cached):
+        if montserrat is not None and montserrat.exists():
+            with contextlib.suppress(OSError):
+                return ImageFont.truetype(str(montserrat), size)
 
     # System fallbacks
     fallbacks = [

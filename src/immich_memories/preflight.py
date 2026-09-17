@@ -722,6 +722,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         List of check results.
     """
     from immich_memories.preflight_homebase import check_homebase
+    from immich_memories.preflight_network import outside_call_checks
     from immich_memories.preflight_render import check_render_worker
 
     return [
@@ -736,6 +737,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_notifications(config),
         check_render_worker(config),
         check_hardware(),
+        *outside_call_checks(config),
     ]
 
 

@@ -273,9 +273,13 @@ judged less focused than the shorter metadata cut.
 
 ## What leaves your network, per mode
 
+Nothing in this table leaves by default. The three third-party hosts (Nominatim, ArcGIS tiles,
+jsDelivr fonts) are `network:` switches, all off, and
+[Network & Privacy](configuration/network-and-privacy.md) says what each one sends.
+
 | Mode | To the caption server | To the reader | Elsewhere |
 |---|---|---|---|
-| rules + `metadata_only` | nothing | nothing | Immich reads; Nominatim for trip GPS; map tiles for title screens |
+| rules + `metadata_only` | nothing | nothing | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
 | rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |

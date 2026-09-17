@@ -7,16 +7,17 @@ Note: This module does NOT use 'from __future__ import annotations'
 because kernel signatures need actual type objects, not string annotations.
 """
 
-import contextlib
 import logging
 from pathlib import Path
 
 import numpy as np
 
-# WHY: importing the seam first is what silences the library's banner before its
-# C++ runtime loads, including for the SDF modules below, which take `ti` from
-# the same place. KERNELS_AVAILABLE is re-exported here because this module is
-# where the rest of the package asks whether there is a GPU renderer at all.
+from .fonts import FontWeight, bundled_font_path
+
+# WHY: importing the seam before the SDF modules below is what silences the
+# library's banner before its C++ runtime loads; they take `ti` from the same
+# place. KERNELS_AVAILABLE is re-exported here because this module is where the
+# rest of the package asks whether there is a GPU renderer at all.
 from .gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
 from .kernel_backend_probe import (
     _backend_dispatches,
@@ -711,7 +712,7 @@ class GPUBuffers:
             self.sharp = ti.ndarray(dtype=ti.f32, shape=(self.h, self.w, 3))
 
 
-_OFL_FONTS = {"Montserrat", "Outfit", "Raleway", "Quicksand"}
+_FONT_WEIGHTS: tuple[FontWeight, ...] = ("Bold", "SemiBold", "Medium", "Regular")
 _SYSTEM_FONTS = [
     "/System/Library/Fonts/Helvetica.ttc",
     "/System/Library/Fonts/SFNSDisplay.ttf",
@@ -722,20 +723,18 @@ _SYSTEM_FONTS = [
 
 
 def _get_system_font(font_family: str = "Helvetica") -> str:
-    """Get a reliable font path, preferring app-cached OFL fonts."""
-    cache_dir = Path.home() / ".immich-memories" / "fonts"
+    """A title font path: the family bundled in the wheel, then the user's own
+    font directory, then whatever this host ships. Nothing here is downloaded."""
     family_clean = font_family.replace(" ", "")
-    family_dir = cache_dir / family_clean
-    if not family_dir.exists() and family_clean in _OFL_FONTS:
-        with contextlib.suppress(Exception):
-            from immich_memories.titles.fonts import download_font
-
-            download_font(family_clean)
-    if family_dir.exists():
-        for w in ("Bold", "SemiBold", "Medium", "Regular"):
-            candidate = family_dir / f"{family_clean}-{w}.ttf"
-            if candidate.exists():
-                return str(candidate)
+    for weight in _FONT_WEIGHTS:
+        bundled = bundled_font_path(family_clean, weight)
+        if bundled is not None:
+            return str(bundled)
+    family_dir = Path.home() / ".immich-memories" / "fonts" / family_clean
+    for weight in _FONT_WEIGHTS:
+        candidate = family_dir / f"{family_clean}-{weight}.ttf"
+        if candidate.exists():
+            return str(candidate)
     for path in _SYSTEM_FONTS:
         if Path(path).exists():
             return path

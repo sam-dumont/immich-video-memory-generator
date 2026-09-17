@@ -503,7 +503,6 @@ class TestReverseGeocode:
 
     def test_naming_prefers_geocode_over_exif(self):
         """_derive_location_name should prefer geocoded result over EXIF."""
-        from unittest.mock import patch
 
         from immich_memories.analysis.trip_detection import _derive_location_name
 
@@ -512,17 +511,14 @@ class TestReverseGeocode:
             _make_asset(45.96, -1.14, "2024-07-13T10:00:00", city="Dolus", country="France"),
         ]
 
-        with patch(
-            "immich_memories.analysis.trip_detection.reverse_geocode",
-            return_value="Île d'Oléron, France",
-        ):
-            result = _derive_location_name(assets, centroid_lat=45.955, centroid_lon=-1.145)
+        result = _derive_location_name(
+            assets, 45.955, -1.145, lambda *_a, **_k: "Île d'Oléron, France"
+        )
 
         assert result == "Île d'Oléron, France"
 
     def test_naming_falls_back_to_exif_when_geocode_fails(self):
         """When geocode returns None, fall back to EXIF city/country."""
-        from unittest.mock import patch
 
         from immich_memories.analysis.trip_detection import _derive_location_name
 
@@ -531,8 +527,7 @@ class TestReverseGeocode:
             _make_asset(41.39, 2.17, "2024-06-13T10:00:00", city="Barcelona", country="Spain"),
         ]
 
-        with patch("immich_memories.analysis.trip_detection.reverse_geocode", return_value=None):
-            result = _derive_location_name(assets, centroid_lat=41.39, centroid_lon=2.17)
+        result = _derive_location_name(assets, 41.39, 2.17, lambda *_a, **_k: None)
 
         assert result == "Barcelona, Spain"
 

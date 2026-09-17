@@ -199,6 +199,7 @@ def _build_title_settings(
         trip_title_text=trip_title_text,
         home_lat=params.memory_preset_params.get("home_lat"),
         home_lon=params.memory_preset_params.get("home_lon"),
+        map_tiles=config.network.map_tiles,
     )
 
     if params.timeline_plan is not None:
@@ -232,6 +233,21 @@ def _build_title_settings(
             # whether a map appears at all is a separate decision.
             settings.trip_title_text = params.title
 
+    return apply_map_tile_policy(settings)
+
+
+def apply_map_tile_policy(settings: TitleScreenSettings) -> TitleScreenSettings:
+    """Without tiles, a trip opens on the ordinary card carrying the trip title.
+
+    Dropping `trip_locations` is what stands the fly-over down: the inserter
+    reads it to decide whether an opening is a map at all. The trip title is the
+    one line the viewer would otherwise lose, so it becomes the card's title.
+    """
+    if settings.map_tiles or settings.memory_type != "trip":
+        return settings
+    if settings.trip_locations and settings.trip_title_text and not settings.title_override:
+        settings.title_override = settings.trip_title_text
+    settings.trip_locations = None
     return settings
 
 
