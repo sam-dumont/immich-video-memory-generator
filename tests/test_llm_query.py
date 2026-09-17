@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1066,3 +1067,102 @@ async def test_a_transient_transport_drop_is_retried_not_fatal():
         answer = await query_llm("q", config)
     assert answer
     assert calls["n"] == 3
+
+
+def _bare_404():
+    """A 404 with no body at all, as api.openai.com's edge returns under load."""
+    # WHY: the provider's HTTP endpoint is the boundary; nothing under test can produce a 404.
+    import httpx
+
+    response = MagicMock(status_code=404, content=b"")
+    response.json = MagicMock(side_effect=ValueError("no body"))
+    response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("404", request=MagicMock(), response=response)
+    )
+    return response
+
+
+def _bodied_404():
+    """A 404 that names what is missing, as a wrong model or a wrong path does."""
+    # WHY: same boundary; this is the shape that must stay fatal.
+    import httpx
+
+    body = {"error": {"code": "model_not_found", "message": "The model does not exist"}}
+    response = MagicMock(status_code=404, content=json.dumps(body).encode())
+    response.json = MagicMock(return_value=body)
+    response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("404", request=MagicMock(), response=response)
+    )
+    return response
+
+
+@pytest.mark.asyncio
+async def test_an_empty_404_from_a_server_that_has_answered_is_retried() -> None:
+    """Measured 2026-09-17: about one hosted reader call in five, and never retried.
+
+    api.openai.com answered a reader call 404 with no body at all, and the
+    identical request succeeded a second later. Nothing retried it, so one
+    edge blip ended a whole run at "the model call failed at call 1".
+    """
+    from immich_memories.analysis.llm_query import query_llm
+
+    config = _thinking_config(base_url="https://edge-blip.test/v1")
+    attempts = []
+    # WHY: the provider's endpoint is the external boundary these three attempts reach.
+    with (
+        patch(
+            "httpx.AsyncClient.post",
+            side_effect=[_openai_response(), _bare_404(), _openai_response()],
+        ),
+        # WHY: backoff sleeps are wall clock; the test asserts the retry, not the delay.
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
+        await query_llm("prove the endpoint answers", config)
+        answered = await query_llm(
+            "the call the edge drops", config, transport_observer=attempts.append
+        )
+
+    assert answered == '{"ok": true}'
+    assert [(event.attempt, event.outcome, event.status_code) for event in attempts] == [
+        (1, "connection_error", 404),
+        (2, "response", 200),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_404_that_names_what_is_missing_still_fails_at_once() -> None:
+    """A wrong model or a wrong path is not transient, whatever the endpoint did before."""
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    config = _thinking_config(base_url="https://named-404.test/v1")
+    # WHY: the provider's endpoint is the boundary; the body is the provider's own.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=[_openai_response(), _bodied_404()]) as post,
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
+        await query_llm("prove the endpoint answers", config)
+        with pytest.raises(httpx.HTTPStatusError, match="model_not_found"):
+            await query_llm("ask for a model that is not there", config)
+
+    assert post.call_count == 2, "a named 404 must not be tried again"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_404_from_an_endpoint_that_never_answered_fails_fast() -> None:
+    """A base URL that is not there must say so on the first call, not after three."""
+    import httpx
+
+    from immich_memories.analysis.llm_query import query_llm
+
+    config = _thinking_config(base_url="https://not-a-server.test/v1")
+    # WHY: the provider's endpoint is the boundary; a wrong URL is only visible there.
+    with (
+        patch("httpx.AsyncClient.post", side_effect=[_bare_404()]) as post,
+        patch("asyncio.sleep", new=AsyncMock()),
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        await query_llm("point me at nothing", config)
+
+    assert post.call_count == 1

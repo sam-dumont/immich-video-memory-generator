@@ -243,7 +243,10 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
-retries three times before failing.
+retries three times before failing. A hosted endpoint that has already answered and then returns a
+404 with no body at all counts as one of those dropped calls, because that is what a busy edge does
+to a large request. A 404 that names what is missing, and any 404 from a URL that has never
+answered, still fails at once: a wrong `llm.base_url` says so on the first call.
 
 A cold cut pays for every picture never read and every reading of a period nobody has cut. A warm cut
 over the same period is mostly the render: nothing in the period reading carries between calendar
