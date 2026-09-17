@@ -72,6 +72,14 @@ replacement a refusal pulls in from the same moment.
 evidence lines it was written from, and an unsupported claim is dropped rather than printed. Trip
 titles are a different path, written from dates and place names, with no such check.
 
+**An episode reading names nothing the facts do not name.** Words on a banner, a shirt, a sign, a
+screen or a poster name the thing they are printed on, never the day, the place or the event: a
+festival poster in the background of one picture does not make the weekend that festival. A name
+has to come from a fact line, and the Immich albums holding an episode's pictures are one of those
+lines. If your album calls that weekend "Summer Festival 2022", the reading may call it that too,
+and everything downstream (the period thesis, the story titles, the film title) inherits a name you
+typed rather than one the model read off a banner.
+
 **Refuse over fake.** A day the model could not name does not get a generic "Memories of June 12th"
 card: it does not render. An empty special-days catalogue produces instructions for building one,
 not an invented occasion.
@@ -211,7 +219,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | Stage | What runs | Where it can run |
 |---|---|---|
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
-| **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode. Banked per group and evidence key | the reader |
+| **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
 | **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. Motion is measured for the chosen Live carriers | the reader; motion locally |

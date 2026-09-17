@@ -27,6 +27,11 @@ from immich_memories.analysis.text_episode_answers import (
     _EpisodeRequestScope,
     _read_response_result,
 )
+from immich_memories.analysis.text_episode_prompt import (
+    AlbumNames,
+    EpisodePromptFacts,
+    episode_prompt,
+)
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 from immich_memories.store.episode_readings import (
     BankedEpisodeReading,
@@ -39,30 +44,12 @@ from immich_memories.store.episode_readings import (
 
 logger = logging.getLogger(__name__)
 
-TEXT_EPISODE_PROMPT_VERSION = "episode-prompt-v1"
 TEXT_EPISODE_MAX_OUTPUT_TOKENS = 4_000
 _DEFAULT_MAX_PROMPT_CHARS = 24_000
 _DEFAULT_MIN_OUTPUT_TOKENS = 512
 _DEFAULT_OUTPUT_BASE_TOKENS = 200
 _DEFAULT_OUTPUT_TOKENS_PER_ROW = 128
 _DEFAULT_OUTPUT_TOKENS_PER_ASSET = 12
-
-_PROMPT = """Read these episodes from one family's photo library. Every asset line contains
-all banked annotations for that asset. Use only those lines; do not invent names, places,
-relationships, or events.
-
-For every episode return what happened in at most 25 words, one to three representatives
-covering distinct situations, and only genuine Cull rejects. Prefer a starred action frame,
-video, or qualifying Live Photo when it earns the place. Cull buckets are notes (screens,
-documents, receipts), failed (the picture did not come out), and foreign (saved imagery not
-from this life). Similar or merely ordinary pictures are not Cull rejects.
-
-Return JSON only:
-{{"schema_version":"episode-reading-text-v1","episodes":[{{"episode":1,
-"what_happened":"plain factual sentence","representatives":[{{"asset":1,
-"reason":"short reason"}}],"cull":[{{"asset":2,"bucket":"notes"}}]}}]}}
-
-{episodes}"""
 
 
 class AnnotationLineReader(Protocol):
@@ -225,11 +212,13 @@ class CachedTextEpisodeReader:
         request_plan_guard: EpisodeRequestPlanGuard | None = None,
         strict_persistence_readback: bool = False,
         record_evidence: EpisodeEvidenceRecorder | None = None,
+        albums: AlbumNames | None = None,
     ) -> None:
         self._store = store
         self._producer = producer
         self._annotations = annotations
         self._requester = requester
+        self._albums = albums
         self._limits = limits or TextEpisodeRequestLimits()
         self._request_plan_guard = request_plan_guard
         self._strict_persistence_readback = strict_persistence_readback
@@ -257,6 +246,7 @@ class CachedTextEpisodeReader:
         )
         _validate_annotation_contract(annotation_batch, self._producer)
         lines = annotation_batch.as_mapping()
+        facts = EpisodePromptFacts(lines=lines, album_names=self._albums)
         identities_by_group, unavailable_by_group = self._identities(projections, lines)
         if self._record_evidence is not None:
             self._record_evidence(_evidence_lines(projections, identities_by_group, lines))
@@ -276,11 +266,11 @@ class CachedTextEpisodeReader:
                 identity,
                 full_asset_ids,
                 max_assets_per_page=self._limits.max_assets_per_page,
-                lines=lines,
+                facts=facts,
                 max_prompt_chars=self._limits.max_prompt_chars,
             )
         )
-        packs, oversized = _pack_scopes(request_scopes, lines, limits=self._limits)
+        packs, oversized = _pack_scopes(request_scopes, facts, limits=self._limits)
         response_diagnostics: list[EpisodeResponseDiagnostic] = []
         request_plan = EpisodeCacheRequestPlan(
             requested_identities=identities,
@@ -301,7 +291,7 @@ class CachedTextEpisodeReader:
                 request_scopes=request_scopes,
                 packs=packs,
                 oversized=oversized,
-                lines=lines,
+                facts=facts,
                 banked=banked,
                 unavailable_by_group=unavailable_by_group,
                 diagnostics=response_diagnostics,
@@ -374,7 +364,7 @@ class CachedTextEpisodeReader:
         request_scopes,
         packs,
         oversized,
-        lines,
+        facts,
         banked,
         unavailable_by_group,
         diagnostics,
@@ -387,8 +377,8 @@ class CachedTextEpisodeReader:
                 "complete episode annotation evidence exceeds the request limit"
             )
         calls = 0
-        _offer_batch(self._requester, packs, lines, self._limits)
-        for pack, response in self._read_packs(packs, lines):
+        _offer_batch(self._requester, packs, facts, self._limits)
+        for pack, response in self._read_packs(packs, facts):
             calls += 1
             announce_stage(
                 StageUpdate("event evidence", done=calls, total=len(packs), verb="Reading")
@@ -402,7 +392,7 @@ class CachedTextEpisodeReader:
             if not unread:
                 break
             retries = tuple((scope,) for scope in unread)
-            for pack, response in self._read_packs(retries, lines):
+            for pack, response in self._read_packs(retries, facts):
                 calls += 1
                 page_readings.extend(
                     self._record_response(pack, response, diagnostics, unavailable_by_group, failed)
@@ -410,9 +400,9 @@ class CachedTextEpisodeReader:
                 self._bank_complete(missing, request_scopes, page_readings, banked)
         return calls
 
-    def _read_packs(self, packs, lines):
+    def _read_packs(self, packs, facts):
         def read(requester, pack):
-            return self._ask(requester, pack, lines)
+            return self._ask(requester, pack, facts)
 
         run = getattr(self._requester, "iter_independent", None)
         if callable(run):
@@ -421,12 +411,12 @@ class CachedTextEpisodeReader:
             for pack in packs:
                 yield pack, read(self._requester, pack)
 
-    def _ask(self, requester, pack, lines):
+    def _ask(self, requester, pack, facts):
         try:
             return _read_missing(
                 requester,
                 pack,
-                lines,
+                facts,
                 max_tokens=_completion_budget(pack, self._limits),
             )
         except Exception as exc:  # WHY: one failed pack cannot remove other episodes
@@ -550,7 +540,7 @@ def _episode_provenance(
     )
 
 
-def _offer_batch(requester, packs, lines, limits) -> None:
+def _offer_batch(requester, packs, facts, limits) -> None:
     """Hand the whole page fan-out to the provider's batch route in one go.
 
     Every pack carries one or more episodes' own annotation lines and nothing
@@ -561,17 +551,17 @@ def _offer_batch(requester, packs, lines, limits) -> None:
     offer = getattr(requester, "prefetch", None)
     if not callable(offer):
         return
-    offer(tuple((_prompt_for(pack, lines), _completion_budget(pack, limits)) for pack in packs))
+    offer(tuple((episode_prompt(pack, facts), _completion_budget(pack, limits)) for pack in packs))
 
 
 def _read_missing(
     requester: Callable[[str], str],
     scopes: tuple[_EpisodeRequestScope, ...],
-    lines: Mapping[str, str],
+    facts: EpisodePromptFacts,
     *,
     max_tokens: int,
 ):
-    prompt = _prompt_for(scopes, lines)
+    prompt = episode_prompt(scopes, facts)
     budgeted_request = getattr(requester, "request_with_budget", None)
     raw = (
         budgeted_request(prompt, max_tokens=max_tokens)
@@ -586,7 +576,7 @@ def _page_scopes(
     full_asset_ids: tuple[str, ...],
     *,
     max_assets_per_page: int,
-    lines: Mapping[str, str],
+    facts: EpisodePromptFacts,
     max_prompt_chars: int,
 ) -> tuple[_EpisodeRequestScope, ...]:
     whole = _EpisodeRequestScope(
@@ -598,7 +588,7 @@ def _page_scopes(
     )
     if (
         len(full_asset_ids) <= max_assets_per_page
-        and len(_prompt_for((whole,), lines)) <= max_prompt_chars
+        and len(episode_prompt((whole,), facts)) <= max_prompt_chars
     ):
         return (whole,)
 
@@ -616,7 +606,7 @@ def _page_scopes(
         )
         if current and (
             len(proposed) > max_assets_per_page
-            or len(_prompt_for((scope,), lines)) > max_prompt_chars
+            or len(episode_prompt((scope,), facts)) > max_prompt_chars
         ):
             pages.append(current)
             current = (asset_id,)
@@ -643,7 +633,7 @@ def _scope_key(scope: _EpisodeRequestScope) -> tuple[str, int]:
 
 def _pack_scopes(
     scopes: tuple[_EpisodeRequestScope, ...],
-    lines: Mapping[str, str],
+    facts: EpisodePromptFacts,
     *,
     limits: TextEpisodeRequestLimits,
 ) -> tuple[tuple[tuple[_EpisodeRequestScope, ...], ...], tuple[_EpisodeRequestScope, ...]]:
@@ -652,7 +642,7 @@ def _pack_scopes(
     current: tuple[_EpisodeRequestScope, ...] = ()
     for scope in scopes:
         if (
-            len(_prompt_for((scope,), lines)) > limits.max_prompt_chars
+            len(episode_prompt((scope,), facts)) > limits.max_prompt_chars
             or _completion_budget((scope,), limits) > limits.max_output_tokens
         ):
             oversized.append(scope)
@@ -665,7 +655,7 @@ def _pack_scopes(
             continue
         proposed = (*current, scope)
         if current and (
-            len(_prompt_for(proposed, lines)) > limits.max_prompt_chars
+            len(episode_prompt(proposed, facts)) > limits.max_prompt_chars
             or _completion_budget(proposed, limits) > limits.max_output_tokens
         ):
             packs.append(current)
@@ -769,18 +759,3 @@ def _validate_annotation_contract(
         batch.contract.producer_versions
     ) != frozenset(producer.annotation_versions):
         raise ValueError("episode producer does not match the annotation evidence contract")
-
-
-def _prompt_for(
-    scopes: tuple[_EpisodeRequestScope, ...],
-    lines: Mapping[str, str],
-) -> str:
-    blocks = []
-    for episode_alias, scope in enumerate(scopes, start=1):
-        asset_lines = "\n".join(
-            f"  asset {asset_alias} | {lines[asset_id]}"
-            for asset_alias, asset_id in enumerate(scope.page_asset_ids, start=1)
-        )
-        page = f"  page {scope.page_number} of {scope.page_count}\n" if scope.page_count > 1 else ""
-        blocks.append(f"episode {episode_alias}\n{page}{asset_lines}")
-    return _PROMPT.format(episodes="\n\n".join(blocks))
