@@ -157,6 +157,44 @@ Options page, and the regenerate button asks again over the same GPS data.
 The `map_mode` that comes back with it (`excursions`, `overnight_stops`, `title_only`) is read by
 nothing in the renderer: today it is a badge in the UI and changes no pixels.
 
+### People and occasion titles
+
+The template opens a film about three people on a date span with three full names stacked
+underneath. The model gets the facts instead and writes "Ada and her grandparents".
+
+What it is sent, and nothing else: how many people are in the film, one line per person with their
+birth date and their age at each end of the span, one line per ordered pair saying what your people
+file records about them (`grandparent-of`, `cousin-of`, "no recorded relation"), the people
+condition the selection ran on, and what the span IS rather than only where it ends: "starts on
+Ada's birth date", "ends today (open-ended)", "the calendar year 2025". First names and the words a
+family uses at home (maman, papa, mamie, papy; mum, dad) are asked for; a span that is somebody's
+whole life so far gets no dates. The relationships come from your people file, so the roles are only
+as good as what you confirmed in **People**; without that file the model still gets the names, the
+birth dates Immich holds and the span.
+
+An occasion (a special day, an album, a holiday, a month, a season, a year, an On This Day) gets
+the same treatment from what the occasion already is: the name the special-day catalogue gave it,
+the album's own name, the holiday, the places by day. Any memory whose material mostly sits in one
+Immich album is also told that album's name: a family day is often called nothing else, and reading
+a name somebody typed is not inventing one. The app asks Immich which albums hold each of the first
+40 selected assets and keeps the album holding at least half of them. Both prompts are told that place names arrive
+in English as the camera recorded them and should be written in your locale, which is what turns
+"Cyprus et Grèce" into "Chypre et Grèce".
+
+Neither prompt sees the film's own reading of the period. Those readings promote names off banners
+and shopfronts (a stage banner once became "the X festival"), and a title may not invent. The only
+proper nouns a title can use are the catalogue's words, the place names, the album name and the
+people's first names.
+
+The model names people and occasion memories by default as soon as a reader is configured, in the
+wizard and on the CLI. `--title` still wins, the template is the fallback whenever the model fails
+or no reader is set, and a special day whose catalogue entry already carries a title keeps it.
+`--llm-title` extends the same treatment to trips; `--no-llm-title` pins the template everywhere,
+which is what a contact-sheet matrix wants so runs months apart stay comparable.
+
+Two known limits. A single grandparent can come back plural, because the people file records no
+gender. Four or five children in one condition is enough for the model to start inventing roles.
+
 ## Music
 
 Three stages: a mood for the memory, a track for the mood, and ducking so the music drops under the

@@ -305,7 +305,7 @@ def run_pipeline_and_generate(
     privacy_mode: bool = False,
     title_override: str | None = None,
     subtitle_override: str | None = None,
-    llm_title: bool = False,
+    llm_title: bool | None = None,
     memory_type: str | None,
     person_names: list[str],
     date_range: DateRange,
@@ -552,6 +552,11 @@ def run_pipeline_and_generate(
 
     from immich_memories.cli._llm_title import resolve_cli_title
 
+    def album_of_the_cut() -> str | None:
+        return client.album_holding_most(
+            [asset.id for clip in selected_clips if (asset := getattr(clip, "asset", None))]
+        )
+
     resolved_title, resolved_subtitle = resolve_cli_title(
         enabled=llm_title,
         title_override=title_override,
@@ -560,7 +565,9 @@ def run_pipeline_and_generate(
         config=config,
         memory_type=memory_type,
         date_range=date_range,
-        person_name=person_name,
+        person_names=person_names,
+        memory_preset_params=resolved.preset_params,
+        album_lookup=album_of_the_cut,
     )
 
     # WHY: Photos are now in selected_clips as IMAGE-type assets.

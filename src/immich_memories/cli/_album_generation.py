@@ -49,7 +49,7 @@ def handle_album_generation(
     keep_intermediates: bool,
     privacy_mode: bool,
     title_override: str | None,
-    llm_title: bool = False,
+    llm_title: bool | None = None,
     subtitle_override: str | None,
     upload_to_immich: bool,
     album: str | None,
