@@ -23,16 +23,13 @@ class AnnualStoryJudge(ControlledStoryJudge):
 
     def answer(self, stage, prompt):
         if stage.startswith("story-episodes"):
-            rows = json.JSONDecoder().raw_decode(
-                prompt.split("NEW FRAGMENTS TO PLACE", 1)[1].lstrip()
-            )[0]
-            first = int(re.search(r"Number new episodes S(\d+)", prompt)[1])
-            keys = [f"S{first + index:04d}" for index in range(len(rows))]
+            offered = re.findall(r'"reading": "(r\d+)"', prompt)
+            keys = [f"S{index + 1:04d}" for index in range(len(offered))]
             return json.dumps(
                 {
                     "fragments": [
-                        {"reading": row["reading"], "episode": key}
-                        for row, key in zip(rows, keys, strict=True)
+                        {"reading": reading, "episode": key}
+                        for reading, key in zip(offered, keys, strict=True)
                     ],
                     "new_episodes": [
                         {

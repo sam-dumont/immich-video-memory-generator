@@ -31,7 +31,7 @@ from immich_memories.analysis.editorial_story_pick_contract import source_kind_m
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     read_period_story,
-    story_evidence_rows,
+    story_episode_rows,
 )
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE, WEIGHTS, relations_on
 from immich_memories.analysis.editorial_story_shortlist import (
@@ -465,7 +465,13 @@ def select_story_first(
     background); it is shown to the synthesis and weighs episodes the synthesis left unplaced.
     `record(name, payload)` persists a derived decision under the run's audit directory.
     """
-    calls = {"story_pages": 0, "inventory_pages": 0, "pick_calls": 0, "standing_rounds": 0}
+    calls = {
+        "story_pages": 0,
+        "story_pages_fresh": 0,
+        "inventory_pages": 0,
+        "pick_calls": 0,
+        "standing_rounds": 0,
+    }
     _check_partition_request(partition_limit, partition_of)
     unit_by_asset = {u["asset_id"]: (f, u) for f, units in event_units.items() for u in units}
     parts = PartitionedSlots(unit_by_asset, partition_of=partition_of, limit=partition_limit)
@@ -479,14 +485,15 @@ def select_story_first(
     def line_of(asset: str) -> str:
         return story_lines.get(asset, "")
 
-    # 1. The period story: day episodes from descriptions, then the synthesis sees each episode
-    #    with the numbers and the gate's reading and groups them into weighed stories.
-    evidence = story_evidence_rows(
+    # 1. The period story: day episodes from the banked 90-minute episode readings, a month per
+    #    page, then the synthesis sees each episode with the numbers and the gate's reading and
+    #    groups them into weighed stories.
+    evidence = story_episode_rows(
         factual_rows_fn(tables, aliases),
+        readings=episode_readings or {},
         sources=moment_assets,
-        annotations={},
         lines=lines,
-        readings=episode_readings,
+        favourite=lambda asset: bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite")),
     )
     read_story = rules.read_story if rules is not None else read_period_story
     story = read_story(
@@ -502,6 +509,7 @@ def select_story_first(
         journey=journey,
     )
     calls["story_pages"] = len(story.audit.get("pages") or [])
+    calls["story_pages_fresh"] = (story.audit.get("reading_calls") or {}).get("fresh", 0)
 
     # 2. Stories: their units over every day they span, in weight order.
     stories, story_units = _weighed_stories(story, story.audit.get("hints") or {}, units)

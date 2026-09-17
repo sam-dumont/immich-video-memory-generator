@@ -25,7 +25,7 @@ flowchart TD
     end
 
     prep --> episodes["Reading event evidence: i/n"]
-    episodes --> period["Reading the period account: page n"]
+    episodes --> period["Reading the period account: month"]
     period --> cards["Building editorial cards"]
     cards --> edit["Editing the memory"]
     edit --> timing["Validating selected source timing"]
@@ -196,7 +196,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 |---|---|---|
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode. Banked per group and evidence key | the reader |
-| **Reading the period account** | The period read as an account with a thesis, one bounded repair if malformed. Banked | the reader |
+| **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
 | **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
@@ -214,17 +214,17 @@ hardware encoder, a lower resolution and fewer clips.
 
 ### What overlaps, and what cannot
 
-Reading is mostly a queue of one. Each page of the period account carries the episodes still open
-from the pages before it, so page 5 cannot be asked until page 4 has answered, and every pick below
-reads the stages above. Two places hold independent questions: the moment inventory of one event
-knows nothing about the next event's, and the worthiness and standing gates ask in blocks of twelve
-that do not see each other. Those are what `advanced.llm.reader_concurrency` overlaps, and nothing
-else in the reading can be made to overlap by raising it.
+Reading is mostly a queue of one, and every pick below reads the stages above. Three places hold
+independent questions: the period account is read one calendar month per page and no month sees
+another, the moment inventory of one event knows nothing about the next event's, and the worthiness
+and standing gates ask in blocks of twelve that do not see each other. Those are what
+`advanced.llm.reader_concurrency` overlaps, and nothing else in the reading can be made to overlap
+by raising it.
 
 ```mermaid
 flowchart TB
     packs["Event evidence, pack by pack"]
-    packs --> pages["The period account, page by page:<br/>each page carries the episodes still open"]
+    packs --> pages["The period account, one page per calendar month:<br/>no page sees another"]
     pages --> synthesis["The synthesis: one thesis over every episode"]
 
     synthesis --> worthy

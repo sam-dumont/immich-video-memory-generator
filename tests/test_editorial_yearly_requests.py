@@ -10,7 +10,7 @@ import pytest
 from immich_memories.analysis.editorial_story_reading import read_period_story
 from immich_memories.analysis.editorial_story_weight_contract import StoryWeightDecisionError
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
-from tests.test_editorial_story_reading import ScriptedJudge, fragment, opened, page_answer
+from tests.test_editorial_story_reading import ScriptedJudge, episode_row, opened, page_answer
 
 
 class YearJudge:
@@ -22,9 +22,13 @@ class YearJudge:
 
     def ask(self, stage, prompt, max_tokens=0):
         if stage.startswith("story-episodes"):
-            rows, _ = json.JSONDecoder().raw_decode(prompt.split("NEW FRAGMENTS TO PLACE\n")[1])
-            pairs = [(r["reading"], f"S{int(r['capture_group'][1:]) + 1:04d}") for r in rows]
-            return page_answer(pairs, [opened(key, f"Outing {key}") for _, key in pairs])
+            rows = offered_rows(prompt)
+            pairs = [(r["reading"], f"S{index + 1:04d}") for index, r in enumerate(rows)]
+            titles = [r["what_happened"] for r in rows]
+            return page_answer(
+                pairs,
+                [opened(key, title) for (_, key), title in zip(pairs, titles, strict=True)],
+            )
         if stage.startswith("story-understanding"):
             cards = json.loads(prompt.rsplit("\n", 2)[-2])
             return json.dumps(
@@ -48,11 +52,28 @@ class YearJudge:
         )
 
 
+def _row(index, day):
+    """One banked episode row on a given day, titled so its global key stays recognisable."""
+    return {
+        **episode_row(index),
+        "taken": f"{day}T12:00:00",
+        "last_taken": f"{day}T12:00:00",
+        "what_happened": f"Outing {index + 1:04d}",
+    }
+
+
+def offered_rows(prompt):
+    """The rows one month page offered, exactly as the reader was handed them."""
+    return json.loads(prompt.split("EPISODES TO PLACE (", 1)[1].split(")\n", 1)[1])
+
+
 def read_year(judge, count=578, record=lambda _: None):
     evidence = [
         {
-            **fragment(i),
+            **episode_row(i),
             "taken": f"{date(2030, 1, 1) + timedelta(days=i // 2)}T12:00:00",
+            "last_taken": f"{date(2030, 1, 1) + timedelta(days=i // 2)}T12:00:00",
+            "what_happened": f"Outing {i + 1:04d}",
         }
         for i in range(count)
     ]
@@ -117,10 +138,7 @@ def test_multiple_centres_are_resolved_once_even_when_their_rows_fit(count):
 
     result = read_period_story(
         ScriptedJudge(reply),
-        evidence=[
-            {**fragment(i), "taken": f"{date(2030, 1, 1) + timedelta(days=i * 2)}T12:00:00"}
-            for i in range(count)
-        ],
+        evidence=[_row(i, date(2030, 1, 1) + timedelta(days=i * 2)) for i in range(count)],
         contract="The requested memory.",
         prior={},
         enrich=lambda episodes: {
@@ -169,7 +187,7 @@ def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded
 
     result = read_period_story(
         ScriptedJudge(reply),
-        evidence=[{**fragment(i), "taken": f"{day(i)}T12:00:00"} for i in range(66)],
+        evidence=[_row(i, day(i)) for i in range(66)],
         contract="The whole year.",
         prior={},
         enrich=lambda episodes: {
@@ -184,7 +202,7 @@ def test_large_shared_context_is_compared_before_weighing_every_story_in_bounded
     assert max(len(keys) for _, _, _, keys in model.weighing) <= 60
     assert all(story["weight"] == "minor" for story in result.stories if story["key"] != "K01")
     assert (
-        next(story["title"] for story in result.stories if story["key"] == "K02") == "Outing S0002"
+        next(story["title"] for story in result.stories if story["key"] == "K02") == "Outing 0002"
     )
     for order in ("source", "reversed"):
         comparisons = [
@@ -245,10 +263,7 @@ def test_central_confirmation_repairs_invalid_choices_before_full_year_weighting
 
     result = read_period_story(
         ScriptedJudge(reply),
-        evidence=[
-            {**fragment(i), "taken": f"{date(2030, 1, 1) + timedelta(days=i * 2)}T12:00:00"}
-            for i in range(130)
-        ],
+        evidence=[_row(i, date(2030, 1, 1) + timedelta(days=i * 2)) for i in range(130)],
         contract="The whole year.",
         prior={},
         enrich=lambda episodes: {
@@ -305,7 +320,7 @@ def test_an_exhausted_page_is_read_in_smaller_groups_without_using_partial_edits
     assert len(result.stories) == 200
     recovered = next(s for s in result.stories if s["key"] == "K89")
     assert recovered["weight"] == "minor"
-    assert recovered["title"] == "Outing S0089"
+    assert recovered["title"] == "Outing 0089"
     assert recovered["episodes"] == ["S0089"]
     assert any("K89" in keys and len(keys) <= 32 for _, _, _, keys in model.weighing)
 

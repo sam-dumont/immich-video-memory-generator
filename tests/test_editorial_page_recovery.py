@@ -47,16 +47,9 @@ class RecordingJudge:
 
 
 def fragment(index):
-    key = f"M{index:03d}"
-    return {
-        "reading": f"{key}/1",
-        "capture_group": key,
-        "taken": f"2024-06-19T09:{index:02d}:00",
-        "known_people_in_group": "",
-        "places": "",
-        "episode_context": "",
-        "observations": [f"a plain view number {index}"],
-    }
+    from tests.test_editorial_story_reading import episode_row
+
+    return episode_row(index, day="2024-06-19", headline=f"a plain view number {index}")
 
 
 def page_answer(readings, episode):
@@ -80,7 +73,7 @@ def test_the_recorded_page_is_not_repaired_into_a_reading():
     with pytest.raises(json.JSONDecodeError):
         json.loads(RECORDED_PAGE)
     with pytest.raises(ValueError):
-        read_episode_page(RECORDED_PAGE, offered={"M033/1"}, existing={})
+        read_episode_page(RECORDED_PAGE, offered={"r1"}, existing={})
 
 
 def test_an_unreadable_page_is_retried_then_repaired_then_recorded():
@@ -89,13 +82,17 @@ def test_an_unreadable_page_is_retried_then_repaired_then_recorded():
     with pytest.raises(PageReadFailure) as failure:
         read_period_story(judge, evidence=[fragment(0)], contract="Test contract.", prior={})
 
-    assert judge.stages == ["story-episodes-1", "story-episodes-1-retry", "story-episodes-1-repair"]
+    assert judge.stages == [
+        "story-episodes-2024-06",
+        "story-episodes-2024-06-retry",
+        "story-episodes-2024-06-repair",
+    ]
     assert "editorial source evidence unavailable" in str(failure.value)
-    assert "story-episodes-1" in str(failure.value)
+    assert "story-episodes-2024-06" in str(failure.value)
     assert "Expecting property name enclosed in double quotes" in str(failure.value)
     recorded = judge.failures[0]["record"]
     assert recorded["schema_version"] == PAGE_READ_SCHEMA
-    assert recorded["stage"] == "story-episodes-1"
+    assert recorded["stage"] == "story-episodes-2024-06"
     assert recorded["attempt_count"] == 3
     assert recorded["failure_kind"] == "unreadable_json"
     assert "Expecting property name enclosed in double quotes" in recorded["error"]
@@ -118,10 +115,10 @@ def test_the_first_ask_keeps_the_original_prompt_and_budget():
 
 def test_a_retry_that_answers_readably_costs_no_repair_round():
     def reply(stage, _prompt):
-        if stage == "story-episodes-1":
+        if stage == "story-episodes-2024-06":
             return RECORDED_PAGE
-        if stage == "story-episodes-1-retry":
-            return page_answer(["M000/1"], "S0001")
+        if stage == "story-episodes-2024-06-retry":
+            return page_answer(["r1"], "S0001")
         if stage.startswith("story-weighing"):
             return json.dumps({"about": [], "weights": {"K01": "major"}, "join": [], "retitle": {}})
         return json.dumps(
@@ -138,14 +135,14 @@ def test_a_retry_that_answers_readably_costs_no_repair_round():
 
     assert judge.failures == []
     assert [e.title for e in story.episodes] == ["A readable occasion"]
-    assert "story-episodes-1-repair" not in judge.stages
+    assert "story-episodes-2024-06-repair" not in judge.stages
 
 
 def test_a_transport_truncation_reaches_the_page_repair_without_another_identical_retry():
     from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 
     evidence = [fragment(i) for i in range(9)]
-    readings = [row["reading"] for row in evidence]
+    readings = [f"r{number}" for number in range(1, 10)]
     failure = TextCompletionFailure(
         [
             {
@@ -159,22 +156,33 @@ def test_a_transport_truncation_reaches_the_page_repair_without_another_identica
     )
 
     def reply(stage, _prompt):
-        if stage == "story-episodes-1":
+        if stage == "story-episodes-2024-06":
             raise failure
-        if stage == "story-episodes-1-repair":
+        if stage == "story-episodes-2024-06-repair":
             return page_answer(readings[:1], "S0001")
-        if stage == "story-episodes-2":
+        if stage == "story-episodes-2024-06-again-1":
             assert all(reading in _prompt for reading in readings[1:])
+            # A re-ask carries nothing from the ask before it, so it opens its own episode.
             return json.dumps(
                 {
                     "fragments": [
                         {"reading": reading, "episode": "S0001"} for reading in readings[1:]
                     ],
-                    "new_episodes": [],
+                    "new_episodes": [
+                        {
+                            "id": "S0001",
+                            "title": "The rest of the day",
+                            "account": "What the reader wrote about it.",
+                            "role": "supporting",
+                        }
+                    ],
                 }
             )
         if stage.startswith("story-weighing"):
-            return json.dumps({"about": [], "weights": {"K01": "major"}, "join": [], "retitle": {}})
+            keys = re.findall(r"^(K\d+) \|", _prompt, re.MULTILINE)
+            return json.dumps(
+                {"about": [], "weights": dict.fromkeys(keys, "major"), "join": [], "retitle": {}}
+            )
         return json.dumps(
             {
                 "thesis": "The day together.",
@@ -189,9 +197,9 @@ def test_a_transport_truncation_reaches_the_page_repair_without_another_identica
 
     page_calls = [call for call in judge.asked if call["stage"].startswith("story-episodes")]
     assert [call["stage"] for call in page_calls] == [
-        "story-episodes-1",
-        "story-episodes-1-repair",
-        "story-episodes-2",
+        "story-episodes-2024-06",
+        "story-episodes-2024-06-repair",
+        "story-episodes-2024-06-again-1",
     ]
     assert [call["max_tokens"] for call in page_calls] == [3380, 6760, 3160]
     assert page_calls[1]["prompt"].startswith(page_calls[0]["prompt"])
@@ -223,7 +231,7 @@ def test_an_exhausted_transport_repair_stops_and_keeps_the_truncated_evidence():
     with pytest.raises(PageReadFailure) as failure:
         read_period_story(judge, evidence=[fragment(0)], contract="Test contract.", prior={})
 
-    assert judge.stages == ["story-episodes-1", "story-episodes-1-repair"]
+    assert judge.stages == ["story-episodes-2024-06", "story-episodes-2024-06-repair"]
     record = failure.value.as_record()
     assert record["attempt_count"] == 2
     assert record["failure_kind"] == "incomplete_transport"
@@ -235,7 +243,7 @@ def test_a_grouping_answer_that_stays_unreadable_is_recorded_not_reraised():
 
     def reply(stage, _prompt):
         if stage.startswith("story-episodes"):
-            return page_answer(["M000/1"], "S0001")
+            return page_answer(["r1"], "S0001")
         return "not JSON at all"
 
     judge = RecordingJudge(reply)
@@ -256,9 +264,9 @@ def test_regrouping_keeps_its_own_bounded_envelope_recovery(recovery):
     malformed = '{"thesis":"Two outings", " "uncertainties":[]}'
 
     def reply(stage, _prompt):
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return episode_answer(
-                [("M000/1", "S0001"), ("M001/1", "S0002")],
+                [("r1", "S0001"), ("r2", "S0002")],
                 [opened("S0001", "First outing"), opened("S0002", "Second outing")],
             )
         if stage == "story-understanding-1":
@@ -321,10 +329,7 @@ def test_regrouping_keeps_its_own_bounded_envelope_recovery(recovery):
         assert result.thesis == "Two separate outings."
         assert [s["episodes"] for s in result.stories] == [["S0001"], ["S0002"]]
         assert [s["weight"] for s in result.stories] == ["minor", "minor"]
-        assert {fact["reading"] for e in result.episodes for fact in e.facts} == {
-            "M000/1",
-            "M001/1",
-        }
+        assert {fact["reading"] for e in result.episodes for fact in e.facts} == {"r1", "r2"}
     grouping = [c for c in judge.asked if c["stage"].startswith("story-understanding")]
     expected_stages = ["story-understanding-1", "story-understanding-1-try2"]
     if recovery != "truncated":
@@ -366,15 +371,17 @@ def test_the_production_judge_leaves_the_failure_beside_the_calls(tmp_path, monk
 
     assert asked == [1620, 3240, 3240]
     recorded = sorted((out / "calls").glob("*-json-failure-*.private.json"))
-    assert [path.name for path in recorded] == ["03-json-failure-story-episodes-1.private.json"]
+    assert [path.name for path in recorded] == [
+        "03-json-failure-story-episodes-2024-06.private.json"
+    ]
     payload = json.loads(recorded[0].read_text())
-    assert payload["stage"] == "story-episodes-1"
+    assert payload["stage"] == "story-episodes-2024-06"
     assert payload["attempt_count"] == 3
     assert "Expecting property name enclosed in double quotes" in payload["error"]
     assert [row["stage"] for row in payload["attempts"]] == [
-        "story-episodes-1",
-        "story-episodes-1-retry",
-        "story-episodes-1-repair",
+        "story-episodes-2024-06",
+        "story-episodes-2024-06-retry",
+        "story-episodes-2024-06-repair",
     ]
     assert recorded[0].stat().st_mode & 0o077 == 0
 
@@ -569,7 +576,7 @@ def test_a_throttled_text_reader_waits_instead_of_ending_the_run(tmp_path, monke
                 request=request,
                 response=httpx.Response(429, request=request, headers={"retry-after": "11"}),
             )
-        return page_answer(["M000/1"], "S0001")
+        return page_answer(["r1"], "S0001")
 
     monkeypatch.setattr(gateway, "query_llm", shedding_load)
     config = SimpleNamespace(
@@ -622,7 +629,7 @@ def test_one_503_does_not_end_a_run_that_has_answered_187_calls(tmp_path, monkey
                 request=request,
                 response=httpx.Response(503, request=request),
             )
-        return page_answer(["M000/1"], "S0001")
+        return page_answer(["r1"], "S0001")
 
     monkeypatch.setattr(gateway, "query_llm", hiccup)
     config = SimpleNamespace(

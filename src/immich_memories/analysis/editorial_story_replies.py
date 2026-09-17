@@ -18,7 +18,7 @@ from immich_memories.analysis.editorial_structure_json import (
 )
 from immich_memories.analysis.strict_json import model_text_rows
 
-STORY_VERSION = "period-story-v3-stories"
+STORY_VERSION = "period-story-v4-episodes"
 ROLES = {"central", "supporting", "texture", "incidental"}
 # A story's weight in THIS memory, in the model's words; the arithmetic lives in the planner.
 WEIGHTS = ("dominant", "major", "minor", "glimpse", "none")

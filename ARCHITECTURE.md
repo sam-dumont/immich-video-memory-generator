@@ -18,6 +18,13 @@ attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
 
+The period account (`analysis/editorial_story_reading.py`) reads the banked 90-minute episode
+readings, one page per calendar month, cut into parts only at a day boundary. No page carries
+anything from the page before it, so a month's prompt is a pure function of that month's rows: the
+months read in parallel through `reader_map`, the judgment bank answers a month it has already read,
+and one changed asset invalidates one month instead of every page after it. The one-day rule is
+applied to the answer (`_split_by_day`), not asked for in the prompt.
+
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
 candidates, and keeps join-compatible stories together. Both orders of every page must validate

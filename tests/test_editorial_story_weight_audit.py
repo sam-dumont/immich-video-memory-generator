@@ -8,7 +8,7 @@ import pytest
 from immich_memories.analysis.editorial_story_reading import read_period_story
 from immich_memories.analysis.editorial_story_weighing import _weigh_stories
 from immich_memories.analysis.editorial_story_weight_contract import StoryWeightDecisionError
-from tests.test_editorial_story_reading import ScriptedJudge, fragment, opened, place
+from tests.test_editorial_story_reading import ScriptedJudge, episode_row, opened, place
 
 
 def story_rows():
@@ -175,8 +175,8 @@ def test_valid_source_cannot_mutate_stories_when_reverse_stays_invalid():
 
 def test_period_reader_persists_incomplete_audit_when_weighing_exhausts_repair():
     def reply(stage, _prompt):
-        if stage == "story-episodes-1":
-            return place(["M000/1"], "S0001", [opened("S0001", "A small outing")])
+        if stage.startswith("story-episodes"):
+            return place(["r1"], "S0001", [opened("S0001", "A small outing")])
         if stage == "story-understanding-1":
             return json.dumps(
                 {
@@ -195,7 +195,11 @@ def test_period_reader_persists_incomplete_audit_when_weighing_exhausts_repair()
 
     with pytest.raises(StoryWeightDecisionError):
         read_period_story(
-            judge, evidence=[fragment(0)], contract="Test memory.", prior={}, record=records.append
+            judge,
+            evidence=[episode_row(0)],
+            contract="Test memory.",
+            prior={},
+            record=records.append,
         )
 
     assert records[-1]["status"] == "incomplete"

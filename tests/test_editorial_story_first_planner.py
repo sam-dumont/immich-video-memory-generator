@@ -35,13 +35,17 @@ SKIPPED_STAGES = ("threads", "synthesis", "structure", "ladder", "review", "asse
 
 
 def make_source(tmp_path, *, seconds=60, occasions=4, pictures=3):
-    """One month of separate canal walks, each its own capture moment."""
-    start = datetime(2030, 5, 2, 8, tzinfo=UTC)
+    """One day of separate canal walks, each its own capture moment.
+
+    One day, because an episode is one day: a judge that alternates between two episodes can
+    only produce two of them while the occasions it alternates over share a date.
+    """
+    start = datetime(2030, 5, 2, tzinfo=UTC)
     groups, episodes, cards, candidates, annotations = [], [], [], [], {}
     for occasion in range(occasions):
         local = []
         for picture in range(pictures):
-            taken = start + timedelta(days=occasion, minutes=17 * picture)
+            taken = start + timedelta(minutes=90 * occasion + 17 * picture)
             asset = make_asset(f"o{occasion}-p{picture}", duration=None, file_created_at=taken)
             asset.type = AssetType.IMAGE
             description = (
@@ -142,11 +146,8 @@ class StoryJudge(AnnualJudge):
 
     def answer(self, stage, prompt):
         if stage.startswith("story-episodes"):
-            known, new = prompt.split("NEW FRAGMENTS TO PLACE", 1)
-            offered = re.findall(r'"reading": "([^"]+)"', new)
-            open_ids = list(dict.fromkeys(re.findall(r'"id": "(S\d{4})"', known)))
-            fresh = list(re.search(r"Number new episodes (S\d{4}), (S\d{4})", prompt).groups())
-            ids = (open_ids + [i for i in fresh if i not in open_ids])[:2]
+            offered = re.findall(r'"reading": "(r\d+)"', prompt)
+            ids = list(re.search(r"Number new episodes (S\d{4}), (S\d{4})", prompt).groups())
             return json.dumps(
                 {
                     "fragments": [
@@ -161,7 +162,6 @@ class StoryJudge(AnnualJudge):
                             "role": "central" if position == 0 else "supporting",
                         }
                         for position, key in enumerate(ids)
-                        if key not in open_ids
                     ],
                 }
             )
@@ -348,10 +348,12 @@ def test_a_story_the_favourites_already_fill_is_not_inventoried(tmp_path):
 
     offers = _inventory_offers(judge)
     assert len(offers) == 1  # only the story without a favourite is read
-    starred_days = ("2030-05-02", "2030-05-04")  # the starred story's two outings
-    assert not [
-        taken for taken in next(iter(offers.values()))["taken"] if taken.startswith(starred_days)
-    ]
+    starred = {  # the starred story holds the first and third outings
+        captured.assets[f"o{occasion}-p{picture}"].file_created_at.isoformat()
+        for occasion in (0, 2)
+        for picture in range(3)
+    }
+    assert not next(iter(offers.values()))["taken"] & starred
     assert "o0-p1" in {row["asset_id"] for row in plan["carriers"]}
 
 

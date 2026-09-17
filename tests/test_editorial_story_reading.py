@@ -1,4 +1,4 @@
-"""The period story reader: fragment facts survive placement, roles come from the synthesis."""
+"""The period story reader: episode rows survive placement, roles come from the synthesis."""
 
 from __future__ import annotations
 
@@ -13,28 +13,56 @@ class ScriptedJudge:
     # answer from canned strings; no unit test may open a model connection.
     def __init__(self, reply):
         self._reply = reply
-        self.asked: list[dict] = []
+        self.calls: list[dict] = []
+
+    @property
+    def asked(self):
+        return self.calls
 
     def ask(self, stage, prompt, max_tokens=0):
-        self.asked.append({"stage": stage, "prompt": prompt})
+        self.calls.append({"stage": stage, "prompt": prompt, "cache_hit": False})
         return self._reply(stage, prompt)
 
     def prompt(self, stage):
-        return next(a["prompt"] for a in self.asked if a["stage"] == stage)
+        return next(a["prompt"] for a in self.calls if a["stage"] == stage)
 
 
-def fragment(index, *, minute=None, headline=None):
+def episode_row(index, *, minute=None, headline=None, day="2022-06-19", moments=None, wide=False):
+    """One banked 90-minute episode, in the shape story_episode_rows produces."""
     minute = index if minute is None else minute
     key = f"M{index:03d}"
+    taken = f"{day}T{9 + minute // 60:02d}:{minute % 60:02d}:00"
     return {
-        "reading": f"{key}/1",
+        "episode": f"E{index:03d}",
+        "episode_evidence_key": f"evidence-{index:03d}",
         "capture_group": key,
-        "taken": f"2022-06-19T{9 + minute // 60:02d}:{minute % 60:02d}:00",
-        "known_people_in_group": "",
+        "moments": list(moments or [key]),
+        "taken": taken,
+        "last_taken": taken,
         "places": "",
-        "episode_context": "",
-        "observations": [headline or f"a plain view number {index}", "a second view"],
+        "known_people_in_group": "",
+        "person_links": "",
+        "captures": 2,
+        "favourites": 0,
+        "video": 0,
+        "live": 0,
+        "what_happened": f"A stretch of time number {index}",
+        "observations": (
+            [
+                f"{kind} view {number} of stretch {index} " + "x" * 200
+                for number, kind in enumerate(
+                    ("a first", "a second", "a third", "a starred", "another starred")
+                )
+            ]
+            if wide
+            else [headline or f"a plain view number {index}", "a second view"]
+        ),
+        "named_observations": 3 if wide else 1,
     }
+
+
+def readings(count, start=1):
+    return [f"r{number}" for number in range(start, start + count)]
 
 
 def page_answer(pairs, new_episodes=()):
@@ -46,8 +74,8 @@ def page_answer(pairs, new_episodes=()):
     )
 
 
-def place(readings, episode, new_episodes=()):
-    return page_answer([(r, episode) for r in readings], new_episodes)
+def place(reading_ids, episode, new_episodes=()):
+    return page_answer([(r, episode) for r in reading_ids], new_episodes)
 
 
 def opened(key, title, *, role="supporting"):
@@ -76,75 +104,67 @@ def read(judge, evidence):
     return read_period_story(judge, evidence=evidence, contract="Test contract.", prior={})
 
 
-def test_facts_attach_to_every_placed_fragment_chronologically_and_once():
+def test_facts_attach_to_every_placed_row_chronologically_and_once():
     long_headline = "a very long observation that keeps going " * 6
-    evidence = [fragment(i, minute=300 if i == 3 else i) for i in range(17)]
-    evidence[0] = fragment(0, headline=long_headline)
-    evidence.append(evidence[0])  # the same fragment offered again on the next page
+    evidence = [episode_row(index, minute=300 if index == 3 else index) for index in range(17)]
+    evidence[0] = episode_row(0, headline=long_headline)
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "major"})
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return place(
-                [f"M{i:03d}/1" for i in range(16)],
-                "S0001",
-                [opened("S0001", "A long ordinary day", role="central")],
+                readings(17), "S0001", [opened("S0001", "A long ordinary day", role="central")]
             )
-        if stage == "story-episodes-2":
-            return place(["M016/1", "M000/1"], "S0001")
         return synthesis([{"episode": "S0001", "purpose": "the spine of the period"}])
 
     story = read(ScriptedJudge(reply), evidence)
     facts = story.episodes[0].facts
-    readings = [f["reading"] for f in facts]
-    assert readings[-1] == "M003/1"  # taken hours later, listed last
-    assert readings[:-1] == [f"M{i:03d}/1" for i in range(17) if i != 3]
-    assert readings.count("M000/1") == 1
+    groups = [fact["capture_group"] for fact in facts]
+    assert groups[-1] == "M003"  # taken hours later, listed last
+    assert groups[:-1] == [f"M{index:03d}" for index in range(17) if index != 3]
+    assert len(facts) == len({fact["reading"] for fact in facts}) == 17
     assert facts[0] == {
-        "reading": "M000/1",
+        "reading": "r1",
         "capture_group": "M000",
         "taken": "2022-06-19T09:00:00",
         "fact": long_headline[:160],
     }
 
 
-def test_a_fragment_placed_into_an_open_episode_keeps_its_headline_in_the_record():
+def test_a_row_placed_into_the_same_episode_keeps_its_headline_in_the_record():
     milestone = "a single test strip on the kitchen counter, two lines"
-    evidence = [fragment(i) for i in range(16)] + [fragment(16, headline=milestone)]
+    evidence = [episode_row(index) for index in range(16)]
+    evidence.append(episode_row(16, headline=milestone))
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "major"})
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return place(
-                [f"M{i:03d}/1" for i in range(16)],
-                "S0001",
-                [opened("S0001", "Screens and projections at home")],
+                readings(17), "S0001", [opened("S0001", "Screens and projections at home")]
             )
-        if stage == "story-episodes-2":
-            return place(["M016/1"], "S0001")  # continues an episode already open
         return synthesis([{"episode": "S0001", "purpose": "the only episode"}])
 
     record = read(ScriptedJudge(reply), evidence).as_record()
     episode = record["episodes"][0]
     assert milestone not in episode["account"]
-    assert [f["fact"] for f in episode["facts"] if f["reading"] == "M016/1"] == [milestone]
+    assert [f["fact"] for f in episode["facts"] if f["reading"] == "r17"] == [milestone]
 
 
 def test_roles_come_from_weighed_stories_not_from_the_page():
-    evidence = [fragment(i) for i in range(5)]
+    evidence = [episode_row(index) for index in range(5)]
     page_roles = ["central", "supporting", "supporting", "incidental", "central"]
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "major", "K02": "minor", "K03": "minor", "K04": "glimpse"})
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [(f"M{i:03d}/1", f"S{i + 1:04d}") for i in range(5)],
+                [(f"r{index + 1}", f"S{index + 1:04d}") for index in range(5)],
                 [
-                    opened(f"S{i + 1:04d}", f"Occasion {i + 1}", role=page_roles[i])
-                    for i in range(5)
+                    opened(f"S{index + 1:04d}", f"Occasion {index + 1}", role=page_roles[index])
+                    for index in range(5)
                 ],
             )
         return synthesis(
@@ -167,14 +187,14 @@ def test_roles_come_from_weighed_stories_not_from_the_page():
 
 
 def test_priorities_given_as_titles_resolve_to_episode_ids():
-    evidence = [fragment(0), fragment(1)]
+    evidence = [episode_row(0), episode_row(1)]
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "major", "K02": "minor"})
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [("M000/1", "S0001"), ("M001/1", "S0002")],
+                [("r1", "S0001"), ("r2", "S0002")],
                 [opened("S0001", "Morning at the lake"), opened("S0002", "Evening walk home")],
             )
         return synthesis(
@@ -194,14 +214,14 @@ def test_priorities_given_as_titles_resolve_to_episode_ids():
 def test_ungrouped_episodes_are_weighed_and_the_gap_is_recorded():
     """A page role is not a weight. Ungrouped episodes remain available to weighing, whose
     explicit glimpse judgment makes them texture despite a central page role."""
-    evidence = [fragment(0), fragment(1)]
+    evidence = [episode_row(0), episode_row(1)]
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "glimpse", "K02": "glimpse"})
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [("M000/1", "S0001"), ("M001/1", "S0002")],
+                [("r1", "S0001"), ("r2", "S0002")],
                 [
                     opened("S0001", "Morning at the lake", role="central"),
                     opened("S0002", "Evening walk home", role="texture"),
@@ -216,21 +236,16 @@ def test_ungrouped_episodes_are_weighed_and_the_gap_is_recorded():
 
 
 def test_stories_group_days_and_the_gate_weighs_what_the_synthesis_left_out():
-    """A two-day story is one story with one weight; an unplaced remarkable episode is a minor story,
-    an unplaced background episode is none."""
-    evidence = [fragment(0), fragment(1), fragment(2), fragment(3)]
+    """A two-day story is one story with one weight; an unplaced remarkable episode is a minor
+    story, an unplaced background episode is none."""
+    evidence = [episode_row(index) for index in range(4)]
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K02": "none", "K03": "none"}, about=["K01"])
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [
-                    ("M000/1", "S0001"),
-                    ("M001/1", "S0002"),
-                    ("M002/1", "S0003"),
-                    ("M003/1", "S0004"),
-                ],
+                [(f"r{index + 1}", f"S{index + 1:04d}") for index in range(4)],
                 [
                     opened("S0001", "Arrival at the coast"),
                     opened("S0002", "Second day at the coast"),
@@ -273,18 +288,16 @@ def test_stories_group_days_and_the_gate_weighs_what_the_synthesis_left_out():
 
 
 def test_merging_central_stories_compacts_question_labels_and_candidate_references():
-    evidence = [fragment(i) for i in range(4)]
     days = ("2022-06-01", "2022-06-02", "2022-06-06", "2022-06-10")
-    for row, day in zip(evidence, days, strict=True):
-        row["taken"] = day + "T12:00:00"
+    evidence = [episode_row(index, day=day) for index, day in enumerate(days)]
 
     def reply(stage, prompt):
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [(f"M{i:03d}/1", f"S{i + 1:04d}") for i in range(4)],
+                [(f"r{index + 1}", f"S{index + 1:04d}") for index in range(4)],
                 [
-                    opened(f"S{i + 1:04d}", title)
-                    for i, title in enumerate(
+                    opened(f"S{index + 1:04d}", title)
+                    for index, title in enumerate(
                         ("Arrival", "Second day", "Cafe visit", "Celebration")
                     )
                 ],
@@ -296,11 +309,11 @@ def test_merging_central_stories_compacts_question_labels_and_candidate_referenc
                     "about": ["S0001", "S0002", "S0004"],
                     "stories": [
                         {
-                            "title": f"Occasion {i}",
-                            "episodes": [f"S{i:04d}"],
+                            "title": f"Occasion {index}",
+                            "episodes": [f"S{index:04d}"],
                             "purpose": "A distinct occasion",
                         }
-                        for i in range(1, 5)
+                        for index in range(1, 5)
                     ],
                     "uncertainties": [],
                 }
@@ -315,7 +328,7 @@ def test_merging_central_stories_compacts_question_labels_and_candidate_referenc
         evidence=evidence,
         contract="Test contract.",
         prior={},
-        enrich=lambda _: {f"S{i + 1:04d}": {"day": day} for i, day in enumerate(days)},
+        enrich=lambda _: {f"S{index + 1:04d}": {"day": day} for index, day in enumerate(days)},
     )
     assert {s["key"]: s["episodes"] for s in story.stories} == {
         "K01": ["S0001", "S0002"],
@@ -326,17 +339,13 @@ def test_merging_central_stories_compacts_question_labels_and_candidate_referenc
 
 
 def test_synthesis_cards_carry_bounded_facts_with_the_omitted_count():
-    evidence = [fragment(i) for i in range(20)]
+    evidence = [episode_row(index) for index in range(20)]
 
     def reply(stage, _prompt):
         if stage.startswith("story-weighing"):
             return weighing({"K01": "major"})
-        if stage == "story-episodes-1":
-            return place(
-                [f"M{i:03d}/1" for i in range(16)], "S0001", [opened("S0001", "One long stretch")]
-            )
-        if stage == "story-episodes-2":
-            return place([f"M{i:03d}/1" for i in range(16, 20)], "S0001")
+        if stage.startswith("story-episodes"):
+            return place(readings(20), "S0001", [opened("S0001", "One long stretch")])
         return synthesis([{"episode": "S0001", "purpose": "everything"}])
 
     judge = ScriptedJudge(reply)
@@ -357,14 +366,12 @@ def test_synthesis_cards_carry_bounded_facts_with_the_omitted_count():
 
 
 def test_regrouping_can_withdraw_the_rejected_answers_central_story():
-    evidence = [fragment(0), fragment(1)]
-    evidence[0]["taken"] = "2030-03-01T10:00:00"
-    evidence[1]["taken"] = "2030-03-04T10:00:00"
+    evidence = [episode_row(0, day="2030-03-01"), episode_row(1, day="2030-03-04")]
 
     def reply(stage, _prompt):
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [("M000/1", "S0001"), ("M001/1", "S0002")],
+                [("r1", "S0001"), ("r2", "S0002")],
                 [opened("S0001", "First outing"), opened("S0002", "Second outing")],
             )
         if stage == "story-understanding-1":
@@ -408,14 +415,14 @@ def test_regrouping_can_withdraw_the_rejected_answers_central_story():
 
 
 def test_weighing_takes_the_heavier_order_and_floors_remarkable_or_starred_stories():
-    """Source order says none, reversed says major: major stands. A remarkable day the model weighed
-    none is at least minor; so is a day holding a favourite. Unplaced episodes are weighed too."""
-    evidence = [fragment(0), fragment(1), fragment(2)]
+    """Source order says none, reversed says major: major stands. A remarkable day the model
+    weighed none is at least minor; so is a day holding a favourite."""
+    evidence = [episode_row(index) for index in range(3)]
 
     def reply(stage, prompt):
-        if stage == "story-episodes-1":
+        if stage.startswith("story-episodes"):
             return page_answer(
-                [("M000/1", "S0001"), ("M001/1", "S0002"), ("M002/1", "S0003")],
+                [("r1", "S0001"), ("r2", "S0002"), ("r3", "S0003")],
                 [
                     opened("S0001", "Race day"),
                     opened("S0002", "Kitchen evening"),
@@ -456,6 +463,337 @@ def test_weighing_takes_the_heavier_order_and_floors_remarkable_or_starred_stori
     assert weights == {("S0001",): "major", ("S0002",): "none", ("S0003",): "minor"}
 
 
+def test_gaps_are_kept_for_a_subject_memory_and_split_elsewhere():
+    """Four weekend episodes of one project over two months: one story when the memory is about
+    a subject (allow_gaps), split into its days for a month."""
+    days = {
+        "S0001": "2017-03-04",
+        "S0002": "2017-03-18",
+        "S0003": "2017-04-08",
+        "S0004": "2017-04-22",
+    }
+    evidence = [episode_row(index, day=day) for index, day in enumerate(days.values())]
+
+    def reply(stage, prompt):
+        if stage.startswith("story-episodes"):
+            offered = re.findall(r'"reading": "(r\d+)"', prompt)
+            return page_answer(
+                [(reading, f"S{index + 1:04d}") for index, reading in enumerate(offered)],
+                [
+                    opened(f"S{index + 1:04d}", f"Occasion {index + 1}")
+                    for index in range(len(offered))
+                ],
+            )
+        if stage.startswith("story-understanding"):
+            return json.dumps(
+                {
+                    "thesis": "Works.",
+                    "stories": [
+                        {
+                            "title": "Kitchen works",
+                            "episodes": ["S0001", "S0002", "S0003", "S0004"],
+                            "purpose": "the works",
+                        }
+                    ],
+                    "uncertainties": [],
+                }
+            )
+        keys = re.findall(r"^(K\d{2}) \|", prompt, re.MULTILINE)
+        return weighing(dict.fromkeys(keys, "major"))
+
+    hints = {key: {"day": day} for key, day in days.items()}
+    subject = read_period_story(
+        ScriptedJudge(reply),
+        evidence=evidence,
+        contract="c",
+        prior={},
+        enrich=lambda _e: hints,
+        allow_gaps=True,
+    )
+    assert [tuple(s["episodes"]) for s in subject.stories] == [("S0001", "S0002", "S0003", "S0004")]
+    month = read_period_story(
+        ScriptedJudge(reply),
+        evidence=[episode_row(index, day=day) for index, day in enumerate(days.values())],
+        contract="c",
+        prior={},
+        enrich=lambda _e: hints,
+    )
+    assert sorted(len(s["episodes"]) for s in month.stories) == [1, 1, 1, 1]
+
+
+def _card(episode, *, what_happened="", representatives=(), evidence_key="k"):
+    from immich_memories.analysis.editorial_structure_contract import EpisodeReadingCard
+
+    return EpisodeReadingCard(episode, evidence_key, what_happened, tuple(representatives), False)
+
+
+def _moment(alias, taken, **fields):
+    row = {
+        "moment_id": alias,
+        "taken": taken,
+        "places": "",
+        "people": "",
+        "person_links": "",
+        "visuals": 1,
+        "favorites": 0,
+        "video": 0,
+        "live": 0,
+        "episode_context": "",
+    }
+    return row | fields
+
+
+def _place_all(stage, prompt):
+    """Put every offered row of every page into one episode of that page."""
+    if stage.startswith("story-episodes"):
+        return place(
+            re.findall(r'"reading": "(r\d+)"', prompt), "S0001", [opened("S0001", "An occasion")]
+        )
+    if stage.startswith("story-weighing"):
+        return weighing(dict.fromkeys(re.findall(r"^(K\d+) \|", prompt, re.MULTILINE), "minor"))
+    if stage.startswith("story-understanding"):
+        return synthesis([])
+    return synthesis([])
+
+
+def test_every_wall_episode_becomes_one_row_with_its_moments_places_and_people():
+    """One row per canonical episode: its moments, its place names, its people, its numbers."""
+    from immich_memories.analysis.editorial_story_reading import story_episode_rows
+
+    moments = [
+        _moment(
+            "M001",
+            "2030-05-02T08:00:00",
+            places="L01:Canal du Centre",
+            people="P01:name=Alex|relationship=partner",
+            person_links="P01-partner->P02|source=people file",
+            visuals=3,
+            favorites=1,
+            live=1,
+            episode_context="A short line.",
+        ),
+        _moment(
+            "M002",
+            "2030-05-02T09:00:00",
+            places="L01:Canal du Centre;L02:Old bridge",
+            people="P02:name=Sam|relationship=owner",
+            visuals=2,
+            video=1,
+            episode_context="A short line.",
+        ),
+        _moment("M003", "2030-05-03T08:00:00"),
+    ]
+    rows = story_episode_rows(
+        moments,
+        readings={
+            "M001": _card(
+                "episode-1", what_happened="A walk along the canal.", representatives=("a1",)
+            ),
+            "M002": _card(
+                "episode-1", what_happened="A walk along the canal.", representatives=("a1", "a2")
+            ),
+            "M003": _card("episode-2", representatives=("a4",)),
+        },
+        sources={"M001": ["a1", "a2"], "M002": ["a3"], "M003": ["a4"]},
+        lines={"a1": "A view of the water", "a2": "A view of the bridge", "a4": "A later view"},
+        favourite=lambda asset: asset == "a2",
+    )
+
+    assert [row["episode"] for row in rows] == ["episode-1", "episode-2"]
+    first = rows[0]
+    assert first["moments"] == ["M001", "M002"]
+    assert first["capture_group"] == "M001"
+    assert first["places"] == "Canal du Centre; Old bridge"
+    assert first["known_people_in_group"] == (
+        "P01:name=Alex|relationship=partner;P02:name=Sam|relationship=owner"
+    )
+    assert first["person_links"] == "P01-partner->P02|source=people file"
+    assert (first["captures"], first["favourites"], first["video"], first["live"]) == (5, 1, 1, 1)
+    assert first["what_happened"] == "A walk along the canal."
+    assert first["observations"] == ["A view of the water", "A view of the bridge"]
+    assert (first["taken"], first["last_taken"]) == ("2030-05-02T08:00:00", "2030-05-02T09:00:00")
+    # nothing read the second episode: a factual line, never an invisible row
+    assert rows[1]["what_happened"] == "1 captures on 2030-05-03"
+    assert rows[1]["observations"] == ["A later view"]
+
+
+def test_a_row_shows_place_names_and_never_a_wall_alias():
+    from immich_memories.analysis.editorial_story_reading import _prompt_row, story_episode_rows
+
+    rows = story_episode_rows(
+        [_moment("M017", "2030-05-02T08:00:00", places="L03:Jette", episode_context="At home.")],
+        readings={"M017": _card("episode-9", representatives=("a1",))},
+        sources={"M017": ["a1"]},
+        lines={"a1": "A view of the garden"},
+        favourite=lambda _asset: False,
+    )
+    rendered = json.dumps(_prompt_row(rows[0] | {"reading": "r1"}, shared_year=2030))
+
+    assert "Jette" in rendered
+    assert not re.search(r"\b[MEL]\d{2,}\b", rendered)
+    assert rows[0]["what_happened"] == "At home."
+
+
+def test_observations_stop_at_three_representatives_and_two_favourites():
+    from immich_memories.analysis.editorial_story_reading import story_episode_rows
+
+    lines = {f"a{index}": f"description number {index} " + "x" * 200 for index in range(9)}
+    rows = story_episode_rows(
+        [_moment("M001", "2030-05-02T08:00:00")],
+        readings={"M001": _card("episode-1", representatives=tuple(f"a{i}" for i in range(5)))},
+        sources={"M001": [f"a{i}" for i in range(9)]},
+        lines=lines,
+        favourite=lambda asset: asset in {"a5", "a6", "a7"},
+    )
+
+    observations = rows[0]["observations"]
+    assert len(observations) == 5
+    assert [line[:22] for line in observations] == [
+        "description number 0 x",
+        "description number 1 x",
+        "description number 2 x",
+        "description number 5 x",
+        "description number 6 x",
+    ]
+    assert all(len(line) == 160 for line in observations)
+    assert rows[0]["named_observations"] == 3
+
+
+def test_a_month_is_one_page_and_never_splits_a_day():
+    """A calendar month is the page. A day too big for one keeps its rows and drops lines."""
+    from immich_memories.analysis.editorial_story_reading import month_pages
+
+    january = [episode_row(index, day=f"2030-01-{index + 1:02d}") for index in range(6)]
+    crowded = [
+        episode_row(100 + index, day="2030-02-14", minute=index * 30, wide=True)
+        for index in range(20)
+    ]
+
+    book = month_pages(january + crowded)
+
+    assert [(page.month, page.part, len(page.rows)) for page in book] == [
+        ("2030-01", 0, 6),
+        ("2030-02", 0, 20),
+    ]
+    assert [page.stage for page in book] == ["story-episodes-2030-01", "story-episodes-2030-02"]
+    assert (book[0].trimmed, book[1].trimmed) == (False, True)
+    # the two favourites' lines went first, then the third representative
+    assert {len(row["observations"]) for row in book[1].rows} == {2}
+    assert {len(row["observations"]) for row in book[0].rows} == {2}  # untouched, it fits
+    assert [row["reading"] for row in book[0].rows] == readings(6)
+
+
+def test_a_month_too_large_for_one_request_is_cut_between_days():
+    from immich_memories.analysis.editorial_story_reading import month_pages
+
+    busy = [
+        episode_row(index, day=f"2030-03-{index // 2 + 1:02d}", minute=index) for index in range(40)
+    ]
+
+    book = month_pages(busy)
+
+    assert [page.part for page in book] == [1, 2, 3]
+    assert sum(len(page.rows) for page in book) == 40
+    days = [{row["taken"][:10] for row in page.rows} for page in book]
+    assert not days[0] & days[1] and not days[1] & days[2]
+    assert [row["reading"] for row in book[1].rows][:2] == ["r1", "r2"]
+
+
+def test_a_page_prompt_is_the_same_bytes_alone_or_inside_a_year():
+    """Nothing run-scoped reaches a month's prompt, so the judgment bank answers February
+    again whether the memory asked for February or for the whole year."""
+
+    def year():
+        return [episode_row(index, day=f"2030-{index + 1:02d}-1{index % 5}") for index in range(12)]
+
+    def prompt_of(evidence):
+        judge = ScriptedJudge(_place_all)
+        read(judge, evidence)
+        return judge.prompt("story-episodes-2030-02")
+
+    whole = prompt_of(year())
+    alone = prompt_of([row for row in year() if row["taken"].startswith("2030-02")])
+
+    assert whole == alone
+    assert "Test contract." not in whole
+    assert "OPEN EPISODES" not in whole
+    assert whole.count("(2030-02)") == 1
+
+
+def test_global_keys_are_minted_in_page_order():
+    """Every page numbers from S0001; the ledger gives the global key when the page lands."""
+    evidence = [episode_row(index, day=f"2030-0{index + 1}-05") for index in range(3)]
+    judge = ScriptedJudge(_place_all)
+
+    story = read(judge, evidence)
+
+    assert [episode.key for episode in story.episodes] == ["S0001", "S0002", "S0003"]
+    assert [episode.moments for episode in story.episodes] == [["M000"], ["M001"], ["M002"]]
+    assert all(
+        "Number new episodes S0001, S0002," in judge.prompt(f"story-episodes-2030-0{month}")
+        for month in (1, 2, 3)
+    )
+
+
+def test_a_multi_day_answer_is_split_by_the_day_rule():
+    """A month page can file a whole week into one episode; one episode is still one day."""
+    evidence = [episode_row(index, day=f"2030-04-0{index + 1}") for index in range(3)]
+
+    def reply(stage, prompt):
+        if stage.startswith("story-episodes"):
+            return place(readings(3), "S0001", [opened("S0001", "A week of works")])
+        return _place_all(stage, prompt)
+
+    story = read(ScriptedJudge(reply), evidence)
+
+    assert [episode.key for episode in story.episodes] == ["S0001", "S0002", "S0003"]
+    assert {episode.title for episode in story.episodes} == {"A week of works"}
+    assert [episode.moments for episode in story.episodes] == [["M000"], ["M001"], ["M002"]]
+
+
+def test_omitted_rows_are_reasked_in_their_month_then_kept_visible():
+    """A row the reader keeps skipping is re-asked inside its own month, never in the next."""
+    evidence = [episode_row(0, day="2030-05-02"), episode_row(1, day="2030-06-02")]
+
+    def reply(stage, prompt):
+        if stage.startswith("story-episodes-2030-05"):
+            return page_answer([])
+        return _place_all(stage, prompt)
+
+    judge = ScriptedJudge(reply)
+    story = read(judge, evidence)
+
+    assert [
+        call["stage"] for call in judge.calls if call["stage"].startswith("story-episodes")
+    ] == [
+        "story-episodes-2030-05",
+        "story-episodes-2030-05-again-1",
+        "story-episodes-2030-05-again-2",
+        "story-episodes-2030-06",
+    ]
+    unplaced = next(e for e in story.episodes if e.title == "Unplaced source episodes")
+    assert unplaced.moments == ["M000"]
+    assert story.audit["pages"][0]["unplaced"] == ["r1"]
+    assert story.audit["reading_calls"]["retries"] == 2
+
+
+def test_the_record_reports_pages_with_month_key_and_cache_hit():
+    evidence = [episode_row(0, day="2030-07-02"), episode_row(1, day="2030-08-02")]
+    judge = ScriptedJudge(_place_all)
+
+    story = read(judge, evidence)
+
+    recorded = story.audit["pages"]
+    assert [(row["month"], row["part"], row["stage"], row["rows"]) for row in recorded] == [
+        ("2030-07", 0, "story-episodes-2030-07", 1),
+        ("2030-08", 0, "story-episodes-2030-08", 1),
+    ]
+    assert all(len(row["evidence_key"]) == 64 for row in recorded)
+    assert len({row["evidence_key"] for row in recorded}) == 2
+    assert [row["cache_hit"] for row in recorded] == [False, False]
+    assert story.audit["reading_calls"] == {"pages": 2, "fresh": 2, "banked": 0, "retries": 0}
+
+
 def test_lenient_object_closes_an_object_the_model_left_open_before_a_closing_bracket():
     from immich_memories.analysis.editorial_story_replies import _lenient_object
 
@@ -477,57 +815,6 @@ def test_relations_on_a_line_are_the_people_files_words_without_names():
     )
     assert relations_on(line) == ["partner", "library owner (inferred)", "grandmother"]
     assert relations_on("2024-02-18 | A landscape | children=no") == []
-
-
-def test_gaps_are_kept_for_a_subject_memory_and_split_elsewhere():
-    """Four weekend episodes of one project over two months: one story when the memory is about a
-    subject (allow_gaps), split into its days for a month, where a week of one activity around an
-    unrelated day is the reader folding days together."""
-    evidence = [fragment(i) for i in range(4)]
-    days = {
-        "S0001": "2017-03-04",
-        "S0002": "2017-03-18",
-        "S0003": "2017-04-08",
-        "S0004": "2017-04-22",
-    }
-
-    def reply(stage, prompt):
-        if stage == "story-episodes-1":
-            return page_answer(
-                [(f"M00{i}/1", f"S000{i + 1}") for i in range(4)],
-                [opened(f"S000{i + 1}", f"Occasion {i + 1}") for i in range(4)],
-            )
-        if stage.startswith("story-understanding"):
-            return json.dumps(
-                {
-                    "thesis": "Works.",
-                    "stories": [
-                        {
-                            "title": "Kitchen works",
-                            "episodes": ["S0001", "S0002", "S0003", "S0004"],
-                            "purpose": "the works",
-                        }
-                    ],
-                    "uncertainties": [],
-                }
-            )
-        keys = re.findall(r"^(K\d{2}) \|", prompt, re.MULTILINE)
-        return weighing(dict.fromkeys(keys, "major"))
-
-    hints = {k: {"day": d} for k, d in days.items()}
-    subject = read_period_story(
-        ScriptedJudge(reply),
-        evidence=evidence,
-        contract="c",
-        prior={},
-        enrich=lambda _e: hints,
-        allow_gaps=True,
-    )
-    assert [tuple(s["episodes"]) for s in subject.stories] == [("S0001", "S0002", "S0003", "S0004")]
-    month = read_period_story(
-        ScriptedJudge(reply), evidence=evidence, contract="c", prior={}, enrich=lambda _e: hints
-    )
-    assert sorted(len(s["episodes"]) for s in month.stories) == [1, 1, 1, 1]
 
 
 def test_one_uncertainty_where_a_list_belongs_is_one_row_not_its_letters():

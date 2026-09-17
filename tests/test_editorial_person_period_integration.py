@@ -27,7 +27,7 @@ from immich_memories.analysis.selection_source_groups import EditorialGroup
 from immich_memories.api.models import Person
 from immich_memories.people.context import PersonPromptContext
 from tests.editorial_story_fixtures import ControlledStoryJudge
-from tests.test_editorial_duration_planner_integration import run, source
+from tests.test_editorial_duration_planner_integration import reading_cards, run, source
 
 
 def period_source(tmp_path):
@@ -116,6 +116,7 @@ def period_source(tmp_path):
         moment_asset_ids={
             alias: group.candidate_ids for alias, group in zip(wall.aliases, groups, strict=True)
         },
+        episode_readings=reading_cards(wall.aliases, cards),
     )
     return captured, wall.aliases
 
@@ -137,9 +138,8 @@ class PeriodJudge(ControlledStoryJudge):
         if stage.startswith("story-episodes"):
             result = json.loads(raw)
             for fragment in result["fragments"]:
-                fragment["episode"] = (
-                    "S0002" if fragment["reading"].startswith("M006/") else "S0001"
-                )
+                # the period's second event is the page's second episode row
+                fragment["episode"] = "S0001" if fragment["reading"] == "r1" else "S0002"
             return json.dumps(result)
         if stage.startswith("story-understanding") and self.only_competing_event:
             result = json.loads(raw)
@@ -173,18 +173,13 @@ def test_unsampled_person_period_facts_reach_editorial_stages_but_not_picture_ev
     ]
     assert story_pages
     first_page = next(prompt for prompt in story_pages if "Rowan" in prompt)
-    fragments = json.JSONDecoder().raw_decode(
-        first_page.split("NEW FRAGMENTS TO PLACE", 1)[1].lstrip()
-    )[0]
-    by_moment = {row["capture_group"]: row for row in fragments}
-    grounded_people = by_moment[aliases[1]]["known_people_in_group"]
-    assert "Rowan" in grounded_people and "relationship=partner" in grounded_people
-    assert "source=confirmed" in grounded_people and "first=2020-05" in grounded_people
-    assert all(
-        "Rowan" not in row["known_people_in_group"]
-        for row in fragments
-        if row["capture_group"] != aliases[1]
-    )
+    offered = json.loads(first_page.split("EPISODES TO PLACE (", 1)[1].split(")\n", 1)[1])
+    assert len(offered) == 2  # one row per canonical episode of the period
+    grounded = [row for row in offered if "Rowan" in row["people"]]
+    assert len(grounded) == 1
+    grounded_people = grounded[0]["people"]
+    assert "relationship=partner" in grounded_people and "source=confirmed" in grounded_people
+    assert "first=2020-05" in grounded_people
     for prefix in ("shareability-", "moment-inventory", "standing-"):
         prompts = [row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)]
         assert prompts, prefix

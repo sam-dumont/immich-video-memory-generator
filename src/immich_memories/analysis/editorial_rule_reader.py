@@ -153,10 +153,11 @@ class RuleStructureReader:
         for index, chunk in enumerate(self._day_chunks(), 1):
             members = [a for row in chunk for a in row[2]]
             moments = [row[1] for row in chunk]
+            covered = set(moments)
             observations = [
                 o
                 for row in evidence
-                if row["capture_group"] in moments
+                if covered.intersection(row["moments"])
                 for o in row.get("observations", ())
             ]
             account = " ".join("; ".join(observations).split()[:60])

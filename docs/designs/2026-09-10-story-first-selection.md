@@ -109,7 +109,12 @@ Memory page shows beside its active phase row:
 ## The story reading and its weights
 
 `editorial_story_reading.py` and its split (`_grouping`, `_weighing`, `_replies`) produce a
-duration-independent account of the stories a memory's sources support. The grouping connects
+duration-independent account of the stories a memory's sources support. Its rows are the banked
+90-minute episode readings of stage 2, not the captions behind them, and one page is one calendar
+month, cut into parts only at a day boundary when a month is too large for one request. No page
+carries anything from the page before it, so a month's prompt is a pure function of that month's
+rows: the pages read in parallel, the judgment bank answers a month it has already read for free,
+and one changed asset invalidates one month instead of every page after it. The grouping connects
 day episodes into stories; the weighing then asks the model, over one compact table, to weigh
 each story **in its own words**: `dominant`, `major`, `minor`, `glimpse`, `none`
 (`editorial_story_replies.WEIGHTS`). The model can only name story keys — it cannot explode or
