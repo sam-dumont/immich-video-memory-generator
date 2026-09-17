@@ -51,6 +51,7 @@ VALID_GENRES = frozenset(
         "orchestral",
         "piano",
         "guitar",
+        "metal",
         "upbeat",
         "relaxing",
     }
@@ -74,6 +75,10 @@ class VideoMood:
     energy_level: str = "medium"  # low, medium, high
     tempo_suggestion: str = "medium"  # slow, medium, fast
     genre_suggestions: list[str] = field(default_factory=list)
+    # A free-form genre phrase when this specific event calls for a very specific
+    # music style the genre whitelist cannot name ("medieval folk with lute and
+    # flute", "mariachi with trumpets", "1920s swing"). None means generic is fine.
+    specific_style: str | None = None
     color_palette: str = "neutral"  # warm, cool, neutral, vibrant, muted
     description: str = ""
     confidence: float = 0.8

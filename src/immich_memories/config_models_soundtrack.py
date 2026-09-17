@@ -15,14 +15,44 @@ from immich_memories.config_models import expand_env_vars
 
 
 class AudioConfig(BaseModel):
-    """Local music library used by the `music` CLI subcommand.
+    """Soundtrack policy: the local library the `music` CLI scans, and how
+    auto-generated music is vetted.
 
-    Generation picks its music backend from `ace_step.enabled` / `musicgen.enabled`
-    and the `--music` / `--no-music` flags; ducking and fades are fixed in the mixer.
+    Generation picks its backend from `ace_step.enabled` / `musicgen.enabled`
+    and the `--music` / `--no-music` flags; ducking and fades are fixed in the
+    mixer.
     """
 
     local_music_dir: str = Field(
         default="~/Music/Memories", description="Directory for local music library"
+    )
+    max_regenerations: int = Field(
+        default=2,
+        ge=0,
+        le=3,
+        description=(
+            "Extra tracks auto mode may generate when the first is flagged as a "
+            "repetitive 'tick' by the cheap quality gate; the best-scored take is kept"
+        ),
+    )
+    music_block_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=300,
+        description=(
+            "Longest single generated take before auto mode chains distinct takes. "
+            "A video longer than this is filled by several same-caption takes "
+            "joined with crossfades, never one phrase on repeat"
+        ),
+    )
+    max_music_blocks: int = Field(
+        default=3,
+        ge=1,
+        le=6,
+        description=(
+            "Distinct takes to chain for a video longer than music_block_seconds; "
+            "beyond this the chain is looped"
+        ),
     )
 
     @property

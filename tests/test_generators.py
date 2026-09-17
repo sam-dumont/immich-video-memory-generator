@@ -742,7 +742,7 @@ class TestACEStepConfig:
         assert config.mode == "api"
         assert config.model_variant == "turbo"
         assert config.lm_model_size == "1.7B"
-        assert config.use_lm
+        assert not config.use_lm
         assert config.num_versions == 3
         assert config.timeout_seconds == 3600
 

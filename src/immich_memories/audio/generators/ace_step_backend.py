@@ -54,7 +54,7 @@ class ACEStepConfig:
     api_url: str = "http://localhost:8000"
     model_variant: str = "turbo"
     lm_model_size: str = "1.7B"
-    use_lm: bool = True
+    use_lm: bool = False
     disable_offload: bool = False
     num_versions: int = 3
     hemisphere: str = "north"
@@ -83,6 +83,7 @@ def _mood_to_structured_prompt(
     scene_moods: list[str] | None = None,
     memory_type: str | None = None,
     cadence_seconds: float | None = None,
+    mood_detail=None,
 ):
     """Convert mood to structured ACE-Step caption with explicit musical params.
 
@@ -94,6 +95,7 @@ def _mood_to_structured_prompt(
         cadence_seconds=cadence_seconds,
         scene_moods=scene_moods,
         memory_type=memory_type,
+        mood_detail=mood_detail,
     )
 
 
@@ -235,6 +237,7 @@ class ACEStepBackend(MusicGenerator):
                 scene_moods=scene_moods,
                 memory_type=request.memory_type,
                 cadence_seconds=request.photo_cadence_seconds,
+                mood_detail=request.mood_detail,
             )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
@@ -242,6 +245,7 @@ class ACEStepBackend(MusicGenerator):
                 request.prompt,
                 memory_type=request.memory_type,
                 cadence_seconds=request.photo_cadence_seconds,
+                mood_detail=request.mood_detail,
             )
             duration = request.duration_seconds
 
@@ -354,6 +358,7 @@ class ACEStepBackend(MusicGenerator):
                 scene_moods=scene_moods,
                 memory_type=request.memory_type,
                 cadence_seconds=request.photo_cadence_seconds,
+                mood_detail=request.mood_detail,
             )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
@@ -361,6 +366,7 @@ class ACEStepBackend(MusicGenerator):
                 request.prompt,
                 memory_type=request.memory_type,
                 cadence_seconds=request.photo_cadence_seconds,
+                mood_detail=request.mood_detail,
             )
             duration = request.duration_seconds
 

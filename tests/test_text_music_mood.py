@@ -76,7 +76,7 @@ async def test_cut_text_answers_once_and_is_reused_without_images(tmp_path):
         request=httpx.Request("POST", "http://localhost"),
         json={
             "response": '{"primary_mood":"playful","energy_level":"high",'
-            '"tempo_suggestion":"fast","genre_suggestions":["pop"]}',
+            '"tempo_suggestion":"fast","genre_suggestions":["pop"],"specific_style":null}',
             "done": True,
         },
     )
@@ -131,7 +131,7 @@ def test_bundled_selection_uses_the_cut_mood_and_leaves_clip_facts_alone(tmp_pat
         request=httpx.Request("POST", "http://localhost"),
         json={
             "response": '{"primary_mood":"playful","energy_level":"high",'
-            '"tempo_suggestion":"fast","genre_suggestions":["pop"]}',
+            '"tempo_suggestion":"fast","genre_suggestions":["pop"],"specific_style":null}',
             "done": True,
         },
     )
@@ -236,12 +236,14 @@ async def test_an_invalid_mood_is_not_banked_or_retried_with_pictures(tmp_path):
             "energy_level": "high",
             "tempo_suggestion": "fast",
             "genre_suggestions": ["pop"],
+            "specific_style": None,
         },
         {
             "primary_mood": "playful",
             "energy_level": "high",
             "tempo_suggestion": "fast",
             "genre_suggestions": ["pop"],
+            "specific_style": None,
         },
     ]
     replies = [

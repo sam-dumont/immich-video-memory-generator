@@ -86,11 +86,19 @@ def _parse(raw: str) -> VideoMood:
         or any(not isinstance(genre, str) or genre not in VALID_GENRES for genre in genres)
     ):
         raise ValueError("invalid music genres")
+    specific = data.get("specific_style")
+    if specific:
+        if not isinstance(specific, str) or not 4 <= len(specific.strip()) <= 120:
+            raise ValueError("invalid music specific_style")
+        specific = specific.strip()
+    else:
+        specific = None
     return VideoMood(
-        **{
-            key: data[key]
-            for key in ("primary_mood", "energy_level", "tempo_suggestion", "genre_suggestions")
-        }
+        primary_mood=data["primary_mood"],
+        energy_level=data["energy_level"],
+        tempo_suggestion=data["tempo_suggestion"],
+        genre_suggestions=genres,
+        specific_style=specific,
     )
 
 
@@ -116,7 +124,12 @@ async def mood_for_cut(
             f"primary_mood: {', '.join(sorted(VALID_MOODS))}.\n"
             "energy_level: low, medium, high. tempo_suggestion: slow, medium, fast.\n"
             f"genre_suggestions: one to five of {', '.join(sorted(VALID_GENRES))}.\n"
-            "Return only a JSON object with those four fields.\n\n" + evidence
+            "specific_style: set this only when the cut is a specific event or subculture "
+            "that wants a very particular music style the genre list cannot express, "
+            "such as a medieval folk festival, a mariachi wedding or a 1920s swing night. "
+            "Write one short phrase naming the style and two or three instruments. "
+            "Otherwise return null for this field.\n"
+            "Return only a JSON object with those five fields.\n\n" + evidence
         )
         request = TextRequest(
             prompt=prompt,
@@ -125,7 +138,13 @@ async def mood_for_cut(
             max_tokens=500,
             timeout_seconds=config.llm.timeout_seconds,
             json_object=True,
-            json_fields=("primary_mood", "energy_level", "tempo_suggestion", "genre_suggestions"),
+            json_fields=(
+                "primary_mood",
+                "energy_level",
+                "tempo_suggestion",
+                "genre_suggestions",
+                "specific_style",
+            ),
         )
         try:
             call = await QueryTextRequester().request(request, accepts=_accepts)
