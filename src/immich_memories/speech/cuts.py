@@ -16,7 +16,10 @@ def safe_end(carrier: dict, seconds: float, *, expand: bool = False) -> float:
 
 
 def set_duration(carrier: dict, seconds: float) -> None:
-    carrier["seconds"] = round(seconds, 6)
+    # Rounding onto the microsecond timeline may shorten a hold, never lengthen it: a cut
+    # clamped to a measured Live burst (5.7336666...) rounded half-up lands past the
+    # material, and the certified renderer rightly refuses that interval.
+    carrier["seconds"] = min(seconds, round(seconds, 6))
     if "start_time" in carrier or "end_time" in carrier:
         carrier["end_time"] = carrier.get("start_time", 0.0) + carrier["seconds"]
 

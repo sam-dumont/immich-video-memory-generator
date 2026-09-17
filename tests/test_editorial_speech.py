@@ -306,3 +306,39 @@ def test_real_planner_budgets_video_lengths_and_fits_after_speech_detection(tmp_
     for carrier in plan["carriers"]:
         assert carrier["end_time"] - carrier["start_time"] == carrier["seconds"]
         assert carrier["end_time"] <= 3.92 or carrier["end_time"] >= 8.08
+
+
+def test_speech_expanding_to_the_end_of_a_measured_live_burst_stays_inside_it():
+    """A measured stitch has no round duration; the cut it keeps must still certify."""
+    from immich_memories.analysis.editorial_speech import resolve_speech_cuts
+    from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
+
+    # Content-aligned joins (#1023) leave a repeating tail: 5.733666666666667s stitched.
+    material = LiveRenderMaterial(
+        (
+            LiveSourceEntry("a", "va", 0.0, 0.0, 3.733666666666667),
+            LiveSourceEntry("b", "vb", 2.0, 1.0, 3.0),
+        )
+    )
+    carrier = {
+        "asset_id": "a",
+        "kind": "live-motion",
+        "seconds": round(material.duration_seconds, 2),
+        "raw_seconds": round(material.duration_seconds, 2),
+        "live_material": material.as_dict(),
+    }
+
+    # Speech runs through the whole burst, so the cut expands to the end of the material.
+    resolved = resolve_speech_cuts([carrier], lambda _: [(0.0, 9.0)], buffer=0.08)[0]
+
+    assert resolved["end_time"] <= material.duration_seconds, (
+        "the timeline grid may not push a hold past the material it was fitted to"
+    )
+    assert material.selected_interval(
+        resolved["seconds"],
+        start=resolved["start_time"],
+        end=resolved["end_time"],
+        raw_seconds=resolved["raw_seconds"],
+    ) == (0.0, material.duration_seconds), (
+        "the renderer must accept the interval the speech pass kept"
+    )
