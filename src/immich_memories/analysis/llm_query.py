@@ -27,6 +27,7 @@ from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.llm_providers import resolved_llm_config
 from immich_memories.analysis.llm_text_identity import text_judgment_key
 from immich_memories.analysis.llm_wire import (
+    ANSWERED_ENDPOINTS,
     DEFAULT_TEMPERATURE,
     PARAM_ADAPTATIONS,
     THINKING_MIN_MAX_TOKENS,
@@ -58,6 +59,7 @@ from immich_memories.analysis.llm_wire import (
     response_body,
     served_model,
     shape_for_provider,
+    transient_404,
     widen_for_reasoning,
 )
 from immich_memories.config_models_llm import LLMConfig
@@ -78,6 +80,51 @@ WRITE_TIMEOUT_SECONDS = 30.0
 POOL_TIMEOUT_SECONDS = 10.0
 
 
+async def _wait_out_drop(
+    transport_observer: Callable[[LLMTransportAttempt], None] | None,
+    drops: int,
+    status_code: int | None,
+) -> bool:
+    """Record one dropped call and back off, or say the retry budget is spent.
+
+    A peer-closed connection or dropped read is transient: the server is
+    restarting a worker or shedding load, not refusing the request. One such
+    drop killed a 26-minute run (owner ruling 2026-09-01: never fatal).
+    """
+    observe(transport_observer, drops, "connection_error", status_code)
+    if drops >= TRANSPORT_RETRIES:
+        return False
+    await asyncio.sleep(2.0 * drops)
+    return True
+
+
+def _learn_dialect(
+    resp: httpx.Response,
+    payload: dict,
+    adaptations: set[str],
+    applied_adaptations: set[str],
+    transport_observer: Callable[[LLMTransportAttempt], None] | None,
+) -> bool:
+    """Take one parameter rule off an explicit 400, and say whether to send again."""
+    try:
+        error = response_body(resp).get("error", {})
+        if not isinstance(error, dict):
+            raise TypeError("LLM error body is not an object")
+        adaptation = adaptation_for(error)
+    except (TypeError, ValueError):
+        record_invalid_response(transport_observer, resp.status_code)
+        raise
+    if adaptation is None or adaptation in applied_adaptations:
+        return False
+    observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
+    adaptations.add(adaptation)
+    applied_adaptations.add(adaptation)
+    before = payload.get("thinking")
+    apply_adaptations(payload, adaptations)
+    announce_adaptation(adaptation, before, payload.get("thinking"))
+    return True
+
+
 async def _post_adapted(
     client: httpx.AsyncClient,
     url: str,
@@ -95,37 +142,24 @@ async def _post_adapted(
         try:
             resp = await client.post(url, json=payload)
         except httpx.TransportError:
-            # A peer-closed connection or dropped read is transient: the server
-            # is restarting a worker or shedding load, not refusing the request.
-            # One such drop killed a 26-minute run (owner ruling 2026-09-01:
-            # never fatal). Backoff, retry, and only then give up.
             transport_drops += 1
-            observe(transport_observer, transport_drops, "connection_error", None)
-            if transport_drops >= TRANSPORT_RETRIES:
+            if not await _wait_out_drop(transport_observer, transport_drops, None):
                 raise
-            await asyncio.sleep(2.0 * transport_drops)
             continue
         except httpx.HTTPError:
             observe(transport_observer, 1, "connection_error", None)
             raise
-        if resp.status_code != 400:
+        if transient_404(url, resp):
+            # The edge dropped the request; the URL is not wrong. Same budget.
+            transport_drops += 1
+            if await _wait_out_drop(transport_observer, transport_drops, resp.status_code):
+                continue
+        elif resp.status_code != 404:
+            ANSWERED_ENDPOINTS.add(url)
+        if resp.status_code != 400 or not _learn_dialect(
+            resp, payload, adaptations, applied_adaptations, transport_observer
+        ):
             return resp
-        try:
-            error = response_body(resp).get("error", {})
-            if not isinstance(error, dict):
-                raise TypeError("LLM error body is not an object")
-            adaptation = adaptation_for(error)
-        except (TypeError, ValueError):
-            record_invalid_response(transport_observer, resp.status_code)
-            raise
-        if adaptation is None or adaptation in applied_adaptations:
-            return resp
-        observe(transport_observer, 1, "dialect_adaptation", resp.status_code, adaptation)
-        adaptations.add(adaptation)
-        applied_adaptations.add(adaptation)
-        before = payload.get("thinking")
-        apply_adaptations(payload, adaptations)
-        announce_adaptation(adaptation, before, payload.get("thinking"))
 
 
 def build_llm_timeout(read_timeout: float) -> httpx.Timeout:
