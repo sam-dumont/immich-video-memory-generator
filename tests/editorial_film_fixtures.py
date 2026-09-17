@@ -276,5 +276,5 @@ class FilmJudge(StoryJudge):
             )
         if stage.startswith("story-threads") and self.threads is not None:
             rows = re.findall(r"^K\d{2} \|.*$", prompt, re.MULTILINE)
-            return json.dumps({"same": self.threads(rows, prompt)})
+            return json.dumps({"same": self.threads(rows, prompt)})  # groups: flattened on read
         return super().answer(stage, prompt)

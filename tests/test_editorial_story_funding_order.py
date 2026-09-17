@@ -55,24 +55,28 @@ def test_the_weight_word_and_the_gate_still_come_before_chronology():
 
 def test_ties_inside_a_weight_word_follow_the_readers_own_order():
     stories = [
-        story("january", day="2024-01-05", moments=4),
-        story("march", day="2024-03-05", gate="maybe"),
-        story("may", day="2024-05-05"),
-        story("july-minor", day="2024-07-05", weight="minor"),
+        story("january", day="2024-01-05", moments=2),
+        story("march", day="2024-03-05", moments=2),
+        story("may", day="2024-05-05", moments=2),
+        story("july-busy", day="2024-07-05", moments=5),
     ]
-    # The reader listed the March story first, then May; January is not on its list.
-    priorities = [
-        {"episodes": ["S-march"]},
-        {"episodes": ["S-may"]},
-        {"episodes": ["S-july-minor"]},
-    ]
+    # The reader listed May first, then March; January is not on its list.
+    priorities = [{"episodes": ["S-may"]}, {"episodes": ["S-march"]}]
 
     assert [s["key"] for s in funding_order(stories, priorities)] == [
-        "march",
+        "july-busy",
         "may",
+        "march",
         "january",
-        "july-minor",
     ]
+
+
+def test_a_trip_is_funded_before_the_other_stories_of_its_weight():
+    home = [story(f"home-{n}", day=f"2024-0{n + 1}-01", moments=9) for n in range(3)]
+    trip = story("weekend-away", day="2024-11-01", gate="maybe", moments=2) | {"trip": {"days": 3}}
+    priorities = [{"episodes": [f"S-home-{n}"]} for n in range(3)]
+
+    assert funding_order([*home, trip], priorities)[0]["key"] == "weekend-away"
 
 
 def test_stories_the_reader_did_not_rank_keep_the_current_order():

@@ -58,9 +58,10 @@ does not do is buy the moment. The editor is still asked which moments tell a st
 story offers a single moment and the grant reaches it, because a dense tail of favourites would
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
 source and audience eligibility, but they do not order which stories a film funds. When a period
-holds more stories than the film has slots, stories of the same weight are funded in the order the
-reader listed them; a story it did not list goes by the memory-worthy reading, then by the order
-things happened. A well starred December cannot push January out of the year.
+holds more stories than the film has slots, a detected trip goes first among the stories of its
+weight; then the memory-worthy reading and the number of distinct moments decide, then the order the
+reader listed its stories in, then the order things happened. A well starred December cannot push
+January out of the year.
 
 **A trip is one story, and it gets room for its length.** The editor runs the app's own trip
 detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
@@ -76,8 +77,8 @@ home base configured nothing is away from home, so there are no trip stories, an
 **A recurring activity is one thread, in the context of the film.** Four Saturdays at the same
 pool are not four occasions in a year's film. After the weighing, stories at the same place on
 separate days are put to the reader as a possible thread when its own words link them. Near home
-that takes an activity: the same activity in their titles, or an activity word the film uses at no
-other place. Away from home the name the reader gave them is enough, so repeated visits to the same
+that takes an activity: the same activity in their titles, or an activity word the film uses there
+more than anywhere else. Away from home the name the reader gave them is enough, so repeated visits to the same
 garden are asked about. The home place itself never holds a thread, because its days are the film,
 and a place alone never links two days; neither does a name, a relation, a time of day or a word
 like "moments", "life" or "stay". The reader is then asked, with the

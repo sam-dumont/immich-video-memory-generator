@@ -170,3 +170,42 @@ def test_near_home_a_shared_name_without_an_activity_links_nothing(tmp_path):
 def test_away_from_home_the_readers_shared_name_is_enough_to_ask(tmp_path):
     asked = _asked_about(tmp_path, ORCHARD, "Extended stay at Orchardville")
     assert len(asked) == 1 and len(asked[0]) == 4
+
+
+def test_an_activity_word_the_film_uses_mostly_at_one_place_still_links_there(tmp_path):
+    """The pool is also the name of a paddling pool at home once; the lessons still link."""
+    asked = []
+    days = [
+        Day(date(2030, 1, 7), "Pool lesson", POOL),
+        Day(date(2030, 2, 4), "Pool games", POOL),
+        Day(date(2030, 3, 4), "Pool races", POOL),
+        Day(date(2030, 3, 20), "Paddling pool", ORCHARD),
+    ]
+    days += [Day(date(2030, 1, 9) + timedelta(days=21 * n), CHORES[n]) for n in range(6)]
+    days.sort(key=lambda day: day.day)
+    source = film_source(tmp_path, days, seconds=40, span=(date(2030, 1, 1), date(2030, 12, 31)))
+    run(source, FilmJudge(weigh=_weigh, threads=_recorder(asked)))
+
+    assert len(asked) == 1 and len(asked[0]) == 3
+
+
+def test_two_activities_at_one_place_stay_two_threads(tmp_path):
+    lessons = [
+        Day(date(2030, 1, 7) + timedelta(days=21 * n), "Swimming lesson by the lake", ORCHARD)
+        for n in range(3)
+    ]
+    fairs = [
+        Day(date(2030, 1, 14) + timedelta(days=21 * n), "Harvest fair by the lake", ORCHARD)
+        for n in range(3)
+    ]
+    homes = [Day(date(2030, 1, 9) + timedelta(days=21 * n), CHORES[n]) for n in range(8)]
+    days = sorted([*lessons, *fairs, *homes], key=lambda day: day.day)
+    source = film_source(tmp_path, days, seconds=40, span=(date(2030, 1, 1), date(2030, 12, 31)))
+
+    def two_activities(rows, _prompt):
+        keys = lambda word: [row.split(" |", 1)[0] for row in rows if word in row]  # noqa: E731
+        return [keys("Swimming"), keys("Harvest")]
+
+    plan = run(source, FilmJudge(weigh=lambda _row: "major", threads=two_activities))
+
+    assert sorted(len(row["day_episodes"]) for row in _threads(plan)) == [3, 3]

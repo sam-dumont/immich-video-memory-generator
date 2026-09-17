@@ -6,12 +6,13 @@ was the opposite case, the same activity at the same place on separate days, whi
 four one-day swimming stories and four frames of one pool.
 
 After the weighing, stories at the same place and inside one era of the film are nominated as a
-thread when the reader's own words link them: the grouping filed them under one title before the
-consecutive-day rule split them, their titles name the same activity, or they share an activity
-word the film uses at no other place. A place alone never links two days, and neither does a
-person's name. One banked question per nominated group then asks the reader, with the film's
-span and contract, which of them are one recurring activity and which are steps worth showing
-apart. A confirmed thread is one story with the weight of its heaviest member.
+thread when the reader's own words link them. Near home that takes an activity: the same activity
+phrase, or an activity word the film uses at that place more than anywhere else. Away from home
+the name the reader gave them (one title before the consecutive-day rule split it, or the same
+title) is enough. The film's home place never holds a thread, a place alone never links two days,
+and neither does a person's name. One banked question per nominated group then asks the reader,
+with the film's span and contract, which of them are one recurring activity and which are steps
+worth showing apart. A confirmed thread is one story with the weight of its heaviest member.
 
 A film longer than `ERA_THRESHOLD_DAYS` is read in calendar years, as the product contract reads
 it, and keeps one thread per year so a child's progress at the pool still shows.
@@ -37,7 +38,7 @@ from immich_memories.analysis.editorial_story_replies import (
 )
 from immich_memories.analysis.editorial_story_weighing import story_priorities
 
-THREAD_QUESTION_VERSION = "recurring-activity-v2"
+THREAD_QUESTION_VERSION = "recurring-activity-v3"
 _WORD = re.compile(r"[^\W\d_]{4,}")
 _NAMES = re.compile(r"\| with ([^|]+)")
 # Not the activity: grammar, company, when and where, and the container nouns a title uses to say
@@ -282,9 +283,9 @@ reader named them alike. A recurring activity is one specific thing done there a
 swimming lesson, a sports practice, repeated visits to the same garden or playground. A period of
 life, a stay, or ordinary days that only share the place are not one activity. In THIS film, are
 some of these the same recurring activity, so that one picture can stand for all of them? Or are
-they steps worth showing apart: a first time, a change, progress across the film? Name each group
-of stories that is one recurring activity. Leave out every story that should stay apart; a story
-belongs to at most one group.
+they steps worth showing apart: a first time, a change, progress across the film? Name each
+recurring activity once, as one group holding every one of its days, however each day is titled.
+Leave out every story that should stay apart; a story belongs to at most one group.
 
 Return JSON only: {{"same": [["K01", "K02"]]}} with story keys from the rows below, or {{"same": []}}.
 
@@ -294,22 +295,21 @@ STORIES (key | days | weight | title | day titles)
 
 
 def _read_groups(raw: str, *, offered: set[str]) -> list[list[str]]:
+    """The groups the reader called one recurring activity each; a flat list is one group."""
     obj = _lenient_object(raw)
-    groups = obj.get("same")
-    if not isinstance(groups, list):
-        raise ValueError('"same" must be a list of lists of story keys')
+    named = obj.get("same")
+    if not isinstance(named, list):
+        raise ValueError('"same" must be a list of groups of story keys')
+    if all(isinstance(item, str) for item in named):
+        named = [named]
     seen: set[str] = set()
-    out = []
-    for group in groups:
-        keys = (
-            [k for k in group if isinstance(k, str) and k in offered and k not in seen]
-            if isinstance(group, list)
-            else []
-        )
+    groups = []
+    for group in named:
+        keys = [k for k in group if isinstance(k, str) and k in offered and k not in seen]
         seen.update(keys)
         if len(keys) > 1:
-            out.append(keys)
-    return out
+            groups.append(keys)
+    return groups
 
 
 def _fold(stories: list[dict], members: list[_Story], era: str) -> dict:
@@ -427,15 +427,16 @@ def _home_place(described: Sequence[_Story]) -> str:
 
 
 def _place_specific(described: Sequence[_Story]) -> dict[str, set[str]]:
-    """Per place, the title words the film uses at that place and at no other."""
-    places_of: dict[str, set[str]] = {}
+    """Per place, the activity words the film uses there more than at any other place."""
+    counts: dict[str, Counter[str]] = {}
     for s in described:
-        for word in _words(s.story["title"]):
-            places_of.setdefault(word, set()).add(s.place)
+        for word in s.words:
+            counts.setdefault(word, Counter())[s.place] += 1
     specific: dict[str, set[str]] = {}
-    for word, where in places_of.items():
-        if len(where) == 1 and "" not in where:
-            specific.setdefault(next(iter(where)), set()).add(word)
+    for word, where in counts.items():
+        ranked = where.most_common(2)
+        if ranked[0][0] and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+            specific.setdefault(ranked[0][0], set()).add(word)
     return specific
 
 

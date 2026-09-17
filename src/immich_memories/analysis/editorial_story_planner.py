@@ -152,22 +152,25 @@ def _first_day(story_units: Mapping[str, list[dict]], s) -> str:
 def funding_order(
     stories: Sequence[dict[str, Any]], priorities: Sequence[Mapping[str, Any]] = ()
 ) -> list[dict[str, Any]]:
-    """The order a film funds its stories in: the weight word, then the reader's own order of
-    its stories (`priorities`), then the memory-worthy gate's word, the moments the story holds
-    and the day it starts on for a story the reader did not rank.
+    """The order a film funds its stories in: the weight word; inside a word, a detected trip
+    first (a trip carries its own weight), then the memory-worthy gate's word and the moments the
+    story holds, then the reader's own order of its stories (`priorities`), then the day it
+    starts on.
 
-    A star is an indicator of a picture — it wins its moment inside a story, never the story's
-    place in this queue. So when there are more stories than slots, equal stories fund in the
-    reader's order, and without one in time order, instead of the starrier half first.
+    The reader's order breaks ties rather than leading: it is the order the grouping named its
+    stories in, and a period the reader filed as one story and the day rule split comes first in
+    it, which on a year of more stories than slots pushed a weekend away out of the film. A star is
+    an indicator of a picture: it wins its moment inside a story, never the story's place here.
     """
     rank = {tuple(p["episodes"]): n for n, p in enumerate(priorities)}
     return sorted(
         stories,
         key=lambda s: (
             WEIGHTS.index(s["weight"]),
-            rank.get(tuple(s["episodes"]), len(rank)),
+            not s.get("trip"),
             GATE_ORDER.get(s["gate"], 3),
             -s["seen"]["moments"],
+            rank.get(tuple(s["episodes"]), len(rank)),
             s["first_day"],
         ),
     )

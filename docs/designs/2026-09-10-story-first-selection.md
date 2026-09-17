@@ -143,14 +143,15 @@ whose days are not consecutive (`_broken_spans`), because a reader that folds ga
 usually folds unrelated ones. The cost was the other case: the same activity at the same place on
 separate days came back as one story per day and one picture each. After the weighing,
 `editorial_story_threads.py` nominates weighed stories of one place and one era as a group when the
-reader's own words link them. Near the home base (the structure planner's 10 km test, by majority of
-a story's pictures) only an activity links: the same activity phrase, or a shared title word the film
-uses at that place only. Away from home, the reader's own name for them (one `split_from` title, or
-the same title) links too. The film's home place (the place most near-home stories happened at, or
-the most common place without a home base) never holds a thread: the first real run asked about 42
-home stories the reader had filed as one "early home life" and joined 28 days of it. Names from the
-annotation lines, kinship words, English function words, times of day and container nouns
-("moments", "life", "stay", "session") never link, and a place alone never does. One banked question per group (`recurring-activity-v2`) carries the film's dates
+reader's own words link them. Near the home base (the structure planner's 10 km test, by majority
+of a story's pictures) only an activity links: the same activity phrase, or a shared title word the
+film uses there more than at any other place. Away from home, the reader's own name for them (one
+`split_from` title, or the same title) links too. The film's home place (the place most near-home
+stories happened at, or the most common place without a home base) never holds a thread: the first
+real run asked about 42 home stories the reader had filed as one "early home life" and joined 28
+days of it. Names from the annotation lines, kinship words, English function words, times of day
+and container nouns ("moments", "life", "stay", "session") never link, and a place alone never
+does. One banked question per group (`recurring-activity-v3`) carries the film's dates
 and contract and asks which stories are one recurring activity and which are steps worth showing
 apart; each confirmed group, split again into its linked parts, becomes one story with the weight
 of its heaviest member, placed where its first member was. An unreadable answer keeps them apart.
@@ -189,9 +190,11 @@ itself. The order is the owner's:
    weight becomes a number of pictures, capped by the moments the story actually holds; where a
    product limits how much one calendar partition may carry (a year's months), that capacity is
    reserved in the same order. Depth per weight class, never per day. Stories are funded by weight
-   word, then in the reader's own order (`story.priorities`, which lists each weight's stories as
-   the grouping named them), and only a story off that list falls back to the gate's word, its
-   moments and its first day (`funding_order`). A trip weighed dominant or
+   word; inside a word a detected trip first, then the gate's word and the story's moments, then
+   the reader's own order (`story.priorities`, the order the grouping named its stories in), then
+   the first day (`funding_order`). The reader's order breaks ties rather than leading: a period
+   the reader filed as one story and the day rule split sits at the top of that list, and leading
+   with it pushed a weekend away out of a 90 s year. A trip weighed dominant or
    major reserves `round(slots / 2 * sqrt(trip days / film days))` pictures (at least one), counted
    in photographed days, and takes them at its own turn in the presence pass, before the stories
    after it take their first. A trip that is the whole film would get the dominant cap; the square
