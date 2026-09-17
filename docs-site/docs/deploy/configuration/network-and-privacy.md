@@ -72,10 +72,16 @@ network:
 
 **`geocoding`** sends each trip cluster's centroid to Nominatim, and the rounded coordinates
 (2 decimals, about a kilometre) of the distinct places your cut actually shows. One request per
-place, at Nominatim's one-per-second policy, cached on disk. It buys two things: trip names that
-read like places rather than like EXIF tags, and place names in the film's language, so a French
-film says "Chypre" instead of "Cyprus". With it off, names come from the city and country Immich
-already stored, which are always English.
+place, at Nominatim's one-per-second policy, cached under `cache.directory/place-names/` and keyed
+on the locale as well as the coordinate. Only clips that already show a place are asked about, so
+home and the neighbourhoods you see every week are never sent. The library is never geocoded: a cut
+is tens of clips.
+
+It buys two things. Trip names that read like places rather than like EXIF tags, and city names in
+the film's language. Country names are translated offline whatever this switch says, so a French
+film already says "Chypre" instead of "Cyprus"; what the switch adds is "Nicosie" instead of
+"Nicosia". With it off, names come from the city and country Immich already stored, which are
+always English.
 
 The automation trip detector is a trigger too: a nightly `auto run` that finds trips geocodes them
 the same way a `--memory-type trip` run does.

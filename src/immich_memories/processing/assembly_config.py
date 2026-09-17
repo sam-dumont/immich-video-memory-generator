@@ -7,7 +7,7 @@ used across the assembly pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -157,6 +157,9 @@ class AssemblySettings:
     # Captions keep their configured language even when title cards are disabled.
     # None preserves the title-settings locale for standalone assembly callers.
     caption_locale: str | None = None
+    # When the memory happened, offset included: stamped into the container so a
+    # server reading the file agrees with what the upload says about it.
+    captured_at: datetime | None = None
 
     @property
     def effective_transition_duration(self) -> float:

@@ -12,6 +12,7 @@ import random
 from dataclasses import replace
 from math import fsum, hypot
 
+from immich_memories.i18n_places import localise_place, place_label
 from immich_memories.processing.assembly_config import AssemblyClip
 
 logger = logging.getLogger(__name__)
@@ -133,19 +134,22 @@ def anonymize_clips_for_privacy(
     return anonymized
 
 
-def clip_location_name(exif) -> str | None:
-    """Extract human-readable location from exif data."""
+def clip_location_name(exif, locale: str = "en") -> str | None:
+    """The place one clip carries, as Immich recorded it.
+
+    The default is English because this is the stored value: the map pins, the
+    location cards and the clip overlay each translate it at the moment they
+    draw it, and the home-country drop needs to compare against the English
+    name Immich gave it.
+    """
     if not exif:
         return None
-    city = exif.city
-    country = exif.country
-    if city and country:
-        return f"{city}, {country}"
-    return country or city
+    return place_label(exif.city, exif.country, locale)
 
 
 def extract_trip_pins(
     assembly_clips: list[AssemblyClip],
+    locale: str = "en",
 ) -> tuple[list[tuple[float, float]], list[str]]:
     """Unique GPS locations for map pins, and the name to label each one with.
 
@@ -163,7 +167,7 @@ def extract_trip_pins(
             if key not in seen:
                 seen.add(key)
                 locations.append((clip.latitude, clip.longitude))
-                names.append(clip.location_name or "")
+                names.append(localise_place(clip.location_name, locale) or "")
     return locations, names
 
 

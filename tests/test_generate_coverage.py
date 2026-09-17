@@ -1029,7 +1029,7 @@ class TestGenerateMemoryInner:
             upload_mock.return_value = {"asset_id": "uploaded-asset"}
             _generate_memory_inner(params)
 
-        upload_mock.assert_called_once_with(mock_client, result_path, "test-album")
+        upload_mock.assert_called_once_with(mock_client, result_path, "test-album", None)
         mocks["tracker"].return_value.mark_delivered.assert_called_once_with("uploaded-asset")
 
     def test_upload_not_called_when_disabled(self, tmp_path):
@@ -1442,7 +1442,7 @@ class TestUploadToImmich:
         result = _upload_to_immich(mock_client, video_path, "My Album")
 
         mock_client.upload_memory.assert_called_once_with(
-            video_path=video_path, album_name="My Album"
+            video_path=video_path, album_name="My Album", captured_at=None
         )
         assert result["asset_id"] == "abc123"
 
@@ -1455,7 +1455,9 @@ class TestUploadToImmich:
         mock_client.upload_memory.return_value = {}
 
         _upload_to_immich(mock_client, video_path, None)
-        mock_client.upload_memory.assert_called_once_with(video_path=video_path, album_name=None)
+        mock_client.upload_memory.assert_called_once_with(
+            video_path=video_path, album_name=None, captured_at=None
+        )
 
 
 # ---------------------------------------------------------------------------
