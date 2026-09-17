@@ -30,6 +30,17 @@ def get_video_duration(video_path: Path, *, probe_cache: ProbeCache | None = Non
         return 0.0
 
 
+def get_video_codec(video_path: Path, *, probe_cache: ProbeCache | None = None) -> str:
+    """Return the main video stream's codec name, or "" when the source cannot be inspected."""
+    from immich_memories.processing.probe_cache import ProbeError
+
+    try:
+        return _source_probe(video_path, probe_cache).codec.lower()
+    except ProbeError as exc:
+        logger.debug("FFprobe could not name the codec: %s", exc)
+        return ""
+
+
 def get_main_video_stream_map(video_path: Path, *, probe_cache: ProbeCache | None = None) -> str:
     """Find the main (highest-resolution) video stream in a file.
 

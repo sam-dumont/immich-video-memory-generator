@@ -38,6 +38,8 @@ from immich_memories.processing.streaming_frame_blender import FrameBlender
 from immich_memories.processing.streaming_frame_decoder import make_decoder
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from immich_memories.processing.probe_cache import ProbeCache
 
 logger = logging.getLogger(__name__)
@@ -443,6 +445,7 @@ def streaming_assemble_full(
     frame_preview_callback: Callable[[bytes], None] | None = None,
     probe_cache: ProbeCache | None = None,
     effective_plan_callback: Callable[[EncodingPlan], None] | None = None,
+    captured_at: datetime | None = None,
 ) -> Path:
     """Full streaming assembly: plan-bound video encode + audio mix + mux."""
     plan = encoding_plan or _default_streaming_plan()
@@ -521,7 +524,7 @@ def streaming_assemble_full(
         if progress_callback:
             progress_callback(0.95, "Muxing final output...")
 
-        mux_video_audio(video_only, audio_only, output_path)
+        mux_video_audio(video_only, audio_only, output_path, captured_at)
 
         logger.info(f"Full streaming assembly complete: {len(clips)} clips → {output_path.name}")
         return output_path

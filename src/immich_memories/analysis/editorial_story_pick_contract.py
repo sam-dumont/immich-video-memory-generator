@@ -6,9 +6,20 @@ from typing import Any, cast
 
 from immich_memories.analysis.strict_json import final_json_object, model_text_rows
 
+MOVING_KINDS = frozenset({"video", "live-motion"})
+
+
+def carries_motion(unit: Mapping[str, Any]) -> bool:
+    """Does this unit play? A true video always does; a Live Photo only above the discriminant."""
+    return str(unit.get("kind") or "") in MOVING_KINDS
+
 
 def source_kind_marker(unit: Mapping[str, Any]) -> str:
-    """A proposed carrier length is not the duration of its original recording."""
+    """What the reader is offered: a video with its true source length, a Live Photo whose motion
+    plays, or one that will be shown as a still.
+
+    A proposed carrier length is not the duration of its original recording.
+    """
     kind = str(unit.get("kind") or "")
     if kind == "video":
         for key in ("raw_seconds", "source_seconds", "duration"):
@@ -19,7 +30,11 @@ def source_kind_marker(unit: Mapping[str, Any]) -> str:
                 if math.isfinite(seconds) and seconds > 0:
                     return f" | video {seconds:g} s source"
         return " | video (source duration unknown)"
-    return " | live photo" if kind.startswith("live") else ""
+    if not kind.startswith("live"):
+        return ""
+    return (
+        " | live photo, motion plays" if carries_motion(unit) else " | live photo, shown as a still"
+    )
 
 
 def _repair_question(

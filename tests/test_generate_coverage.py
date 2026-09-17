@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
-import subprocess
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -32,6 +30,7 @@ from immich_memories.generate_music import MusicSelection
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.rate_control import quality_args
 from tests.conftest import make_asset, make_clip
+from tests.output_tools_fake import output_tools
 
 
 def _h264_output_plan():
@@ -878,12 +877,10 @@ class TestGenerateMemoryInner:
             ),
             # WHY: _run_music_phase calls external music generation APIs
             "music": patch("immich_memories.generate._run_music_phase"),
-            # WHY: ffprobe is the external validation process; keep the real validation contract.
+            # WHY: ffprobe and ffmpeg read the film; keep the real validation contract.
             "probe": patch(
                 "immich_memories.processing.output_contract.subprocess.run",
-                return_value=subprocess.CompletedProcess(
-                    ["ffprobe"], 0, json.dumps(probe_payload), ""
-                ),
+                side_effect=output_tools(probe_payload),
             ),
             # WHY: sanitize_filename is a security utility
             "sanitize": patch(
@@ -1029,7 +1026,7 @@ class TestGenerateMemoryInner:
             upload_mock.return_value = {"asset_id": "uploaded-asset"}
             _generate_memory_inner(params)
 
-        upload_mock.assert_called_once_with(mock_client, result_path, "test-album")
+        upload_mock.assert_called_once_with(mock_client, result_path, "test-album", None)
         mocks["tracker"].return_value.mark_delivered.assert_called_once_with("uploaded-asset")
 
     def test_upload_not_called_when_disabled(self, tmp_path):
@@ -1347,7 +1344,12 @@ class TestRunMusicPhase:
             )
 
         mock_apply.assert_called_once_with(
-            result_path, music_file, 0.7, encoding_plan, mute_windows=None, stems=None
+            result_path,
+            music_file,
+            0.7,
+            encoding_plan,
+            mute_windows=None,
+            stems=None,
         )
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
@@ -1442,7 +1444,7 @@ class TestUploadToImmich:
         result = _upload_to_immich(mock_client, video_path, "My Album")
 
         mock_client.upload_memory.assert_called_once_with(
-            video_path=video_path, album_name="My Album"
+            video_path=video_path, album_name="My Album", captured_at=None
         )
         assert result["asset_id"] == "abc123"
 
@@ -1455,7 +1457,9 @@ class TestUploadToImmich:
         mock_client.upload_memory.return_value = {}
 
         _upload_to_immich(mock_client, video_path, None)
-        mock_client.upload_memory.assert_called_once_with(video_path=video_path, album_name=None)
+        mock_client.upload_memory.assert_called_once_with(
+            video_path=video_path, album_name=None, captured_at=None
+        )
 
 
 # ---------------------------------------------------------------------------

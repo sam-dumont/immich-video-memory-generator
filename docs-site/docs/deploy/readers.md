@@ -186,7 +186,7 @@ the comparison returns a price with a completion, so nothing here was ever charg
 checked. Each shop is priced in the currency it publishes in.
 :::
 
-February 2024: 13,552 pictures in scope, 1,417 of them candidates, 15 kept. The same library, the
+February 2024: 1,417 candidates, 15 kept. The same library, the
 same month, the same banked facts seeded into every cell, one line of config moved per cell.
 Selection is the reader stage only, with preparation already warm. Prices were read off the model
 pages on 14 September 2026. The cells and the price block are in the

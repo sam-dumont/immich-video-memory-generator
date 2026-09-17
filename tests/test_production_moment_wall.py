@@ -83,7 +83,6 @@ def _candidate(
         rendering_family_id="88888888-0000-0000-0000-000000000001",
         favourite=asset.is_favorite,
         source=asset,
-        proposed_segment=None,
         shippable_duration=0.0,
         grounded_annotations=(),
     )

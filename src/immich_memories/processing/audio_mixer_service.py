@@ -10,6 +10,7 @@ import math
 import subprocess
 from pathlib import Path
 
+from immich_memories.delivery_timestamp import CARRY_CONTAINER_METADATA
 from immich_memories.processing.assembly_config import AssemblySettings
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,7 @@ class AudioMixerService:
             "aac",
             "-b:a",
             "192k",
+            *CARRY_CONTAINER_METADATA,
             "-shortest",
             str(temp_output),
         ]

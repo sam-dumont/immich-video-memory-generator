@@ -56,6 +56,14 @@ _LIMIT_FLAGS = frozenset(
 )
 _LIMIT_VALUE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.,:_-]*")
 
+# The size a cluster cell's data claim is applied at. A bound claim can grow and
+# never shrink: once the owner grew the shared one (a February preview pool
+# outgrew 10Gi), every apply at the old size was refused with "field can not be
+# less than status.capacity" and no cluster cell could start. The environment
+# names the size the cluster holds; unset, a claim is made at the default.
+DATA_STORAGE_ENV = "MATRIX_K8S_DATA_STORAGE"
+DEFAULT_DATA_STORAGE = "10Gi"
+
 # The fixture library binds here so the NAS and the cluster can reach the Mac.
 FIXTURE_PORT = 8078
 FIXTURE_ENV = "MATRIX_FIXTURE_BASE_URL"
@@ -1519,7 +1527,10 @@ def _k8s_manifests(
     data_claim, output_claim = cell_claims(cell)
     return {
         "claims.yaml": _CLAIMS.format(
-            data=data_claim, output=output_claim, storage_class=_storage_class_block(cell)
+            data=data_claim,
+            output=output_claim,
+            storage_class=_storage_class_block(cell),
+            data_storage=f"${DATA_STORAGE_ENV}",
         ),
         "configmap.yaml": _CONFIGMAP.format(name=name, config=config_block),
         "job.yaml": _JOB.format(
@@ -1568,7 +1579,7 @@ spec:
     - ReadWriteOnce
 {storage_class}  resources:
     requests:
-      storage: 10Gi
+      storage: {data_storage}
 ---
 # One cell's output, deleted once the collector has copied it to this machine.
 apiVersion: v1
@@ -1968,7 +1979,13 @@ def build_plan(
             )
             for cell in chosen
         ),
-        environment=dict(environment),
+        # The one placeholder every cluster manifest carries that the operator may
+        # leave unset, so the runner always has a value to put in its place.
+        environment={
+            **environment,
+            DATA_STORAGE_ENV: (environment.get(DATA_STORAGE_ENV) or "").strip()
+            or DEFAULT_DATA_STORAGE,
+        },
     )
 
 

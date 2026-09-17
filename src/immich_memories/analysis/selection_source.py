@@ -17,7 +17,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.editorial_contracts import (
@@ -326,7 +325,6 @@ def _candidate_from(
         rendering_family_id=rendering_family_id,
         favourite=asset.is_favorite,
         source=asset,
-        proposed_segment=None,
         shippable_duration=(
             source.duration_seconds
             if isinstance(source, VideoClipInfo)
@@ -366,11 +364,6 @@ def _visual_source_from(
     return AtlasSource(
         asset=asset,
         preview_jpeg=preview,
-        motion_path=(
-            Path(source.local_path)
-            if isinstance(source, VideoClipInfo) and source.local_path is not None
-            else None
-        ),
         unavailable_reason=unavailable_reason,
     )
 

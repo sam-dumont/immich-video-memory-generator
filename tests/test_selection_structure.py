@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from immich_memories.analysis.selection_source import (
     SourceScope,
     prepare_editorial_source,
 )
-from immich_memories.analysis.visual_atlas import build_visual_atlas
+from immich_memories.analysis.visual_atlas import AtlasTile, VisualAtlas
 from tests.conftest import make_asset
 
 WHEN = datetime(2024, 6, 1, 12, tzinfo=UTC)
@@ -24,6 +25,22 @@ def _jpeg(colour: str) -> bytes:
     output = BytesIO()
     Image.new("RGB", (64, 48), colour).save(output, "JPEG")
     return output.getvalue()
+
+
+def _photo_atlas(prepared) -> VisualAtlas:
+    """One photo tile per source preview, the way the contact sheets receive them."""
+    return VisualAtlas(
+        tuple(
+            AtlasTile(
+                source.asset.id,
+                "photo",
+                source.preview_jpeg,
+                sha256(source.preview_jpeg).hexdigest(),
+                1,
+            )
+            for source in prepared.visual_sources
+        )
+    )
 
 
 def _stripe(columns: int) -> bytes:
@@ -58,7 +75,7 @@ def test_workprint_conserves_cull_survivors_behind_one_proxy_per_moment(
     admitted = tuple(
         candidate for candidate in prepared.candidates if candidate.asset_id != "culled"
     )
-    atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=None)
+    atlas = _photo_atlas(prepared)
 
     workprint = build_structure_workprint(
         prepared,
@@ -101,7 +118,7 @@ def test_workprint_uses_the_visual_medoid_as_a_moments_proxy() -> None:
             preview_jpeg=lambda asset: pixels[asset.id],
         ),
     )
-    atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=None)
+    atlas = _photo_atlas(prepared)
 
     workprint = build_structure_workprint(prepared, prepared.candidates, atlas=atlas)
 
@@ -133,7 +150,7 @@ def test_a_viewable_favourite_overrides_the_visual_medoid() -> None:
             preview_jpeg=lambda asset: pixels[asset.id],
         ),
     )
-    atlas = build_visual_atlas(prepared.visual_sources, frame_cache_dir=None)
+    atlas = _photo_atlas(prepared)
 
     workprint = build_structure_workprint(prepared, prepared.candidates, atlas=atlas)
 

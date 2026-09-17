@@ -57,6 +57,24 @@ class AssetService:
         """Get video playback data (transcoded preview)."""
         return await self._request("GET", f"/assets/{asset_id}/video/playback")
 
+    async def get_video_playback_range(
+        self, asset_id: str, start: int, length: int
+    ) -> tuple[bytes, int]:
+        """``length`` bytes of the playback rendition from ``start``, and its full size.
+
+        A server that ignores the range answers the whole rendition; the asked bytes are cut
+        from it, so the caller sees the same answer either way. A refusal raises
+        ``httpx.HTTPStatusError`` with the server's status.
+        """
+        response = await self._get_client().get(
+            f"/api/assets/{asset_id}/video/playback",
+            headers={"Range": f"bytes={start}-{start + length - 1}"},
+        )
+        response.raise_for_status()
+        if response.status_code != 206:
+            return response.content[start : start + length], len(response.content)
+        return response.content, int(response.headers["content-range"].rpartition("/")[2])
+
     async def download_asset(
         self,
         asset_id: str,

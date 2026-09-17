@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -74,6 +74,19 @@ class TestUploadAsset:
             "fileCreatedAt": "2024-01-02T03:04:05+00:00",
             "fileModifiedAt": "2024-01-02T03:04:05+00:00",
         }
+
+    def test_capture_instant_files_the_memory_on_its_own_day(self, tmp_path: Path) -> None:
+        """A known capture instant becomes fileCreatedAt, offset and all."""
+        video_file = tmp_path / "holiday memory.mp4"
+        modified_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+        captured_at = datetime(2023, 6, 20, 18, 45, tzinfo=timezone(timedelta(hours=2)))
+
+        fields = build_upload_fields(
+            ResolvedApiVersion.V3, video_file, modified_at, captured_at=captured_at
+        )
+
+        assert fields["fileCreatedAt"] == "2023-06-20T18:45:00+02:00"
+        assert fields["fileModifiedAt"] == "2024-01-02T03:04:05+00:00"
 
     @pytest.mark.asyncio
     async def test_v3_upload_sends_exact_multipart_contract(self, video_path: Path) -> None:
@@ -449,7 +462,7 @@ class TestUploadMemory:
 
         assert result["asset_id"] == "asset-999"
         assert result["album_id"] == "album-new"
-        client.albums.upload_asset.assert_awaited_once_with(video)
+        client.albums.upload_asset.assert_awaited_once_with(video, captured_at=None)
         client.albums.create_album.assert_awaited_once_with("2024 Memories")
         client.albums.add_assets_to_album.assert_awaited_once_with("album-new", ["asset-999"])
 

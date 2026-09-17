@@ -10,6 +10,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from immich_memories.delivery_timestamp import CARRY_CONTAINER_METADATA
 from immich_memories.security import validate_audio_path, validate_video_path
 
 logger = logging.getLogger(__name__)
@@ -342,6 +343,7 @@ def mix_audio_with_ducking(
         "aac",
         "-b:a",
         "192k",
+        *CARRY_CONTAINER_METADATA,
         str(output_path),
     ]
 

@@ -101,6 +101,22 @@ class TestMonthNarrowsYearlyTypes:
             )
 
 
+class TestAMonthWithoutAMemoryType:
+    """`prepare` passes no memory type; its month must still be the month (#1054)."""
+
+    @staticmethod
+    def _span(**kwargs) -> tuple[date, date]:
+        result = resolve_date_range(2024, None, None, None, None, month=2, **kwargs)
+        assert isinstance(result, DateRange)
+        return result.start.date(), result.end.date()
+
+    def test_the_monthly_preset_and_the_bare_month_are_the_same_february(self):
+        february = (date(2024, 2, 1), date(2024, 2, 29))
+
+        assert self._span(memory_type="monthly_highlights") == february
+        assert self._span() == february
+
+
 class TestStartEndOverridesPreset:
     """--start/--end should override any memory type's default date range."""
 

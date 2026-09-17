@@ -5,7 +5,10 @@ import re
 
 import pytest
 
-from immich_memories.analysis.editorial_story_pick_contract import source_kind_marker
+from immich_memories.analysis.editorial_story_pick_contract import (
+    carries_motion,
+    source_kind_marker,
+)
 from immich_memories.analysis.editorial_story_pick_pages import page_shares
 from immich_memories.analysis.editorial_story_reading import PAGE_CHARS
 from immich_memories.analysis.editorial_story_shortlist import (
@@ -108,7 +111,7 @@ def pick_occasion(judge, *, count=1, star="quiet-p1", stars=(), groups=("quiet",
         contract="Show the spring",
         record=lambda name, value: records.append((name, value)),
         kind_of=lambda c: source_kind_marker(by_asset[c.primary]),
-        is_video=lambda c: by_asset[c.primary]["kind"] == "video",
+        plays=lambda c: carries_motion(by_asset[c.primary]),
     )
     return selected, records
 
@@ -494,3 +497,116 @@ def test_a_small_pick_is_one_request_with_unchanged_bytes():
     assert records["story-pick-K01"]["pages"] == [
         {"page": 1, "offered": 9, "share": 3, "kept": 3, "unused_slots": 0}
     ]
+
+
+def moving_units(kinds):
+    """One unit per moment, the way the material builder writes them: a true video keeps its
+    source length, a Live Photo is live-motion only once its residual passed the discriminant."""
+    return {
+        f"asset-{i}": {
+            "kind": kind,
+            "raw_seconds": 31.76 if kind != "still" else None,
+            "favourite": False,
+        }
+        for i, kind in enumerate(kinds, 1)
+    }
+
+
+def pick_moving_story(judge, *, kinds, count=1):
+    """A story whose second moment holds moving material, picked with one slot by default."""
+    units = moving_units(kinds)
+    choices = [
+        DepictedChoice(f"choice-{i}", "K01", f"2030-05-0{i}T10:00", f"View {i}", f"asset-{i}")
+        for i in range(1, len(kinds) + 1)
+    ]
+    read = []
+    selected = pick_story_moments(
+        judge,
+        story={"key": "K01", "title": "A visit"},
+        choices=choices,
+        count=count,
+        starred=lambda _c: False,
+        contract="Show the visit",
+        record=lambda _name, _value: None,
+        kind_of=lambda c: source_kind_marker(units[c.primary]),
+        plays=lambda c: carries_motion(units[c.primary]),
+        motion_of=lambda c: read.append(c.primary) or "A toss, a catch and a bend.",
+    )
+    return [c.key for c in selected], read
+
+
+def offered_rows(prompt):
+    return [line for line in prompt.splitlines() if re.match(r"^M\d{2} \| ", line)]
+
+
+def test_a_one_slot_story_reads_the_motion_of_its_video_and_leads_the_rows_with_it():
+    judge = GroupJudge(prefer="video")
+    selected, read = pick_moving_story(judge, kinds=("still", "video", "still"))
+
+    assert read == ["asset-2"]  # the grant no longer decides whether motion is evidence
+    assert "Motion: A toss, a catch and a bend." in judge.prompts[0]
+    assert offered_rows(judge.prompts[0])[0].startswith("M02 | ")
+    assert selected == ["choice-2"]
+
+
+def test_the_pick_contract_chooses_the_video_over_a_still_of_the_same_moment():
+    prompt = _pick_prompt(
+        "Show the visit",
+        {"key": "K01", "title": "A visit"},
+        "M01 | a row",
+        count=1,
+        allow_fewer=False,
+        sampled_motion=False,
+    )
+
+    assert (
+        "when a video or a playing Live Photo carries a moment, choose it over a still of "
+        "the same moment" in prompt
+    )
+
+
+@pytest.mark.parametrize(
+    "kind,marker,leads",
+    [
+        ("live-motion", " | live photo, motion plays", True),
+        ("live-still", " | live photo, shown as a still", False),
+    ],
+)
+def test_a_live_photo_is_offered_as_motion_only_once_it_passed_the_discriminant(
+    kind, marker, leads
+):
+    judge = GroupJudge(prefer="View 1")
+    _selected, read = pick_moving_story(judge, kinds=("still", kind, "still"))
+
+    rows = offered_rows(judge.prompts[0])
+    assert [row for row in rows if row.startswith("M02 | ")][0].endswith(marker)
+    assert rows[0].startswith("M02 | ") is leads
+    assert (read == ["asset-2"]) is leads  # its motion line is read only when it plays
+
+
+class LastRowJudge:
+    # WHY: the model boundary. The measured reader kept the last row it was shown, so the two
+    # orders split whenever the moving row led one of them; this replays that split offline.
+    def __init__(self):
+        self.prompts = []
+
+    def ask(self, _stage, prompt, **_kwargs):
+        self.prompts.append(prompt)
+        count = int(re.search(r"gets (\d+) picture", prompt)[1])
+        return json.dumps({"keep": [offered_rows(prompt)[-1][:3]][:count]})
+
+
+def test_a_one_slot_vote_the_two_orders_split_goes_to_the_moment_that_plays():
+    judge = LastRowJudge()
+    selected, _read = pick_moving_story(judge, kinds=("still", "video", "still"))
+
+    kept = [offered_rows(prompt)[-1][:3] for prompt in judge.prompts]
+    assert kept == ["M03", "M02"]  # the source order kept a still, the reversed one the video
+    assert selected == ["choice-2"]
+
+
+def test_a_split_vote_between_two_stills_still_follows_the_source_order():
+    judge = LastRowJudge()
+    selected, _read = pick_moving_story(judge, kinds=("still", "still", "still"))
+
+    assert selected == ["choice-3"]

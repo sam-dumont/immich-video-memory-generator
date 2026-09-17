@@ -274,7 +274,6 @@ class CachedSampledPairConfirmer:
             rendering_family_id=None,
             favourite=asset.is_favorite,
             source=asset,
-            proposed_segment=None,
             shippable_duration=0.0,  # This relation neither measures nor allocates playable material.
             grounded_annotations=(),
         )
