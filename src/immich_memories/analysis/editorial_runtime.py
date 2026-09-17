@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
+from immich_memories.analysis.editorial_album_index import (
+    RunAlbumNames,
+    record_album_index,
+)
 from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
@@ -48,10 +52,8 @@ from immich_memories.analysis.special_event_scope import (
     validate_special_event_scope,
 )
 from immich_memories.analysis.text_episode_answers import TEXT_EPISODE_SCHEMA_VERSION
-from immich_memories.analysis.text_episode_reader import (
-    TEXT_EPISODE_PROMPT_VERSION,
-    CachedTextEpisodeReader,
-)
+from immich_memories.analysis.text_episode_prompt import TEXT_EPISODE_PROMPT_VERSION
+from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
 from immich_memories.analysis.text_period_insight import (
     TEXT_PERIOD_PROMPT_VERSION,
     run_text_period_insight,
@@ -680,6 +682,11 @@ def build_editorial_planner(
 
     readings = _AnnotationReadings(store_path=store_path, config=config, people=context_by_id)
 
+    album_names = RunAlbumNames(
+        client,
+        record=lambda index: record_album_index(index, backend._context.artifact_dir),
+    )
+
     def episode_reader_factory(prepared: Any) -> EpisodeReader:
         annotations = readings.reader(prepared)
         if reader_mode == "rules":
@@ -701,6 +708,7 @@ def build_editorial_planner(
             record_evidence=lambda episodes: evidence_provenance.capture(
                 episodes, directory=backend._context.artifact_dir
             ),
+            albums=album_names,
         )
 
     def period_reader(episodes: Any) -> Any:

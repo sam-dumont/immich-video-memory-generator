@@ -441,6 +441,9 @@ class ImmichClient:
     async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
         return await self.albums.album_holding_most(asset_ids, limit=limit)
 
+    async def list_album_assets(self, album_id: str) -> list[dict]:
+        return await self.albums.list_album_assets(album_id)
+
     async def iter_videos_for_date_range(
         self,
         date_range: DateRange,
