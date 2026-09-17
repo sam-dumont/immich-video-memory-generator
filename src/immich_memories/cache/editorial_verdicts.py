@@ -26,6 +26,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# The pass judged this picture and removed nothing. It is stored because a bank
+# of rejects only can never withdraw one, and because no row at all means the
+# pass never looked, which is a different answer. No Cull bucket uses this word.
+KEPT_VERDICT = "kept"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS editorial_verdicts (
     asset_id TEXT NOT NULL,

@@ -90,6 +90,21 @@ pages of the period account and the story decisions above them. A second cut ove
 warm again. Captions, head answers and detector verdicts are keyed by their own producers and stay
 warm through it, so the preparation is never repeated.
 
+The cull's standing verdicts go with them. Which pictures are screens, documents, failed frames or
+saved imagery is remembered per picture in `editorial_verdicts`, and that row is keyed by the same
+reading, so a prompt change retires the old verdicts rather than adding them to the new reading's
+answer. Releases up to 0.102.0 keyed those rows on a constant maintained by hand: when the episode
+prompt moved without it, one catalogued day carried both readings' rejects at once, 94 of its 120
+pictures were culled, and a seven-carrier film became three and would not render. Rows written
+before the fix are never read again, so they cost disk and nothing else. To reclaim the space:
+
+```bash
+sqlite3 ~/.immich-memories/cache/annotations.sqlite \
+  "DELETE FROM editorial_verdicts WHERE pass_version='pass-1-cull-v3'"
+```
+
+The next cut over those pictures asks the cull again.
+
 ### The preview cache scales with your library
 
 Generating a memory reads each candidate's preview several times (sharpness, the heads, the

@@ -7,8 +7,8 @@
 # resolves as long as it matches one of them. Bumping the version means
 # replacing every hash — renovate does it automatically, or read them from
 # https://pypi.org/pypi/uv/<version>/json (the linux wheels and the sdist).
-uv==0.8.17 \
-    --hash=sha256:b6d30d02fb65193309fc12a20f9e1a9fab67f469d3e487a254ca1145fd06788f \
-    --hash=sha256:3941cecd9a6a46d3d4505753912c9cf3e8ae5eea30b9d0813f3656210f8c5d01 \
-    --hash=sha256:84d56ae50ca71aec032577adf9737974554a82a94e52cee57722745656c1d383 \
-    --hash=sha256:2afd4525a53c8ab3a11a5a15093c503d27da67e76257a649b05e4f0bc2ebb5ae
+uv==0.12.15 \
+    --hash=sha256:a673bc39e677eaa012f618cab2e6e99fb82919f37ea45043fca530e9ca94c082 \
+    --hash=sha256:aee9802f46bae436bd91751bb33ddeb379ef1596b5c19df193219d545d244b60 \
+    --hash=sha256:013e3a5774fb2cc036a9422edc51c8c5273cca011ec04c2817249b8a4a0b0f02 \
+    --hash=sha256:5eef1c0d2e0ae26cbe1daa49de855b09dfb63a45eaf1fe63dea2827249eadc05

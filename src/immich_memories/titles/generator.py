@@ -272,42 +272,42 @@ class TitleScreenGenerator:
         title_info,
     ) -> None:
         """Log title screen inputs, generated text, and rendering config."""
-        logger.info("=" * 60)
-        logger.info("TITLE SCREEN GENERATION")
-        logger.info("=" * 60)
-        logger.info(f"  Selection type: {selection_type.value}")
+        logger.debug("=" * 60)
+        logger.debug("TITLE SCREEN GENERATION")
+        logger.debug("=" * 60)
+        logger.debug(f"  Selection type: {selection_type.value}")
         if year:
-            logger.info(f"  Year: {year}")
+            logger.debug(f"  Year: {year}")
         if month:
-            logger.info(f"  Month: {month}")
+            logger.debug(f"  Month: {month}")
         if start_date:
-            logger.info(f"  Start date: {start_date}")
+            logger.debug(f"  Start date: {start_date}")
         if end_date:
-            logger.info(f"  End date: {end_date}")
+            logger.debug(f"  End date: {end_date}")
         if person_name:
-            logger.info(f"  Person name: {person_name}")
+            logger.debug(f"  Person name: {person_name}")
         if birthday_age:
-            logger.info(f"  Birthday age: {birthday_age}")
-        logger.info("-" * 40)
-        logger.info(f'  Main title: "{title_info.main_title}"')
+            logger.debug(f"  Birthday age: {birthday_age}")
+        logger.debug("-" * 40)
+        logger.debug(f'  Main title: "{title_info.main_title}"')
         if title_info.subtitle:
-            logger.info(f'  Subtitle: "{title_info.subtitle}"')
+            logger.debug(f'  Subtitle: "{title_info.subtitle}"')
         else:
-            logger.info("  Subtitle: (none)")
-        logger.info("-" * 40)
-        logger.info(f"  Style: {self.style.name}")
-        logger.info(f"  Font: {self.style.font_family} ({self.style.font_weight})")
-        logger.info(f"  Animation: {self.style.animation_preset}")
-        logger.info(f"  Background: {self.style.background_type}")
+            logger.debug("  Subtitle: (none)")
+        logger.debug("-" * 40)
+        logger.debug(f"  Style: {self.style.name}")
+        logger.debug(f"  Font: {self.style.font_family} ({self.style.font_weight})")
+        logger.debug(f"  Animation: {self.style.animation_preset}")
+        logger.debug(f"  Background: {self.style.background_type}")
         if self._mood:
-            logger.info(f"  Mood: {self._mood}")
+            logger.debug(f"  Mood: {self._mood}")
         width, height = self.config.output_resolution
-        logger.info("-" * 40)
-        logger.info(f"  Resolution: {width}x{height}")
-        logger.info(f"  FPS: {self.config.fps}")
-        logger.info(f"  Duration: {self.config.title_duration}s")
-        logger.info(f"  Animated background: {self.config.animated_background}")
-        logger.info("=" * 60)
+        logger.debug("-" * 40)
+        logger.debug(f"  Resolution: {width}x{height}")
+        logger.debug(f"  FPS: {self.config.fps}")
+        logger.debug(f"  Duration: {self.config.title_duration}s")
+        logger.debug(f"  Animated background: {self.config.animated_background}")
+        logger.debug("=" * 60)
 
     def generate_month_divider(
         self,

@@ -16,8 +16,8 @@ from immich_memories.analysis.editorial_planner import EditorialPlan
 from immich_memories.analysis.editorial_rule_episodes import EpisodeReader
 from immich_memories.analysis.moment_cards import MomentCard, build_moment_cards
 from immich_memories.analysis.selection_cull import (
-    CULL_PASS_VERSION,
     CullDecisionResult,
+    cull_pass_version,
     run_cull_decisions,
 )
 from immich_memories.analysis.selection_source import (
@@ -222,6 +222,7 @@ class TextEditorialPlanner:
             warnings=episodes.warnings,
             request_traces=() if episodes.request_trace is None else (episodes.request_trace,),
             verdicts=self._verdicts,
+            judged_asset_ids=episodes.judged_asset_ids,
             actual_calls=episodes.actual_calls,
         )
         demanded = frozenset(demanded_ids)
@@ -296,7 +297,7 @@ def _cull_provenance(
     ).hexdigest()
     return DecisionProvenance(
         pass_name="pass-1-cull",  # noqa: S106 - public editorial pass identity.
-        pass_version=CULL_PASS_VERSION,
+        pass_version=cull_pass_version(reader.producer),
         schema_version=reader.producer.schema_version,
         model_identity=reader.producer.model_id,
         input_ids=episodes.annotation_batch.requested_asset_ids,
