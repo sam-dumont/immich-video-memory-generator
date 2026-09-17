@@ -122,8 +122,12 @@ class TestTitlesStayGrounded:
     def _day_with(
         self, city: str | None, names: list[str], *, gps: bool = False
     ) -> list[SimpleNamespace]:
+        # Described whatever else it carries: a day with no written fact at all
+        # is left unjudged since #1065, and grounding is not what that tests.
         return [
             SimpleNamespace(
+                id=f"a-{hour}",
+                llm_description="people around a table",
                 file_created_at=datetime(2011, 12, 2, hour, tzinfo=UTC),
                 exif_info=SimpleNamespace(
                     city=city,

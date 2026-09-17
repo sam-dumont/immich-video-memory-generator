@@ -60,6 +60,69 @@ def entries_from(path: Path) -> list[DiscoveredDay]:
     return entries
 
 
+def record_for(entry: DiscoveredDay) -> dict:
+    """One scan result as the catalogue stores it.
+
+    The write side of `_entry_from_record`, here so the two cannot drift. A day
+    nobody could judge is stored under `unjudged` rather than `day`: every
+    reader of this file goes by `day`, so an unreadable day is recorded without
+    ever being offered as a memory.
+    """
+    stamp = {"prompt_version": entry.prompt_version, "app_version": entry.app_version}
+    if not entry.judged:
+        return {"unjudged": entry.day.isoformat(), "photos": entry.photos} | stamp
+    return {
+        "day": entry.day.isoformat(),
+        "title": entry.title,
+        "subtitle": entry.subtitle,
+        "what": entry.what,
+        "photos": entry.photos,
+        "window": [when.isoformat() for when in entry.window] if entry.window else None,
+        "active_hours": entry.active_hours,
+        "run_start": entry.run_start.isoformat() if entry.run_start else None,
+        "run_end": entry.run_end.isoformat() if entry.run_end else None,
+    } | stamp
+
+
+def judged_by_this_build(entry: DiscoveredDay) -> bool:
+    """Whether this build's scan would ask the same question of this day again.
+
+    Rows written before #1065 carry no stamp at all, and the question they were
+    judged against let a pleasant afternoon at home into one real catalogue.
+    They read as stale, which is the only honest reading of an unstamped row.
+    """
+    from immich_memories.analysis.special_day import PROMPT_VERSION
+
+    return entry.prompt_version == PROMPT_VERSION
+
+
+def rows_outside(rows: list[dict], since: int, until: int) -> tuple[list[dict], int]:
+    """The catalogue with a period lifted out of it, and how many rows that was.
+
+    Everything the period covers goes: judged days, unjudged days and the year
+    markers that would otherwise make a resumed scan skip the very years it was
+    asked to redo. Rows outside are untouched, including the canonical event
+    records, which no scan writes.
+    """
+    kept = [row for row in rows if not _inside(row, since, until)]
+    return kept, len(rows) - len(kept)
+
+
+def _inside(row: object, since: int, until: int) -> bool:
+    if not isinstance(row, dict):
+        return False
+    scanned = row.get("scanned")
+    if isinstance(scanned, int):
+        return since <= scanned <= until
+    written = row.get("day") or row.get("unjudged")
+    if not isinstance(written, str):
+        return False
+    try:
+        return since <= date.fromisoformat(written).year <= until
+    except ValueError:
+        return False
+
+
 def _event_run(
     raw: dict, start: datetime | None, end: datetime | None
 ) -> tuple[datetime, datetime, tuple[datetime, datetime]]:
@@ -104,6 +167,8 @@ def _entry_from_record(raw: dict, path: Path) -> DiscoveredDay | None:
         event_admission=SpecialEventAdmission.from_catalogue_record(raw, evidence_ref=str(path))
         if event_id is not None
         else None,
+        prompt_version=raw.get("prompt_version", ""),
+        app_version=raw.get("app_version", ""),
     )
 
 

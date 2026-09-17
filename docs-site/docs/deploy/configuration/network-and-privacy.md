@@ -28,7 +28,7 @@ you find a call that is not here,
 | `advanced.inference.facts_base_url` | preparation, when set | each picture's preview, for the heads and detectors | leave it unset: the app runs them itself |
 | `ace_step.api_url`, `musicgen.base_url` | AI music through a remote API | mood, tempo, genre text; MusicGen also uploads the generated track for stem separation | `ace_step.mode: lib`, your own file with `--music`, or `--no-music` |
 | `llm.base_url` | automatic music selection and music preview, when cut text and a model are available | the saved cut's thesis, ordered story labels and prepared captions for kept pictures; no images | your own track, `--no-music`, or a local text model |
-| `llm.base_url` | special-day scan | prepared captions with capture times, places and recognised names; sampled frames for any day the captions do not cover | a local model |
+| `llm.base_url` | special-day scan | text only, never frames: prepared captions with capture times, places, coordinates and recognised names, and for a day the captions do not cover, what the library records about it (times, places, coordinates, recognised names, favourites, videos). A day with no written fact at all is left unjudged rather than asked about | a local model |
 | Hugging Face, torch hub, `github.com` | `models fetch`; first use of ACE-Step or Demucs | nothing about your library; weights are downloaded once | pre-seed the caches for an air-gapped box |
 | Your Apprise or ntfy targets | notifications | memory type, outcome, duration, output path, a redacted error tail; a JPEG frame if `attach_thumbnail: true` | `notifications.enabled: false` (default) |
 | Your OIDC provider | login | the standard OIDC flow with PKCE | basic auth or the trusted-header provider |

@@ -169,8 +169,15 @@ how long the day stayed alive:
 
 No overlap, but the rule is loose on its own: 22 % of days in that library clear six hours. So it is
 a filter, not a verdict, and it keeps the model off the other 78 %, which is what makes asking about
-the rest affordable. A 20-photo floor sits beside it. What passes goes to the model with a sample of
-the day's pictures.
+the rest affordable. A 20-photo floor sits beside it. What passes goes to the model as text: one
+line per sampled picture, with its capture time and whatever the library records about it, and never
+as pixels.
+
+The question it is asked is whether the day was an occasion, the kind of day the people in it would
+tell other people about afterwards: a birth, a wedding, a race, a festival, a concert, a first, a
+day of a trip, a ceremony. A good day is not an occasion. An afternoon at home, a walk, a meal, a
+park or a day spent photographing one subject is ordinary however pleasant it was and however many
+pictures it left.
 
 A day ends when the photographs stop for five hours, not at midnight, so a wedding that runs past
 one is one occasion. Days inside a detected trip are skipped, because a trip memory already tells
@@ -204,20 +211,45 @@ immich-memories discover-days
 | `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
 | `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
 | `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
-| `--rescan` | off | start over, replacing the existing catalogue |
+| `--rescan` | off | start over, replacing the whole catalogue |
+| `--replace` | off | re-scan `--since`..`--until` and replace every row those years hold |
 
 The scan takes hours across twenty years, so it resumes by default: years already in the catalogue
 are not scanned again, and a run that finds nothing will not replace a catalogue that has something
 in it. Each year costs up to `--per-year` days' worth of model calls and a paged metadata fetch per
 month.
 
-With `llm.thinking` at `low` or above the question splits in two: a fast call writes a line per
-sampled picture, then a text-only call reasons over those lines with the times, places and
-recognised names. Measured across 14 candidate days, one vision call said "special" to all fourteen
-and one call that both looked and reasoned truncated 6 of them past parsing, so two calls was the
-only shape that told an occasion from an ordinary Tuesday. `thinking: disabled` keeps the single
-vision call. Those per-picture lines are the record to check when a day you expected comes back
-ordinary; `immich-memories -v discover-days` prints them.
+### What a day is judged on
+
+Text, and only text. A day the caption bank has been over is judged from those captions. Any other
+day is judged from what the library already records about it: capture times, place names,
+coordinates, recognised names, which pictures are favourites, which are videos, and whatever
+captions the day does have. A day whose lines say nothing at all beyond the hour is recorded as
+unjudged instead of being asked about, because a reader handed a column of bare clock times answers
+from the calendar date. Unjudged days are written to the catalogue under `unjudged` rather than
+`day`, so nothing offers them as a memory and a later run can see they were reached.
+
+Run `immich-memories -v discover-days` to see the lines a judgement read when a day you expected
+comes back ordinary.
+
+### Rebuilding a catalogue that drifted
+
+Every row records the prompt version and the app version that judged it. A catalogue that filled up
+over several releases holds rows judged against questions this build no longer asks, and `days-due`
+marks those `stale`.
+
+```bash
+immich-memories discover-days --replace --since 2024 --until 2024
+```
+
+That re-scans 2024 and replaces every row those years hold: days, unjudged days and the year markers
+that make a resume skip them. Days that no longer qualify are simply not written back. It prints how
+many rows it will replace and how many it is keeping before it starts, and it never touches a year
+outside `--since`..`--until`. Nothing is deleted on an ordinary run: without `--replace` or
+`--rescan` the catalogue is only ever added to.
+
+Rows written before version stamps existed have none, so they read as stale until a `--replace` run
+covers their years.
 
 Titles are checked against what the day actually recorded. A title naming a place the day was never
 in is dropped, and so is one claiming a distance or a race that nothing the model was shown
@@ -236,11 +268,13 @@ immich-memories days-due --on 2026-12-24
 
 The clock times are the day's window when it found one, and the `9h` is how many hours of the clock
 the day put pictures in. Anniversaries either side of New Year are found. Catalogues written before
-any of this existed have none of it and still read.
+any of this existed have none of it and still read. A day judged by an older scan is printed with a
+`stale` marker, and the count of them is repeated at the end with the command that re-asks a
+period.
 
-It needs an LLM configured under `llm:`, and a vision model is worth having: with pictures the model
-sees the day, without them it reasons from times, places and recognised names alone. That is the
-difference between "Driving through somewhere" and knowing what was being driven.
+It needs an LLM configured under `llm:`. A vision model is not needed and is not used: the scan is a
+reader of text. What makes it see a day well is preparation, which is where the captions come from,
+so `prepare` over a period before scanning it is the single biggest improvement available.
 
 ## Small questions
 

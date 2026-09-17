@@ -58,9 +58,35 @@ does not do is buy the moment. The editor is still asked which moments tell a st
 story offers a single moment and the grant reaches it, because a dense tail of favourites would
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
 source and audience eligibility, but they do not order which stories a film funds. When a period
-holds more stories than the film has slots, stories of the same weight and the same memory-worthy
-reading are funded in the order they happened, so a well starred December cannot push January out of
-the year.
+holds more stories than the film has slots, a detected trip goes first among the stories of its
+weight; then the memory-worthy reading and the number of distinct moments decide, then the order the
+reader listed its stories in, then the order things happened. A well starred December cannot push
+January out of the year.
+
+**A trip is one story, and it gets room for its length.** The editor runs the app's own trip
+detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
+network: a trip is named from the place names its pictures carry. Every day of a detected trip is one
+story whatever the reader grouped, and the weighing sees it as a trip, with its days and stops on the
+row. A trip weighed as an occasion takes more than one picture where the other stories take their
+first: half the film for a trip that is the whole film, the square root of its share of the film's
+photographed days below that. A ten-day trip in a five-minute year gets about five, a six-day
+holiday in a 90-second year two or three, and never more than the distinct moments it holds. With no
+home base configured nothing is away from home, so there are no trip stories, and the run's
+`trip-stories` record says so. A trip film is already one journey: its days stay the stories.
+
+**A recurring activity is one thread, in the context of the film.** Four Saturdays at the same
+pool are not four occasions in a year's film. After the weighing, stories at the same place on
+separate days are put to the reader as a possible thread when its own words link them. Near home
+that takes an activity: the same activity in their titles, or an activity word the film uses there
+more than anywhere else. Away from home the name the reader gave them is enough, so repeated visits to the same
+garden are asked about. The home place itself never holds a thread, because its days are the film,
+and a place alone never links two days; neither does a name, a relation, a time of day or a word
+like "moments", "life" or "stay". The reader is then asked, with the
+film's dates and contract, which of them are one recurring activity and which are steps worth showing
+apart, and a confirmed thread becomes one story with the weight of its heaviest day. A film longer
+than about 18 months is read in calendar years, and keeps one thread per year, so a child getting
+better at swimming still shows the progress. Trip films and subject memories ask nothing: their days
+are already their stories.
 
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
 is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight
@@ -137,8 +163,8 @@ in the repository.
 ## Twins and near-duplicates
 
 You held the shutter down. You imported the same clip twice. You shot the cake from two steps left.
-None of that should cost three slots in a two-minute film. Sameness is decided in three places,
-cheapest first, and only the last one asks a model.
+None of that should cost three slots in a two-minute film. Sameness is decided in four places,
+cheapest first, and only the first one is free of model calls.
 
 **1. Bursts, on capture time and pixels.** Photos within `photos.burst_window_seconds` of each other
 **and** within `photos.burst_hash_threshold` bits on an average hash of their Immich previews are
@@ -165,7 +191,30 @@ uncertainty lives on pixel-*distant* pairs. At a corroboration distance of 10 th
 all 653 decisions exactly while removing 30 % of the calls, and the first changed decision appears
 at 12. That 10 is a constant in the code, not a setting.
 
-**3. The final film, over what actually shipped.** The pictures in the cut are checked against each
+**3. Inside a story, while the cut can still change.** A story's second or third picture is kept
+only if it does not look like one the story already holds. Trips and long stays are where this
+matters: three one-day stories of a weekend away used to ship three near-identical selfies. The
+question is step 4's repetition question, asked in both arrangements: a pair from the same 90-minute
+episode is asked exactly as step 4 asks it, so the answer is shared, and a pair days apart is asked
+with a premise that says so. A refused picture frees its slot for the story's next distinct moment,
+or for the next story in line. A favourite is never refused for looking like a picture you did not
+star, and when nothing else can take the slot the refused picture comes back, so this check alone
+never makes a film short. A picture is compared with the frames its story
+already holds around it: its own moment's, and the kept frame just before and just after it in time,
+which is where a repetition lives. The check asks at most twice as many pairs as the film has slots
+and records every refusal in the run's `story-selection` record.
+
+The same question lets a dense occasion fill its film. Five minutes of spacing inside a capture group
+keeps a burst from taking several slots, and on a busy afternoon it also kept every moment after the
+first of each group out of the cut: a 90-second special day with 27 usable pictures shipped four. A
+film that is still short after every selection pass now spends its free slots inside the moments its
+stories already show, in funding order: the moments the inventory found and no pick took, alternating
+between capture groups, then up to three frames of each chosen moment. A frame gets in only when the
+question confirms it looks different from the kept frames of its moment and the ones just before and
+after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
+stays short.
+
+**4. The final film, over what actually shipped.** The pictures in the cut are checked against each
 other again. A pair is nominated when any of three signals fires: hashes within 10 bits,
 descriptions that read as the same thing (Jaccard over words of four letters or more, at 0.60), or
 the same capture episode within the 90-minute window. That 0.60 is the knee of a measured curve over
@@ -239,7 +288,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

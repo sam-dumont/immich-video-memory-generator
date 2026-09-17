@@ -13,12 +13,16 @@ import click
 from immich_memories.automation.catalogue import (
     default_catalogue_path,
     entries_from,
+    judged_by_this_build,
     load_catalogue,
+    record_for,
+    rows_outside,
 )
 from immich_memories.cli._helpers import console, print_success
 
 if TYPE_CHECKING:
     from immich_memories.automation.special_day_scan import DiscoveredDay
+    from immich_memories.config import Config
 
 
 def register_special_day_commands(main: click.Group) -> None:
@@ -49,6 +53,12 @@ def _register_discover(main: click.Group) -> None:
         is_flag=True,
         help="Start over, ignoring and replacing the existing catalogue",
     )
+    @click.option(
+        "--replace",
+        is_flag=True,
+        help="Re-scan --since..--until and replace every row those years already hold, "
+        "dropping days that no longer qualify. Rows outside the period are kept.",
+    )
     def discover_days(
         since: int,
         until: int,
@@ -56,6 +66,7 @@ def _register_discover(main: click.Group) -> None:
         also_skip: tuple[str, ...],
         out: Path,
         rescan: bool,
+        replace: bool,
     ) -> None:
         """Find days something happened on, and remember them for later.
 
@@ -69,9 +80,18 @@ def _register_discover(main: click.Group) -> None:
         Resumes by default: years already in the catalogue are not scanned
         again, which matters for a command that runs for hours. --rescan
         starts over.
+
+        A catalogue that accumulated over several releases holds rows judged by
+        questions this build no longer asks. --replace re-scans the years
+        between --since and --until and replaces what they hold, so a period
+        can be cleaned without editing JSON by hand. It says how many rows it
+        will replace before it starts, and it never touches a year outside the
+        period.
         """
-        found = _scan_library(since, until, per_year, also_skip, out, rescan=rescan)
-        _write_catalogue(out, found, rescan=rescan)
+        found = _scan_library(
+            since, until, per_year, also_skip, out, rescan=rescan, replace=replace
+        )
+        _write_catalogue(out, found, rescan=rescan or replace)
         days = sum(1 for entry in found if entry.get("day"))
         print_success(f"{days} special days in {out}")
 
@@ -98,11 +118,19 @@ def _register_due(main: click.Group) -> None:
 
         for entry, years in anniversaries_due(entries, when):
             _print_anniversary(entry, years)
+        stale = sum(1 for entry in entries if not judged_by_this_build(entry))
         print_success(f"{len(entries)} days in the catalogue, checked against {when}")
+        if stale:
+            console.print(
+                f"[yellow]{stale} of them were judged by an older scan. "
+                f"discover-days --replace --since YYYY --until YYYY re-asks a period.[/yellow]"
+            )
 
 
 def _print_anniversary(entry: DiscoveredDay, years: int) -> None:
     line = f"[bold]{years} years ago[/bold]  {entry.day}  {entry.title or entry.what}"
+    if not judged_by_this_build(entry):
+        line += "  [yellow]stale[/yellow]"
     if entry.window:
         start, end = entry.window
         line += f"  [dim]{start:%H:%M}-{end:%H:%M}[/dim]"
@@ -157,6 +185,65 @@ def _homebase(config: object) -> tuple[float, float] | None:
     return (trips.homebase_latitude, trips.homebase_longitude)
 
 
+def _carried_forward(
+    out: Path, since: int, until: int, *, rescan: bool, replace: bool
+) -> list[dict]:
+    """What survives this run, and a word to the operator about what does not."""
+    if rescan:
+        return []
+    existing = load_catalogue(out)
+    if not replace:
+        return existing
+    kept, dropped = rows_outside(existing, since, until)
+    console.print(
+        f"[yellow]--replace: re-scanning {since}-{until} and replacing the {dropped} "
+        f"row(s) those years hold; {len(kept)} row(s) outside the period are kept.[/yellow]"
+    )
+    return kept
+
+
+def _scan_one_year(
+    year: int,
+    assets: list,
+    found: list[dict],
+    out: Path,
+    per_year: int,
+    also_skip: tuple[str, ...],
+    home: tuple[float, float] | None,
+    config: Config,
+) -> None:
+    """Ask about one year's standout days, appending each answer to the catalogue."""
+    from immich_memories.analysis.prepared_captions import prepared_captions
+    from immich_memories.automation.special_day_scan import scan_year
+    from immich_memories.cache.judgment_cache import verdicts_beside
+
+    for day in scan_year(
+        assets,
+        llm_config=config.llm,
+        home=home,
+        ask=per_year,
+        extra_holidays=also_skip,
+        analysis_config=config.analysis,
+        trips_config=config.trips,
+        captions=prepared_captions(config, tuple(asset.id for asset in assets)),
+        judgment_cache_path=verdicts_beside(config.cache.cache_path),
+    ):
+        found.append(record_for(day))
+        if day.judged:
+            console.print(f"  [green]{day.day}[/green]  {day.title or day.what}")
+        else:
+            console.print(f"  [dim]{day.day}  nothing written about it; left unjudged[/dim]")
+        # Written as we go: a scan this long is worth keeping in pieces, and
+        # `found` already carries the earlier catalogue.
+        out.write_text(json.dumps(found, indent=1))
+
+    # Only here, with every month of the year read and asked about. A year
+    # interrupted or partly refused says nothing, and gets scanned again rather
+    # than standing as half an answer.
+    found.append({"scanned": year})
+    out.write_text(json.dumps(found, indent=1))
+
+
 def _scan_library(
     since: int,
     until: int,
@@ -165,22 +252,20 @@ def _scan_library(
     out: Path,
     *,
     rescan: bool = False,
+    replace: bool = False,
 ) -> list[dict]:
     """Walk the years, asking about the days that stand out in each.
 
     Carries the existing catalogue forward so an interrupted scan resumes
     where it stopped rather than starting the twenty years again.
     """
-    from immich_memories.analysis.prepared_captions import prepared_captions
     from immich_memories.api.sync_client import SyncImmichClient
-    from immich_memories.automation.special_day_scan import scan_year
-    from immich_memories.cache.judgment_cache import verdicts_beside
     from immich_memories.config import get_config
 
     config = get_config()
     home = _homebase(config)
-    found: list[dict] = [] if rescan else load_catalogue(out)
-    already = set() if rescan else _years_in(found)
+    found = _carried_forward(out, since, until, rescan=rescan, replace=replace)
+    already = _years_in(found)
 
     with SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key) as client:
         for year in range(since, until + 1):
@@ -192,41 +277,7 @@ def _scan_library(
                 found.append({"scanned": year})
                 continue
             console.print(f"[dim]{year}: {len(assets)} assets[/dim]")
-            for day in scan_year(
-                assets,
-                llm_config=config.llm,
-                home=home,
-                thumbnail_for=lambda asset_id: client.get_asset_thumbnail(asset_id, "thumbnail"),
-                ask=per_year,
-                extra_holidays=also_skip,
-                analysis_config=config.analysis,
-                trips_config=config.trips,
-                captions=prepared_captions(config, tuple(asset.id for asset in assets)),
-                judgment_cache_path=verdicts_beside(config.cache.cache_path),
-            ):
-                found.append(
-                    {
-                        "day": day.day.isoformat(),
-                        "title": day.title,
-                        "subtitle": day.subtitle,
-                        "what": day.what,
-                        "photos": day.photos,
-                        "window": [w.isoformat() for w in day.window] if day.window else None,
-                        "active_hours": day.active_hours,
-                        "run_start": day.run_start.isoformat() if day.run_start else None,
-                        "run_end": day.run_end.isoformat() if day.run_end else None,
-                    }
-                )
-                console.print(f"  [green]{day.day}[/green]  {day.title or day.what}")
-                # Written as we go: a scan this long is worth keeping in
-                # pieces, and `found` already carries the earlier catalogue.
-                out.write_text(json.dumps(found, indent=1))
-
-            # Only here, with every month of the year read and asked about.
-            # A year interrupted or partly refused says nothing, and gets
-            # scanned again rather than standing as half an answer.
-            found.append({"scanned": year})
-            out.write_text(json.dumps(found, indent=1))
+            _scan_one_year(year, assets, found, out, per_year, also_skip, home, config)
     return found
 
 

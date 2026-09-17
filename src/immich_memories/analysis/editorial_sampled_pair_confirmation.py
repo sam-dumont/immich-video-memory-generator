@@ -313,6 +313,7 @@ class CachedSampledPairConfirmer:
         distances: Sequence[int | None],
         *,
         episode_similarity: bool,
+        story_similarity: bool = False,
     ) -> None:
         results = confirm_same_picture_pairs(
             tuple(
@@ -328,6 +329,7 @@ class CachedSampledPairConfirmer:
             limits=self._limits,
             concurrency=1,
             episode_similarity=episode_similarity,
+            story_similarity=story_similarity,
         )
         for index, result in zip(eligible, results, strict=True):
             if (result.earlier_asset_id, result.later_asset_id) != nominated[index]:
@@ -356,6 +358,17 @@ class CachedSampledPairConfirmer:
         """Ask about visual repetition once the caller has established a nearby episode."""
         return self._confirm(pairs, picture_records, corroborating_distances, episode=True)
 
+    def confirm_story_pairs(
+        self,
+        pairs: Sequence[tuple[str, str]],
+        picture_records: Mapping[str, Mapping[str, Any]],
+        corroborating_distances: Sequence[int | None] | None = None,
+    ) -> tuple[tuple[SamePicturePairDecision, ...], dict[str, Any]]:
+        """Ask about visual repetition between two pictures of one story, days apart or not."""
+        return self._confirm(
+            pairs, picture_records, corroborating_distances, episode=True, story=True
+        )
+
     def _confirm(
         self,
         pairs: Sequence[tuple[str, str]],
@@ -363,6 +376,7 @@ class CachedSampledPairConfirmer:
         corroborating_distances: Sequence[int | None] | None,
         *,
         episode: bool,
+        story: bool = False,
     ) -> tuple[tuple[SamePicturePairDecision, ...], dict[str, Any]]:
         nominated = tuple(pairs)
         distances = (
@@ -391,12 +405,21 @@ class CachedSampledPairConfirmer:
             rows.append(self._routed_row(index, pair, picture_records, tiles, decisions, eligible))
         if eligible:
             self._compare_routed(
-                nominated, eligible, tiles, rows, decisions, distances, episode_similarity=episode
+                nominated,
+                eligible,
+                tiles,
+                rows,
+                decisions,
+                distances,
+                episode_similarity=episode,
+                story_similarity=story,
             )
         requests = self._trace.requests[trace_start:]
         audit: dict[str, Any] = {
             "scope": (
-                "nearby episode visual similarity; no whole-video equality or cut authority"
+                "same-story visual similarity; no whole-video equality or cut authority"
+                if story
+                else "nearby episode visual similarity; no whole-video equality or cut authority"
                 if episode
                 else "sampled picture relation only; no whole-video equality or cut authority"
             ),

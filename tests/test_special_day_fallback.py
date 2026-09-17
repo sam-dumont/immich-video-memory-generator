@@ -13,16 +13,22 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from immich_memories.analysis.special_day import ask_if_special
+from immich_memories.analysis.special_day import SpecialDay, ask_if_special
 
 # The entry #714 was reported for, at the width the catalogue stored it.
 _A_DESCRIPTION = "Six images captured between 07:32 and 16:06, tracing a route from weathered apar"
 
 
 def _day(city: str | None = None) -> list[SimpleNamespace]:
-    """A day with nothing to place it, which is when the guard blanks a title."""
+    """A day with nothing to place it, which is when the guard blanks a title.
+
+    Described but unplaced: captions are what make a day readable at all since
+    #1065, and having no place is what the grounding guard is about.
+    """
     return [
         SimpleNamespace(
+            id=f"a-{hour}",
+            llm_description="people walking along a path",
             file_created_at=datetime(2010, 8, 14, hour, tzinfo=UTC),
             exif_info=SimpleNamespace(
                 city=city,
@@ -146,7 +152,7 @@ def test_a_day_nothing_can_name_is_not_written_down() -> None:
     # WHY: ask_if_special is the LLM call; here it comes back unable to name the day.
     with patch(
         "immich_memories.automation.special_day_scan.ask_if_special",
-        return_value=SimpleNamespace(
+        return_value=SpecialDay(
             special=True, title="", subtitle="", what=_A_DESCRIPTION, window=None
         ),
     ):

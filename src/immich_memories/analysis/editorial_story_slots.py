@@ -76,9 +76,13 @@ class _Grants:
         return self._reserve is None or self._reserve(s)
 
     def take_each(self, weight: str, cap: int) -> None:
+        """Presence, in funding order. A trip takes the depth it reserved at its own turn."""
         for s in self.stories:
-            if s["weight"] == weight:
-                self.take(s, cap)
+            if s["weight"] != weight:
+                continue
+            wanted = max(cap, s.get("reserve") or 0)
+            while self.take(s, wanted):
+                pass
 
     def take_one_per_day(self, weight: str, cap: int = 1) -> None:
         """Texture is a glance at a day, not a series; a day's second one waits its turn."""
@@ -91,7 +95,7 @@ class _Grants:
         group = self.of_weight(weight)
         progressed = True
         while self.remaining > 0 and progressed:
-            offered = [self.take(s, cap) for s in group]
+            offered = [self.take(s, max(cap, s.get("reserve") or 0)) for s in group]
             progressed = any(offered)
 
 
@@ -135,8 +139,10 @@ def allocate_slots(
     reserve_slot: Callable[[Mapping[str, Any]], bool] | None = None,
 ) -> dict[str, int]:
     """Slots per story from its weight, capped by the moments it holds. Stories come in weight
-    order. Leftover slots deepen dominant, then major, then minor stories one moment at a time
-    while they have moments; a glimpse stays one picture and "none" is never funded."""
+    order. A dominant or major story with a `reserve` (a trip) takes that many where the others
+    take their first picture. Leftover slots deepen dominant, then major, then minor stories one
+    moment at a time while they have moments; a glimpse stays one picture and "none" is never
+    funded."""
     counted = dict(already or {})
     plan = _Grants(stories, slots, capacity, counted, reserve_slot)
     caps = weight_caps(slots + sum(counted.values()))

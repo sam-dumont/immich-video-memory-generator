@@ -21,6 +21,7 @@ _STAGE_WORDS = {
     "standing": "the standing read",
     "period": "the period read",
     "story-weighing": "the story weighing",
+    "story-threads": "the recurring-activity question",
     "cull": "the cull",
     "pass-1-cull": "the first cull",
     "source-eligibility": "the source check",

@@ -126,6 +126,39 @@ each story **in its own words**: `dominant`, `major`, `minor`, `glimpse`, `none`
 fold the grouping — and it may join two adjacent stories. Words map to roles: dominant and
 major are central, minor supports, glimpse is texture, none is incidental.
 
+**Trips carry their own weight.** Before the weighing, `editorial_story_trips.py` runs the app's
+trip detection (`trip_detection.detect_trips`) over the film's pool with the configured `trips` home
+base, distance, duration and gap, naming each trip from its pictures' EXIF places and never over the
+network. Every day episode holding one of a trip's pictures, or falling on a trip day with no
+position at all, leaves whatever story the reader filed it in and joins that trip's story; what a
+straddling story keeps outside the trip stays a story of its own. The trip row the weighing reads
+carries `trip: N days away, first -> last, stops: place (days); ...`, and the same line opens the
+story's purpose, which the pick reads, with the owner's 09-01 instruction to cover the whole span if
+the pictures allow. The strangers-only ceiling does not apply to a trip. Without a configured home
+base there are no trip stories, and `derived-decisions/trip-stories.private.json` records why; a
+trip film skips detection, because it already is the journey.
+
+**A recurring activity is one thread, in the film's context.** The grouping still rejects a story
+whose days are not consecutive (`_broken_spans`), because a reader that folds gapped days together
+usually folds unrelated ones. The cost was the other case: the same activity at the same place on
+separate days came back as one story per day and one picture each. After the weighing,
+`editorial_story_threads.py` nominates weighed stories of one place and one era as a group when the
+reader's own words link them. Near the home base (the structure planner's 10 km test, by majority
+of a story's pictures) only an activity links: the same activity phrase, or a shared title word the
+film uses there more than at any other place. Away from home, the reader's own name for them (one
+`split_from` title, or the same title) links too. The film's home place (the place most near-home
+stories happened at, or the most common place without a home base) never holds a thread: the first
+real run asked about 42 home stories the reader had filed as one "early home life" and joined 28
+days of it. Names from the annotation lines, kinship words, English function words, times of day
+and container nouns ("moments", "life", "stay", "session") never link, and a place alone never
+does. One banked question per group (`recurring-activity-v3`) carries the film's dates
+and contract and asks which stories are one recurring activity and which are steps worth showing
+apart; each confirmed group, split again into its linked parts, becomes one story with the weight
+of its heaviest member, placed where its first member was. An unreadable answer keeps them apart.
+Eras follow the product contract: a film longer than `ERA_THRESHOLD_DAYS` is read per calendar
+year and keeps one thread per year. The rules reader, trip films and subject memories ask nothing;
+`story-threads.private.json` records the nominations, the answers and the folds.
+
 Two properties of the ask are load-bearing:
 
 - **Judgments that matter are asked in two orders.** The memory-worthy gate and the standing gate
@@ -156,7 +189,17 @@ itself. The order is the owner's:
 1. **Words to slots** (`editorial_story_slots.py`) — the only arithmetic in the route. A story's
    weight becomes a number of pictures, capped by the moments the story actually holds; where a
    product limits how much one calendar partition may carry (a year's months), that capacity is
-   reserved in the same order. Depth per weight class, never per day.
+   reserved in the same order. Depth per weight class, never per day. Stories are funded by weight
+   word; inside a word a detected trip first, then the gate's word and the story's moments, then
+   the reader's own order (`story.priorities`, the order the grouping named its stories in), then
+   the first day (`funding_order`). The reader's order breaks ties rather than leading: a period
+   the reader filed as one story and the day rule split sits at the top of that list, and leading
+   with it pushed a weekend away out of a 90 s year. A trip weighed dominant or
+   major reserves `round(slots / 2 * sqrt(trip days / film days))` pictures (at least one), counted
+   in photographed days, and takes them at its own turn in the presence pass, before the stories
+   after it take their first. A trip that is the whole film would get the dominant cap; the square
+   root is the curve that meets the owner's 09-04 calibration, a ten-day trip in a five-minute year
+   at about five, where a pro-rata share gives two.
 2. **A funded story is inventoried over the capture groups it can spend a slot on**
    (`editorial_moment_inventory.py`) — the depicted-moment inventory is read only where a slot
    lands, and inside a funded story only over the groups its own shortlist keeps (whole groups,
@@ -166,7 +209,9 @@ itself. The order is the owner's:
 3. **The standing gate rejects before the pick** (`editorial_story_carriers.StandingGate`) —
    "does each picture stand by itself?", reject-only, two orders. A favourite lowers the bar; a
    texture slot raises it.
-4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`) — the model
+4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`; a valid
+   shortfall whose sentence the reader forgot is asked once more and then taken as the choice it
+   is, rather than ending the film) — the model
    chooses which moments tell the story from a shortlist that names each source truthfully
    (video with its length, a live photo that plays or is shown as a still, still), favourites
    marked there. Moments that play (a true video, or a Live Photo above the motion discriminant)
@@ -178,7 +223,25 @@ itself. The order is the owner's:
    grant reaches has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
    slot.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
-   and spaced from what is already committed. Freed slots are re-granted across stories in up to
+   and spaced from what is already committed, and, when its story already holds a picture, if it
+   does not look like the frames around it (`editorial_story_lookalike.py`: its own moment's, and
+   the kept frame just before and just after it in capture time). That check reuses the final review's
+   visual repetition question through the same port: a pair of one capture family inside the
+   90-minute window is asked as `episode-similarity-v1` and shares its memo with the final review,
+   any other pair of one story as `story-similarity-v1`, whose premise says the two may be days
+   apart. It has its own bound of twice the film's slots rather than a share of the final review's
+   (that one is over the finished film, replacements and video samples included); a pair both ask
+   is one request. A refusal frees the slot and buys one more pass, so the story's next distinct
+   moment or the next story in funding order takes it; a favourite is never refused against a
+   picture the owner did not star; what nothing else can fill is readmitted, so the check never
+   causes a shortfall on its own.
+   A film still short after the passes and the occasion keep then spends its free slots as depth
+   inside the moments its funded stories show (`editorial_story_depth.py`), in funding order:
+   depicted moments the inventory found and no pick took (the five-minute spacing inside a capture
+   group had kept them out), alternating between capture groups, then further members of the chosen
+   moments up to three frames per moment. Each is admitted only when the same question confirms it
+   differs from the kept frames of its moment and its neighbours in capture time; an unasked pair
+   (no visual port, or the bound spent) adds nothing, and a refused variant is never readmitted. Freed slots are re-granted across stories in up to
    three further passes, never to variants. An occasion whose every candidate failed still shows
    once. The audience is not asked here: the gate reads the cut, not every candidate.
 6. **The audience chain and the final duplicate pass** close the cut — sampled-pair confirmation

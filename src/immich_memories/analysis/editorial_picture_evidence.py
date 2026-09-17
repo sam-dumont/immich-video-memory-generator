@@ -52,6 +52,11 @@ class PictureEvidenceOverlay:
         unit["line"] = self.line(unit)
         return witness
 
+    def observe(self, asset_id: str) -> None:
+        """Acquire one picture's own observation now; a later enrich reuses it."""
+        if self._observe is not None and asset_id not in self.records:
+            self._acquire(asset_id, self._observe)
+
     def _has_captioned_companion(self, unit: Mapping[str, Any], material: Sequence[str]) -> bool:
         """A separately captioned video companion keeps the legacy audience route.
 

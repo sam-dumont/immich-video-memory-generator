@@ -285,8 +285,15 @@ its anniversary comes round.
 
 Nothing searches for it. [`discover-days`](./cli/prepare.md#discover-days) walks the library a month at a
 time, keeps the days that stayed alive for hours rather than the days that merely shot a lot, and
-asks the local model whether anything actually happened. That is why it finds the day that mattered
-with 30 photos and skips the one with 413 pictures of a street performer.
+asks the local model whether the day was an occasion: something the people in it would tell other
+people about afterwards. That is why it finds the day that mattered with 30 photos and skips the one
+with 413 pictures of a street performer. A pleasant afternoon at home is not an occasion, and the
+scan says so.
+
+It asks in text and never sends pictures. The day arrives as one line per sampled picture, carrying
+its capture time and whatever the library records about it: place, coordinates, recognised names,
+whether it is a favourite, whether it is a video, and its caption when preparation has written one.
+A day with nothing written about it at all is recorded as unjudged rather than guessed at.
 
 ```bash
 immich-memories discover-days     # build the catalogue once; hours over twenty years, and it resumes
@@ -295,8 +302,12 @@ immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
 The catalogue lives at `~/.immich-memories/special-days.json`: the date, a title derived from that
-day's own pictures, how many hours the day put pictures in, and the hours an event ran when the day
-contained one rather than being one. Scope is that window when there is one, midnight to midnight
+day's own pictures, how many hours the day put pictures in, the hours an event ran when the day
+contained one rather than being one, and the prompt version and app version of the scan that judged
+it. That stamp is what makes a row written by an older scan recognisable:
+`discover-days --replace --since YYYY --until YYYY` re-asks a period and replaces what it holds, so
+a catalogue that filled up over several releases can be cleaned without editing JSON by hand.
+Nothing is ever deleted unless you ask for it. Scope is that window when there is one, midnight to midnight
 when there is not. The window shrinks and never pads, so a track day starts at the circuit rather
 than at the cat on the balcony that morning.
 
@@ -327,5 +338,5 @@ says out loud is the evidence rather than the title:
 via special-days catalogue
 ```
 
-It needs an LLM configured under `llm:`, and a vision model is worth having: see
+It needs an LLM configured under `llm:`. A vision model is not needed: see
 [`discover-days`](./cli/prepare.md#discover-days).

@@ -66,7 +66,7 @@ def _repair_question(
 
 
 def _read_pick(
-    raw: str, *, labels: set[str], count: int, allow_fewer: bool
+    raw: str, *, labels: set[str], count: int, allow_fewer: bool, reason: bool = True
 ) -> tuple[list[str], int, str]:
     """The kept labels, the declared shortfall and its explanation, or ValueError."""
     answer = final_json_object(raw)
@@ -95,10 +95,17 @@ def _read_pick(
             f"unused_slots must equal the grant minus the number kept: "
             f"{count} - {len(kept)} = {unused}, not the number of rejected candidates"
         )
-    why = answer.get("why_fewer", "")
-    if unused and (not isinstance(why, str) or not why.strip()):
+    return kept, unused, _shortfall_reason(answer.get("why_fewer", ""), unused, reason)
+
+
+def _shortfall_reason(why: object, unused: int, required: bool) -> str:
+    """The sentence behind a shortfall. A named, complete, valid shortlist is a choice: the
+    sentence is asked for once more, and a film is not lost over a missing one."""
+    if isinstance(why, str) and why.strip():
+        return why
+    if unused and required:
         raise ValueError("an intentional shortfall requires why_fewer")
-    return kept, unused, why
+    return "not given" if unused else ""
 
 
 def ask_moment_pick(
@@ -116,12 +123,12 @@ def ask_moment_pick(
     def accepts(raw: str) -> bool:
         """Keep the bank free of picks this contract cannot read (#908)."""
         try:
-            _read_pick(raw, labels=labels, count=count, allow_fewer=allow_fewer)
+            _read_pick(raw, labels=labels, count=count, allow_fewer=allow_fewer, reason=not asked)
         except ValueError:
             return False
         return True
 
-    error, raw = "", ""
+    error, raw, asked = "", "", 0
     for attempt in range(2):
         question = (
             _repair_question(
@@ -142,8 +149,11 @@ def ask_moment_pick(
             accepts=accepts,
             **({"json_object": True} if allow_fewer else {}),
         )
+        asked = attempt
         try:
-            kept, unused, why = _read_pick(raw, labels=labels, count=count, allow_fewer=allow_fewer)
+            kept, unused, why = _read_pick(
+                raw, labels=labels, count=count, allow_fewer=allow_fewer, reason=not attempt
+            )
         except ValueError as exc:
             error = str(exc)
             continue

@@ -241,6 +241,8 @@ def _merge_adjacent_candidates(candidates, stories, day_of):
             previous["purpose"] = " ".join(
                 filter(None, [previous.get("purpose"), by_key[key].get("purpose")])
             )[:300]
+            if by_key[key].get("trip") and not previous.get("trip"):
+                previous["trip"] = by_key[key]["trip"]
             by_key[key]["joined_into"] = previous["key"]
         else:
             merged.append(key)
@@ -273,9 +275,22 @@ def _no_readable_moments() -> dict[str, Any]:
 
 
 def _synthesize(
-    judge, episodes, *, contract, prior, record, hints=None, allow_gaps=False, journey=False
+    judge,
+    episodes,
+    *,
+    contract,
+    prior,
+    record,
+    hints=None,
+    allow_gaps=False,
+    journey=False,
+    fold=None,
 ):
-    """Group day episodes into stories, then weigh them against the whole-period context."""
+    """Group day episodes into stories, then weigh them against the whole-period context.
+
+    `fold(stories, episodes, hints)` may regroup the reader's stories before they are weighed
+    (a detected trip becomes one story), so the weighing sees what the film will fund.
+    """
     hints = hints or {}
 
     def day_of(key: str) -> str:
@@ -295,6 +310,8 @@ def _synthesize(
         allow_gaps=allow_gaps,
     )
     _with_unplaced(stories, episodes)
+    if fold is not None:
+        stories = fold(stories, episodes, hints)
     facts_by_episode = {
         e.key: [f.get("fact", "") for f in (e.facts or []) if f.get("fact")] for e in episodes
     }

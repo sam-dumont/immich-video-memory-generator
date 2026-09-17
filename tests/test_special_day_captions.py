@@ -1,4 +1,4 @@
-"""A prepared day is judged from caption text, with no second photo send."""
+"""A prepared day is judged from caption text, and nothing is ever sent a picture."""
 
 import json
 from datetime import UTC, datetime
@@ -7,12 +7,12 @@ from unittest.mock import patch
 
 import httpx
 
-from immich_memories.analysis.special_day import ask_if_special
+from immich_memories.analysis.special_day import PROMPT_VERSION, ask_if_special
 from immich_memories.automation.special_day_scan import scan_year
 from immich_memories.config_models_llm import LLMConfig
 
 
-def test_prepared_scan_never_downloads_thumbnails_and_reuses_its_answer(tmp_path):
+def test_a_prepared_day_is_answered_once_and_then_from_the_bank(tmp_path):
     assets = [
         SimpleNamespace(
             id=f"a-{h}-{m}",
@@ -41,9 +41,6 @@ def test_prepared_scan_never_downloads_thumbnails_and_reuses_its_answer(tmp_path
         },
     )
 
-    def thumbnail_for(asset_id):
-        raise AssertionError("Prepared days must not download pictures")
-
     config = LLMConfig(model="text-reader", provider="ollama")
     # WHY: intercept the external LLM HTTP request; the scan and bank run unchanged.
     with patch("httpx.AsyncClient.post", return_value=response) as post:
@@ -54,7 +51,6 @@ def test_prepared_scan_never_downloads_thumbnails_and_reuses_its_answer(tmp_path
             ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
-            thumbnail_for=thumbnail_for,
         )
         repeated = scan_year(
             assets,
@@ -63,7 +59,6 @@ def test_prepared_scan_never_downloads_thumbnails_and_reuses_its_answer(tmp_path
             ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
-            thumbnail_for=thumbnail_for,
         )
     assert found == repeated
     assert len(found) == 1
@@ -72,7 +67,7 @@ def test_prepared_scan_never_downloads_thumbnails_and_reuses_its_answer(tmp_path
     assert "images" not in payload
     assert "finish line" in payload["prompt"]
     assert "2021-04-13T09:" in payload["prompt"]
-    assert "special-day-captions-v1" in payload["prompt"]
+    assert PROMPT_VERSION in payload["prompt"]
 
 
 def _a_real_day(captioned: int) -> tuple[list, dict[str, str]]:
@@ -109,30 +104,27 @@ _VERDICT = json.dumps(
 )
 
 
-def test_a_day_the_bank_barely_touched_keeps_its_pictures(tmp_path):
-    """Three captions out of thirty is not a prepared day, and tiles beat one line."""
+def test_a_day_the_bank_barely_touched_is_not_guessed_at(tmp_path):
+    """Three captions out of thirty, and nothing else written: nobody can say.
+
+    It used to buy tiles, which is how a scan that had never seen this day
+    still returned a verdict about it. Now the day is recorded unjudged and no
+    live call is made at all.
+    """
     assets, captions = _a_real_day(captioned=3)
-    downloaded = []
 
-    def thumbnail_for(asset_id):
-        downloaded.append(asset_id)
-        return b"jpeg-bytes"
-
-    # WHY: intercept the external LLM HTTP request; the scan and its sampling run unchanged.
+    # WHY: intercept the external LLM HTTP request; that it never happens is the subject.
     with patch("httpx.AsyncClient.post", return_value=_verdict_response(_VERDICT)) as post:
-        scan_year(
+        found = scan_year(
             assets,
             llm_config=LLMConfig(model="text-reader", provider="ollama"),
             home=None,
             ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
-            thumbnail_for=thumbnail_for,
         )
-    assert downloaded
-    payload = post.call_args.kwargs["json"]
-    assert payload["images"]
-    assert "special-day-captions-v1" not in payload["prompt"]
+    assert post.call_count == 0
+    assert [(day.day.isoformat(), day.judged) for day in found] == [("2021-04-13", False)]
 
 
 def test_the_caption_ask_leaves_reasoning_to_the_transport(tmp_path):
@@ -169,8 +161,10 @@ def test_the_caption_ask_leaves_reasoning_to_the_transport(tmp_path):
     assert payload["max_tokens"] > THINKING_MIN_MAX_TOKENS
 
 
-def test_the_caption_ask_waits_as_long_as_the_picture_ask():
-    """Same model, same judgement, same leash — a timeout here reads as "not special"."""
+def test_the_caption_ask_is_given_a_reasoning_host_s_leash():
+    """A hosted reasoning model bills thinking whether or not the call asked for it."""
+    from immich_memories.analysis.special_day import _THINKING_TIMEOUT_SECONDS
+
     assets, captions = _a_real_day(captioned=30)
     config = LLMConfig(model="text-reader", provider="ollama", thinking="high")
     waited = []
@@ -182,8 +176,7 @@ def test_the_caption_ask_waits_as_long_as_the_picture_ask():
     # WHY: replace the provider call itself; only the budget it is handed is under test.
     with patch("immich_memories.analysis.llm_query.query_llm", record):
         ask_if_special(assets, config, captions=captions)
-        ask_if_special(assets, config, thumbnails=[(assets[0], b"jpeg-bytes")])
-    assert waited[0] == waited[-1]
+    assert waited == [_THINKING_TIMEOUT_SECONDS]
 
 
 def test_a_fenced_answer_is_still_an_answer_without_a_bank():
