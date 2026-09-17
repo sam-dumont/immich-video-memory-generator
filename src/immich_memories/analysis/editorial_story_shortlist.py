@@ -130,19 +130,23 @@ def shortlist_story_moments(
     starred: Callable[[DepictedChoice], bool],
     life: Callable[[str], bool],
     kind_of: Callable[[DepictedChoice], str] = lambda _c: "",
+    plays: Callable[[DepictedChoice], bool] = lambda _c: False,
 ) -> list[DepictedChoice]:
-    """Keep the favourite/life/time sample, inserting early relationship opportunities locally.
+    """Keep the favourite/motion/life/time sample, inserting early relationship opportunities.
 
-    The chronological input is capped at three times the grant (floor six). Relationship
-    markers nominate opportunities; standing and audience admission still happen afterward.
+    The chronological input is capped at three times the grant (floor six). A moment that
+    plays is taken before a still that would otherwise fill its place: this is a video product.
+    Relationship markers nominate opportunities; standing and audience admission come after.
     """
     limit = max(6, 3 * grant)
     if len(choices) <= limit:
         return choices
     stars = [c for c in choices if starred(c)]
-    lively = [c for c in choices if c not in stars and any(life(a) for a in c.members)]
-    rest = [c for c in choices if c not in stars and c not in lively]
+    moving = [c for c in choices if c not in stars and plays(c)]
+    lively = [c for c in choices if c not in stars + moving and any(life(a) for a in c.members)]
+    rest = [c for c in choices if c not in stars + moving and c not in lively]
     picked = stars[:limit]
+    picked.extend(_spread(moving, limit - len(picked)))
     picked.extend(_spread(lively, limit - len(picked)))
     picked.extend(_spread(rest, limit - len(picked)))
     if len(stars) >= limit:
@@ -294,7 +298,7 @@ def _pick_rows(
         star = " | favourite" if starred(c) else ""
         description = f"{labels[c.key]} | {c.taken[:16]} | {c.content[:140]} | {len(c.members)} picture(s){star}{kind_of(c)}"
         if motions.get(c.key):
-            description += f"\n  Sampled sequence: {motions[c.key]}"
+            description += f"\n  Motion: {motions[c.key]}"
         return description
 
     return row
@@ -328,13 +332,14 @@ def _pick_prompt(
         "Clear personal participation and shared company can carry an outing, including a selfie in its activity and place. "
         "Recording length is available material, not importance. Dense overlays or distant subjects can weaken a picture. "
         "A different pose, framing, take, or date does not by itself make the same activity another contribution. "
+        "This memory is a film: when a video or a playing Live Photo carries a moment, choose it over a still of the same moment. "
         "Leave slots unused when further views repeat what is already told or add only weak filler. "
     )
     if sampled_motion:
         prompt += (
-            "\nFor action across time, use the sampled sequence where available. "
+            "\nFor action across time, use the motion line where available. "
             "A cover's pose or inventory label cannot establish a separate activity "
-            "when the sequence shows the same contribution."
+            "when the motion line shows the same contribution."
         )
     introduction = (
         f"This story gets {count} picture(s) at most in the memory, one per contribution. Its candidate moments, {shape}:\n\n{listing}\n\n"
@@ -455,6 +460,15 @@ def _vote_every_page(
     return kept_by_order, audit
 
 
+def _reading_order(
+    choices: Sequence[DepictedChoice], plays: Callable[[DepictedChoice], bool]
+) -> list[DepictedChoice]:
+    """Moments that play lead the rows, the rest keep their chronology: this is a video product."""
+    moving = [c for c in choices if plays(c)]
+    leading = {c.key for c in moving}
+    return [*moving, *(c for c in choices if c.key not in leading)]
+
+
 def _vote_the_shortlist(
     judge,
     *,
@@ -465,6 +479,7 @@ def _vote_the_shortlist(
     motions: Mapping[str, str],
     starred: Callable[[DepictedChoice], bool],
     kind_of: Callable[[DepictedChoice], str],
+    plays: Callable[[DepictedChoice], bool],
     contract: str,
     vote_records: list,
 ) -> tuple[list[list[str]], list[dict]]:
@@ -475,7 +490,8 @@ def _vote_the_shortlist(
     """
     allow_fewer = count > 1
     row = _pick_rows(labels, starred=starred, kind_of=kind_of, motions=motions)
-    rows = [row(c) for c in choices]
+    offered = _reading_order(choices, plays)
+    rows = [row(c) for c in offered]
     sampled_motion = any(motions.values())
     overhead = len(
         _pick_prompt(
@@ -489,14 +505,14 @@ def _vote_the_shortlist(
         favourite_pages=[
             number
             for number, group in enumerate(groups)
-            if any(starred(choices[position]) for position in group)
+            if any(starred(offered[position]) for position in group)
         ],
     )
     request = _PickRequest(
         story=story,
         rows=rows,
-        labels=[labels[c.key] for c in choices],
-        keys=[c.key for c in choices],
+        labels=[labels[c.key] for c in offered],
+        keys=[c.key for c in offered],
         contract=contract,
         allow_fewer=allow_fewer,
         sampled_motion=sampled_motion,
@@ -590,32 +606,33 @@ def _uncontested_moments(
 
 
 def _pick_material(
-    choices: Sequence[DepictedChoice], *, count: int, motion_of, is_video
+    choices: Sequence[DepictedChoice], *, motion_of, plays
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Row labels and the sampled sequences shown beside them.
+    """Row labels and the motion line shown beside each moment that plays.
 
-    Pictures are read from the inventory the story already produced. Images are
-    observed for the cut, at carrier admission, not for every offered choice.
+    Every such moment carries its line, whatever the grant: a story with one slot is still
+    choosing between a video and a still, and that is the choice this product cares about.
+    The line is read from the preparation bank, never observed here.
     """
     labels = {c.key: f"M{i + 1:02d}" for i, c in enumerate(choices)}
-    videos = [c for c in choices if is_video(c)]
-    motions = (
-        {c.key: motion_of(c) for c in videos}
-        if count > 1 and len(videos) > 1 and motion_of is not None
-        else {}
-    )
+    moving = [c for c in choices if plays(c)]
+    motions = {c.key: motion_of(c) for c in moving} if motion_of is not None else {}
     return labels, motions
 
 
 def _fill_from_votes(
-    chosen: _Chosen, choices: Sequence[DepictedChoice], *, agreed, kept_by_order
+    chosen: _Chosen, choices: Sequence[DepictedChoice], *, agreed, kept_by_order, plays
 ) -> None:
     """What both orders named, then the rest of either order, then even spacing.
 
     A star buys no slot here: it leads the rows the pick reads, and it wins the frame of the
     moment the pick chooses, so a dense tail of favourites cannot hide a story's beginning.
+    Where the orders split, a moment that plays goes before a still: the reader could not
+    decide, and this is a video product. Otherwise the source order breaks the tie.
     """
-    for k in (*agreed, *kept_by_order[0], *kept_by_order[1]):
+    by_key = {c.key: c for c in choices}
+    split = sorted((*kept_by_order[0], *kept_by_order[1]), key=lambda k: not plays(by_key[k]))
+    for k in (*agreed, *split):
         if len(chosen) >= chosen.limit:
             break
         chosen.add(k)
@@ -641,7 +658,7 @@ def pick_story_moments(
         True
     ),
     motion_of: Callable[[DepictedChoice], str] | None = None,
-    is_video: Callable[[DepictedChoice], bool] = lambda _c: False,
+    plays: Callable[[DepictedChoice], bool] = lambda _c: False,
 ) -> list[DepictedChoice]:
     """Compare contributions within a ceiling; only one offered moment leaves nothing to ask.
 
@@ -658,7 +675,7 @@ def pick_story_moments(
     count = min(count, len(choices))
     by_key = {c.key: c for c in choices}
     chosen = _Chosen(by_key, compatible, count)
-    labels, motions = _pick_material(choices, count=count, motion_of=motion_of, is_video=is_video)
+    labels, motions = _pick_material(choices, motion_of=motion_of, plays=plays)
     vote_records: list = []
     kept_by_order, page_audit = _vote_the_shortlist(
         judge,
@@ -669,6 +686,7 @@ def pick_story_moments(
         motions=motions,
         starred=starred,
         kind_of=kind_of,
+        plays=plays,
         contract=contract,
         vote_records=vote_records,
     )
@@ -676,7 +694,7 @@ def pick_story_moments(
     # Disagreement over *which* one view wins cannot turn two one-view votes into two slots.
     chosen.limit = max(len(order) for order in kept_by_order)
     agreed = [k for k in kept_by_order[0] if k in set(kept_by_order[1])]
-    _fill_from_votes(chosen, choices, agreed=agreed, kept_by_order=kept_by_order)
+    _fill_from_votes(chosen, choices, agreed=agreed, kept_by_order=kept_by_order, plays=plays)
     chosen_keys = chosen.keys[: chosen.limit]
     companies = {key: _company_relations(kind_of(by_key[key])) for key in by_key}
     company_replacements, company_rejected = _improve_company(

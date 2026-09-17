@@ -66,7 +66,6 @@ def make_source(tmp_path, *, seconds=60, occasions=4, pictures=3):
                     rendering_family_id=None,
                     favourite=False,
                     source=asset,
-                    proposed_segment=None,
                     shippable_duration=0,
                     grounded_annotations=(),
                 )
@@ -660,7 +659,6 @@ def test_each_moment_carries_its_episodes_banked_meaning_and_representatives():
             rendering_family_id=None,
             favourite=False,
             source=make_asset(f"a{index}", duration=None),
-            proposed_segment=None,
             shippable_duration=0,
             grounded_annotations=(),
         )

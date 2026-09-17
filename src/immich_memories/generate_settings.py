@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.config_models_render import normalize_scale_mode
+from immich_memories.delivery_timestamp import film_capture_instant
 from immich_memories.generate_music import MusicSource
 from immich_memories.generate_privacy import (
     extract_trip_pins,
@@ -18,6 +19,7 @@ from immich_memories.processing.assembly_config import (
     TitleScreenSettings,
     TransitionType,
 )
+from immich_memories.processing.clip_caption import resolve_caption_locale
 from immich_memories.processing.encoding_plan import (
     EncodingPlan,
     EncodingRequest,
@@ -34,6 +36,8 @@ from immich_memories.processing.hdr_utilities import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
@@ -126,6 +130,7 @@ def _build_assembly_settings(
 
     return AssemblySettings(
         encoding_plan=encoding_plan,
+        captured_at=film_capture_instant(clip.asset for clip in params.clips),
         transition=transition_type,
         transition_duration=params.transition_duration,
         auto_resolution=auto_resolution,
@@ -172,7 +177,9 @@ def _build_title_settings(
     trip_location_names: list[str] = []
     trip_title_text = None
     if params.memory_type == "trip":
-        trip_locations, trip_location_names = extract_trip_pins(assembly_clips)
+        trip_locations, trip_location_names = extract_trip_pins(
+            assembly_clips, resolve_caption_locale(config.title_screens.locale)
+        )
         trip_title_text = generate_trip_title_text(
             params.memory_preset_params, config.title_screens.locale
         )
@@ -215,7 +222,6 @@ def _build_title_settings(
     holiday = params.memory_preset_params.get("holiday")
     if params.memory_type == "holiday" and params.date_end and holiday:
         from immich_memories.memory_types.factory import holiday_label
-        from immich_memories.processing.clip_caption import resolve_caption_locale
         from immich_memories.titles.text_builder import TITLE_PATTERNS
 
         locale = resolve_caption_locale(settings.locale)
@@ -376,7 +382,10 @@ def _upload_to_immich(
     client: SyncImmichClient,
     video_path: Path,
     album_name: str | None,
+    captured_at: datetime | None = None,
 ) -> dict:
-    result = client.upload_memory(video_path=video_path, album_name=album_name)
+    result = client.upload_memory(
+        video_path=video_path, album_name=album_name, captured_at=captured_at
+    )
     logger.info(f"Uploaded to Immich: asset={result.get('asset_id')}, album={album_name}")
     return result

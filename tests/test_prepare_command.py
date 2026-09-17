@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -65,6 +65,7 @@ def _invoke(
     *,
     photos: list[Asset] | None = None,
     prepared=_prepared,
+    client: MagicMock | None = None,
 ) -> Result:
     with (
         # WHY: init_config_dir would create ~/.immich-memories on the real home.
@@ -74,7 +75,7 @@ def _invoke(
         # WHY: SyncImmichClient is the Immich HTTP server this path would call.
         patch(
             "immich_memories.api.sync_client.SyncImmichClient",
-            return_value=_client(photos or []),
+            return_value=client or _client(photos or []),
         ),
         # WHY: the producers are ONNX, torch and a caption server, none present in a unit run.
         patch(
@@ -136,3 +137,51 @@ def test_prepare_says_so_when_the_scope_is_empty(tmp_path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert "nothing to prepare" in result.output
+
+
+def _asked_windows(args: list[str]) -> list[tuple[date, date]]:
+    """The date windows `prepare` asked Immich for, first day to last day."""
+    client = _client([_photo("a1")])
+    result = _invoke(args, _config(), client=client)
+    assert result.exit_code == 0, result.output
+    return [
+        (call.args[0].start.date(), call.args[0].end.date())
+        for call in client.get_photos_for_date_range.call_args_list
+    ]
+
+
+def test_a_month_with_a_year_prepares_that_month_only(tmp_path, monkeypatch) -> None:
+    """The setup matrix's February cells prepared all of 2024 (13,544 pictures)."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    windows = _asked_windows(["prepare", "--year", "2024", "--month", "2"])
+
+    assert windows == [(date(2024, 2, 1), date(2024, 2, 29))]
+
+
+def test_a_year_alone_still_prepares_the_calendar_year(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    windows = _asked_windows(["prepare", "--year", "2024"])
+
+    assert windows == [(date(2024, 1, 1), date(2024, 12, 31))]
+
+
+def test_a_month_without_a_year_is_refused_by_name(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    client = _client([_photo("a1")])
+
+    result = _invoke(["prepare", "--month", "2"], _config(), client=client)
+
+    assert result.exit_code == 2, result.output
+    assert "--month needs --year" in result.output
+    client.get_photos_for_date_range.assert_not_called()
+
+
+def test_a_month_outside_the_calendar_is_a_usage_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    result = _invoke(["prepare", "--year", "2024", "--month", "13"], _config())
+
+    assert result.exit_code == 2, result.output
+    assert "Invalid month: 13" in result.output

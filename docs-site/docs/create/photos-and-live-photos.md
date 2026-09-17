@@ -70,7 +70,11 @@ asset that has already won its place.
    not footage somebody shot
 3. **Clustering**: photos taken within a configurable window (default 10.0 s) form a burst
 4. **Rendering choice**: a burst that stitches to at least `live_photo_min_clip_seconds` (default
-   3.5 s) renders as motion; anything shorter renders as the photograph it is
+   3.5 s) is a motion candidate; anything shorter renders as the photograph it is. The editor then
+   measures how much actually moves (median optical flow over 12 frames). A candidate plays at 1.5
+   or more, is offered to the story pick as motion and listed first beside the videos, and the next
+   preparation writes it the same one-sentence motion line a video gets; below 1.5 it is offered and
+   rendered as a photograph
 5. **One carrier per burst**: a burst collapses to a single unit before the editor ever chooses. One
    photograph carries it, the favourite if there is one and otherwise the sharpest, best-exposed,
    and the siblings are not separately selectable
@@ -80,7 +84,9 @@ reaches 4.0 s, so the threshold sits between them and a burst of one never displ
 it would have shipped as. Motion magnitude is deliberately not part of this. Measured over 64 real
 bursts it correlates with something having happened (median 2.04 against 0.48) but does not separate
 it: a baby's mouth closing scored 0.31 while the same instant twice with a camera shift scored 0.63.
-Duration is structural and free; motion is a signal for later, never a gate.
+Duration is structural and free. Motion is no gate: a quiet burst still ships as its photograph. It
+decides whether a Live Photo plays, and a burst that plays is preferred over a still of the same
+moment.
 
 The two config keys that decide anything are `live_photo_min_clip_seconds` (3.5) and
 `include_live_photos` (true). The CLI's `--include-live-photos` cannot turn the feature back on when

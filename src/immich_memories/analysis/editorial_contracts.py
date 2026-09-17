@@ -28,7 +28,6 @@ class EditorialCandidate:
     rendering_family_id: str | None
     favourite: bool
     source: Asset
-    proposed_segment: tuple[float, float] | None
     shippable_duration: float
     grounded_annotations: tuple[str, ...]
 

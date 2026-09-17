@@ -357,10 +357,12 @@ def _extract_clips(
 
         try:
             rendered = _rendered_clip(extraction, clip, progress, clip_name)
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as e:
             if clip.editorial_live_manifest is not None:
                 raise
-            logger.warning(f"Failed to process {clip.asset.id}: {e}")
+            # One source the tools cannot render is not a reason to lose the film.
+            # It leaves by name, and only an empty cut is an error.
+            logger.warning("%s leaves the film — %s", clip_name, e)
             continue
         if rendered:
             assembly_clips.append(rendered)

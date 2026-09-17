@@ -29,6 +29,11 @@ pictures a cut over that scope would: no archived or hidden assets, no forwarded
 media, Live Photo components handled the same way. Each run resumes where the last stopped, so a
 `for month in 1 2 3 …` loop works through a year.
 
+`--month` needs `--year`, and is refused without one. Before
+[#1054](https://github.com/sam-dumont/immich-video-memory-generator/issues/1054), `prepare` dropped
+`--month` without a word and prepared the whole calendar year, so a "month" timed on an older build
+is a year.
+
 ```text
 ℹ Preparing 1,440 pictures over 1 window(s)
 producer        pending   s/picture   share    elapsed

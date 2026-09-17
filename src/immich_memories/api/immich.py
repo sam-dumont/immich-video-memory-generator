@@ -516,6 +516,11 @@ class ImmichClient:
     async def get_video_playback(self, asset_id: str) -> bytes:
         return await self.assets.get_video_playback(asset_id)
 
+    async def get_video_playback_range(
+        self, asset_id: str, start: int, length: int
+    ) -> tuple[bytes, int]:
+        return await self.assets.get_video_playback_range(asset_id, start, length)
+
     async def download_asset(
         self, asset_id: str, output_path: Path, *, expected_size_bytes: int | None = None
     ) -> Path:
@@ -544,8 +549,8 @@ class ImmichClient:
     async def find_album_by_name(self, name: str) -> str | None:
         return await self.albums.find_album_by_name(name)
 
-    async def upload_asset(self, file_path: Path) -> str:
-        return await self.albums.upload_asset(file_path)
+    async def upload_asset(self, file_path: Path, *, captured_at: datetime | None = None) -> str:
+        return await self.albums.upload_asset(file_path, captured_at=captured_at)
 
     async def create_album(self, name: str, description: str | None = None) -> str:
         return await self.albums.create_album(name, description)
@@ -554,9 +559,13 @@ class ImmichClient:
         await self.albums.add_assets_to_album(album_id, asset_ids)
 
     async def upload_memory(
-        self, video_path: Path, album_name: str | None = None
+        self,
+        video_path: Path,
+        album_name: str | None = None,
+        *,
+        captured_at: datetime | None = None,
     ) -> dict[str, str | None]:
-        return await self.albums.upload_memory(video_path, album_name)
+        return await self.albums.upload_memory(video_path, album_name, captured_at=captured_at)
 
 
 # Re-export SyncImmichClient — bottom import avoids circular dependency

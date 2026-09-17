@@ -748,7 +748,7 @@ immich-memories ui [OPTIONS]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--port`, `-p` | integer | - | Port to run the UI on (default: config or 8080) |
-| `--host`, `-h` | text | - | Host to bind to (default: config or 0.0.0.0) |
+| `--host`, `-h` | text | - | Host to bind to (default: config or 127.0.0.1) |
 | `--reload` | boolean | false | Enable hot reload (for development only) |
 
 ## `years`

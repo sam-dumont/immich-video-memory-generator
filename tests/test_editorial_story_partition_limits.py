@@ -40,7 +40,10 @@ def test_unlimited_contract_ignores_partition_resolver_and_keeps_every_request(
 
 
 @pytest.mark.parametrize("starred", [False, True])
-def test_equal_weight_occasions_keep_favourite_then_chronology_before_inventory(tmp_path, starred):
+def test_equal_weight_occasions_keep_chronology_and_a_star_cannot_reorder_them(tmp_path, starred):
+    """One slot per year, two equal occasions in each: the earlier occasion takes the slot, and a
+    star on the later one is an indicator of a picture, not a claim on the year's slot."""
+
     class EqualWeightJudge(AnnualStoryJudge):
         def answer(self, stage, prompt):
             if stage.startswith("story-weighing"):
@@ -59,20 +62,15 @@ def test_equal_weight_occasions_keep_favourite_then_chronology_before_inventory(
         )
     judge = EqualWeightJudge()
     plan = run(captured, judge)
-    suffix = "e1-p1" if starred else "e0-p2"
     assert [row["asset_id"] for row in plan["carriers"]] == [
-        f"y{year}-{suffix}" for year in (2030, 2031, 2032)
+        f"y{year}-e0-p2" for year in (2030, 2031, 2032)
     ]
     assert plan["intent_report"]["violations"] == []
-    # Without a favourite, each winning occasion keeps its full three-picture
-    # choice. The existing favourite-per-moment rule already reduces a starred
-    # occasion to one source, which needs no inventory.
+    # The funded occasion keeps its full three-picture choice either way: the star sits on the
+    # occasion that chronology left out, so it reduces nothing the inventory has to read.
     inventories = [row for row in judge.calls if row["stage"].startswith("moment-inventory")]
-    assert len(inventories) == (0 if starred else 3)
-    if not starred:
-        assert all(
-            any(f"S{number:04d}" in row["stage"] for row in inventories) for number in (1, 3, 5)
-        )
+    assert len(inventories) == 3
+    assert all(any(f"S{number:04d}" in row["stage"] for row in inventories) for number in (1, 3, 5))
 
 
 def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions(tmp_path):

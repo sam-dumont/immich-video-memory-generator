@@ -16,6 +16,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_story_pick_contract import carries_motion
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
@@ -45,7 +46,17 @@ def shortlist_by_partition(
     life: Callable[[str], bool],
     kind_of: Callable[[DepictedChoice], str],
 ) -> list[DepictedChoice]:
-    """The moments a story's grant can still reach, sampled inside each funded partition."""
+    """The moments a story's grant can still reach, sampled inside each funded partition.
+
+    A moment holds motion when any picture that can carry it plays, so a video behind a still
+    keeps its group in the sample the inventory reads.
+    """
+
+    def holds_motion(choice: DepictedChoice) -> bool:
+        return any(
+            carries_motion(unit_by_asset[a][1]) for a in choice.members if a in unit_by_asset
+        )
+
     return [
         c
         for part, part_choices in parts.split(choices).items()
@@ -56,6 +67,7 @@ def shortlist_by_partition(
             starred=starred,
             life=life,
             kind_of=kind_of,
+            plays=holds_motion,
         )
     ]
 
@@ -432,7 +444,7 @@ class CarrierAdmission:
             kind_of=self._kind_marker,
             compatible=self.compatible,
             motion_of=_unit_reader(self._motion_line, self._unit_by_asset),
-            is_video=lambda c: self._unit_by_asset[c.primary][1]["kind"] == "video",
+            plays=lambda c: carries_motion(self._unit_by_asset[c.primary][1]),
             replacement_allowed=allows_replacement,
         )
         self.calls["pick_calls"] += len(self._judge.calls) - calls_before

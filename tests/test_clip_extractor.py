@@ -133,6 +133,45 @@ class TestClipExtractorExtract:
         mock_reencode.assert_called_once()
 
 
+class TestCopyRefusingContainer:
+    """A cut only copies streams the container it picks can actually carry."""
+
+    # WHY: ffprobe reads the source codec; WHY: the route runs FFmpeg for real.
+    @patch("immich_memories.processing.clips.ClipExtractor._extract_with_reencode")
+    @patch("immich_memories.processing.clips.ClipExtractor._extract_copy")
+    @patch("immich_memories.processing.clips.get_video_codec", return_value="vp9")
+    def test_quicktime_refusing_codec_goes_through_the_encoder(
+        self, _codec, mock_copy, mock_reencode, tmp_path
+    ):
+        """VP9 cannot be muxed into .mov, so the clip is re-encoded into .mp4 instead."""
+        source = tmp_path / "phone.MOV"
+        source.write_bytes(b"\x00" * 100)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
+
+        seg = ClipSegment(source_path=source, start_time=1.0, end_time=4.0, asset_id="test")
+        extractor.extract(seg)
+
+        mock_copy.assert_not_called()
+        mock_reencode.assert_called_once()
+        planned_segment, planned_output, _progress = mock_reencode.call_args.args
+        assert planned_output.suffix == ".mp4"
+        assert (planned_segment.start_time, planned_segment.end_time) == (1.0, 4.0)
+
+    # WHY: ffprobe reads the source codec; WHY: the route runs FFmpeg for real.
+    @patch("immich_memories.processing.clips.ClipExtractor._extract_copy")
+    @patch("immich_memories.processing.clips.get_video_codec", return_value="hevc")
+    def test_a_copyable_mov_codec_still_copies_into_quicktime(self, _codec, mock_copy, tmp_path):
+        """HEVC, H.264 and ProRes sources keep the lossless .mov cut they had."""
+        source = tmp_path / "camera.MOV"
+        source.write_bytes(b"\x00" * 100)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
+
+        extractor.extract(ClipSegment(source, 1.0, 4.0, "test"))
+
+        mock_copy.assert_called_once()
+        assert mock_copy.call_args.args[1].suffix == ".mov"
+
+
 class TestBuildClipOutputPath:
     """Tests for _build_clip_output_path."""
 

@@ -42,7 +42,7 @@ OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
 VERDICTS = ("share", "family_only", "do_not_show")  # loosest to strictest
 PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
-AUDIENCE_PROMPT_VERSION = "audience-evidence-v12-complete-activity-assessment"
+AUDIENCE_PROMPT_VERSION = "audience-evidence-v13-swimming-is-not-bathing"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
 _AUDIENCE_HEADS = frozenset(
     {"nsfw_marqo", "people", "children", "doc_docling", "swim", "venue", "location"}
