@@ -363,3 +363,12 @@ timing trim included, and the selection sheet prints it.
 
 Facts are keyed by producer version, so changing a version names a new fact generation and the next
 cut produces it. Readings are keyed by the exact request, prompt included.
+
+The cull bank is the one that follows a picture out of the memory it was judged in: a photographed
+receipt is a receipt in every cut that could reach it, so the verdict is remembered per picture
+rather than per cut. It holds what the reading kept as well as what it rejected, and it is keyed by
+that reading, so a release that changes the episode prompt retires the old verdicts instead of
+piling them on the new ones. A picture the reading never looked at, because its episode failed to
+read, is remembered as neither. When a standing verdict removes a picture the current reading would
+have kept, the trace says so by name, and the newer answer replaces the old one for the next cut.
+A star still outranks anything in the bank, and [`runs why`](./cli/runs.md) prints the reason.
