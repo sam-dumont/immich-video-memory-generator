@@ -428,6 +428,12 @@ def probe_cells(
     if not probed:
         print("no reader cell in this request; nothing to probe")
         return 0
+    from setup_matrix import load_operator_credentials  # Imported here: the runner imports us.
+
+    # Both entry points pass here: this module's `main` and the runner's
+    # `--probe-readers-only`. The February hosted rows of 09-13/14 were empty
+    # because neither had loaded the credentials the cell's config needs.
+    load_operator_credentials(plan, probed, config_source)
     failures = []
     for item in probed:
         results = probe_cell(item, plan, config_source, pricing)

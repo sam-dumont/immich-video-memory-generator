@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1015,6 +1016,20 @@ def warm_inference(plan: Plan) -> float:
     return await_facts_via_forward(kubectl, INFERENCE_SERVICE, INFERENCE_PORT, image, producers)
 
 
+def load_operator_credentials(plan: Plan, items: Iterable[CellPlan], config: Path | None) -> None:
+    """Read the operator's Immich into the plan once, if any of `items` runs against it.
+
+    A cell with `operator_immich` has its manifests rendered with that server's
+    address, so this has to happen before its config is written by anything: the
+    run itself or a reader probe. The probe skipped it, and every probe of such a
+    cell died on `KeyError: 'url'` before its first request.
+    """
+    if plan.operator_credentials or not any(item.operator_immich for item in items):
+        return
+    url, api_key = read_operator_immich(config)
+    plan.operator_credentials.update({"url": url, "api_key": api_key})
+
+
 def _write_cell_config(item: CellPlan, plan: Plan, out_dir: Path, config: Path | None) -> None:
     pins = {
         key: _substitute(value, plan.environment) if isinstance(value, str) else value
@@ -1287,10 +1302,7 @@ def _execute(
         warmup = warm_inference(plan)
         print(f"inference answered a facts request after {warmup:.0f}s")
 
-    if any(item.operator_immich for item in plan.runnable):
-        url, api_key = read_operator_immich(opts.config)
-        plan.operator_credentials.update({"url": url, "api_key": api_key})
-
+    load_operator_credentials(plan, plan.runnable, opts.config)
     for item in plan.runnable:
         _write_cell_config(item, plan, out_dir, opts.config)
 
