@@ -1676,3 +1676,38 @@ def test_streaming_encoder_survives_noisy_ffmpeg_stderr(tmp_path: Path) -> None:
         encoder._proc.kill()
     assert not worker.is_alive(), "frame writer deadlocked on an undrained stderr pipe"
     assert output.read_bytes().startswith(b"fake")
+
+
+def _mux_command(captured_at) -> list[str]:
+    """The FFmpeg argument list the final mux would run, without running it."""
+    from immich_memories.processing.streaming_audio import mux_video_audio
+
+    seen: list[list[str]] = []
+
+    def _record(cmd, **_kwargs):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    # WHY: FFmpeg is the external boundary; this test is about the plan, not the mux.
+    with patch("immich_memories.processing.streaming_audio.subprocess.run", _record):
+        mux_video_audio(Path("video.mp4"), Path("audio.m4a"), Path("out.mp4"), captured_at)
+    return seen[0]
+
+
+def test_final_mux_stamps_the_capture_instant_in_both_container_tags() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    cmd = _mux_command(datetime(2024, 6, 20, 18, 45, tzinfo=timezone(timedelta(hours=2))))
+
+    assert "-metadata" in cmd
+    assert "creation_time=2024-06-20T16:45:00Z" in cmd
+    assert "com.apple.quicktime.creationdate=2024-06-20T18:45:00+02:00" in cmd
+    # The QuickTime key is only written when the muxer is told to keep tags.
+    assert "+faststart+use_metadata_tags" in cmd
+
+
+def test_final_mux_without_a_capture_instant_stamps_nothing() -> None:
+    cmd = _mux_command(None)
+
+    assert "-metadata" not in cmd
+    assert not any(arg.startswith("creation_time=") for arg in cmd)

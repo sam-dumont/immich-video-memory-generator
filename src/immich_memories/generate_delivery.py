@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, NoReturn
 
+from immich_memories.delivery_timestamp import film_capture_instant
 from immich_memories.generate_progress import _report
 from immich_memories.generate_settings import _upload_to_immich
 from immich_memories.operations.phases import OperationalPhase
@@ -101,7 +102,12 @@ def deliver_completed_artifact(
     delivery_error: DeliveryError | None = None
     asset_id: str | None = None
     try:
-        result = _upload_to_immich(params.client, result_path, params.upload_album)
+        result = _upload_to_immich(
+            params.client,
+            result_path,
+            params.upload_album,
+            film_capture_instant(clip.asset for clip in params.clips),
+        )
         asset_id = result.get("asset_id")
         if not isinstance(asset_id, str) or not asset_id.strip():
             raise ValueError("Immich upload returned no asset ID")

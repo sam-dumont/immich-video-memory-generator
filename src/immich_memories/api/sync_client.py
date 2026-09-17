@@ -21,6 +21,8 @@ from immich_memories.api.models import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from immich_memories.timeperiod import DateRange
 
 
@@ -266,8 +268,8 @@ class SyncImmichClient:
             self._async_client.get_videos_for_all_persons(person_ids, date_range, progress_callback)
         )
 
-    def upload_asset(self, file_path: Path) -> str:
-        return self._run(self._async_client.upload_asset(file_path))
+    def upload_asset(self, file_path: Path, *, captured_at: datetime | None = None) -> str:
+        return self._run(self._async_client.upload_asset(file_path, captured_at=captured_at))
 
     def get_assets_for_album(
         self,
@@ -302,6 +304,12 @@ class SyncImmichClient:
         self._run(self._async_client.add_assets_to_album(album_id, asset_ids))
 
     def upload_memory(
-        self, video_path: Path, album_name: str | None = None
+        self,
+        video_path: Path,
+        album_name: str | None = None,
+        *,
+        captured_at: datetime | None = None,
     ) -> dict[str, str | None]:
-        return self._run(self._async_client.upload_memory(video_path, album_name))
+        return self._run(
+            self._async_client.upload_memory(video_path, album_name, captured_at=captured_at)
+        )

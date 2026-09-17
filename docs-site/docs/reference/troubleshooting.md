@@ -63,6 +63,18 @@ naming the count and the reason, `preview unavailable at Immich (HTTP 404)`, lis
 `unservable_sources` in the attempt's `preparation.private.json`, and cuts the rest. Regenerate
 that asset's thumbnails in Immich, then cut again.
 
+## A clip fails with "Could not write header (incorrect codec parameters ?)"
+
+The log names the source and shows a stream copy into a `.mov` refused by FFmpeg, usually
+`vp9 only supported in MP4.`. The source is VP9 or AV1 inside a QuickTime `.MOV`, which Android
+phones and some editors write. A lossless camera cut keeps the source container so ProRes and PCM
+audio survive, and QuickTime will not carry those two codecs.
+
+Nothing to do: the cut re-encodes that clip through the normal encode path with the same in and out
+points, so it costs one encode instead of a copy. If a source still cannot be cut, that clip leaves
+the film by name, the log says why, and the rest is assembled. Only a film whose every source
+failed stops with `No clips could be processed`.
+
 ## No videos found
 
 - The person name must match Immich's, case-insensitive, nothing else fuzzy.

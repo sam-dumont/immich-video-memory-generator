@@ -388,7 +388,7 @@ async def test_ui_successful_upload_uses_completed_pending_row_and_same_tracker(
     calls: list[str] = []
 
     class Client:
-        def upload_memory(self, *, video_path: Path, album_name: str | None):
+        def upload_memory(self, *, video_path: Path, album_name: str | None, captured_at=None):
             before_call = RunDatabase(db_path).get_run("ui-upload-success")
             assert before_call is not None
             assert before_call.status == "completed"

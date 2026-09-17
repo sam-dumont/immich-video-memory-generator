@@ -12,9 +12,11 @@ from pathlib import Path
 
 from immich_memories.config_loader import Config
 from immich_memories.processing.clip_probing import (
+    get_video_codec,
     get_video_duration,
 )
 from immich_memories.processing.clip_transitions import TRANSITION_BUFFER
+from immich_memories.processing.ffmpeg_runner import ffmpeg_error_excerpt
 from immich_memories.processing.hardware import (
     HWAccelCapabilities,
     detect_hardware_acceleration,
@@ -105,6 +107,7 @@ class ClipExtractor:
         if not segment.source_path.exists():
             raise FileNotFoundError(f"Source video not found: {segment.source_path}")
 
+        reencode = _resolve_reencode(segment.source_path, reencode)
         add_start_buffer = buffer_start if buffer_start is not None else with_buffer
         add_end_buffer = buffer_end if buffer_end is not None else with_buffer
 
@@ -204,7 +207,7 @@ class ClipExtractor:
 
         if result.returncode != 0:
             logger.error(f"FFmpeg error: {result.stderr}")
-            raise RuntimeError(f"Failed to extract clip: {result.stderr}")
+            raise RuntimeError(f"Failed to extract clip: {ffmpeg_error_excerpt(result.stderr)}")
 
     # =========================================================================
     # Encoding (from ClipEncodingMixin)
@@ -310,7 +313,7 @@ class ClipExtractor:
             )
             self._extract_with_reencode(segment, output_path, progress_callback, use_hw_accel=False)
             return
-        raise RuntimeError(f"Failed to extract clip: {stderr}")
+        raise RuntimeError(f"Failed to extract clip: {ffmpeg_error_excerpt(stderr)}")
 
     def _run_with_progress(
         self,
@@ -382,7 +385,7 @@ class ClipExtractor:
                     return self._extract_with_reencode(
                         segment, output_path, progress_callback, use_hw_accel=False
                     )
-                raise RuntimeError(f"Failed to extract clip: {result.stderr}")
+                raise RuntimeError(f"Failed to extract clip: {ffmpeg_error_excerpt(result.stderr)}")
 
 
 def extract_clip(
@@ -413,6 +416,7 @@ def extract_clip(
     Returns:
         Path to extracted clip.
     """
+    reencode = _resolve_reencode(Path(source_path), reencode)
     actual_start, actual_end = _resolve_buffer_times(
         source_path, start_time, end_time, buffer_start, buffer_end, buffer_seconds
     )
@@ -472,6 +476,31 @@ def _resolve_buffer_times(
 def _clip_suffix(source_path: Path, reencode: bool) -> str:
     # A MOV may carry ProRes and PCM streams that cannot be copied into MP4.
     return ".mov" if not reencode and source_path.suffix.lower() == ".mov" else ".mp4"
+
+
+# FFmpeg's QuickTime muxer takes these only in MP4 mode ("vp9 only supported in MP4."),
+# so copying such a stream into a .mov clip fails before the first packet is written.
+# Android phones and some editors do put VP9 and AV1 in a .MOV.
+_QUICKTIME_UNCOPYABLE_CODECS = frozenset({"vp9", "av1"})
+
+
+def _resolve_reencode(source_path: Path, reencode: bool) -> bool:
+    """Whether this cut must go through the encoder rather than a stream copy.
+
+    A copy the chosen container cannot mux is not a cheaper route, it is a dead
+    one, so the clip is re-encoded with its selected timing instead.
+    """
+    if reencode or _clip_suffix(source_path, reencode=False) != ".mov":
+        return reencode
+    codec = get_video_codec(source_path)
+    if codec not in _QUICKTIME_UNCOPYABLE_CODECS:
+        return False
+    logger.info(
+        "%s carries %s, which QuickTime cannot hold: re-encoding this clip instead of copying it",
+        source_path.name,
+        codec,
+    )
+    return True
 
 
 def _build_clip_output_path(
