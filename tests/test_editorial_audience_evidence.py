@@ -117,6 +117,14 @@ def test_the_activity_prompt_has_no_detector_resolution_or_clearance_instruction
     assert '"clear"' not in prompt
 
 
+def test_the_activity_prompt_calls_a_baby_in_the_pool_family_content():
+    prompt = share.audience_check_prompt(evidence("A parent holds a baby in a swimming pool."))
+    assert (
+        "Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby "
+        "in the water and a baby's swimming lesson, does not match these categories."
+    ) in prompt
+
+
 def test_positive_detector_cannot_disappear_behind_a_vague_caption():
     item = evidence("A woman is holding a newborn baby on her chest.", nsfw_marqo="yes")
     judge = Judge(activity(), exposure())

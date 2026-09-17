@@ -62,7 +62,8 @@ holds more stories than the film has slots, stories of the same weight and the s
 reading are funded in the order they happened, so a well starred December cannot push January out of
 the year.
 
-**The audience is FAMILY.** A shirtless baby is ordinary family content and can be included. Eight
+**The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
+is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
