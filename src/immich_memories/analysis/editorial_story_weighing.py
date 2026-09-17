@@ -648,7 +648,12 @@ def _apply_story_weights(episodes, result, hints) -> None:
     if not any(story["weight"] != "none" for story in stories):
         result.setdefault("uncertainties", []).append("synthesis weighed no story above none")
     result["stories"] = stories
-    result["priorities"] = [
+    result["priorities"] = story_priorities(stories)
+
+
+def story_priorities(stories) -> list[dict[str, Any]]:
+    """The funded stories by weight word, in the reader's own order inside a word."""
+    return [
         {"episodes": story["episodes"], "purpose": story["purpose"]}
         for story in sorted(
             (s for s in stories if s["weight"] != "none"), key=lambda s: WEIGHTS.index(s["weight"])

@@ -138,6 +138,22 @@ the pictures allow. The strangers-only ceiling does not apply to a trip. Without
 base there are no trip stories, and `derived-decisions/trip-stories.private.json` records why; a
 trip film skips detection, because it already is the journey.
 
+**A recurring activity is one thread, in the film's context.** The grouping still rejects a story
+whose days are not consecutive (`_broken_spans`), because a reader that folds gapped days together
+usually folds unrelated ones. The cost was the other case: the same activity at the same place on
+separate days came back as one story per day and one picture each. After the weighing,
+`editorial_story_threads.py` nominates weighed stories of one place and one era as a group when the
+reader's own words link them: the same `split_from` title, the same activity phrase, or a shared
+title word the film uses at that place only. Names from the annotation lines, kinship words,
+English function words and container nouns ("moments", "time", "session") never link, and a place
+alone never does. One banked question per group (`recurring-activity-v1`) carries the film's dates
+and contract and asks which stories are one recurring activity and which are steps worth showing
+apart; each confirmed group, split again into its linked parts, becomes one story with the weight
+of its heaviest member, placed where its first member was. An unreadable answer keeps them apart.
+Eras follow the product contract: a film longer than `ERA_THRESHOLD_DAYS` is read per calendar
+year and keeps one thread per year. The rules reader, trip films and subject memories ask nothing;
+`story-threads.private.json` records the nominations, the answers and the folds.
+
 Two properties of the ask are load-bearing:
 
 - **Judgments that matter are asked in two orders.** The memory-worthy gate and the standing gate

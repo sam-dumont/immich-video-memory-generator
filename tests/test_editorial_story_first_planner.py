@@ -203,6 +203,8 @@ class StoryJudge(AnnualJudge):
             return json.dumps({"keep": labels[:count]})
         if stage.startswith("standing-"):
             return json.dumps({"weak": {}})  # every canal picture stands
+        if stage.startswith("story-threads"):
+            return json.dumps({"same": []})  # separate days stay separate stories
         if stage.startswith("moment-inventory"):
             sources = re.findall(r'"source": "(U\d+)"', prompt.split("NEW SOURCES", 1)[1])
             return json.dumps(

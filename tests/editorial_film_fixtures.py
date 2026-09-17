@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -36,7 +36,7 @@ from tests.test_editorial_story_first_planner import StoryJudge
 
 HOME = (45.0, 5.0, "Hometown", "Homeland")
 SEASIDE = (43.0, 9.0, "Seaside", "Farland")
-HILLS = (47.0, 1.0, "Hilltown", "Farland")
+POOL = (45.02, 5.0, "Pooltown", "Homeland")
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class Day:
     activity: str
     where: tuple[float, float, str, str] | None = HOME
     moments: int = 1
+    company: str = ""
 
 
 def home_days(start: date, count: int, *, step: int = 1, activity: str = "Home day") -> list[Day]:
@@ -116,9 +117,10 @@ def film_source(
                 asset = _asset(f"d{day_index:03d}-m{moment}-p{picture}", taken, spec.where)
                 description = f"A clothed person during {spec.activity.lower()}, moment {moment} view {picture}."
                 place = f" | at {spec.where[2]}, {spec.where[3]}" if spec.where else ""
+                company = f" | with {spec.company}" if spec.company else ""
                 annotations[asset.id] = AssetAnnotationLine(
                     asset.id,
-                    f"{taken.isoformat()} | {description}{place} | activity=playing",
+                    f"{taken.isoformat()} | {description}{place}{company} | activity=playing",
                     description=description,
                     heads=(("nsfw_marqo", "no"),),
                 )
@@ -215,12 +217,14 @@ def _json_after(prompt: str, marker: str):
 class FilmJudge(StoryJudge):
     """Every day is its own episode and story, titled as the reader saw it.
 
-    `weigh(row)` names each story's weight from its weighing row.
+    `weigh(row)` names each story's weight from its weighing row; `threads(rows, prompt)`
+    answers the recurring-activity question with lists of story keys.
     """
 
-    def __init__(self, *args, weigh=None, **kwargs):
+    def __init__(self, *args, weigh=None, threads=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.weigh = weigh or (lambda row: "major" if "| trip:" in row else "minor")
+        self.threads = threads
 
     def answer(self, stage, prompt):
         if stage.startswith("story-episodes"):
@@ -266,14 +270,7 @@ class FilmJudge(StoryJudge):
                     "retitle": {},
                 }
             )
+        if stage.startswith("story-threads") and self.threads is not None:
+            rows = re.findall(r"^K\d{2} \|.*$", prompt, re.MULTILINE)
+            return json.dumps({"same": self.threads(rows, prompt)})
         return super().answer(stage, prompt)
-
-
-def with_favourites(source: StructurePlanningInput, starred: set[str]) -> StructurePlanningInput:
-    return replace(
-        source,
-        assets={
-            key: asset.model_copy(update={"is_favorite": key in starred})
-            for key, asset in source.assets.items()
-        },
-    )

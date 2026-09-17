@@ -746,6 +746,7 @@ def _story_selection(
         ),
         trips=trips,
         looks_alike=looks_alike,
+        film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
     )
 
 

@@ -73,6 +73,18 @@ holiday in a 90-second year two or three, and never more than the distinct momen
 home base configured nothing is away from home, so there are no trip stories, and the run's
 `trip-stories` record says so. A trip film is already one journey: its days stay the stories.
 
+**A recurring activity is one thread, in the context of the film.** Four Saturdays at the same
+pool are not four occasions in a year's film. After the weighing, stories at the same place on
+separate days are put to the reader as a possible thread when its own words link them: it had filed
+them under one title before the consecutive-day rule split them, their titles name the same activity,
+or they share an activity word the film uses at no other place. A place alone never links two days,
+and neither does a name, a relation or a word like "moments". The reader is then asked, with the
+film's dates and contract, which of them are one recurring activity and which are steps worth showing
+apart, and a confirmed thread becomes one story with the weight of its heaviest day. A film longer
+than about 18 months is read in calendar years, and keeps one thread per year, so a child getting
+better at swimming still shows the progress. Trip films and subject memories ask nothing: their days
+are already their stories.
+
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
 is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight
 findings are not, at any audience, and a carrier that draws one is replaced rather than shown:
@@ -261,7 +273,7 @@ The stage names are what the run reports: a row on the Memory page, a line in th
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
+| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick reads each video's banked motion sentence; motion is measured for the chosen Live carriers | the reader; motion locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

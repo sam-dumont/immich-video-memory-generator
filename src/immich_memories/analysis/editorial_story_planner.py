@@ -16,6 +16,7 @@ import json
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from operator import itemgetter
 from typing import Any
 
@@ -40,6 +41,7 @@ from immich_memories.analysis.editorial_story_shortlist import (
     _capture_group_moments,
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+from immich_memories.analysis.editorial_story_threads import fold_threads, thread_scope
 from immich_memories.analysis.editorial_story_trips import (
     FilmTrips,
     reserve_trip_depth,
@@ -409,6 +411,8 @@ def _kind_of_story(s) -> dict[str, Any]:
     """A trip or a recurring thread says so on its row, with what it was allowed."""
     if s.get("trip"):
         return {"kind": "trip", "trip": s["trip"], "reserve": s.get("reserve", 0)}
+    if s.get("thread"):
+        return {"kind": "thread", "thread": s["thread"]}
     return {"kind": "story"}
 
 
@@ -429,6 +433,49 @@ def _kind_marker_of(unit_by_asset, lines) -> Callable[[DepictedChoice], str]:
         return text
 
     return marker
+
+
+def _read_the_period(
+    judge,
+    rules,
+    *,
+    evidence: list[dict],
+    contract: str,
+    record: Callable[[str, Mapping[str, Any]], None],
+    enrich: Callable[[list], Mapping[str, Mapping[str, Any]]],
+    stories_across_gaps: bool,
+    journey: bool,
+    trips: FilmTrips | None,
+    moment_assets: Mapping[str, Sequence[str]],
+    film_span: tuple[date, date] | None,
+    lines: list[str],
+    calls: dict[str, int],
+) -> PeriodStory:
+    """The weighed stories of the period, with its trips and recurring activities folded."""
+    read_story = rules.read_story if rules is not None else read_period_story
+    trips, fold = trip_fold(trips, moment_assets, rules=rules is not None)
+    story = read_story(
+        judge,
+        evidence=evidence,
+        contract=contract,
+        prior={},
+        record=lambda value: record("period-story", value),
+        enrich=enrich,
+        allow_gaps=stories_across_gaps,
+        journey=journey,
+        fold=fold,
+    )
+    record("trip-stories", trips.record())
+    calls["thread_questions"] = fold_threads(
+        judge,
+        story,
+        contract=contract,
+        span=film_span,
+        lines=lines,
+        record=record,
+        skip=thread_scope(rules=rules is not None, journey=journey, gapped=stories_across_gaps),
+    )
+    return story
 
 
 def select_story_first(
@@ -465,6 +512,7 @@ def select_story_first(
     rules=None,
     trips: FilmTrips | None = None,
     looks_alike: PairLooksAlike | None = None,
+    film_span: tuple[date, date] | None = None,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
 
@@ -475,6 +523,7 @@ def select_story_first(
     `record(name, payload)` persists a derived decision under the run's audit directory.
     `trips` are the journeys detected in the pool; each becomes one story before the weighing.
     `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
+    `film_span` is the requested period; a recurring activity is one thread per era of it.
     """
     calls = {
         "story_pages": 0,
@@ -506,22 +555,23 @@ def select_story_first(
         lines=lines,
         favourite=lambda asset: bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite")),
     )
-    read_story = rules.read_story if rules is not None else read_period_story
-    trips, fold = trip_fold(trips, moment_assets, rules=rules is not None)
-    story = read_story(
+    story = _read_the_period(
         judge,
+        rules,
         evidence=evidence,
         contract=contract,
-        prior={},
-        record=lambda value: record("period-story", value),
+        record=record,
         enrich=lambda episodes: _episode_hints(
             episodes, units=units, place_of_moment=place_of_moment, lines=story_lines
         ),
-        allow_gaps=allow_story_gaps,
+        stories_across_gaps=allow_story_gaps,
         journey=journey,
-        fold=fold,
+        trips=trips,
+        moment_assets=moment_assets,
+        film_span=film_span,
+        lines=[story_lines.get(asset, "") for asset in unit_by_asset],
+        calls=calls,
     )
-    record("trip-stories", trips.record())
     calls["story_pages"] = len(story.audit.get("pages") or [])
     calls["story_pages_fresh"] = (story.audit.get("reading_calls") or {}).get("fresh", 0)
 
