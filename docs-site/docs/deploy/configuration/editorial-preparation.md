@@ -156,6 +156,11 @@ is read whole (0.5 to 2.2 MB for the Live Photo companions measured). The three 
 server as one 960 × 320 JPEG strip with a one-field schema (`description`, 120 characters), under
 the same temperature, penalty, token cap and `caption_api_key` as captions.
 
+A whole year of one library, cold, on an Apple Silicon laptop with the MLX captioner: 888 videos in
+373 s (0.42 s each), 3,227 range requests, 888 caption calls and 891 MB read. The median video
+cost 416 KB. The 54 single-keyframe clips read whole took 394 MB of the total. A warm pass reads
+and asks nothing.
+
 The bank keys on the picture, its complete source metadata and
 `motion-line-v1@smolvlm2-500m-base-public/3-keyframes-320px`, so a changed source is asked again
 and nothing else is. Two invalid answers, a playback Immich answers 404 for, or an index the app
