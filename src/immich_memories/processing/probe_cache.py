@@ -164,7 +164,7 @@ def _microseconds(seconds: float) -> int:
     return -magnitude if seconds < 0 else magnitude
 
 
-def _trim_ticks(seconds: float, clock: Fraction) -> int:
+def trim_ticks(seconds: float, clock: Fraction) -> int:
     """Rescale microseconds onto the packet clock, rounding half away like av_rescale_q."""
     return math.floor(Fraction(_microseconds(seconds), 1_000_000) / clock + Fraction(1, 2))
 
@@ -318,8 +318,8 @@ class ProbeCache:
         """
         data = self._video_packets(path)
         clock, packets = data["clock"], data["packets"]
-        origin = _trim_ticks(self.get(path).container_start_seconds, clock)
-        first_tick, end_tick = _trim_ticks(start, clock) + origin, _trim_ticks(end, clock) + origin
+        origin = trim_ticks(self.get(path).container_start_seconds, clock)
+        first_tick, end_tick = trim_ticks(start, clock) + origin, trim_ticks(end, clock) + origin
         kept = [p["pts"] for p in packets if first_tick <= p["pts"] < end_tick]
         if not kept:
             raise ProbeError("Declared interval holds no source frame")
