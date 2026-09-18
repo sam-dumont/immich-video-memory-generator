@@ -186,6 +186,11 @@ the comparison returns a price with a completion, so nothing here was ever charg
 checked. Each shop is priced in the currency it publishes in.
 :::
 
+**Every row in the next table was measured on 15 September 2026.** Four readers were run again on
+17 September, on different hosts and tiers, and those rows are
+[further down](#re-measured-on-17-september). Nobody re-measured the rest, so their token counts and
+prices stand as they were taken.
+
 February 2024: 1,417 candidates, 15 kept. The same library, the
 same month, the same banked facts seeded into every cell, one line of config moved per cell.
 Selection is the reader stage only, with preparation already warm. Prices were read off the model
@@ -230,6 +235,43 @@ kept 15 pictures each, made **the same 156 calls**, and were handed within 1 % o
 
 The probes locate the difference. Over the three probe prompts `muse-glimmer` produced 20,193 output
 tokens against 2,441, and 8,681 of the 9,989 on one of them were inside a thinking block.
+
+### Re-measured on 17 September
+
+The shortlist closed on 15 September: the local 30B, one hosted reader, z.ai for a coding-plan
+account, and the rules reader. Those four ran again on 17 September on the released `0.102.0`, as
+part of the [setup matrix](./running-modes.md#what-to-expect-on-a-first-run).
+
+**This is not a second controlled comparison.** The table above moved one line of config per cell on
+one host at one tier. These four rows sit on different hosts at different tiers, and the hosted row
+read a different month, so read each one against its own setup and not against its neighbours.
+
+| Model | Provider and route | Host and tier | Month | Selection | Calls | Tokens in | Tokens out | Cost | Overlap |
+|---|---|---|---|---:|---:|---:|---:|---|---:|
+| none, `rules` reader | no endpoint | Mac, `full` | February | 15 s | 0 | 0 | 0 | nothing | 17 % |
+| `Qwen3-VL-30B-A3B-Instruct-4bit` | local oMLX, OpenAI-compatible | Mac, `full` | February | 28 min 39 s | 129 | 388,934 | 34,346 | nothing | reference |
+| `glm-5.3-flash` | z.ai, Anthropic-compatible | cluster, `no_captions` | February | 12 min 04 s | 110 | about 273,500 | about 37,000 | no published price for this account | 13 % |
+| `gpt-5.6-luna` | OpenAI | Mac, `full` | fixture | 2 min 06 s | 93 | 103,865 | 13,003 | USD 0.0364 | 23 % |
+
+The hosted OpenAI row read the fixture month rather than February: hosted spend stays on the fixture
+month, where the prompts are about half the size. It is also the one row here that did not come from
+`0.102.0`. Every hosted reader was broken in that release by a config regression, fixed in
+[#1071](https://github.com/sam-dumont/immich-video-memory-generator/pull/1071), so that cell was
+re-run from `main` with the fix in it.
+
+The two rows that read February were measured while other work shared the Mac. The local 30B's
+selection had another project's run alive in 29 of its 30 minutes, so its 29 minutes against
+19 min 3 s on 15 September is an upper bound and the older figure is the quiet one. Keep both. The
+hosted OpenAI row ran after the contention log stopped, so nothing is known about what else was on
+the machine then.
+
+The rules row shows 0 calls because the reader made none. The run still made one, in the music stage
+after the render, because that Mac had an `llm` endpoint configured: 1,033 prompt and 59 completion
+tokens. A rules cell with no endpoint made none at all.
+
+Reading contracts refused 3 of the local 30B's answers and asked again once; they refused 2 of the
+z.ai cluster cell's and asked again none. The z.ai token counts come from the run log rather than
+the per-call record, and the summary rounds them at or above 1,000.
 
 ### The three that stopped
 

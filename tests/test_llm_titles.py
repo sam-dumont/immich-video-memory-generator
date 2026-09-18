@@ -80,7 +80,7 @@ class TestBuildTitlePrompt:
             country="France",
             clip_descriptions=["hiking along cliffs", "sunset over bay"],
             smart_objects=["person", "beach"],
-        )
+        ).text
         assert "trip" in prompt.lower()
         assert "Brasparts" in prompt
         assert "French" not in prompt  # locale=en → English
@@ -101,7 +101,7 @@ class TestBuildTitlePrompt:
             person_names=["Ada Example", "Noah Example"],
             clip_descriptions=["playing in park", "birthday party"],
             facts=MemoryTitleFacts(people_path=empty_record),
-        )
+        ).text
         assert "Ada Example" in prompt
         assert "Noah Example" in prompt
         assert "French" in prompt
@@ -115,9 +115,29 @@ class TestBuildTitlePrompt:
             start_date="2024-01-01",
             end_date="2024-12-31",
             duration_days=366,
-        )
+        ).text
         assert "Rules" in prompt
         assert "weekend" in prompt.lower()
+
+    @pytest.mark.parametrize("memory_type", ["special_day", "trip", "multi_person"])
+    def test_the_album_the_pictures_sit_in_reaches_every_prompt(self, memory_type, tmp_path):
+        """What somebody filed the day under is a fact, whatever kind of film it is."""
+        from immich_memories.titles.llm_titles import MemoryTitleFacts, build_title_prompt
+
+        empty_record = tmp_path / "people.yaml"
+        empty_record.write_text("people: []\n", encoding="utf-8")
+
+        prompt = build_title_prompt(
+            memory_type=memory_type,
+            locale="en",
+            start_date="2022-03-27",
+            end_date="2022-03-27",
+            duration_days=0,
+            person_names=["Ada Example"],
+            facts=MemoryTitleFacts(album_name="Lakeside Half 2022", people_path=empty_record),
+        ).text
+
+        assert "Lakeside Half 2022" in prompt
 
 
 class TestGenerateTitleWithLlm:
@@ -230,3 +250,70 @@ class TestTitleGenerationThinks:
             )
 
         assert mock_query.call_args.kwargs.get("thinking") is True
+
+
+class TestATitleMayOnlyNameWhatTheFactsName:
+    """The reader may reword the facts; it may not add names to them."""
+
+    @staticmethod
+    def _config():
+        from immich_memories.config_models_llm import LLMConfig
+
+        return LLMConfig(
+            provider="openai-compatible", base_url="http://localhost:8080/v1", model="omlx"
+        )
+
+    @staticmethod
+    async def _titled(raw: str, **kwargs):
+        from unittest.mock import AsyncMock, patch
+
+        from immich_memories.titles.llm_titles import MemoryTitleFacts, generate_title_with_llm
+
+        # WHY: replaces the reader, the only boundary these cases exercise.
+        with patch(
+            "immich_memories.titles.llm_titles.query_llm",
+            new_callable=AsyncMock,
+            return_value=raw,
+        ):
+            return await generate_title_with_llm(
+                memory_type="special_day",
+                locale=kwargs.pop("locale", "en"),
+                start_date="2022-03-27",
+                end_date="2022-03-27",
+                duration_days=0,
+                facts=MemoryTitleFacts(album_name="Lakeside Half 2022"),
+                llm_config=TestATitleMayOnlyNameWhatTheFactsName._config(),
+                **kwargs,
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_title_naming_something_no_fact_names_is_refused(self):
+        assert await self._titled('{"title": "Sunday at Ravenscourt", "subtitle": null}') is None
+
+    @pytest.mark.asyncio
+    async def test_a_title_built_from_the_facts_stands(self):
+        result = await self._titled('{"title": "Lakeside Half 2022", "subtitle": null}')
+
+        assert result is not None
+        assert result.title == "Lakeside Half 2022"
+
+    @pytest.mark.asyncio
+    async def test_a_place_spelled_the_way_the_film_speaks_is_not_an_invention(self):
+        result = await self._titled(
+            '{"title": "Le semi de Bruxelles", "subtitle": null}',
+            locale="fr",
+            daily_locations=["2022-03-27: Brussels (50.85, 4.35)"],
+        )
+
+        assert result is not None
+        assert result.title == "Le semi de Bruxelles"
+
+    @pytest.mark.asyncio
+    async def test_a_subtitle_stating_what_no_fact_states_is_dropped_not_the_title(self):
+        result = await self._titled(
+            '{"title": "Lakeside Half 2022", "subtitle": "Finishing in Ravenscourt"}'
+        )
+
+        assert result is not None
+        assert result.title == "Lakeside Half 2022"
+        assert result.subtitle is None

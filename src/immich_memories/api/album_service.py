@@ -159,25 +159,40 @@ class AlbumService:
         albums = data if isinstance(data, list) else []
         return [_album_ref(a) for a in albums if isinstance(a, dict) and a.get("id")]
 
-    async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
-        """The name of the album a majority of these assets sit in, if there is one.
+    async def album_holding_most(self, asset_ids: Sequence[str]) -> str | None:
+        """The name of the album this cut mostly sits in, if one does.
 
         Answers "what did this family day get called" for a title, from a name
-        somebody typed rather than anything invented. One request per asset, so
-        the sample is capped; this runs once per film, not once per picture. An
-        album holding fewer than half of them did not name the occasion.
+        somebody typed rather than anything invented. The bar comes from the
+        cut's own composition: the leading album has to hold more of the cut
+        than the pictures no album claims at all. A day filed across two albums
+        still learns the bigger one's name; two pictures out of ten in some
+        catch-all learn nothing. Between albums holding as much of the cut as
+        each other, the smaller album wins — a collection that swallows the day
+        names it less well than the day's own album.
+
+        One request per picture of the cut, once per film.
         """
-        sampled = list(dict.fromkeys(asset_ids))[:limit]
-        counts: Counter[str] = Counter()
-        names: dict[str, str] = {}
-        for asset_id in sampled:
-            for ref in await self._albums_of(asset_id):
-                counts[ref.id] += 1
-                names[ref.id] = ref.name
-        if not counts:
+        cut = list(dict.fromkeys(asset_ids))
+        held: Counter[str] = Counter()
+        refs: dict[str, AlbumRef] = {}
+        unfiled = 0
+        for asset_id in cut:
+            albums = await self._albums_of(asset_id)
+            unfiled += not albums
+            for ref in albums:
+                held[ref.id] += 1
+                refs[ref.id] = ref
+        if not held:
             return None
-        album_id, held = counts.most_common(1)[0]
-        return names[album_id] if held * 2 >= len(sampled) else None
+        leader = max(held, key=lambda album: (held[album], -refs[album].asset_count))
+        logger.info(
+            "Leading album holds %d of the cut's %d pictures, %d of which sit in no album",
+            held[leader],
+            len(cut),
+            unfiled,
+        )
+        return refs[leader].name if held[leader] > unfiled else None
 
     async def _albums_of(self, asset_id: str) -> list[AlbumRef]:
         try:

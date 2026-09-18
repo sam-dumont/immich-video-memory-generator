@@ -86,6 +86,7 @@ def build_editorial_context(
         date_ranges=tuple(date_ranges) if date_ranges is not None else (date_range,),
         target_seconds=duration,
         hemisphere=resolved.preset_params.get("hemisphere", "north"),
+        window_origin=resolved.preset_params.get("window_origin"),
         render_timing=build_editorial_timing_policy(
             config=config,
             target_seconds=duration,
