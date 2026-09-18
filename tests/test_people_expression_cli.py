@@ -21,15 +21,17 @@ from tests.conftest import make_asset
 TEXT = '("Adult A" OR "Adult B") AND "Child"'
 EXPRESSION = PersonExpression.parse(TEXT)
 PEOPLE = [
-    Person(id="a", name="Adult A"),
+    Person(id="a", name="Adult A", birthDate="1960-05-04"),
     Person(id="a-hidden", name="Adult A"),
-    Person(id="b", name="Adult B"),
-    Person(id="c", name="Child"),
+    Person(id="b", name="Adult B", birthDate="1958-01-02"),
+    Person(id="c", name="Child", birthDate="2024-03-11"),
 ]
+UNDATED = [person.model_copy(update={"birth_date": None}) for person in PEOPLE]
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, people=PEOPLE):
+        self.people = people
         self.calls = []
         self.roster_reads = []
         self.media = {}
@@ -57,7 +59,7 @@ class Client:
 
     def get_all_people(self, *, with_hidden=False):
         self.roster_reads.append(with_hidden)
-        return PEOPLE
+        return self.people
 
     def selected(self, media, person):
         self.calls.append((media, person))
@@ -327,3 +329,76 @@ def test_different_groupings_cannot_collide_in_names_or_automation_keys(tmp_path
         for expr in (EXPRESSION, other)
     ]
     assert filenames[0] != filenames[1]
+
+
+def test_a_dateless_people_memory_starts_where_its_people_could_first_be_photographed(tmp_path):
+    """Forever is a valid ask: the birth dates decide where forever begins."""
+    client = Client()
+    windows = []
+    original = client.get_videos_for_person_and_date_range
+
+    def record_window(person_id, window):
+        windows.append(window)
+        return original(person_id, window)
+
+    client.get_videos_for_person_and_date_range = record_window
+    result, _, pipeline = invoke(
+        tmp_path,
+        [
+            "--memory-type",
+            "multi_person",
+            "--people-expression",
+            TEXT,
+            "--no-render",
+            "--no-music",
+        ],
+        client,
+    )
+
+    assert result.exit_code == 0, (result.output, result.exception)
+    kwargs = pipeline.call_args.kwargs
+    assert kwargs["date_range"].start.date() == date(2024, 3, 11)
+    assert kwargs["date_range"].end.date() == date.today()
+    assert windows and all(window.start.date() == date(2024, 3, 11) for window in windows)
+    assert kwargs["memory_preset_params"]["window_origin"] == (
+        "the window starts at the youngest birth date the people it needs allow"
+    )
+
+
+def test_a_dated_people_memory_keeps_the_dates_it_was_given(tmp_path):
+    """A window the ask states is never moved, whatever the birth dates would allow."""
+    client = Client()
+    result, _, pipeline = invoke(
+        tmp_path,
+        [
+            "--start",
+            "2004-01-01",
+            "--end",
+            "2024-12-31",
+            "--people-expression",
+            TEXT,
+            "--no-render",
+            "--no-music",
+        ],
+        client,
+    )
+
+    assert result.exit_code == 0, (result.output, result.exception)
+    kwargs = pipeline.call_args.kwargs
+    assert kwargs["date_range"] == DateRange(
+        datetime(2004, 1, 1), datetime(2024, 12, 31, 23, 59, 59)
+    )
+    assert "window_origin" not in kwargs["memory_preset_params"]
+
+
+def test_people_with_no_birth_date_anywhere_still_have_to_be_given_dates(tmp_path):
+    """Nothing is guessed: with no birth date the ask is refused, and told why."""
+    result, _, _ = invoke(
+        tmp_path,
+        ["--memory-type", "multi_person", "--people-expression", TEXT, "--no-render"],
+        Client(people=UNDATED),
+    )
+
+    assert result.exit_code != 0
+    assert "--year is required with --memory-type multi_person" in result.output
+    assert "birth date" in result.output
