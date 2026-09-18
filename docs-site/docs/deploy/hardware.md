@@ -303,7 +303,7 @@ instead of four days.
 End-to-end numbers for a Mac, a Synology DS423+ and a Kubernetes cluster are on
 [Running modes](./running-modes.md#what-to-expect-on-a-first-run). The CPU-only row to read is the
 NAS: 1,573 s to render a 60-second film on four Celeron cores, against 114 s for the same length on
-the Mac. There is no card on that box to put the heads and detectors on, and every producer banks
+the Mac, and that Mac render had another project's run beside it, so read it as a ceiling. There is no card on that box to put the heads and detectors on, and every producer banks
 its answer, so a second cut over the same period skips them entirely. If the classifiers are the
 bill, the way out is not a faster CPU but the
 [inference service](./installation/inference-service.md) on a box that has one.

@@ -146,19 +146,43 @@ Anything behind the broken member stayed on the volume. What that costs each of 
 
 Peak RSS and CPU seconds are also missing from all three: the cluster collector did not report them.
 
-## The Mac rows were measured on a shared machine
+## Most Mac cells were measured with other work on the machine
 
-A contention log sampled the Mac once a minute from 17:29 to 22:15 on 17 September, 286 minutes.
-Another project's job was running in 191 of them (67 %), and two or more `uv run` processes were
-alive in 213 (74 %). Every Mac number on this page is an upper bound, not a quiet-machine best case.
+A contention log sampled the Mac once a minute from 17:29 to 22:15 on 17 September, 286 minutes,
+keyed by the worktree each concurrent run came from. Per cell window:
+
+| Mac cell and phase | Window | Minutes | Another run alive | Most at once |
+|---|---|---:|---:|---:|
+| February, local reader, cold preparation | 17:35 to 19:22 | 107 | 80 (75 %) | 3 |
+| February, local reader, selection and render | 19:24 to 19:53 | 30 | 29 (97 %) | 1 |
+| February, rules, cold preparation | 19:56 to 20:15 | 20 | 20 (100 %) | 1 |
+| Fixture, rules, whole cell | 20:21 to 20:25 | 5 | 5 (100 %) | 1 |
+| Fixture, local reader, whole cell | 21:07 to 21:16 | 10 | 0 | 0 |
+| Fixture, hosted reader, whole cell | 23:44 to 23:50 | not sampled | unknown | unknown |
+
+The concurrent work was three other worktrees of this same project, each running its own selection:
+`immich-diverse-cut-20260917` (80 of the 107 preparation minutes), `immich-videos-first-20260917`
+(58) and `immich-vp9-clip-20260917` (6).
+
+What that costs the headline figure: the February local-reader cell prepared at **0.4778 s a
+picture** here, against **0.2336 s** for the same tier on the same machine on 13 to 14 September
+with nothing else on it. Both are real. The contended one includes whatever the other runs took off
+the box, and the quiet one is the floor. Neither replaces the other, and both are published with
+their condition.
+
+The fixture local-reader cell is the one Mac cell the log shows running alone, so its 35 s
+preparation, 319 s selection and 125 s render are the cleanest Mac numbers in the run. The fixture
+hosted cell ran after the log stopped and nothing is known about the machine then.
+
+The NAS and cluster cells are unaffected. Each ran on its own host.
 
 ## The rules reader still made one model call
 
 On both Mac lanes the rules cell recorded exactly one model call: 854 prompt and 54 completion
-tokens on the fixture month, 1,033 and 59 on February. It is not the reader. It lands in the music
-stage, after the render, when an LLM endpoint is configured. A rules cell on the NAS or the cluster,
-with no endpoint, recorded none. "Rules makes no model requests" is true of selection and not of the
-whole run.
+tokens on the fixture month, 1,033 and 59 on February. It is not the reader. The log puts it in the
+music stage, after the render, on a host with an `llm` endpoint configured. A rules cell on the NAS
+or the cluster, with no endpoint, recorded none. "Rules makes no model requests" is true of the
+reader and not of the whole run, and the deploy pages now say so.
 
 ## What this run does not answer
 

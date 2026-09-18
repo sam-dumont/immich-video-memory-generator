@@ -31,13 +31,18 @@ would have cost 2.6 hours of facts before anything was selected. Match it to the
 
 | `reader` | Needs | What you get | What you lose |
 |---|---|---|---|
-| `rules` | Nothing beyond the app | The ten standard memory types, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero model requests | No story thesis. Custom free-text subjects are refused. No model reranking, no Live Photo motion choice. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
+| `rules` | Nothing beyond the app | The ten standard memory types, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero reader requests | No story thesis. Custom free-text subjects are refused. No model reranking, no Live Photo motion choice. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
 | `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader on 15 September, and 29 min on 17 September on a machine other work was sharing |
 | `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
 
 What each model did on one real month, and what stopped three of them:
 [Readers](./readers.md). Rules and the local model reader cost nothing in API fees. Electricity and
 hardware were not metered.
+
+`rules` makes no reader request, which is not the same as no model request anywhere in the run. With
+an `llm` endpoint configured, the music stage still asks it one question after the render: 854
+prompt and 54 completion tokens on the fixture month, 1,033 and 59 on a real one. A rules cell with
+no endpoint at all asked nothing.
 
 ## The preparation tier
 
@@ -62,11 +67,19 @@ prepares only that month, so a month costs its own picture count at the same rat
 
 | Host | Tier | Per picture | The year 2024 (13,544 pictures) |
 |---|---|---:|---|
-| Mac M5 Max, facts in process | `full` | 0.4778 s | 1 h 47 min, measured |
-| Cluster pod, facts on a GPU service | `no_captions` | 0.2896 s | 1 h 05 min, measured |
+| Mac M5 Max, facts in process, **two other runs on the machine** | `full` | 0.4778 s | 1 h 47 min, measured 17 September |
+| Mac M5 Max, facts in process, **machine to itself** | `full` | 0.2336 s | 53 min, measured 13 to 14 September |
+| Cluster pod, facts on a GPU service | `no_captions` | 0.2896 s | 1 h 05 min, measured 17 September |
 | Cluster pod, facts on a GPU service | `full` | 1.2268 s | 4 h 37 min, the fixture month's rate multiplied out |
 | NAS, facts in process | `no_captions` | 1.4813 s | 5 h 34 min, the fixture month's rate multiplied out |
 | NAS, facts on a cluster service | `no_captions` | 0.4460 s | 1 h 40 min, the fixture month's rate multiplied out |
+
+**The two Mac rows are the same work on the same machine, and the difference between them is the
+machine, not the software.** The 17 September cell prepared for 107 minutes with another project's
+selection run alive in 80 of them and two at once in 52, so 0.4778 s a picture includes whatever
+those took off the box. The 13 to 14 September cell had it to itself. Size a Mac somewhere in that
+band and expect the lower end on a machine doing nothing else. Only the Mac lane was shared: the NAS
+and the cluster rows below each ran on their own host.
 
 The Mac rules cell also prepared a year, in 18 min, and that figure is not in the table because its
 cache was already primed: only 5,576 captions were left to do, so it is a partial re-read and not
@@ -77,9 +90,9 @@ thousand pictures is about four days: [NAS + a model box](./common-setups/nas-on
 
 **What degrading the Mac would save has not been measured, and the measurement is owed.** No Mac
 cell ran `no_captions` or `metadata_only`, and no cell anywhere ran `metadata_only`. The mechanism
-is not in doubt: a tier drops whole producers and changes nothing else, so the 1 h 47 min above
-splits into captions 4,080 s, the two detectors 1,020 s, the encoder and its six heads 720 s,
-previews 480 s and pixels 240 s. Drop the captions and the arithmetic says about 39 min; drop the
+is not in doubt: a tier drops whole producers and changes nothing else, so the shared-machine
+1 h 47 min above splits into captions 4,080 s, the two detectors 1,020 s, the encoder and its six
+heads 720 s, previews 480 s and pixels 240 s. Drop the captions and the arithmetic says about 39 min; drop the
 classifiers as well and it says about 10 min. Those two figures are subtraction, not a stopwatch.
 
 What the degradation costs the cut is a different question again, and it has an answer:
@@ -134,11 +147,23 @@ Four readers ran: `Qwen3-VL-30B-A3B-Instruct-4bit` on local oMLX, `gpt-5.6-luna`
 closed on 15 September; earlier alternate local models were dropped and are not in these tables.
 What each model did is on [Readers](./readers.md).
 
-:::caution The Mac rows were measured on a busy machine
-A contention log sampled the Mac once a minute from 17:29 to 22:15 on 17 September, 286 minutes
-covering most of the Mac lane. Another project's job was running in 191 of them, and two or more
-`uv run` processes were alive in 213. Every Mac number below is an upper bound, not a quiet-machine
-best case.
+:::caution Most of the Mac rows were measured with other work on the machine
+A contention log sampled the Mac once a minute through the lane, keyed by which worktree each
+concurrent run came from. Per cell:
+
+| Mac cell | Minutes sampled | Another run alive | Most at once |
+|---|---:|---:|---:|
+| February, local reader, cold preparation | 107 | 80 (75 %) | 3 |
+| February, local reader, selection and render | 30 | 29 (97 %) | 1 |
+| February, rules, cold preparation | 20 | 20 (100 %) | 1 |
+| Fixture, rules, whole cell | 5 | 5 (100 %) | 1 |
+| Fixture, local reader, whole cell | 10 | 0 | 0 |
+| Fixture, hosted reader, whole cell | not sampled | unknown | unknown |
+
+So every February Mac number and the fixture rules row are **upper bounds**, not quiet-machine best
+cases. The fixture local-reader cell is the one Mac cell the log shows running alone, and the fixture
+hosted cell ran after the log stopped. The NAS and cluster rows are unaffected: each ran on its own
+host.
 :::
 
 ### The fixture month: 133 pictures, 130 eligible, June 2024
@@ -269,7 +294,8 @@ heads, out of 1.4813 s). **Cluster: the render again, at a fifth of the NAS.** T
 what makes the cluster's preparation cheap: on the fixture month the pod paid 0.1863 s a picture to
 a GPU-backed service, and the same pod deriving its own facts in process managed 0.2632 s for the
 heads and detectors together. The service does not pay for itself on a box that quick, and a Mac
-computing the same heads and detectors in process measured 38 to 55 ms a picture. The service is for
+computing the same heads and detectors in process measured 38 to 48 ms a picture on the one fixture
+cell that had the machine to itself, and up to 55 ms on the shared one. The service is for
 hosts like the NAS, and for putting the classifiers on a card. A CPU-backed service was measured at
 0.6083 s a picture on 12 September and has not been re-measured since.
 
@@ -298,8 +324,9 @@ What is a measurement here and what is not:
   were timed separately, in that order, and added.
 - **Multiplied out** from a measured rate: the NAS over the year the February cells prepared, at
   1.4813 s a picture over 13,544 pictures. Nobody sat through it.
-- **An upper bound rather than a best case**: every Mac row. Other work shared that machine while
-  the cells ran.
+- **An upper bound rather than a best case**: every February Mac row and the fixture rules row.
+  Another project's selection run shared that machine, two at once for half of the long preparation.
+  The table in the caution above says which cell got what.
 - **Never run**: every `no_captions` and `metadata_only` cell on the Mac, and `metadata_only`
   anywhere. The matrix has no `metadata_only` cell at all; the `metadata_only` seconds further up
   this page come from an earlier benchmark on the same NAS, not from these runs.
@@ -333,7 +360,7 @@ jsDelivr fonts) are `network:` switches, all off, and
 
 | Mode | To the caption server | To the reader | Elsewhere |
 |---|---|---|---|
-| rules + `metadata_only` | nothing | nothing | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
+| rules + `metadata_only` | nothing | one question from the music stage after the render, if an `llm` endpoint is configured at all | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
 | rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
@@ -395,12 +422,14 @@ The only line that leaves your network is the hosted reader's.
 
 | Configuration | Hardware | First run: 2024 prepared (13,544 pictures), February cut | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|
-| Mac, everything local | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 2 h 19 min | 32 min | a story thesis and a written reason under each picture. The reference cut | nothing |
+| Mac, everything local | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 2 h 19 min with two other runs on the machine, 1 h 14 min on a quiet one | 32 min | a story thesis and a written reason under each picture. The reference cut | nothing |
 | Cluster, rules reader | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 12 min | 8 min | dates, places, favourites, known people and classifier facts. No thesis, no reason, no custom subjects. 17 % overlap with the reference cut | nothing |
 | Cluster, hosted reader | the same, with a provider URL and key | 1 h 22 min | 19 min | a thesis and reasons, no description under a picture, and a gate that can refuse but never clear | no price for this account |
 
-The Mac row is the one to read with the contention warning in mind: that machine was shared while
-it ran, so 2 h 19 min is a ceiling rather than what a quiet Mac would do.
+Both Mac figures are real and they bracket the answer. 2 h 19 min is the 17 September sum, measured
+with another project's selection run alive for three quarters of the preparation and two at once for
+half of it. 1 h 14 min is the same three phases on 13 to 14 September with the machine to itself.
+The cluster rows ran on their own host and need no such bracket.
 
 The hosted row's tokens were never priced. z.ai returns no cost with a completion and a coding-plan
 account has no published list price, so there is a token count and no money figure.

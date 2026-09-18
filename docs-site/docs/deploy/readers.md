@@ -259,9 +259,15 @@ month, where the prompts are about half the size. It is also the one row here th
 [#1071](https://github.com/sam-dumont/immich-video-memory-generator/pull/1071), so that cell was
 re-run from `main` with the fix in it.
 
-The two Mac rows that read February were measured while other work shared the machine, so both are
-upper bounds. The local 30B took 29 minutes here against 19 min 3 s on 15 September, and the shared
-machine is part of why.
+The two rows that read February were measured while other work shared the Mac. The local 30B's
+selection had another project's run alive in 29 of its 30 minutes, so its 29 minutes against
+19 min 3 s on 15 September is an upper bound and the older figure is the quiet one. Keep both. The
+hosted OpenAI row ran after the contention log stopped, so nothing is known about what else was on
+the machine then.
+
+The rules row shows 0 calls because the reader made none. The run still made one, in the music stage
+after the render, because that Mac had an `llm` endpoint configured: 1,033 prompt and 59 completion
+tokens. A rules cell with no endpoint made none at all.
 
 Reading contracts refused 3 of the local 30B's answers and asked again once; they refused 2 of the
 z.ai cluster cell's and asked again none. The z.ai token counts come from the run log rather than
