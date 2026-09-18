@@ -33,6 +33,13 @@ that its own words link are one recurring activity, and folds each confirmed gro
 carrier admission, `editorial_story_lookalike.py` asks the final review's repetition question
 (through `confirm_episode_pairs`, or `confirm_story_pairs` for pairs days apart) before a story takes
 a further picture, bounded at twice the slots; a refusal frees the slot for another moment.
+`editorial_story_places.py` covers the case next to the thread question, one place inside one day
+or one stay: per scope (a journey film, or one story) it gives each place the pictures
+`trip_allowance` would give a trip of the same share of that scope, and a picture over the bound
+joins the look-alike ledger, so it frees its slot first and returns only if nothing else takes it.
+A scope of one place is never bounded. The synthesis card also carries `arrivals`, the
+`editorial_person_period_facts.py` projection of who the library first holds in that episode's own
+month, so the thesis and the weighing can read an arrival that the relation counts flatten away.
 
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
@@ -191,6 +198,7 @@ src/immich_memories/
 │   ├── editorial_story_depth.py     # A short film's free slots as verified-different frames inside shown moments
 │   ├── editorial_story_trim.py      # The allocation in reverse when the production budget is tighter
 │   ├── editorial_story_threads.py   # A recurring activity at one place is one story per era, if the reader agrees
+│   ├── editorial_story_places.py    # One place of a scope holds only the share of it a trip of that length would
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once

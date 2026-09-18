@@ -63,6 +63,15 @@ weight; then the memory-worthy reading and the number of distinct moments decide
 reader listed its stories in, then the order things happened. A well starred December cannot push
 January out of the year.
 
+**A period can be about someone arriving.** Where your people file knows a person, it also knows
+the month the library first holds a picture of them and the month they start appearing regularly.
+Both are facts about the library, never a claim about a relationship, and each one is attached to
+the episodes actually taken in that month. So the episode card the reader groups and weighs says
+who is present by their relation to you, and separately who the library first holds here. The
+reader is told what that is and that it earns no picture by itself. A month whose meaning is that
+someone new is in it can now be read that way, and a month where it does not matter reads exactly
+as before. Nothing forces their picture into the cut.
+
 **A trip is one story, and it gets room for its length.** The editor runs the app's own trip
 detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
 network: a trip is named from the place names its pictures carry. Every day of a detected trip is one
@@ -87,6 +96,19 @@ apart, and a confirmed thread becomes one story with the weight of its heaviest 
 than about 18 months is read in calendar years, and keeps one thread per year, so a child getting
 better at swimming still shows the progress. Trip films and subject memories ask nothing: their days
 are already their stories.
+
+**One place does not take a film.** The thread question needs two stories at one place on separate
+days, which leaves the case next to it uncovered: one building, on one day or across one stay,
+holding most of the slots. A trip is already one story before the weighing, and a trip film asks no
+thread question at all, so nothing there could notice. Now each stretch the film funds as one thing
+(a trip film, or any single story) bounds its places against each other: a place may hold as many
+pictures as a trip of the same share of that stretch would be allowed, measured in its days, or in
+its moments when the stretch is one day. That is the same curve the trip allowance uses, and no
+number in it is set per film or per duration. A stretch that only ever visited one place is never
+bounded, and a picture refused for its place joins the same ledger as one refused for looking like
+another: it frees the slot for somewhere else first, and comes back when nothing else can take it.
+So a stay that really is one venue still fills its film, and the run's `story-places` record says
+what each place was allowed and what it held.
 
 **The audience is FAMILY.** A shirtless baby is ordinary family content and can be included, and so
 is a parent holding a baby in a pool or a baby's swimming lesson: swimming is not bathing. Eight

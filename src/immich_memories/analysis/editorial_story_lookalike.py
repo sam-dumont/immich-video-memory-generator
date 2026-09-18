@@ -1,4 +1,4 @@
-"""A story's second or third picture is kept only if it does not look like one already kept.
+"""A story's second or third picture is kept only if it adds to the ones already kept.
 
 The question is the final duplicate review's visual repetition question, asked while the cut can
 still be refilled: two pictures of the same capture family within the 90-minute window are asked
@@ -9,6 +9,9 @@ A picture is compared with the frames its story already holds around it: those o
 and the kept frame just before and just after it in capture time. That is where a repetition
 lives, and it keeps the fixed bound (twice the film's slots) for the pairs worth asking about
 rather than spending it on every pair of a long story.
+
+A picture can also be refused for where it was taken rather than for how it looks, when its place
+already holds its share of the film (`editorial_story_places`); both refusals share this ledger.
 
 A refused picture frees its slot for the story's next distinct moment, or for the next story in
 funding order. When nothing else can take the slot, the refused picture comes back: the check
@@ -111,6 +114,16 @@ class LookAlikeCheck:
     def refuse(self, story: str, asset: str, repeats: str, readmit: Callable[[], bool]) -> None:
         self.refused.append(
             {"story": story, "asset_id": asset, "repeats": repeats, "_readmit": readmit}
+        )
+
+    def crowds(self, story: str, asset: str, place: str, readmit: Callable[[], bool]) -> None:
+        """A picture refused for its place rather than its look (`editorial_story_places`).
+
+        It joins the same ledger, so it frees its slot for another place and comes back through
+        the same readmission when nothing else can take it.
+        """
+        self.refused.append(
+            {"story": story, "asset_id": asset, "crowds": place, "_readmit": readmit}
         )
 
     def readmit(self, room: Callable[[], bool]) -> None:

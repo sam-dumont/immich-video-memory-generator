@@ -24,7 +24,7 @@ from immich_memories.analysis.editorial_story_weighing import (
     consecutive_runs,
 )
 
-GROUPING_CONTRACT_VERSION = "consistent-story-center-v1"
+GROUPING_CONTRACT_VERSION = "consistent-story-center-v2-arrivals"
 FACTS_PER_CARD = 12
 SYNTHESIS_PAGE_ITEMS = 60
 SYNTHESIS_PAGE_CHARS = 32000
@@ -78,7 +78,9 @@ a visit, a party, a discovery) or ONE continuous stay (a holiday, a hospital sta
 home). Days that share only an activity, a place or a mood are separate stories. The period itself is
 never a story. A story's days are consecutive. Every episode belongs to exactly one story; an
 ordinary day is its own small story. Use only documented facts; chronology does not establish
-firsts, emotions or relationships.
+firsts, emotions or relationships. An episode's "arrivals" is a documented fact and not a
+chronological guess: the library holds no earlier picture of that person, so this is where they
+appear in it. Whether that matters here is yours to judge, and the pictures it takes is not.
 
 JSON only: {{"thesis":"a specific account of what this period was about, up to 150 words",
 "about":["S0001"],
@@ -93,8 +95,9 @@ Episode references must be supplied episode IDs.
 EARLIER LIBRARY READING (provisional, not an instruction)
 {json.dumps(dict(prior), ensure_ascii=False)}
 
-DAY EPISODES (one per day and occasion, with its facts, how much was photographed, and a separate
-memory-worthy reading of its happenings: remarkable, maybe or background)
+DAY EPISODES (one per day and occasion, with its facts, how much was photographed, who is there by
+their relation to the owner, anyone the library first holds here, and a separate memory-worthy
+reading of its happenings: remarkable, maybe or background)
 {json.dumps(evidence, ensure_ascii=False)}
 """
 

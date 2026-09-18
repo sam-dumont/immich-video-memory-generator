@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 
@@ -92,7 +92,7 @@ def _period_fact(token, person, grounding, moments) -> PersonPeriodFact:
 
 
 def person_period_facts(
-    tables: dict[str, tuple[list[str], list[list[str]]]],
+    tables: Mapping[str, tuple[list[str], list[list[str]]]],
     moment_ids: Sequence[str],
 ) -> tuple[PersonPeriodFact, ...]:
     """Project only first/onset months grounded by actual tagged family members.
@@ -121,3 +121,25 @@ def render_person_period_facts(facts: Sequence[PersonPeriodFact]) -> str:
     if not facts:
         return ""
     return json.dumps([asdict(fact) for fact in facts], ensure_ascii=False, separators=(",", ":"))
+
+
+def arrival_notes(facts: Sequence[PersonPeriodFact]) -> list[dict[str, str]]:
+    """The people this stretch is the first recorded sight of, for a page that has no wall.
+
+    `render_person_period_facts` carries the same projection with its grounding moment aliases,
+    which a story page cannot resolve. These rows name the person, how the owner knows them and
+    which month the library first holds them, and nothing else.
+    """
+    rows: list[dict[str, str]] = []
+    for fact in facts:
+        if not (fact.first_library_month or fact.sustained_onset_month):
+            continue
+        row = {"person": fact.name, "relationship": fact.current_relationship or "unconfirmed"}
+        if fact.tier:
+            row["circle"] = fact.tier
+        if fact.first_library_month:
+            row["first_in_the_library"] = fact.first_library_month
+        if fact.sustained_onset_month:
+            row["present_from"] = fact.sustained_onset_month
+        rows.append(row)
+    return rows

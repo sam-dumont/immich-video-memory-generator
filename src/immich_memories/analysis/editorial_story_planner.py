@@ -21,6 +21,10 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_moment_inventory import inventory_event
+from immich_memories.analysis.editorial_person_period_facts import (
+    arrival_notes,
+    person_period_facts,
+)
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_story_carriers import (
     CarrierAdmission,
@@ -33,6 +37,7 @@ from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     source_kind_marker,
 )
+from immich_memories.analysis.editorial_story_places import place_shares
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     read_period_story,
@@ -120,8 +125,14 @@ def _episode_hints(
     units: _MomentUnits,
     place_of_moment: Mapping[Any, str],
     lines: Mapping[str, str],
+    arrivals_of: Callable[[Sequence[str]], list[dict[str, str]]] = lambda _moments: [],
 ) -> dict[str, dict]:
-    """What the synthesis sees beside each day episode: its size, its place and its company."""
+    """What the synthesis sees beside each day episode: its size, its place and its company.
+
+    `arrivals_of(moments)` is the people the library first holds in those moments' own month
+    (`editorial_person_period_facts`). The relation counts say who was there; only this says
+    that this is where someone starts, which is what a period can be about.
+    """
     hints = {}
     for e in episodes:
         rows = units.of(e.moments)
@@ -136,17 +147,34 @@ def _episode_hints(
         if places:
             # Equal counts keep the first source place, including across processes.
             hint["place"] = Counter(places).most_common(1)[0][0]
-        relations: dict[str, int] = {}
-        for u in rows:
-            for rel in relations_on(lines.get(u["asset_id"], "")):
-                relations[rel] = relations.get(rel, 0) + 1
-        if relations:
-            hint["relations"] = relations
-        gate = units.gate_of(e.moments)
-        if gate:
-            hint["gate"] = gate
+        hint |= {
+            key: value
+            for key, value in (
+                ("relations", _relation_counts(rows, lines)),
+                ("gate", units.gate_of(e.moments)),
+                ("arrivals", arrivals_of(e.moments)),
+            )
+            if value
+        }
         hints[e.key] = hint
     return hints
+
+
+def _arrivals_from(tables: Mapping[str, Any]) -> Callable[[Sequence[str]], list[dict[str, str]]]:
+    """Who the library first holds in a stretch's own month, from the sealed wall it came from.
+
+    A production wall always carries a `people` table, empty or not. A caller that hands the
+    planner no wall at all has no tagged people either, so nothing arrives in it.
+    """
+    if "people" not in tables:
+        return lambda _moments: []
+    return lambda moments: arrival_notes(person_period_facts(tables, moments))
+
+
+def _relation_counts(rows, lines: Mapping[str, str]) -> dict[str, int]:
+    """How many of a stretch's pictures show someone of each relation to the owner."""
+    counts = Counter(rel for u in rows for rel in relations_on(lines.get(u["asset_id"], "")))
+    return dict(counts)
 
 
 def _first_day(story_units: Mapping[str, list[dict]], s) -> str:
@@ -598,7 +626,11 @@ def select_story_first(
         contract=contract,
         record=record,
         enrich=lambda episodes: _episode_hints(
-            episodes, units=units, place_of_moment=place_of_moment, lines=story_lines
+            episodes,
+            units=units,
+            place_of_moment=place_of_moment,
+            lines=story_lines,
+            arrivals_of=_arrivals_from(tables),
         ),
         stories_across_gaps=allow_story_gaps,
         journey=journey,
@@ -627,6 +659,12 @@ def select_story_first(
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
     slots = max(1, int(target_seconds // seconds_per_slot))
     reserve_trip_depth(stories, slots=slots, film_days=_photographed_days(event_units))
+
+    def place_of(asset: str) -> str:
+        moment = unit_by_asset.get(asset, (None, {}))[1].get("moment")
+        return str(place_of_moment.get(moment) or "").split(";")[0].split(":", 1)[-1].strip()
+
+    places = place_shares(stories, story_units, place_of=place_of, slots=slots, journey=journey)
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
     # 4. The model inventory, per day episode inside a funded story, over the capture groups that
@@ -703,8 +741,11 @@ def select_story_first(
         slots=slots,
         calls=calls,
         lookalike=LookAlikeCheck(looks_alike, slots=slots),
+        places=places,
+        place_of=place_of,
     )
     admission.run()
+    record("story-places", places.record())
 
     selection = StorySelection(
         admission.carriers,

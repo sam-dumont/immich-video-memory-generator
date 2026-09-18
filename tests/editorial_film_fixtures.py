@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
@@ -28,9 +29,10 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.moment_cards import MomentCard
 from immich_memories.analysis.selection_source_groups import EditorialGroup
-from immich_memories.api.models import Asset, AssetType, ExifInfo
+from immich_memories.api.models import Asset, AssetType, ExifInfo, Person
 from immich_memories.config_loader import Config
 from immich_memories.config_models_automation import TripsConfig
+from immich_memories.people.context import PersonPromptContext
 from immich_memories.timeperiod import DateRange
 from tests.test_editorial_story_first_planner import StoryJudge
 
@@ -49,6 +51,26 @@ class Day:
     where: tuple[float, float, str, str] | None = HOME
     moments: int = 1
     company: str = ""
+    # The known people tagged on every picture of the day, by the name `people` gives facts for.
+    people: tuple[str, ...] = ()
+
+
+def known_person(
+    name: str, *, relationship: str, tier: str, first_month: str, onset: str | None = None
+) -> PersonPromptContext:
+    """One person the owner's people file knows, first recorded in `first_month`."""
+    return PersonPromptContext(
+        person_ids=(f"person-{name}",),
+        name=name,
+        role=None,
+        tier=tier,
+        birth_date=None,
+        relationship=relationship,
+        relationship_source="confirmed",
+        first_month=first_month,
+        onset=onset,
+        relationship_current=True,
+    )
 
 
 def home_days(start: date, count: int, *, step: int = 1, activity: str = "Home day") -> list[Day]:
@@ -62,7 +84,7 @@ def trip_days(start: date, count: int, *, where=SEASIDE, moments: int = 2) -> li
     ]
 
 
-def _asset(asset_id: str, taken: datetime, where) -> Asset:
+def _asset(asset_id: str, taken: datetime, where, people: tuple[str, ...] = ()) -> Asset:
     exif = (
         ExifInfo(latitude=where[0], longitude=where[1], city=where[2], country=where[3])
         if where
@@ -76,6 +98,7 @@ def _asset(asset_id: str, taken: datetime, where) -> Asset:
         updatedAt=taken,
         originalFileName=f"{asset_id}.jpg",
         exifInfo=exif,
+        people=[Person(id=f"person-{name}", name=name) for name in people],
     )
 
 
@@ -103,6 +126,7 @@ def film_source(
     home_base: bool = True,
     pictures: int = 1,
     picture_gap: timedelta = timedelta(minutes=7),
+    people: Mapping[str, PersonPromptContext] | None = None,
 ) -> StructurePlanningInput:
     """A film over `span` holding `days`; each moment has `pictures` pictures, `picture_gap` apart."""
     groups, episodes, cards, candidates, annotations = [], [], [], [], {}
@@ -117,7 +141,9 @@ def film_source(
                     + timedelta(hours=9 + 2 * moment)
                     + picture_gap * picture
                 )
-                asset = _asset(f"d{day_index:03d}-m{moment}-p{picture}", taken, spec.where)
+                asset = _asset(
+                    f"d{day_index:03d}-m{moment}-p{picture}", taken, spec.where, spec.people
+                )
                 description = f"A clothed person during {spec.activity.lower()}, moment {moment} view {picture}."
                 place = f" | at {spec.where[2]}, {spec.where[3]}" if spec.where else ""
                 company = f" | with {spec.company}" if spec.company else ""
@@ -157,9 +183,13 @@ def film_source(
         candidates=tuple(candidates),
     )
     adapted, _ = _adapt_production_cards(prepared, tuple(cards))
-    wall = ProductionMomentWallRenderer(prepared, tuple(cards), adapt_editorial_people({})).render(
-        adapted
-    )
+    wall = ProductionMomentWallRenderer(
+        prepared,
+        tuple(cards),
+        adapt_editorial_people(
+            {f"person-{name}": context for name, context in (people or {}).items()}
+        ),
+    ).render(adapted)
     case = Case(
         "film",
         "A film of separate days",
