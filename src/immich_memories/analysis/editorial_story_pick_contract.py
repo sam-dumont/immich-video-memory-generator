@@ -83,10 +83,8 @@ def _repair_question(
     )
 
 
-def _read_pick(
-    raw: str, *, labels: set[str], count: int, allow_fewer: bool, reason: bool = True
-) -> tuple[list[str], int, str]:
-    """The kept labels, the declared shortfall and its explanation, or ValueError."""
+def _answered_labels(raw: str) -> tuple[Mapping[str, Any], list[str]]:
+    """The reply object and the labels it named, in its own order, or ValueError."""
     answer = final_json_object(raw)
     if answer is None:
         raise ValueError("answer must be one complete JSON object")
@@ -94,7 +92,30 @@ def _read_pick(
     if answered is None or any(not isinstance(label, str) for label in answered):
         raise ValueError("keep must be an array of labels")
     # A model that echoes back a whole offered row has still named that row.
-    kept = [label.split(" | ", 1)[0].strip() for label in answered]
+    return answer, [label.split(" | ", 1)[0].strip() for label in answered]
+
+
+def _trim_to_grant(raw: str, *, labels: set[str], count: int) -> tuple[list[str], int]:
+    """The reader's own order cut to the grant, for a reply whose only fault is its length.
+
+    Overrunning the grant is the one invalid shape that still leaves an answer to defend: the
+    reader named real rows and ranked them, it only failed to stop. Nothing else is forgiven:
+    a reply that does not parse, or that names a row nobody offered, leaves no order to cut.
+    """
+    named = _answered_labels(raw)[1]
+    kept = list(dict.fromkeys(named))
+    if len(kept) <= count:
+        raise ValueError("keep is inside the grant; there is nothing to trim")
+    if set(kept) - labels:
+        raise ValueError("keep contains labels absent from the offered rows")
+    return kept[:count], len(kept)
+
+
+def _read_pick(
+    raw: str, *, labels: set[str], count: int, allow_fewer: bool, reason: bool = True
+) -> tuple[list[str], int, str]:
+    """The kept labels, the declared shortfall and its explanation, or ValueError."""
+    answer, kept = _answered_labels(raw)
     if len(kept) > count:
         raise ValueError(
             f"keep must contain at most {count} distinct labels; received {len(kept)} labels. "
@@ -136,7 +157,10 @@ def ask_moment_pick(
     allow_fewer: bool = False,
     record: Callable[[dict], None] | None = None,
 ) -> list[str]:
-    """One whole-answer repair; never turn an invalid list into an apparent vote."""
+    """One whole-answer repair; never turn an invalid list into an apparent vote.
+
+    A reply that only overran the grant twice is cut to it instead, on the record.
+    """
 
     def accepts(raw: str) -> bool:
         """Keep the bank free of picks this contract cannot read (#908)."""
@@ -178,4 +202,34 @@ def ask_moment_pick(
         if record is not None:
             record({"keep": kept, "unused_slots": unused, "why_fewer": why if unused else ""})
         return kept
-    raise ValueError(f"Invalid moment pick after bounded repair: {error}")
+    return _overrun_pick(raw, labels=labels, count=count, error=error, record=record)
+
+
+def _overrun_pick(
+    raw: str,
+    *,
+    labels: set[str],
+    count: int,
+    error: str,
+    record: Callable[[dict], None] | None,
+) -> list[str]:
+    """A reader that would not stop counting still ranked real rows: take the first ones it named.
+
+    No film is lost to a length the repair could not talk the reader out of. The cut is on the
+    record with its reason, the way the timing trim records the carriers it drops.
+    """
+    try:
+        kept, received = _trim_to_grant(raw, labels=labels, count=count)
+    except ValueError:
+        raise ValueError(f"Invalid moment pick after bounded repair: {error}") from None
+    if record is not None:
+        record(
+            {
+                "keep": kept,
+                "unused_slots": 0,
+                "why_fewer": "",
+                "reason": f"Kept the first {count} of the {received} labels the reader returned",
+                "review_stage": "pick-cap-trim",
+            }
+        )
+    return kept

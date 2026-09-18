@@ -9,7 +9,7 @@ from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     source_kind_marker,
 )
-from immich_memories.analysis.editorial_story_pick_pages import page_shares
+from immich_memories.analysis.editorial_story_pick_pages import MAX_LABELS_PER_ASK, page_shares
 from immich_memories.analysis.editorial_story_reading import PAGE_CHARS
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
@@ -610,3 +610,67 @@ def test_a_split_vote_between_two_stills_still_follows_the_source_order():
     selected, _read = pick_moving_story(judge, kinds=("still", "still", "still"))
 
     assert selected == ["choice-3"]
+
+
+def _near_total_choices(count):
+    """A month's worth of short rows: they all fit one request, so only the answer's size pages them."""
+    return [
+        DepictedChoice(
+            f"choice-{i:03d}",
+            "K01",
+            f"2030-05-{i // 24 + 1:02d}T{i % 24:02d}:30:00",
+            "A morning by the canal",
+            f"asset-{i:03d}",
+        )
+        for i in range(count)
+    ]
+
+
+def _pick_near_total(judge, *, count=65, choice_count=102):
+    records = {}
+    selected = pick_story_moments(
+        judge,
+        story={"key": "K01", "title": "A long month", "seen": {"days": 30}},
+        choices=_near_total_choices(choice_count),
+        count=count,
+        starred=lambda _c: False,
+        contract="Remember the month",
+        record=lambda name, value: records.__setitem__(name, value),
+    )
+    return selected, records["story-pick-K01"]
+
+
+def test_a_page_that_would_need_more_labels_than_one_answer_holds_is_split():
+    judge = PagingJudge()
+    selected, record = _pick_near_total(judge)
+
+    grants = [int(re.search(r"gets (\d+) picture", call["prompt"])[1]) for call in judge.calls]
+    assert max(grants) <= MAX_LABELS_PER_ASK
+    assert len(record["pages"]) > 1
+    # Bytes were never the reason: every row of the story fits one request together.
+    assert max(len(call["prompt"]) for call in judge.calls) * len(record["pages"]) < PAGE_CHARS * 2
+    assert sum(page["offered"] for page in record["pages"]) == 102
+    assert sum(page["share"] for page in record["pages"]) == 65
+    assert len(selected) == 65
+
+
+class OverrunJudge:
+    # WHY: the model boundary. This scripted reader answers the way the 30B answered the year
+    # that died: every label it was offered, again after the repair ask.
+    def __init__(self):
+        self.calls = []
+
+    def ask(self, stage, prompt, **_kwargs):
+        self.calls.append(stage)
+        return json.dumps({"keep": offered_rows(prompt), "unused_slots": 0})
+
+
+def test_a_reader_that_answers_with_every_label_still_leaves_a_film():
+    judge = OverrunJudge()
+    selected, record = _pick_near_total(judge)
+
+    trims = [v for v in record["vote_records"] if v.get("review_stage") == "pick-cap-trim"]
+    assert trims, record["vote_records"]
+    assert all(len(trim["keep"]) <= MAX_LABELS_PER_ASK for trim in trims)
+    assert len(selected) == 65
+    assert [c.taken for c in selected] == sorted(c.taken for c in selected)

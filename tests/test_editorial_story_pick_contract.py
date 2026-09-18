@@ -284,3 +284,75 @@ def test_a_valid_shortfall_without_a_reason_survives_its_repair():
 
     assert kept == ["M01", "M02"]
     assert recorded == [{"keep": ["M01", "M02"], "unused_slots": 1, "why_fewer": "not given"}]
+
+
+def test_an_overrun_pick_is_trimmed_to_the_grant_rather_than_ending_the_film():
+    """The shape that killed a year film: a near-total ask answered with every label, twice."""
+    offered = [f"M{i:03d}" for i in range(1, 103)]
+    everything = json.dumps({"keep": offered, "unused_slots": 0})
+    judge = Answers([everything, everything])
+    records = []
+
+    result = ask_moment_pick(
+        judge,
+        "pick",
+        "Choose at most 65 of the 102 moments.",
+        labels=set(offered),
+        count=65,
+        allow_fewer=True,
+        record=records.append,
+    )
+
+    assert result == offered[:65]
+    assert [c[0] for c in judge.calls] == ["pick", "pick-repair"]
+    assert records[0]["keep"] == offered[:65]
+    assert records[0]["review_stage"] == "pick-cap-trim"
+    assert "102" in records[0]["reason"] and "65" in records[0]["reason"]
+
+
+def test_a_pick_inside_the_grant_is_recorded_whole_and_never_trimmed():
+    judge = Answers([json.dumps({"keep": ["M03", "M01"], "unused_slots": 1, "why_fewer": "one"})])
+    records = []
+
+    result = ask_moment_pick(
+        judge,
+        "pick",
+        "Choose at most three rows.",
+        labels={"M01", "M02", "M03"},
+        count=3,
+        allow_fewer=True,
+        record=records.append,
+    )
+
+    assert result == ["M03", "M01"]
+    assert len(judge.calls) == 1
+    assert records == [{"keep": ["M03", "M01"], "unused_slots": 1, "why_fewer": "one"}]
+
+
+def test_an_overrun_naming_a_row_nobody_offered_still_fails():
+    answer = json.dumps({"keep": ["M01", "M02", "M99"], "unused_slots": 0})
+    judge = Answers([answer, answer])
+
+    with pytest.raises(ValueError, match="after bounded repair"):
+        ask_moment_pick(
+            judge,
+            "pick",
+            "Choose at most two rows.",
+            labels={"M01", "M02"},
+            count=2,
+            allow_fewer=True,
+        )
+
+
+def test_an_overrun_that_never_parsed_still_fails():
+    judge = Answers(["M01, M02, M03 and the rest"] * 2)
+
+    with pytest.raises(ValueError, match="after bounded repair"):
+        ask_moment_pick(
+            judge,
+            "pick",
+            "Choose at most two rows.",
+            labels={"M01", "M02"},
+            count=2,
+            allow_fewer=True,
+        )
