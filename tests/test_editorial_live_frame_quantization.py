@@ -11,6 +11,7 @@ from immich_memories.processing import editorial_live_render as renderer
 from immich_memories.processing import live_photo_merger as merger
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
+from tests.conftest import source_packet
 
 
 def source_probe(*, video=1778 / 600, container=2.966667, fps=1830 / 89, start=0.0):
@@ -41,11 +42,7 @@ class SourceProbes:
 
 def test_millisecond_container_end_is_bound_to_actual_last_packet():
     entry = LiveSourceEntry("still", "video", 0.0, 0.0, 2.967)
-    tail = {
-        "start_seconds": 1778 / 600 - 27 / 600,
-        "end_seconds": 1778 / 600,
-        "frame_seconds": 27 / 600,
-    }
+    tail = source_packet(pts=1751, ticks=27)
     probes = SourceProbes(source_probe(), tail)
     evidence = renderer._source_timing(probes, Path("original.mov"), entry)
     assert evidence["source_tail_seconds"] == pytest.approx(0.003666666666666707)
@@ -59,8 +56,7 @@ def test_millisecond_container_end_is_bound_to_actual_last_packet():
 )
 def test_tail_is_not_an_arbitrary_epsilon_or_substantial_padding(end, container, video):
     probes = SourceProbes(
-        source_probe(video=video, container=container),
-        {"start_seconds": video - 27 / 600, "end_seconds": video, "frame_seconds": 27 / 600},
+        source_probe(video=video, container=container), source_packet(pts=1751, ticks=27)
     )
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
@@ -69,14 +65,7 @@ def test_tail_is_not_an_arbitrary_epsilon_or_substantial_padding(end, container,
 
 
 def test_interval_cannot_consist_only_of_unavailable_tail():
-    probes = SourceProbes(
-        source_probe(),
-        {
-            "start_seconds": 1778 / 600 - 27 / 600,
-            "end_seconds": 1778 / 600,
-            "frame_seconds": 27 / 600,
-        },
-    )
+    probes = SourceProbes(source_probe(), source_packet(pts=1751, ticks=27))
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
             probes, Path("source.mov"), LiveSourceEntry("s", "v", 0.0, 2.965, 2.967)
@@ -195,7 +184,7 @@ def test_substantial_encoded_shortfall_fails_before_encoder(tmp_path, monkeypatc
 
 
 def test_source_interval_before_nonzero_video_start_is_rejected():
-    head = {"start_seconds": 1.0, "end_seconds": 1.0 + 1 / 30, "frame_seconds": 1 / 30}
+    head = source_packet(pts=600, ticks=20)
     probes = SourceProbes(source_probe(video=2.0, container=3.0, start=1.0), None, head)
     with pytest.raises(ValueError, match="exceeds actual video source"):
         renderer._source_timing(
