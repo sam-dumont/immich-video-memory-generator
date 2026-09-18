@@ -593,6 +593,13 @@ def _first_shareable(
     return None, checked
 
 
+# The story-level editorial context a refused carrier may lend its replacement. Everything
+# else — its standing, its depicted moment, its motion/timing/frame/speech/evidence fields —
+# is the refused asset's own; a replacement that inherited it would be judged and rendered
+# as a material it is not.
+STORY_CONTEXT_KEYS = ("story_episode", "story_role", "story_weight")
+
+
 def apply_gate(
     carriers: Sequence[dict],
     *,
@@ -638,11 +645,11 @@ def apply_gate(
             )
             continue
         used.add(str(replacement.get("asset_id")))
-        new = {
-            **carrier,
-            **replacement,
-            "why": f"{replacement.get('why') or 'shareable rung'} (replaces an unshareable carrier)",
-        }
+        new = (
+            {key: carrier[key] for key in STORY_CONTEXT_KEYS if key in carrier}
+            | dict(replacement)
+            | {"why": replacement.get("why") or "Audience-safe alternative within the same story"}
+        )
         kept.append(new)
         log["substituted"].append(
             {

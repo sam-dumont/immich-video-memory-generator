@@ -32,6 +32,7 @@ from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceO
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
+from immich_memories.analysis.editorial_source_route import retire_unprojectable
 from immich_memories.analysis.editorial_story_lookalike import picture_pair_relation
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
@@ -228,6 +229,7 @@ def _resolve_motion_and_timing(
     # Audience-eligible funded pictures and completion additions reuse prior results.
     run.carriers = retained_motion(run.carriers)
     run.motion_metrics = retained_motion.metrics
+    run.carriers = retire_unprojectable(run.carriers, source, run.cut_carriers)
     if ports.resolve_speech is not None:
         run.carriers = ports.resolve_speech(run.carriers)
     timing = source.render_timing
@@ -782,7 +784,7 @@ def _apply_audience_gate(
         verdict_of=gate.verdict_of,
         # Story-first has no ladder to fall back on: the moment's own other pictures are
         # the only replacements a held carrier can have.
-        pool_for=alternatives_pool(selection, material.units),
+        pool_for=alternatives_pool(selection, material.units, wall.anchor_label),
         audience=gate.audience,
     )
     open_share_log(share_log, funded_acquisition={})
