@@ -497,7 +497,7 @@ fallback: a producer the tier demands and cannot reach still stops the run.
 | `tier` | What runs | First pass over about ten thousand pictures on a Celeron J4125 NAS |
 | --- | --- | --- |
 | `full` | pixels, encoder + six heads, both detectors, captions | 4 days |
-| `no_captions` | pixels, encoder + six heads, both detectors | 3 h 41 min |
+| `no_captions` | pixels, encoder + six heads, both detectors | about 4 h |
 | `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
 
 `no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the

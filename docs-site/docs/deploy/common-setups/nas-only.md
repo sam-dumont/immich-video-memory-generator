@@ -35,12 +35,13 @@ the six context heads then give the family-viewing gate real evidence.
 | `tier` | First pass over about ten thousand pictures, DS423+ |
 |---|---|
 | `full` | 4 days |
-| **`no_captions`**, the NAS tier | **3 h 41 min** |
+| **`no_captions`**, the NAS tier | **about 4 h** |
 | `metadata_only` | minutes |
 
-Measured per picture on that box: 1.23 s for every producer except the caption (the DINOv2 embed
-is 0.53 s of it, the sensitive-content detector 0.40 s), against 30.9 s for one caption. Peak
-resident memory 570 MB. Every producer banks its answer, so these are first-pass costs.
+Measured per picture on that box on 17 September 2026: 1.4813 s for every producer except the
+caption, of which the two detectors are 0.7180 s and the DINOv2 encoder with its six context heads
+0.5990 s, against 30.9 s for one caption. The whole cell, preparation through render, peaked at
+2,633 MB resident. Every producer banks its answer, so these are first-pass costs.
 
 What each tier hands the editor is on [Running modes](../running-modes.md#the-preparation-tier).
 Below `full` the family-viewing gate can refuse but never clear, so a `sendable` export needs
@@ -124,8 +125,8 @@ cannot afford. Plan an overnight for the first pass over a big month and seconds
 after it: [Running modes](../running-modes.md#what-to-expect-on-a-first-run) has this box measured
 per phase against a Mac and a Kubernetes cluster. The render is what a warm cache never helps.
 Moving the picture facts to a GPU box with the
-[inference service](../installation/inference-service.md) took this NAS from 1.4404 s a picture to
-1.0865 on the demo month.
+[inference service](../installation/inference-service.md) took this NAS from 1.4813 s a picture to
+0.4460 on the fixture month, which is two thirds off preparation and nothing off the render.
 
 ### Long films
 
@@ -191,7 +192,7 @@ curl -s localhost:8094/v1/models
 
 Leave `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY` at 1: four image encodes at
 once share the threads of one, so raising it is slower. At 30.9 s a caption on four Celeron cores a
-13,552-picture year is almost five days, which is why this page recommends `no_captions`.
+13,544-picture year is almost five days, which is why this page recommends `no_captions`.
 [Caption server](../installation/caption-server.md) has the flags.
 
 Or point the container at a caption endpoint on another box and run the same scope on `full`:

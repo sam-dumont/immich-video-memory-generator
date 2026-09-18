@@ -116,6 +116,7 @@ class EditorialRunContext:
     attached_outcome_replay: AttachedOutcomeReplay | None = None
     render_timing: EditorialTimingPolicy | None = None
     hemisphere: Literal["north", "south"] = "north"
+    window_origin: str | None = None  # why a window nobody typed starts where it does
 
     def __post_init__(self) -> None:
         """Canonicalize exact windows while preserving every intentional gap."""
@@ -313,7 +314,7 @@ class RuntimeEditorialPlanner:
             "requested_assets": [_asset(source).id for source in sources],
             "include_live_photos": include_live_photos,
             "hdr_only": hdr_only,
-        }
+        } | ({"window_origin": context.window_origin} if context.window_origin else {})
         with EditorialAttempt(context.artifact_dir, request=request) as attempt:
             self.last_attempt_directory = attempt.directory
             self._backend._context = replace(context, artifact_dir=attempt.directory)
