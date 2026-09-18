@@ -30,9 +30,9 @@ media, Live Photo components handled the same way. Each run resumes where the la
 `for month in 1 2 3 …` loop works through a year.
 
 `--month` needs `--year`, and is refused without one. Before
-[#1054](https://github.com/sam-dumont/immich-video-memory-generator/issues/1054), `prepare` dropped
-`--month` without a word and prepared the whole calendar year, so a "month" timed on an older build
-is a year.
+[#1056](https://github.com/sam-dumont/immich-video-memory-generator/pull/1056), which landed after
+the release of `0.102.0`, `prepare` dropped `--month` without a word and prepared the whole calendar
+year, so a "month" timed on an older build is a year.
 
 ```text
 ℹ Preparing 1,440 pictures over 1 window(s)

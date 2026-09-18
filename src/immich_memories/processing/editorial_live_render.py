@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.processing.live_material import LiveRenderMaterial
-from immich_memories.processing.probe_cache import ProbeCache
+from immich_memories.processing.probe_cache import ProbeCache, trim_ticks
 from immich_memories.security import write_secret_file
 
 RENDER_VERSION = "editorial-live-render-v1"
@@ -106,12 +106,26 @@ def _source_timing(probes, path, entry) -> dict:
     return evidence
 
 
+def _declared_ticks(packet: dict, seconds: float, origin: float) -> int:
+    """A declared instant on the source's own packet clock, where ffmpeg will read it.
+
+    Seconds cannot answer this. A container end and a packet end are the same
+    rational quantity reached two ways -- a millisecond header and a tick count --
+    and their binary floats differ by ~1e-16, which once refused a source that sat
+    exactly on the boundary (#1079). Whole ticks make the boundary exact, and they
+    are the units the trim graph itself counts in.
+    """
+    clock = Fraction(str(packet["time_base"]))
+    return trim_ticks(seconds, clock) + trim_ticks(origin, clock)
+
+
 def _bind_leading_frame(probes, path, entry, origin: float, evidence: dict) -> None:
     """A video that begins within one frame after the declared start starts on that frame."""
     head = probes.first_video_frame(path)
     first = head["start_seconds"] - origin
     lead = first - entry.start
-    if entry.end <= first or lead < 0 or lead > head["frame_seconds"]:
+    lead_ticks = head["pts"] - _declared_ticks(head, entry.start, origin)
+    if entry.end <= first or not 0 <= lead_ticks <= head["duration_ticks"]:
         raise _reject(evidence | {"initial_packet": head, "source_lead_seconds": lead})
     evidence.update(
         initial_packet=head,
@@ -128,11 +142,14 @@ def _bind_trailing_frame(probes, path, entry, probe, origin: float, evidence: di
         raise _reject(evidence)
     tail = probes.last_video_frame(path)
     tail_start, tail_end = tail["start_seconds"] - origin, tail["end_seconds"] - origin
-    # The final packet may outlive the container it is counted in; a container end
-    # inside that packet is still covered by its frame, so only an end before the
-    # packet starts, or past its end by more than one frame, escapes the source.
+    # The material ends where the final packet ends, whatever the header claims. That
+    # packet may outlive the container it is counted in, and a container that counts
+    # one frame more than its packets deliver is covered by holding the final frame
+    # once; an end before the packet starts, or further out than that one held frame,
+    # is material this file does not have.
+    overrun = _declared_ticks(tail, entry.end, origin) - (tail["pts"] + tail["duration_ticks"])
     gap = entry.end - tail_end
-    if entry.start >= tail_end or entry.end < tail_start or gap > tail["frame_seconds"]:
+    if entry.start >= tail_end or entry.end < tail_start or overrun > tail["duration_ticks"]:
         raise _reject(evidence | {"final_packet": tail, "source_tail_seconds": gap})
     evidence.update(
         final_packet=tail,
