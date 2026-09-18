@@ -91,6 +91,8 @@ def test_production_speech_cuts_use_real_detector_and_reuse_facts(
         assets={"video": make_asset("video", duration=3)},
         companion_assets={},
         bank_dir=tmp_path / "banks",
+        # The speech facts are banked per asset since #1070, so the port reads the store.
+        store_path=tmp_path / "annotations.sqlite",
     )
     carrier = {"asset_id": "video", "kind": "video", "seconds": 1.0, "raw_seconds": 3.0}
     with ExitStack() as resources:
