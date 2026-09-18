@@ -89,6 +89,7 @@ def build_editorial_context(
         target_seconds=duration,
         duration_source=duration_source,
         hemisphere=resolved.preset_params.get("hemisphere", "north"),
+        window_origin=resolved.preset_params.get("window_origin"),
         render_timing=build_editorial_timing_policy(
             config=config,
             target_seconds=duration,

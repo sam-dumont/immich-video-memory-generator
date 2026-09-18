@@ -291,3 +291,45 @@ def test_a_missing_reader_leaves_the_template_alone() -> None:
     )
 
     assert (title, subtitle) == (None, None)
+
+
+def test_a_plan_that_stops_before_rendering_still_shows_the_title(capsys) -> None:
+    """--no-render answers "what will this film be called" without rendering it."""
+    from pathlib import Path
+
+    from immich_memories.cli._generation_preview import GenerationPreview, print_generation_preview
+    from immich_memories.processing.output_canvas import OutputCanvas
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    print_generation_preview(
+        GenerationPreview(
+            memory_type="special_day",
+            date_range="Mar 27",
+            video_candidates=1,
+            live_photo_candidates=0,
+            photo_candidates=9,
+            selected_videos=1,
+            selected_photos=9,
+            selected_duration=40.0,
+            timeline=TimelinePlan(
+                target_duration=60.0,
+                content_budget=50.0,
+                title_budget=9.5,
+                title_duration=3.5,
+                ending_duration=4.0,
+                divider_duration=2.0,
+                max_dividers=1,
+                transition_budget=4.0,
+            ),
+            canvas=OutputCanvas(width=1280, height=720, orientation="landscape"),
+            output_path=Path("/day.mp4"),
+            upload_intent=False,
+            music_policy="disabled",
+            title="Lakeside Half 2022",
+            subtitle="Ten kilometres of rain",
+        )
+    )
+
+    printed = capsys.readouterr().out
+    assert "Lakeside Half 2022" in printed
+    assert "Ten kilometres of rain" in printed

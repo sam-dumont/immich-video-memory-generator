@@ -247,6 +247,8 @@ Memory type presets:
   --memory-type season --season summer --year 2024
   --memory-type person_spotlight --person "Riley" --year 2024
   --memory-type multi_person --person "Riley" --person "Bob" --year 2024
+  --memory-type multi_person --person "Riley" --person "Bob"   (no dates: from
+      the first day both could be in a picture, read off their birth dates)
   --memory-type monthly_highlights --month 7 --year 2024
   --memory-type on_this_day
 ```

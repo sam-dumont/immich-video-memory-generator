@@ -106,6 +106,28 @@ Multi-person defaults to AND, so two people who were never in the same frame pro
 memory rather than two solo reels. Title screens and default filenames say whether the people are
 joined by AND or OR, so two runs cannot overwrite one another.
 
+### A people memory with no dates
+
+Leave the dates off a person or multi-person memory and it covers everything up to today, starting
+on the first day one of its pictures could exist:
+
+```bash
+immich-memories generate --memory-type multi_person \
+  --people-expression '("Riley" OR "Bob") AND "Sam"'
+```
+
+The start comes from the birth dates Immich holds for the people you named, and from the
+`birth_date` field in `people.yaml` where Immich has none. An AND waits for the youngest of the
+people it needs; an OR opens with the oldest of the people it accepts, and claims nothing at all
+when one of them has no birth date on record. A name nobody has a birth date for bounds nothing.
+
+So two grandparents AND a child born in 2024 prepares 2024 onward instead of the whole library,
+which is not a filter: no picture older than the child can hold the child. `runs why` on a picture
+from before that day says the window was never typed and where it came from.
+
+Dates you do give are never moved. If nobody named has a birth date anywhere, the ask is refused
+the way it always was, and the message says why.
+
 ### Birthday compilations
 
 `--birthday` turns a person spotlight into a different memory: the year of someone's life that

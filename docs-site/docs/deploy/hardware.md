@@ -39,14 +39,20 @@ One caveat on that pair: the two cells ran a patch release apart (0.96.0 and 0.9
 first CPU-encode attempt failed and was retried. Same node, same requests, same cache state, and the
 download and music phases came out within 6 % of each other.
 
+The 17 September matrix ran the pair again on `0.102.0` and got 231 s of render against 316 s, with
+no phase split because the NVENC cell's copy-out broke. That pair is worse controlled, not better:
+the NVENC Job asked for 1 CPU and the CPU-encode Job for 2, so the card finished 85 s sooner on half
+the CPU request. The table above is still the one to quote.
+
 Two things off the render move more than the encoder does:
 
 **The classifiers.** The ONNX encoder, its six context heads and both detectors open on whatever
 provider ONNX Runtime has. Put them on a card behind the
 [inference service](./installation/inference-service.md) and preparation changes shape: on the
-fixture month the same cluster pod paid **0.6083 s a picture** to a CPU-backed service and
-**0.1957 s** to a GPU-backed one. Over a real year of 13,552 pictures the GPU-backed service ran at
-0.2445 s a picture, 87 % of a 64-minute preparation.
+fixture month the same cluster pod paid **0.1863 s a picture** to a GPU-backed service, measured on
+17 September 2026, against **0.6083 s** to a CPU-backed one, measured on 12 September and not run
+again since. Over a real year of 13,544 pictures the GPU-backed service ran at 0.2509 s a picture,
+88 % of a 1 h 05 min preparation.
 
 **The title kernels.** They need a CPU with AVX when there is no card, and the Celeron J-series in a
 typical NAS has none. That is not a speed question but a "this machine cannot run them at all"
@@ -291,13 +297,13 @@ What a CPU-only box cannot hold is the vision reader, roughly 17 GB resident, an
 container. On a cheap VPS that means a second machine, not a slower first one. Read
 [one machine or two](./self-hosting.md#one-machine-or-two) before sizing anything. The caption server
 is separate: set `editorial.preparation.tier: no_captions` and this box prepares every producer the
-audience gate reads without one. On four Celeron cores that is 3 h 41 min for about ten thousand
-pictures instead of four days.
+audience gate reads without one. On four Celeron cores that is about 4 h for ten thousand pictures
+instead of four days.
 
 End-to-end numbers for a Mac, a Synology DS423+ and a Kubernetes cluster are on
 [Running modes](./running-modes.md#what-to-expect-on-a-first-run). The CPU-only row to read is the
-NAS: 1,483 s to render a 54-second film on four Celeron cores, against 81 s for the same length on
-the Mac. There is no card on that box to put the heads and detectors on, and every producer banks
+NAS: 1,573 s to render a 60-second film on four Celeron cores, against 114 s for the same length on
+the Mac, and that Mac render had another project's run beside it, so read it as a ceiling. There is no card on that box to put the heads and detectors on, and every producer banks
 its answer, so a second cut over the same period skips them entirely. If the classifiers are the
 bill, the way out is not a faster CPU but the
 [inference service](./installation/inference-service.md) on a box that has one.

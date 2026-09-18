@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
+from immich_memories.analysis.subject_framing import FaceBox
+
 
 @dataclass(frozen=True)
 class StoredPersonFact:
@@ -57,6 +59,7 @@ class StoredAssetAnnotationFacts:
 
     asset_id: str
     people: tuple[StoredPersonFact, ...] = ()
+    faces: tuple[FaceBox, ...] = ()
     description: str | None = None
     setting: str | None = None
     exposure: str | None = None
@@ -69,6 +72,7 @@ class StoredAssetAnnotationFacts:
 @dataclass
 class _MutableAssetFacts:
     people: list[StoredPersonFact] = field(default_factory=list)
+    faces: list[FaceBox] = field(default_factory=list)
     description: str | None = None
     setting: str | None = None
     exposure: str | None = None
@@ -145,6 +149,7 @@ class AssetAnnotationFactRepository:
             ((asset_id,) for asset_id in asset_ids),
         )
         self._read_people(connection, records)
+        self._read_faces(connection, records)
         self._read_descriptions(connection, records)
         self._read_description_fields(connection, records)
         self._read_flags(connection, records)
@@ -170,6 +175,26 @@ class AssetAnnotationFactRepository:
                     birth_date=_as_date(born),
                 )
             )
+
+    def _read_faces(
+        self, connection: sqlite3.Connection, records: dict[str, _MutableAssetFacts]
+    ) -> None:
+        try:
+            rows = connection.execute(
+                "SELECT b.asset_id, b.named, b.x1, b.y1, b.x2, b.y2 FROM face_boxes b "
+                "JOIN _annotation_wanted w ON w.asset_id = b.asset_id "
+                "ORDER BY b.asset_id, b.x1, b.y1, b.x2, b.y2"
+            )
+            for asset_id, named, x1, y1, x2, y2 in rows:
+                records[str(asset_id)].faces.append(
+                    FaceBox(
+                        x1=float(x1), y1=float(y1), x2=float(x2), y2=float(y2), named=bool(named)
+                    )
+                )
+        except sqlite3.OperationalError as exc:
+            # A store written before faces were banked reads complete without them.
+            if not _is_missing_table(exc, "face_boxes"):
+                raise
 
     def _read_descriptions(
         self, connection: sqlite3.Connection, records: dict[str, _MutableAssetFacts]
@@ -287,7 +312,7 @@ class AssetAnnotationFactRepository:
                     beats_a_still=bool(beats),
                 )
         except sqlite3.OperationalError as exc:
-            if not _is_missing_motion_table(exc):
+            if not _is_missing_table(exc, "motion_bursts"):
                 raise
 
 
@@ -295,6 +320,7 @@ def _freeze(asset_id: str, record: _MutableAssetFacts) -> StoredAssetAnnotationF
     return StoredAssetAnnotationFacts(
         asset_id=asset_id,
         people=tuple(record.people),
+        faces=tuple(record.faces),
         description=record.description,
         setting=record.setting,
         exposure=record.exposure,
@@ -338,9 +364,9 @@ def _as_float(value: object) -> float | None:
     return float(value) if isinstance(value, (int, float, str)) else None
 
 
-def _is_missing_motion_table(exc: sqlite3.OperationalError) -> bool:
+def _is_missing_table(exc: sqlite3.OperationalError, table: str) -> bool:
     message = str(exc).casefold()
-    return "no such table" in message and "motion_bursts" in message
+    return "no such table" in message and table in message
 
 
 def _clean(value: object) -> str:

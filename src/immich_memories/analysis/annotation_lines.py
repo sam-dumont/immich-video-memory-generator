@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
+from immich_memories.analysis.subject_framing import framing_annotation, subject_framing
 from immich_memories.store.asset_annotations import (
     AssetAnnotationFactBatch,
     AssetAnnotationFactRepository,
@@ -272,6 +273,9 @@ def _render_line(
     people = _people(candidate, facts)
     if people:
         parts.append(_render_people(people, candidate, people_context))
+    framing = subject_framing(facts.faces)
+    if framing is not None:
+        parts.append(framing_annotation(framing))
     head_bits = _head_bits(facts, head_versions)
     if head_bits:
         parts.append(", ".join(head_bits))

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from immich_memories.api.models import Asset
+from immich_memories.api.models import Asset, AssetFace
 
 RequestFn = Callable[..., Any]
 DEFAULT_DOWNLOAD_LIMIT = 25 * 1024**3
@@ -39,6 +39,15 @@ class AssetService:
         """Get a specific asset by ID."""
         data = await self._request("GET", f"/assets/{asset_id}")
         return Asset(**data)
+
+    async def get_asset_faces(self, asset_id: str) -> list[AssetFace]:
+        """Every face Immich found in one asset, with where each sits.
+
+        The asset endpoint names the people it recognised but hands back no
+        geometry for them, so the boxes have their own endpoint.
+        """
+        rows = await self._request("GET", "/faces", params={"id": asset_id})
+        return [AssetFace(**row) for row in rows] if isinstance(rows, list) else []
 
     async def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
         """Get asset thumbnail."""

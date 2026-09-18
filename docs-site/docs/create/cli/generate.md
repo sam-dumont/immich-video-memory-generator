@@ -64,6 +64,10 @@ immich-memories generate --year 2025 --birthday --person "Emma" --duration 900
 immich-memories generate --memory-type multi_person --year 2025 \
   --people-expression '("Alex Smith" OR "Morgan Smith") AND "Riley Smith"'
 
+# The same people, forever: no dates, so the window starts at their birth dates
+immich-memories generate --memory-type multi_person \
+  --people-expression '("Alex Smith" OR "Morgan Smith") AND "Riley Smith"'
+
 # This day across the years, pinned so the run is repeatable
 immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
 
@@ -84,6 +88,10 @@ Three things the examples hide:
 
 - `--people-expression` takes exact library names, binds `AND` tighter than `OR`, and works on
   date-range memories (months, years, seasons). Trips, albums and single-person presets refuse it.
+- A person or multi-person memory with no dates at all is not an error. It runs from the first day
+  one of its pictures could exist to today, read off the birth dates Immich holds (and `people.yaml`
+  where Immich holds none). See [memory types](../memory-types.mdx#a-people-memory-with-no-dates).
+  With no birth date on record anywhere it still asks for `--year`, and says why.
 - Moving holidays are computed for each year (Easter, Thanksgiving, Mother's and Father's Day), with
   a window of two days either side. A holiday cut runs 60 seconds unless you pass `--duration`.
 - `special_day` works on any day, catalogued or not, and refuses only without `--day`. A day with a
@@ -168,4 +176,6 @@ still needs. Nothing is selected, so there is nothing to trace.
 
 `--no-render` selects for real, with every reading and every gate, and stops at the encode. The
 pictures it lists are the pictures it would have shipped, and the run is on record like any other.
-Use it to compare settings, or to time selection without paying for an encode you will delete.
+The plan it prints ends with the title and subtitle the film would open on, so a title can be tried
+without producing a file. Use it to compare settings, or to time selection without paying for an
+encode you will delete.

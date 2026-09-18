@@ -133,6 +133,8 @@ def _finish_without_rendering(
     no_music: bool,
     progress,
     task,
+    title: str | None,
+    subtitle: str | None,
 ) -> tuple[Path, bool, str | None]:
     """Print the resolved plan and return without crossing the render boundary.
 
@@ -162,6 +164,8 @@ def _finish_without_rendering(
         output_path=output_path,
         upload_intent=should_upload,
         music_policy=music_policy(config=config, music=music, no_music=no_music),
+        title=title,
+        subtitle=subtitle,
     )
     print_generation_preview(preview)
     progress.update(task, completed=100)
@@ -537,32 +541,6 @@ def run_pipeline_and_generate(
     album_name = album or config.upload.album_name
     person_name = resolved.person_name
 
-    if _stops_before_rendering(dry_run=dry_run, no_render=no_render):
-        return _finish_without_rendering(
-            pipeline_result=pipeline_result,
-            timeline_plan=timeline_plan,
-            assets=assets,
-            photo_assets=photo_assets,
-            config=config,
-            output_canvas=output_canvas,
-            output_path=output_path,
-            memory_type=memory_type,
-            date_range=date_range,
-            should_upload=should_upload,
-            album_name=album_name,
-            music=music,
-            no_music=no_music,
-            progress=progress,
-            task=task,
-        )
-
-    def gen_progress(phase: str, frac: float, msg: str) -> None:
-        scaled = 20 + int(frac * 80)
-        progress.update(task, completed=scaled, description=msg)
-
-    def generation_phase(event) -> None:
-        progress.update(task, description=event.message)
-
     from immich_memories.cli._llm_title import resolve_cli_title
 
     def album_of_the_cut() -> str | None:
@@ -582,6 +560,34 @@ def run_pipeline_and_generate(
         memory_preset_params=resolved.preset_params,
         album_lookup=album_of_the_cut,
     )
+
+    if _stops_before_rendering(dry_run=dry_run, no_render=no_render):
+        return _finish_without_rendering(
+            pipeline_result=pipeline_result,
+            timeline_plan=timeline_plan,
+            assets=assets,
+            photo_assets=photo_assets,
+            config=config,
+            output_canvas=output_canvas,
+            output_path=output_path,
+            memory_type=memory_type,
+            date_range=date_range,
+            should_upload=should_upload,
+            album_name=album_name,
+            music=music,
+            no_music=no_music,
+            progress=progress,
+            task=task,
+            title=resolved_title,
+            subtitle=resolved_subtitle,
+        )
+
+    def gen_progress(phase: str, frac: float, msg: str) -> None:
+        scaled = 20 + int(frac * 80)
+        progress.update(task, completed=scaled, description=msg)
+
+    def generation_phase(event) -> None:
+        progress.update(task, description=event.message)
 
     # WHY: Photos are now in selected_clips as IMAGE-type assets.
     # generate.py's _extract_clips will detect IMAGE type and render them.

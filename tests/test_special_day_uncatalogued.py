@@ -106,3 +106,40 @@ def test_a_catalogued_day_with_nothing_written_on_it_is_not_refused(tmp_path) ->
 
     assert not params["title"]
     assert create_preset(MemoryType.SPECIAL_DAY, **params).name == "12 June 2016"
+
+
+_UNNAMED = date(2016, 8, 13)
+_UNNAMED_ROW = {
+    "day": "2016-08-13",
+    "title": "",
+    "subtitle": "",
+    "what": "An outdoor concert in a field",
+    "photos": 180,
+    "active_hours": 11,
+}
+
+
+@pytest.fixture
+def unnamed_catalogue(tmp_path: Path):
+    """A row the scan described but never named."""
+    path = tmp_path / "special-days.json"
+    path.write_text(json.dumps([_UNNAMED_ROW]))
+    # WHY: the catalogue lives in the real home directory, which a unit test must not read.
+    with patch("immich_memories.automation.catalogue.default_catalogue_path", lambda: path):
+        yield path
+
+
+def test_a_row_the_scan_described_but_never_named_hands_its_words_over_as_a_fact(
+    unnamed_catalogue,
+) -> None:
+    """A description is a fact about the day, not the title of a film about it.
+
+    Handing it over as the title pinned the memory before anything else on the
+    ladder ran, so the reader was never asked and the album the pictures sit in
+    was never looked up.
+    """
+    params = resolve_special_day(_UNNAMED, "special_day")
+
+    assert params is not None
+    assert not params["title"]
+    assert params["what"] == "An outdoor concert in a field"

@@ -68,6 +68,7 @@ from immich_memories.analysis.editorial_structure_record import (
     provider_metrics,
     shave_content_duration,
 )
+from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -709,6 +710,7 @@ def _story_selection(
         moment_assets=pool.moment_assets,
         lines=material.story_lines,
         flagged=lambda asset_id: bool(FLAGGED_LINE.search(source.annotations.get(asset_id, ""))),
+        subject=lambda asset_id: framing_visibility(source.annotations.get(asset_id, "")),
         life=lambda asset_id: _shows_life(material, unit_of, asset_id),
         full_lines=source.annotations,
         contract=contract + "\n\n" + source.intent.story_prompt_block(),
