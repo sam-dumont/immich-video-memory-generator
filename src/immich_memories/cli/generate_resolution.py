@@ -48,7 +48,11 @@ def resolve_special_day(
     discovering it, and a catalogue built by a render is a catalogue nobody
     judged.
     """
-    from immich_memories.automation.catalogue import default_catalogue_path
+    from immich_memories.automation.catalogue import (
+        SCOPE_UNCATALOGUED,
+        default_catalogue_path,
+        entries_from,
+    )
 
     if event_id is not None and (day is None or memory_type != "special_day"):
         raise click.UsageError("--event-id requires --memory-type special_day and --day")
@@ -63,22 +67,31 @@ def resolve_special_day(
     if memory_type != "special_day":
         raise click.UsageError("--day requires --memory-type special_day or on_this_day")
 
-    entry = _catalogued_event(default_catalogue_path(), day, event_id)
+    catalogue = entries_from(default_catalogue_path())
+    entry = _catalogued_event(catalogue, day, event_id)
     if entry is None:
-        return {"day": day, "window": None, "title": "", "subtitle": "", "active_hours": 0.0}
-    return _special_day_params(entry)
+        return {
+            "day": day,
+            "window": None,
+            "run": None,
+            "window_origin": SCOPE_UNCATALOGUED,
+            "title": "",
+            "subtitle": "",
+            "active_hours": 0.0,
+        }
+    return _special_day_params(entry, {other.day for other in catalogue if other.day != day})
 
 
-def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay | None:
+def _catalogued_event(
+    catalogue: list[DiscoveredDay], day: date, event_id: str | None
+) -> DiscoveredDay | None:
     """The row for a day, or nothing when the catalogue has never heard of it.
 
     An explicit --event-id still has to match something: it selects between
     rows the catalogue holds, so a miss there is a typo rather than a day the
     scan has not reached.
     """
-    from immich_memories.automation.catalogue import entries_from
-
-    matches = [entry for entry in entries_from(path) if entry.day == day]
+    matches = [entry for entry in catalogue if entry.day == day]
     if event_id is not None:
         matches = [entry for entry in matches if entry.event_id == event_id]
         if not matches:
@@ -90,7 +103,7 @@ def _catalogued_event(path: Path, day: date, event_id: str | None) -> Discovered
     return matches[0] if matches else None
 
 
-def _special_day_params(entry: DiscoveredDay) -> dict[str, Any]:
+def _special_day_params(entry: DiscoveredDay, other_days: set[date]) -> dict[str, Any]:
     """The row as preset parameters, with its description kept apart from its title.
 
     A row the scan described but never named carries words like "an outdoor
@@ -99,12 +112,18 @@ def _special_day_params(entry: DiscoveredDay) -> dict[str, Any]:
     never asked and the album the pictures sit in is never looked up. It goes
     over as ``what`` instead: a fact the title prompt is told, and the preset's
     own fallback name when no reader answers.
-    """
-    from immich_memories.automation.catalogue import hours_awake, scope_window
 
+    ``other_days`` are the dates the rest of the catalogue claims, which is what
+    keeps a run that ends on one of them from swallowing the occasion there.
+    """
+    from immich_memories.automation.catalogue import hours_awake, scope_of
+
+    scope = scope_of(entry, other_days=other_days)
     params: dict[str, Any] = {
         "day": entry.day,
-        "window": scope_window(entry),
+        "window": scope.window,
+        "run": scope.run,
+        "window_origin": scope.origin,
         "title": entry.title.strip(),
         "subtitle": entry.subtitle,
         "what": entry.what.strip(),

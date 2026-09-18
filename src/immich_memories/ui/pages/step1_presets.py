@@ -503,20 +503,26 @@ def _empty_catalogue_message(path: Path) -> str:
     )
 
 
-def _choose_special_day(entry: DiscoveredDay) -> None:
+def _choose_special_day(entry: DiscoveredDay, other_days: set[date]) -> None:
     """Scope the wizard to one catalogued day, under the name it was found by."""
-    from immich_memories.automation.catalogue import scope_window
+    from immich_memories.automation.catalogue import hours_awake, scope_of
 
+    # Through the same helper the CLI uses, so a window that hides its run is
+    # dropped and a run that outlasts its date is kept on both surfaces, rather
+    # than only where it was noticed.
+    scope = scope_of(entry, other_days=other_days)
     state = get_app_state()
     state.memory_preset_params = {
         "day": entry.day,
-        # Through the same helper the CLI uses, so a window that hides its day
-        # is dropped on both surfaces rather than only where it was noticed.
-        "window": scope_window(entry),
+        "window": scope.window,
+        "run": scope.run,
+        "window_origin": scope.origin,
         "title": _day_name(entry),
         "subtitle": entry.subtitle,
         "photos": entry.photos,
-        "active_hours": entry.active_hours,
+        # The run's own span, not the count of clock hours it touched: that
+        # saturates at 24 and a run can outlast a calendar day.
+        "active_hours": hours_awake(entry),
     }
     if entry.event_id is not None:
         state.memory_preset_params["event_id"] = entry.event_id
@@ -539,7 +545,8 @@ def _render_special_day_params(state: AppState) -> None:
         from immich_memories.automation.catalogue import default_catalogue_path, entries_from
 
         path = default_catalogue_path()
-        rows = _special_day_options(entries_from(path), date.today())
+        catalogue = entries_from(path)
+        rows = _special_day_options(catalogue, date.today())
         container.clear()
         with container:
             if not rows:
@@ -559,7 +566,10 @@ def _render_special_day_params(state: AppState) -> None:
                 options={i: label for i, (_, label) in enumerate(rows)},
                 label="Pick a day",
                 value=next((i for i, (e, _) in enumerate(rows) if e.day == chosen), None),
-                on_change=lambda e: _choose_special_day(rows[e.value][0]),
+                on_change=lambda e: _choose_special_day(
+                    rows[e.value][0],
+                    {other.day for other in catalogue if other.day != rows[e.value][0].day},
+                ),
             ).classes("w-full")
 
     # A local file rather than an Immich query, so a frame is the whole wait.
