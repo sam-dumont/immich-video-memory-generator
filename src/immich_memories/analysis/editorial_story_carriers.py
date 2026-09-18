@@ -23,6 +23,7 @@ from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     moving_picture_row,
 )
+from immich_memories.analysis.editorial_story_places import PlaceShares
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_shortlist import (
     DepictedChoice,
@@ -222,10 +223,14 @@ class CarrierAdmission:
         calls: dict[str, int],
         mechanical_picks: bool = False,
         lookalike: LookAlikeCheck | None = None,
+        places: PlaceShares | None = None,
+        place_of: Callable[[str], str] = lambda _asset: "",
     ) -> None:
         self._judge = judge
         self._mechanical_picks = mechanical_picks
         self.lookalike = lookalike or LookAlikeCheck(None, slots=slots)
+        self.places = places or PlaceShares({}, {})
+        self._place_of = place_of
         self.stories = stories
         self.choices_of = choices_of
         self._unit_by_asset = unit_by_asset
@@ -498,33 +503,35 @@ class CarrierAdmission:
         return _spaced(chosen, self._unit_by_asset, already=self.carriers)
 
     def _commit(self, picks, short_of, open_of) -> int:
-        added = 0
-        for index, s in enumerate(self.stories, 1):
-            for c in picks.get(s["key"], []):
-                if self.parts.limit is not None and c.key in self._used_choice_keys:
-                    continue
-                self._used_choice_keys.add(c.key)
-                good = [
-                    a
-                    for a in c.members
-                    if self.free(a) and self.gate.stands(a, s["weight"], s["key"])
-                ]
-                if not good:
-                    continue
-                asset, carrier, rest = self.carrier_for(c, s, index, good)
-                if carrier is None or self._repeats_the_story(s, c, index, asset, carrier):
-                    continue
-                # A spare replaces this carrier rather than joining it, so the pool is read
-                # while its own partition slot is still free.
-                self._admit(s, c, carrier, [*rest, *self._spares(s, asset, short_of, open_of)])
-                added += 1
-        return added
+        return sum(
+            self._commit_one(s, c, index, short_of, open_of)
+            for index, s in enumerate(self.stories, 1)
+            for c in picks.get(s["key"], [])
+        )
+
+    def _commit_one(self, s, c, index, short_of, open_of) -> int:
+        if self.parts.limit is not None and c.key in self._used_choice_keys:
+            return 0
+        self._used_choice_keys.add(c.key)
+        good = [a for a in c.members if self.free(a) and self.gate.stands(a, s["weight"], s["key"])]
+        if not good:
+            return 0
+        asset, carrier, rest = self.carrier_for(c, s, index, good)
+        if carrier is None or self._repeats_the_story(s, c, index, asset, carrier):
+            return 0
+        if self._crowds_its_place(s, c, index, asset):
+            return 0
+        # A spare replaces this carrier rather than joining it, so the pool is read
+        # while its own partition slot is still free.
+        self._admit(s, c, carrier, [*rest, *self._spares(s, asset, short_of, open_of)])
+        return 1
 
     def _admit(self, s, choice, carrier, alternatives) -> None:
         self._taken.add(carrier["asset_id"])
         self.carriers.append(carrier)
         self.chosen_by_story[s["key"]].append(choice.key)
         self.alternatives_of[carrier["asset_id"]] = alternatives
+        self.places.took(s["key"], self._place_of(carrier["asset_id"]))
 
     def _repeats_the_story(self, s, choice, index, asset, carrier) -> bool:
         """A further picture of a story that looks like one it already holds waits its turn."""
@@ -541,6 +548,23 @@ class CarrierAdmission:
             return True
 
         self.lookalike.refuse(s["key"], asset, repeated, readmit)
+        return True
+
+    def _crowds_its_place(self, s, choice, index, asset) -> bool:
+        """A picture of a place that already holds its share of the film waits its turn."""
+        place = self._place_of(asset)
+        if not self.places.full(s["key"], place):
+            return False
+        self.places.refused(s["key"], place, asset)
+
+        def readmit() -> bool:
+            asset_id, row, rest = self.carrier_for(choice, s, index, [asset])
+            if row is None:
+                return False
+            self._admit(s, choice, row, rest)
+            return True
+
+        self.lookalike.crowds(s["key"], asset, place, readmit)
         return True
 
     def _spares(self, s, asset, short_of, open_of) -> list[str]:
@@ -653,6 +677,8 @@ class CarrierAdmission:
             if len(self.carriers) >= self.slots:
                 break
             if not (self.free(asset) and self.gate.stands(asset, s["weight"], s["key"])):
+                continue
+            if self.places.full(s["key"], self._place_of(asset)):
                 continue
             family, unit = self._unit_by_asset[asset]
             row = self._carrier_row(unit, family, s, choice, index, asset)

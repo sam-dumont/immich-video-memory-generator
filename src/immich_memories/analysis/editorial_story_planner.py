@@ -37,6 +37,7 @@ from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     source_kind_marker,
 )
+from immich_memories.analysis.editorial_story_places import place_shares
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     read_period_story,
@@ -655,6 +656,12 @@ def select_story_first(
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
     slots = max(1, int(target_seconds // seconds_per_slot))
     reserve_trip_depth(stories, slots=slots, film_days=_photographed_days(event_units))
+
+    def place_of(asset: str) -> str:
+        moment = unit_by_asset.get(asset, (None, {}))[1].get("moment")
+        return str(place_of_moment.get(moment) or "").split(";")[0].split(":", 1)[-1].strip()
+
+    places = place_shares(stories, story_units, place_of=place_of, slots=slots, journey=journey)
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
     # 4. The model inventory, per day episode inside a funded story, over the capture groups that
@@ -731,8 +738,11 @@ def select_story_first(
         slots=slots,
         calls=calls,
         lookalike=LookAlikeCheck(looks_alike, slots=slots),
+        places=places,
+        place_of=place_of,
     )
     admission.run()
+    record("story-places", places.record())
 
     selection = StorySelection(
         admission.carriers,
