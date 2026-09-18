@@ -121,7 +121,7 @@ def output_options(command: FC) -> FC:
             "-d",
             type=int,
             default=None,
-            help="Target duration in seconds (default: from memory type preset)",
+            help="Target duration in seconds (default: fitted to the material the period holds)",
         ),
         click.option(
             "--short-form",

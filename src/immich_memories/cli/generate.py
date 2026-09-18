@@ -51,6 +51,11 @@ from immich_memories.cli.generate_resolution import (
 )
 from immich_memories.filename_builder import build_memory_output_path, normalize_output_path
 from immich_memories.memory_types.date_builders import BIRTHDAY_HISTORY_FROM, birthday_anchor
+from immich_memories.planning.auto_duration import (
+    DURATION_FROM_DURATION_FLAG,
+    DURATION_FROM_MATERIAL,
+    DURATION_FROM_SHORT_FORM,
+)
 from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange
 
@@ -303,6 +308,7 @@ def register_generate_commands(main: click.Group) -> None:
                 else "person_spotlight"
             )
 
+        duration_was_given = duration is not None
         short = resolve_short_form(
             short_form,
             duration=duration,
@@ -311,18 +317,23 @@ def register_generate_commands(main: click.Group) -> None:
             is not click.core.ParameterSource.DEFAULT,
         )
         duration, orientation = short.duration, short.orientation
+        duration_source = (
+            DURATION_FROM_DURATION_FLAG
+            if duration_was_given
+            else DURATION_FROM_SHORT_FORM
+            if short_form is not None
+            else DURATION_FROM_MATERIAL
+        )
 
-        # Resolve duration: CLI --duration > memory type default > date-range scaling
-        # Trips and albums defer Auto until discovery supplies their actual media.
-        if duration is None and not from_album and memory_type != "trip":
-            duration = default_duration_for_type(
-                memory_type,
-                date_range,
-                special_day,
-                primary_window=next(iter(date_ranges), None),
-            )
-            if duration is None:
-                duration = duration_from_date_range(date_range)
+        # The preset is the length this type asks for at ordinary density, and
+        # the floor a period with nothing in it keeps. Discovery fits the real
+        # length to the material it finds (#1082).
+        preset_duration = default_duration_for_type(
+            memory_type,
+            date_range,
+            special_day,
+            primary_window=next(iter(date_ranges), None),
+        ) or duration_from_date_range(date_range)
 
         table = _build_params_table(
             config=config,
@@ -412,6 +423,7 @@ def register_generate_commands(main: click.Group) -> None:
                             upload_to_immich=upload_to_immich,
                             album=album,
                             duration=duration,
+                            duration_source=duration_source,
                             orientation=orientation,
                             source=source,
                             memory_key=memory_key,
@@ -458,6 +470,7 @@ def register_generate_commands(main: click.Group) -> None:
                             upload_to_immich=upload_to_immich,
                             album=album,
                             duration=duration,
+                            duration_source=duration_source,
                             requested_start=date_range.start.date() if start and end else None,
                             requested_end=date_range.end.date() if start and end else None,
                             source=source,
@@ -605,6 +618,8 @@ def register_generate_commands(main: click.Group) -> None:
                         config=config,
                         progress=progress,
                         duration=duration,
+                        duration_source=duration_source,
+                        preset_duration=preset_duration,
                         transition=effective_transition,
                         music=resolved_music,
                         music_volume=music_volume,

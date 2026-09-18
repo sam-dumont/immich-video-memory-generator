@@ -11,10 +11,7 @@ from click.testing import CliRunner
 from immich_memories.analysis.trip_detection import DetectedTrip
 from immich_memories.api.models import Asset
 from immich_memories.cli import main
-from immich_memories.cli._pipeline_runner import (
-    _resolve_requested_duration,
-    run_pipeline_and_generate,
-)
+from immich_memories.cli._pipeline_runner import _decide_duration, run_pipeline_and_generate
 from immich_memories.cli._trip_generation import _print_trip_result
 from immich_memories.config_loader import Config
 
@@ -90,13 +87,11 @@ def test_trip_click_reaches_media_resolver_after_normal_discovery(
             incoming=requested_duration,
             product=kwargs["memory_type"],
             photos=[photo.id for photo in kwargs["photos"]],
-            total=_resolve_requested_duration(requested_duration, **kwargs),
+            total=_decide_duration(requested_duration, **kwargs).seconds,
         )
         raise _ResolvedBeforePlanning()
 
-    monkeypatch.setattr(
-        "immich_memories.cli._pipeline_runner._resolve_requested_duration", resolve_then_stop
-    )
+    monkeypatch.setattr("immich_memories.cli._pipeline_runner._decide_duration", resolve_then_stop)
     monkeypatch.setattr(
         "immich_memories.cli._trip_generation.run_pipeline_and_generate", record_pipeline_entry
     )
@@ -143,15 +138,16 @@ def test_trip_click_reaches_media_resolver_after_normal_discovery(
 @pytest.mark.parametrize(
     ("args", "expected"),
     [
-        (["--memory-type", "monthly_highlights", "--year", "2031", "--month", "4"], 60.0),
-        (["--memory-type", "year_in_review", "--year", "2031"], 600.0),
-        (["--start", "2031-04-08", "--end", "2031-04-19"], 30.0),
+        (["--memory-type", "monthly_highlights", "--year", "2031", "--month", "4"], None),
+        (["--memory-type", "year_in_review", "--year", "2031"], None),
+        (["--start", "2031-04-08", "--end", "2031-04-19"], None),
         (["--from-album", "test-album"], None),
         (["--from-album", "test-album", "--duration", "90"], 90.0),
+        (["--memory-type", "year_in_review", "--year", "2031", "--short-form", "30"], 30.0),
     ],
 )
-def test_other_click_duration_defaults_are_preserved(cli_config, monkeypatch, args, expected):
-    """The deferred trip duration must not change other product defaults."""
+def test_only_a_pinned_length_is_settled_before_discovery(cli_config, monkeypatch, args, expected):
+    """Every memory type now defers to its material unless a flag pinned a length."""
     observed = {}
 
     def before_client(**kwargs):

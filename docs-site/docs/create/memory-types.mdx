@@ -8,10 +8,11 @@ import Video from '@site/src/components/Video';
 # Memory types
 
 Ten types. Most of them are a date range with a filter on it; four are not, and those are the ones
-worth reading about. Every duration below is an editable default, not a cap: `--duration` on the
-CLI, or **Auto duration** off on the [Memory page](./web-ui.mdx).
+worth reading about. The length below is what a type asks for at ordinary density, not a cap and not
+a promise: the run fits it to the material the period turns out to hold. `--duration` on the CLI
+overrides that, and so does **Auto duration** off on the [Memory page](./web-ui.mdx).
 
-| Type | Covers | Default length |
+| Type | Covers | Length at ordinary density |
 |---|---|---|
 | `year_in_review` | one calendar year | 10 min |
 | `monthly_highlights` | one month | 60 s |
@@ -23,6 +24,31 @@ CLI, or **Auto duration** off on the [Memory page](./web-ui.mdx).
 | `trip` | one GPS-detected trip | 30 s + 10 s an active day |
 | `album` | one Immich album | 4 s an item in the UI |
 | `special_day` | one day a scan flagged | 30 s + 6 s an active hour |
+
+## How long a film runs
+
+A film's length is decided after discovery, not before it, so a thin month gets a short film and a
+crowded one gets a longer film. Four things can set it, and the run log and the run record both say
+which one did:
+
+| What set it | When |
+|---|---|
+| `--duration` | you passed a number |
+| `--short-form` | you picked a short-form preset and passed no `--duration` |
+| the material | neither flag, and the period holds pictures |
+| the preset floor | neither flag, and the period holds nothing to measure |
+
+A trip and an album count active days: 30 s plus 10 s an active day, held between 60 s and 5 min. An
+occasion counts active hours: 30 s plus 6 s an active hour, held between 60 s and 3 min. Every other
+type counts **photographed days** against the days its period covers. One day in three carrying
+pictures is the density the lengths above were written for, so a period at that density keeps its
+length; a thinner period shortens and a denser one grows, between half and one and a half times it.
+Growth follows the square root of the density, because the twentieth photographed day adds less to a
+film than the second.
+
+Whatever the curve asks for, a film never runs longer than the varied excerpts its period can fill,
+counted a day at a time and capped at 30 s a day. That is the same bound that stops a trip from
+promising five minutes it cannot deliver.
 
 Repeating `--person` on any of these means pictures holding **every** name. `--person-match or`
 makes it a union, and the web UI's **Together / Any of these people** toggle is the same switch.

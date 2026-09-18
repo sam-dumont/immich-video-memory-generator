@@ -67,6 +67,7 @@ from immich_memories.cache.editorial_verdicts import EditorialVerdicts
 from immich_memories.operations.caption_origins import caption_origin_summary
 from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate, announcing_stages
 from immich_memories.people.context import PersonPromptContext
+from immich_memories.planning.auto_duration import DURATION_FROM_DURATION_FLAG
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
 from immich_memories.store.episode_readings import EpisodeReadingProducer, EpisodeReadingStore
@@ -110,6 +111,9 @@ class EditorialRunContext:
     owner_excluded_asset_ids: tuple[str, ...] = ()
     owner_required_asset_ids: tuple[str, ...] = ()
     target_source: str = "runtime"
+    # What set target_seconds: --duration, --short-form, the material or the
+    # preset floor. Carried so a run record can say why a film is this long.
+    duration_source: str = DURATION_FROM_DURATION_FLAG
     base_brief: str | None = None
     motion_outcome_replay: MotionOutcomeReplay | None = None
     person_expression: PersonExpression | None = None
@@ -307,6 +311,7 @@ class RuntimeEditorialPlanner:
             "key": context.key,
             "product": context.product,
             "target_seconds": context.target_seconds,
+            "duration_source": context.duration_source,
             "audience": "family",
             "hemisphere": context.hemisphere,
             "date_ranges": [[r.start.isoformat(), r.end.isoformat()] for r in context.case_ranges],

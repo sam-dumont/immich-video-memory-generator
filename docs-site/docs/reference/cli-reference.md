@@ -279,7 +279,7 @@ immich-memories generate [OPTIONS]
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
-| `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
+| `--duration`, `-d` | integer | - | Target duration in seconds (default: fitted to the material the period holds) |
 | `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
 | `--orientation` | choice: `landscape` \| `portrait` \| `square` \| `auto` | auto | Output orientation (auto follows the final selected cut) |
 | `--scale-mode`, `-s` | choice: `fit` \| `blur` | - | How to fill an aspect mismatch: blurred background or black bars (default: from config, else blur) |

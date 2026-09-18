@@ -14,6 +14,9 @@ The CLI and web UI pass the same timed source clips to the editor, including
 short videos and those with unknown duration. The editor checks whether they can
 be used. The selection count includes photos when photos are enabled.
 
+Without `--duration` the length comes from the material the period holds, and the run prints what
+decided it: see [how long a film runs](../memory-types.mdx#how-long-a-film-runs).
+
 `--duration` budgets the finished film: selection reserves the opening, ending and
 dividers, and credits expected crossfade overlap. Smart transitions use stable source
 IDs, so rerendering the same cut keeps the same transition choices. A selection with

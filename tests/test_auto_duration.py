@@ -8,9 +8,13 @@ import pytest
 
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.cli._date_resolution import default_duration_for_type
-from immich_memories.cli._pipeline_runner import _resolve_requested_duration
+from immich_memories.cli._pipeline_runner import _decide_duration
 from immich_memories.config_loader import Config
-from immich_memories.planning.auto_duration import resolve_trip_auto_duration
+from immich_memories.planning.auto_duration import (
+    DURATION_FROM_DURATION_FLAG,
+    DURATION_FROM_MATERIAL,
+    resolve_trip_auto_duration,
+)
 from immich_memories.timeperiod import DateRange
 
 
@@ -42,6 +46,25 @@ def _dense_trip(active_days: int) -> tuple[list[VideoClipInfo], list[Asset]]:
         clips.extend(_clip(f"v-{day}-{index}", when) for index in range(3))
         photos.extend(_asset(f"p-{day}-{index}", when, AssetType.IMAGE) for index in range(4))
     return clips, photos
+
+
+def _decide_trip(
+    requested: float | None,
+    clips: list[VideoClipInfo],
+    photos: list[Asset],
+    memory_type: str = "trip",
+):
+    start = datetime(2026, 7, 1, tzinfo=UTC)
+    return _decide_duration(
+        requested,
+        requested_source=None,
+        preset_duration=None,
+        memory_type=memory_type,
+        clips=clips,
+        photos=photos,
+        windows=(DateRange(start=start, end=start + timedelta(days=11)),),
+        config=Config(),
+    )
 
 
 def _resolve(clips: list[VideoClipInfo], photos: list[Asset]):
@@ -117,29 +140,19 @@ def test_empty_trip_has_zero_auto_duration() -> None:
 def test_cli_auto_trip_resolves_after_media_discovery() -> None:
     clips, photos = _dense_trip(12)
 
-    resolved = _resolve_requested_duration(
-        None,
-        memory_type="trip",
-        clips=clips,
-        photos=photos,
-        config=Config(),
-    )
+    resolved = _decide_trip(None, clips, photos)
 
-    assert resolved == 150.0
+    assert resolved.seconds == 150.0
+    assert resolved.source == DURATION_FROM_MATERIAL
 
 
 def test_cli_manual_trip_duration_remains_exact() -> None:
     clips, photos = _dense_trip(12)
 
-    resolved = _resolve_requested_duration(
-        420.0,
-        memory_type="trip",
-        clips=clips,
-        photos=photos,
-        config=Config(),
-    )
+    resolved = _decide_trip(420.0, clips, photos)
 
-    assert resolved == 420.0
+    assert resolved.seconds == 420.0
+    assert resolved.source == DURATION_FROM_DURATION_FLAG
 
 
 def test_trip_date_default_is_an_editorial_estimate_not_35_seconds_per_day() -> None:
@@ -153,12 +166,6 @@ def test_cli_auto_album_resolves_from_the_albums_media() -> None:
     """An album's span is unknown up front, so its runtime comes from its media."""
     clips, photos = _dense_trip(12)
 
-    resolved = _resolve_requested_duration(
-        None,
-        memory_type="album",
-        clips=clips,
-        photos=photos,
-        config=Config(),
-    )
+    resolved = _decide_trip(None, clips, photos, memory_type="album")
 
-    assert resolved == 150.0
+    assert resolved.seconds == 150.0

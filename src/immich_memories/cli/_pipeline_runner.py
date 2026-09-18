@@ -20,7 +20,13 @@ from immich_memories.cli._editorial_context import (
     build_editorial_context,
     narrow_to_special_event,
 )
-from immich_memories.cli._helpers import console, print_error, print_success, print_warning
+from immich_memories.cli._helpers import (
+    console,
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+)
 from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.cli._run_timeline import configure_timeline, final_timeline
@@ -31,6 +37,8 @@ from immich_memories.timeperiod import DateRange
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from rich.progress import TaskID
 
     from immich_memories.analysis.editorial_planner import EditorialSelection
@@ -38,48 +46,45 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+    from immich_memories.planning.auto_duration import DurationDecision
     from immich_memories.processing.output_canvas import OutputCanvas
     from immich_memories.processing.timeline_budget import TimelinePlan
 
 
-def _resolve_requested_duration(
+def _decide_duration(
     requested_duration: float | None,
     *,
+    requested_source: str | None,
+    preset_duration: float | None,
     memory_type: str | None,
     clips: list,
     photos: list | None,
+    windows: Sequence[DateRange],
     config: Config,
-) -> float:
-    """Resolve Auto only after the CLI has discovered usable media."""
-    if requested_duration is not None:
-        return float(requested_duration)
-    if memory_type not in ("trip", "album"):
-        raise ValueError(
-            "Automatic media-aware duration is currently available for trips and albums only"
-        )
-
-    from immich_memories.planning.auto_duration import resolve_trip_auto_duration
+) -> DurationDecision:
+    """Fit the film to its material, now that the CLI has discovered some."""
+    from immich_memories.planning.auto_duration import (
+        DURATION_FROM_DURATION_FLAG,
+        candidate_day_count,
+        decide_memory_duration,
+    )
 
     title_config = config.title_screens
-    title_duration = title_config.title_duration if title_config.enabled else 0.0
-    ending_duration = title_config.ending_duration if title_config.enabled else 0.0
-    result = resolve_trip_auto_duration(
+    decision = decide_memory_duration(
         clips,
         photos or [],
+        requested_seconds=requested_duration,
+        requested_source=requested_source or DURATION_FROM_DURATION_FLAG,
+        preset_seconds=preset_duration,
+        memory_type=memory_type,
+        candidate_days=candidate_day_count(windows),
         avg_clip_duration=config.analysis.optimal_clip_duration,
         photo_duration=config.photos.duration,
-        title_duration=title_duration,
-        ending_duration=ending_duration,
+        title_duration=title_config.title_duration if title_config.enabled else 0.0,
+        ending_duration=title_config.ending_duration if title_config.enabled else 0.0,
     )
-    logger.info(
-        "%s Auto duration: %.0fs from %d active days (editorial %.0fs, capacity %.0fs)",
-        memory_type.capitalize(),
-        result.total_seconds,
-        result.active_days,
-        result.editorial_seconds,
-        result.diverse_capacity_seconds,
-    )
-    return result.total_seconds
+    logger.info("%s memory. %s", memory_type or "Custom", decision.sentence())
+    return decision
 
 
 def _configure_output_canvas(
@@ -290,6 +295,8 @@ def run_pipeline_and_generate(
     config: Config,
     progress: ProgressDisplay,
     duration: float | None,
+    duration_source: str | None = None,
+    preset_duration: float | None = None,
     transition: str,
     music: str | None,
     music_volume: float = 0.5,
@@ -360,13 +367,18 @@ def run_pipeline_and_generate(
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
-    duration = _resolve_requested_duration(
+    duration_decision = _decide_duration(
         duration,
+        requested_source=duration_source,
+        preset_duration=preset_duration,
         memory_type=memory_type,
         clips=clips,
         photos=resolved.photo_assets,
+        windows=tuple(date_ranges) if date_ranges else (date_range,),
         config=config,
     )
+    duration = duration_decision.seconds
+    print_info(duration_decision.sentence())
 
     import logging
     import time as _time
@@ -429,6 +441,7 @@ def run_pipeline_and_generate(
         date_range=date_range,
         date_ranges=date_ranges,
         duration=duration,
+        duration_source=duration_decision.source,
         transition=transition,
         title_override=title_override,
         person_names=person_names,

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal
 from immich_memories.analysis.editorial_runtime import EditorialRunContext
 from immich_memories.analysis.special_event_scope import read_special_event_admission
 from immich_memories.api.person_expression import PersonExpression
+from immich_memories.planning.auto_duration import DURATION_FROM_DURATION_FLAG
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
@@ -58,6 +59,7 @@ def build_editorial_context(
     date_range: DateRange,
     date_ranges: tuple[DateRange, ...] | list[DateRange] | None,
     duration: float,
+    duration_source: str = DURATION_FROM_DURATION_FLAG,
     transition: str,
     title_override: str | None,
     person_names: list[str],
@@ -85,6 +87,7 @@ def build_editorial_context(
         product=product,
         date_ranges=tuple(date_ranges) if date_ranges is not None else (date_range,),
         target_seconds=duration,
+        duration_source=duration_source,
         hemisphere=resolved.preset_params.get("hemisphere", "north"),
         render_timing=build_editorial_timing_policy(
             config=config,
