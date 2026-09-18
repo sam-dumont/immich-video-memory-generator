@@ -63,6 +63,15 @@ weight; then the memory-worthy reading and the number of distinct moments decide
 reader listed its stories in, then the order things happened. A well starred December cannot push
 January out of the year.
 
+**A period can be about someone arriving.** Where your people file knows a person, it also knows
+the month the library first holds a picture of them and the month they start appearing regularly.
+Both are facts about the library, never a claim about a relationship, and each one is attached to
+the episodes actually taken in that month. So the episode card the reader groups and weighs says
+who is present by their relation to you, and separately who the library first holds here. The
+reader is told what that is and that it earns no picture by itself. A month whose meaning is that
+someone new is in it can now be read that way, and a month where it does not matter reads exactly
+as before. Nothing forces their picture into the cut.
+
 **A trip is one story, and it gets room for its length.** The editor runs the app's own trip
 detection over the film's pictures, with your `trips` home base, distance, duration and gap, and no
 network: a trip is named from the place names its pictures carry. Every day of a detected trip is one

@@ -72,7 +72,30 @@ def _seen(story, hints, days) -> dict[str, int]:
     }
 
 
-def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=lambda _story: {}):
+def _arrivals_text(story, hints) -> str:
+    """Who the library first holds inside this story, once per person, in day order."""
+    seen: dict[str, str] = {}
+    for key in story["episodes"]:
+        for row in (hints.get(key) or {}).get("arrivals") or ():
+            first = row.get("first_in_the_library")
+            since = (
+                f"first in the library {first}"
+                if first
+                else f"regularly present from {row.get('present_from') or '?'}"
+            )
+            seen.setdefault(
+                str(row.get("person") or ""), f"{row.get('relationship') or 'unconfirmed'}, {since}"
+            )
+    return ", ".join(f"{person} ({detail})" for person, detail in seen.items() if person)
+
+
+def _story_rows(
+    stories,
+    hints,
+    day_of,
+    facts_of=lambda _story: [],
+    people_of=lambda _story: {},
+):
     rows = []
     for story in stories:
         days = sorted({day_of(k) for k in story["episodes"] if day_of(k)})
@@ -91,6 +114,7 @@ def _story_rows(stories, hints, day_of, facts_of=lambda _story: [], people_of=la
             f"{seen['moments']} moments | {seen['pictures']} pictures | {seen['favourites']} favourites | "
             f"reading: {gate or 'none'} | {story['title']} | {story.get('purpose') or ''}"
             + (f" | people: {people_text}" if people_text else "")
+            + (f" | arrives here: {arrivals}" if (arrivals := _arrivals_text(story, hints)) else "")
             + (f" | trip: {story['trip']['summary']}" if story.get("trip") else "")
             + (f" | facts: {facts}" if facts else "")
         )
@@ -112,6 +136,9 @@ Then weigh every other story for THIS memory (month, year, journey, person, anni
 Weigh by what happened and how it was lived. The reading, favourites, moments and days are evidence,
 not a formula. Ordinary domestic routine, however well photographed, is "none" unless this memory is
 about it. Do not force a dramatic arc, equal calendar coverage or quotas; a quiet period stays quiet.
+"arrives here" names a person the library holds no earlier picture of, so this story is where
+they enter it. It is a recorded fact about the library, not a claim about their life, and it
+earns no picture by itself; weigh it as you would any other thing this story is the first of.
 Favourites are the owner's own marks on the pictures. Two rows that are one occasion, split across
 the list or filed as separate rows of one afternoon (a party, a march, a fair read as several
 scenes), may be joined in "join" as pairs of story keys. Rows of different days are never joined. A title that names a detail of the
@@ -125,7 +152,7 @@ THESIS (from the reading)
 {thesis}
 THE READING SAYS THIS MEMORY IS ABOUT: {", ".join(candidates) if candidates else "nothing in particular"}
 
-STORIES (key | first day -> last day | days | episodes | moments | pictures | favourites | memory-worthy reading | title | purpose | people present, by their relation to the owner | three facts)
+STORIES (key | first day -> last day | days | episodes | moments | pictures | favourites | memory-worthy reading | title | purpose | people present, by their relation to the owner | anyone the library first holds here | three facts)
 {chr(10).join(rows)}
 
 Assess all {len(rows)} stories. Use only the actual keys in the table. Do not return a sample answer.

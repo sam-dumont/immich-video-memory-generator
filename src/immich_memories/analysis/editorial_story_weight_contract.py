@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from immich_memories.analysis.editorial_story_weight_audit import weight_reply_audit
 
-WEIGHING_CONTRACT_VERSION = "complete-story-weights-v1"
+WEIGHING_CONTRACT_VERSION = "complete-story-weights-v2-arrivals"
 REPAIR_ROUNDS = 2
 # The first repair keeps its historical stage name so banked repairs stay warm.
 _REPAIR_SUFFIXES = ("", "-repair", "-repair-2")

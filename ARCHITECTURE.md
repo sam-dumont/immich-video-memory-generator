@@ -33,6 +33,9 @@ that its own words link are one recurring activity, and folds each confirmed gro
 carrier admission, `editorial_story_lookalike.py` asks the final review's repetition question
 (through `confirm_episode_pairs`, or `confirm_story_pairs` for pairs days apart) before a story takes
 a further picture, bounded at twice the slots; a refusal frees the slot for another moment.
+The synthesis card carries `arrivals`, the
+`editorial_person_period_facts.py` projection of who the library first holds in that episode's own
+month, so the thesis and the weighing can read an arrival that the relation counts flatten away.
 
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
