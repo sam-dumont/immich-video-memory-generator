@@ -117,6 +117,99 @@ def _companion(video_id: str, *, duration="0:00:03.000", asset_id=None):
     return companion
 
 
+def _counting_offsets(fetches: list[str]):
+    def measure(video_ids):
+        # WHY: the production engine downloads each join side's playback before
+        # correlating; recording the ids it is handed proves nothing was fetched.
+        fetches.extend(video_ids)
+        return [0.5 for _ in video_ids[1:]]
+
+    return measure
+
+
+def test_a_shared_companion_is_never_fetched_to_measure_itself() -> None:
+    """Two alias stills of one Live Photo point at one video. Measuring the join between
+    them fetches that playback twice and correlates the video against itself, at an
+    offset that is ~0 by construction — so the pair takes the metadata window path
+    instead, exactly as an unmeasured burst does."""
+    first = _live(1)
+    twin = _live(2, seconds=0.5)
+    twin.live_photo_video_id = first.live_photo_video_id
+    companions = {"video-1": _companion("video-1")}
+    fetches: list[str] = []
+
+    found = motion_renderings(
+        [first, twin],
+        _config(),
+        companion_assets=companions,
+        clock_offsets=_counting_offsets(fetches),
+    )
+
+    assert fetches == []
+    assert twin.id not in found
+    assert found[first.id].video_ids == ("video-1",)
+    assert found[first.id].duration_seconds == 3.0
+
+
+def test_a_genuine_pair_still_measures_both_sides() -> None:
+    """The alias seam must not cost genuine bursts their measurement: two different
+    companions are fetched once each and the join is placed on the measured clocks."""
+    first, other = _live(1), _live(2, seconds=0.5)
+    companions = {key: _companion(key) for key in ("video-1", "video-2")}
+    fetches: list[str] = []
+
+    found = motion_renderings(
+        [first, other],
+        _config(),
+        companion_assets=companions,
+        clock_offsets=_counting_offsets(fetches),
+    )
+
+    assert fetches == ["video-1", "video-2"]
+    assert set(found) == {"still-1", "still-2"}
+    assert found["still-1"].video_ids == ("video-1", "video-2")
+
+
+def test_three_aliases_of_one_companion_fetch_nothing() -> None:
+    """Every join inside a same-video burst would correlate the video with itself,
+    so none of them is measured; the earliest still alone carries the offer."""
+    stills = [_live(1), _live(2, seconds=0.5), _live(3, seconds=1.0)]
+    for alias in stills[1:]:
+        alias.live_photo_video_id = stills[0].live_photo_video_id
+    companions = {"video-1": _companion("video-1")}
+    fetches: list[str] = []
+
+    found = motion_renderings(
+        stills, _config(), companion_assets=companions, clock_offsets=_counting_offsets(fetches)
+    )
+
+    assert fetches == []
+    assert set(found) == {"still-1"}
+    assert found["still-1"].video_ids == ("video-1",)
+
+
+def test_an_alias_inside_a_burst_does_not_cost_its_own_measurement() -> None:
+    """The burst falls back to the metadata plan only where the alias sits; the
+    genuine join across the re-clustered survivors is still measured."""
+    first = _live(1)
+    twin = _live(2, seconds=0.5)
+    twin.live_photo_video_id = first.live_photo_video_id
+    other = _live(3, seconds=2.0)
+    companions = {key: _companion(key) for key in ("video-1", "video-3")}
+    fetches: list[str] = []
+
+    found = motion_renderings(
+        [first, twin, other],
+        _config(),
+        companion_assets=companions,
+        clock_offsets=_counting_offsets(fetches),
+    )
+
+    assert fetches == ["video-1", "video-3"]
+    assert twin.id not in found
+    assert found[first.id].video_ids == ("video-1", "video-3")
+
+
 def test_measured_alignment_survives_removing_a_duplicate_companion() -> None:
     import pytest
 
