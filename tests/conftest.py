@@ -202,6 +202,18 @@ def make_asset(
     )
 
 
+def source_packet(pts: int, ticks: int, clock: int = 600) -> dict[str, float | int | str]:
+    """One presentation packet as ProbeCache reports it, on the source's own clock."""
+    return {
+        "time_base": f"1/{clock}",
+        "pts": pts,
+        "duration_ticks": ticks,
+        "start_seconds": pts / clock,
+        "end_seconds": (pts + ticks) / clock,
+        "frame_seconds": ticks / clock,
+    }
+
+
 @pytest.fixture()
 def asset_payload() -> dict[str, object]:
     """Provide a minimal raw Immich asset response payload."""
