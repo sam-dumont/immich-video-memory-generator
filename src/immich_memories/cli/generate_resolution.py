@@ -61,7 +61,7 @@ def resolve_special_day(
     entry = _catalogued_event(default_catalogue_path(), day, event_id)
     if entry is None:
         return {"day": day, "window": None, "title": "", "subtitle": "", "active_hours": 0.0}
-    return _special_day_params(entry, entry.title.strip() or entry.what.strip())
+    return _special_day_params(entry)
 
 
 def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay | None:
@@ -85,14 +85,24 @@ def _catalogued_event(path: Path, day: date, event_id: str | None) -> Discovered
     return matches[0] if matches else None
 
 
-def _special_day_params(entry: DiscoveredDay, name: str) -> dict[str, Any]:
+def _special_day_params(entry: DiscoveredDay) -> dict[str, Any]:
+    """The row as preset parameters, with its description kept apart from its title.
+
+    A row the scan described but never named carries words like "an outdoor
+    music festival with multiple performances". Handed over as the title, that
+    pins the memory before the rest of the naming ladder runs, so the reader is
+    never asked and the album the pictures sit in is never looked up. It goes
+    over as ``what`` instead: a fact the title prompt is told, and the preset's
+    own fallback name when no reader answers.
+    """
     from immich_memories.automation.catalogue import hours_awake, scope_window
 
     params: dict[str, Any] = {
         "day": entry.day,
         "window": scope_window(entry),
-        "title": name,
+        "title": entry.title.strip(),
         "subtitle": entry.subtitle,
+        "what": entry.what.strip(),
         "active_hours": hours_awake(entry),
     }
     if entry.event_id is not None:

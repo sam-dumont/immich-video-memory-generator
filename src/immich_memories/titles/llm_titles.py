@@ -540,17 +540,22 @@ def _is_a_known_name(word: str, known: set[str]) -> bool:
     return any(SequenceMatcher(None, lowered, name).ratio() >= _SAME_NAME_RATIO for name in known)
 
 
-def names_only_facts(line: str, facts: str) -> bool:
-    """Whether every name this line uses is a name the facts already use.
+def invented_name(line: str, facts: str) -> str | None:
+    """The first name this line uses that the facts do not, if it uses one.
 
     A capitalised word past the first is a proper noun in the languages the
     title screens speak; the first word is capitalised by orthography alone and
-    proves nothing either way. So this refuses an invented name, not invention:
+    proves nothing either way. So this catches an invented name, not invention:
     a reworded fact passes, a festival nobody recorded does not.
     """
     known = {word.casefold() for word in _name_words(facts)}
-    return all(
-        not word[:1].isupper() or _is_a_known_name(word, known) for word in _name_words(line)[1:]
+    return next(
+        (
+            word
+            for word in _name_words(line)[1:]
+            if word[:1].isupper() and not _is_a_known_name(word, known)
+        ),
+        None,
     )
 
 
@@ -560,11 +565,13 @@ def _refusing_invented_names(
     """The suggestion, minus whatever part of it names something unrecorded."""
     if suggestion is None or not facts:
         return suggestion
-    if not names_only_facts(suggestion.title, facts):
-        logger.warning("Title names what no fact names; the template names this memory instead")
+    if invented := invented_name(suggestion.title, facts):
+        logger.warning(
+            "Title names %r, which no fact names; the template names this memory instead", invented
+        )
         return None
-    if suggestion.subtitle and not names_only_facts(suggestion.subtitle, facts):
-        logger.info("Subtitle names what no fact names; dropping it")
+    if suggestion.subtitle and (invented := invented_name(suggestion.subtitle, facts)):
+        logger.info("Subtitle names %r, which no fact names; dropping the subtitle", invented)
         return replace(suggestion, subtitle=None)
     return suggestion
 

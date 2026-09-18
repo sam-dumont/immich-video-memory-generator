@@ -186,6 +186,12 @@ class AlbumService:
         if not held:
             return None
         leader = max(held, key=lambda album: (held[album], -refs[album].asset_count))
+        logger.info(
+            "Leading album holds %d of the cut's %d pictures, %d of which sit in no album",
+            held[leader],
+            len(cut),
+            unfiled,
+        )
         return refs[leader].name if held[leader] > unfiled else None
 
     async def _albums_of(self, asset_id: str) -> list[AlbumRef]:

@@ -202,7 +202,7 @@ own album. Trips get the album name too.
 Neither prompt sees the film's own reading of the period. Those readings promote names off banners
 and shopfronts (a stage banner once became "the X festival"), and a title may not invent. The only
 proper nouns a title can use are the catalogue's words, the place names, the album name and the
-people's first names — and that is checked, not only asked for. A title with a capitalised word that
+people's first names, and that is checked rather than only asked for. A title with a capitalised word that
 appears in none of the facts the prompt carried is refused and the template names the memory
 instead; the same check drops a subtitle that names something unrecorded and keeps the title. A
 place written the way your locale spells it (Ghent → Gent, Brussels → Bruxelles) still counts as the
@@ -211,10 +211,13 @@ nothing else, which is why the check leans towards refusing.
 
 The model names people and occasion memories by default as soon as a reader is configured, in the
 wizard and on the CLI. `--title` still wins, the template is the fallback whenever the model fails
-or no reader is set, and a special day whose catalogue entry already carries a title keeps it. A
-special day the catalogue never found is named here too, from the day's own facts and with no
-catalogue entry to read, which is what lets a day the scan missed be filmed at all. Without a
-reader such a day falls back to its own date, which names no event.
+or no reader is set, and a special day whose catalogue entry already carries a title keeps it. A row
+the scan described but never named is a different case: words like "an outdoor music festival with
+multiple performances" are a fact about the day, not a title, so they go to the prompt as one and
+the reader still gets asked. A special day the catalogue never found is named here too, from the
+day's own facts and with no catalogue entry to read, which is what lets a day the scan missed be
+filmed at all. Without a reader either day falls back to the catalogue's words, or to its own date,
+which names no event.
 `--llm-title` extends the same treatment to trips; `--no-llm-title` pins the template everywhere,
 which is what a contact-sheet matrix wants so runs months apart stay comparable.
 
