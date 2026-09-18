@@ -7,6 +7,7 @@ and which presets fill a gap without overruling anything typed explicitly.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -16,14 +17,18 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from immich_memories.api.models import Person
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cli._date_resolution import resolve_date_range
-from immich_memories.cli._helpers import print_error
+from immich_memories.cli._helpers import print_error, print_info
+from immich_memories.people.expression_window import DerivedPeopleWindow, library_people_window
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
     from immich_memories.automation.special_day_scan import DiscoveredDay
     from immich_memories.config_loader import Config
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_special_day(
@@ -61,7 +66,7 @@ def resolve_special_day(
     entry = _catalogued_event(default_catalogue_path(), day, event_id)
     if entry is None:
         return {"day": day, "window": None, "title": "", "subtitle": "", "active_hours": 0.0}
-    return _special_day_params(entry, entry.title.strip() or entry.what.strip())
+    return _special_day_params(entry)
 
 
 def _catalogued_event(path: Path, day: date, event_id: str | None) -> DiscoveredDay | None:
@@ -85,14 +90,24 @@ def _catalogued_event(path: Path, day: date, event_id: str | None) -> Discovered
     return matches[0] if matches else None
 
 
-def _special_day_params(entry: DiscoveredDay, name: str) -> dict[str, Any]:
+def _special_day_params(entry: DiscoveredDay) -> dict[str, Any]:
+    """The row as preset parameters, with its description kept apart from its title.
+
+    A row the scan described but never named carries words like "an outdoor
+    music festival with multiple performances". Handed over as the title, that
+    pins the memory before the rest of the naming ladder runs, so the reader is
+    never asked and the album the pictures sit in is never looked up. It goes
+    over as ``what`` instead: a fact the title prompt is told, and the preset's
+    own fallback name when no reader answers.
+    """
     from immich_memories.automation.catalogue import hours_awake, scope_window
 
     params: dict[str, Any] = {
         "day": entry.day,
         "window": scope_window(entry),
-        "title": name,
+        "title": entry.title.strip(),
         "subtitle": entry.subtitle,
+        "what": entry.what.strip(),
         "active_hours": hours_awake(entry),
     }
     if entry.event_id is not None:
@@ -176,16 +191,22 @@ def _resolve_generation_scope(
     on_this_day_target: date | None,
     holiday: str | None = None,
     preset_params: dict | None = None,
+    people_window: DerivedPeopleWindow | None = None,
 ) -> tuple[DateRange, list[DateRange]]:
     """Resolve what a memory covers: date range(s), or an album that defines its own.
 
     Returns the display range plus the ranges to search. Album mode returns no ranges
     at all — its span comes from the album's assets, which need a connection to read —
     so the returned range is a stand-in that album mode replaces and never displays.
+
+    ``people_window`` is the span a dateless people memory derived from its
+    people's birth dates; it is only ever supplied when nothing was typed.
     """
     if from_album:
         now = datetime.now()
         return DateRange(start=now, end=now), []
+    if people_window is not None:
+        return people_window.range, [people_window.range]
 
     # WHY: birthday="auto" means detect from Immich later — don't pass to parser
     initial_birthday = None if birthday == "auto" else birthday
@@ -309,3 +330,116 @@ def _arm_selection_trace(path: Path | None) -> None:
     """Tell run_selection where to write its stage-by-stage report."""
     if path:
         os.environ["IMMICH_MEMORIES_SELECTION_TRACE"] = str(path)
+
+
+def _dateless_people_ask(
+    memory_type: str | None,
+    *,
+    from_album: str | None,
+    year: int | None,
+    start: str | None,
+    end: str | None,
+    period: str | None,
+    birthday: str | None,
+    season: str | None,
+    month: int | None,
+) -> bool:
+    """A people memory asked for with no window at all: "these people, forever"."""
+    return memory_type in ("person_spotlight", "multi_person") and not any(
+        (from_album, year, start, end, period, birthday, season, month is not None)
+    )
+
+
+def _named_people(
+    people_condition: PersonExpression | None,
+    person_names: list[str],
+    person_match: str,
+) -> PersonExpression | None:
+    """The condition the run filters on, whether it was typed as a group or as names."""
+    if people_condition is not None:
+        return people_condition
+    leaves = tuple(
+        PersonExpression("person", value=name) for name in dict.fromkeys(person_names) if name
+    )
+    if not leaves:
+        return None
+    if len(leaves) == 1:
+        return leaves[0]
+    return PersonExpression("any" if person_match == "or" else "all", children=leaves)
+
+
+def resolve_people_memory_window(
+    *,
+    config: Config,
+    memory_type: str | None,
+    people_condition: PersonExpression | None,
+    person_names: list[str],
+    person_match: str,
+    from_album: str | None,
+    year: int | None,
+    start: str | None,
+    end: str | None,
+    period: str | None,
+    birthday: str | None,
+    season: str | None,
+    month: int | None,
+) -> DerivedPeopleWindow | None:
+    """The window a dateless people memory derives from its people's birth dates.
+
+    None whenever the ask already carries dates, or is not a people memory. A
+    people memory whose people have no birth date anywhere is refused here, so
+    an empty result is never dressed up as a whole-library film.
+    """
+    if not _dateless_people_ask(
+        memory_type,
+        from_album=from_album,
+        year=year,
+        start=start,
+        end=end,
+        period=period,
+        birthday=birthday,
+        season=season,
+        month=month,
+    ):
+        return None
+    expression = _named_people(people_condition, person_names, person_match)
+    if expression is None:
+        return None
+    window = library_people_window(expression, read_people=lambda: _library_people(config))
+    if window is None:
+        raise click.UsageError(
+            f"--year is required with --memory-type {memory_type}: none of the named people "
+            "has a birth date in Immich or people.yaml, so no window can be derived from them"
+        )
+    return window
+
+
+def _library_people(config: Config) -> list[Person]:
+    """The roster, or nothing when Immich cannot be reached.
+
+    The run connects again moments later and reports a real outage in its own
+    words; here an unreachable server only means the curated people file is the
+    one source left to answer from.
+    """
+    from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
+
+    try:
+        with SyncImmichClient(
+            base_url=config.immich.url,
+            api_key=config.immich.api_key,
+            api_version=config.immich.api_version,
+        ) as client:
+            return client.get_all_people(with_hidden=True)
+    except (ImmichAPIError, OSError):
+        return []
+
+
+def announce_people_window(
+    derived: DerivedPeopleWindow | None, date_range: DateRange
+) -> dict[str, str]:
+    """Say where a window nobody typed came from, and hand the run record the same sentence."""
+    if derived is None:
+        return {}
+    logger.info("Memory window %s: %s", date_range.description, derived.origin)
+    print_info(f"Memory window: {date_range.description}: {derived.origin}")
+    return {"window_origin": derived.origin}

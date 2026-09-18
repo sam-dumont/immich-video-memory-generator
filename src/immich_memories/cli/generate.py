@@ -43,9 +43,11 @@ from immich_memories.cli.generate_resolution import (
     _arm_selection_trace,
     _resolve_generation_scope,
     _validate_album_scope,
+    announce_people_window,
     name_from_catalogue,
     resolve_inclusion,
     resolve_people_condition,
+    resolve_people_memory_window,
     resolve_short_form,
     resolve_special_day,
 )
@@ -136,6 +138,8 @@ def register_generate_commands(main: click.Group) -> None:
           --memory-type season --season summer --year 2024
           --memory-type person_spotlight --person "Riley" --year 2024
           --memory-type multi_person --person "Riley" --person "Bob" --year 2024
+          --memory-type multi_person --person "Riley" --person "Bob"   (no dates: from
+              the first day both could be in a picture, read off their birth dates)
           --memory-type monthly_highlights --month 7 --year 2024
           --memory-type on_this_day
 
@@ -247,6 +251,24 @@ def register_generate_commands(main: click.Group) -> None:
         # different question every day and can never be replayed or compared.
         exact_on_this_day = day if memory_type == "on_this_day" else None
 
+        # A people memory asked for with no dates is not a usage error: the
+        # people themselves say how far back a picture could have matched.
+        derived_window = resolve_people_memory_window(
+            config=config,
+            memory_type=memory_type,
+            people_condition=people_condition,
+            person_names=person_names,
+            person_match=person_match,
+            from_album=from_album,
+            year=year,
+            start=start,
+            end=end,
+            period=period,
+            birthday=birthday,
+            season=season,
+            month=month,
+        )
+
         date_range, date_ranges = _resolve_generation_scope(
             from_album=from_album,
             year=year,
@@ -262,7 +284,9 @@ def register_generate_commands(main: click.Group) -> None:
             on_this_day_target=exact_on_this_day,
             holiday=holiday,
             preset_params=special_day,
+            people_window=derived_window,
         )
+        window_record = announce_people_window(derived_window, date_range)
 
         # Determine output path
         if output:
@@ -628,6 +652,7 @@ def register_generate_commands(main: click.Group) -> None:
                             "hemisphere": hemisphere,
                             "person_names": person_names,
                             "person_match": person_match,
+                            **window_record,
                             **(
                                 {"person_expression": people_condition.to_dict()}
                                 if people_condition is not None

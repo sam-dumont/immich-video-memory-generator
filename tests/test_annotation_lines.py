@@ -45,6 +45,7 @@ CREATE TABLE pixel_facts (asset_id, producer_key, sharpness, brightness, contras
     dark_fraction, bright_fraction, needs_rotation);
 CREATE TABLE pixel_facts_thresholds (name, value, producer_key);
 CREATE TABLE motion_bursts (asset_id, burst_id, still_ids, duration_seconds, beats_a_still);
+CREATE TABLE face_boxes (asset_id, named, x1, y1, x2, y2);
 """
 
 
@@ -309,3 +310,32 @@ def test_a_reader_asked_for_nothing_refuses_rather_than_returning_everything(
 ) -> None:
     with pytest.raises(ValueError, match="at least one requested asset"):
         reader(store_with(tmp_path), candidate("a-picture")).lines_for(())
+
+
+def test_a_line_says_how_the_named_subject_sits_in_the_frame(tmp_path: Path) -> None:
+    """Without this the pick cannot tell a picture of somebody from one he is lost in."""
+    asset = "asset-private-002"
+    store_path = store_with(
+        tmp_path,
+        asset_people=((asset, "Robin", "person-private-002", None),),
+        face_boxes=(
+            (asset, 1, 0.955, 0.40, 0.99, 0.46),
+            (asset, 0, 0.30, 0.30, 0.50, 0.55),
+        ),
+    )
+
+    [line] = reader(store_path, candidate(asset)).lines_for((asset,)).lines
+
+    assert "subject-framing:1" in line.text
+    assert "at the frame's edge" in line.text and "not the largest face" in line.text
+
+
+def test_a_line_for_a_picture_with_no_banked_face_is_the_line_it_always_was(
+    tmp_path: Path,
+) -> None:
+    asset = "asset-private-003"
+    store_path = store_with(tmp_path, asset_people=((asset, "Robin", "person-private-003", None),))
+
+    [line] = reader(store_path, candidate(asset)).lines_for((asset,)).lines
+
+    assert "subject-framing" not in line.text

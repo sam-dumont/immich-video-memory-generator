@@ -55,6 +55,7 @@ from immich_memories.analysis.editorial_story_trips import (
     reserve_trip_depth,
     trip_fold,
 )
+from immich_memories.analysis.subject_framing import SubjectVisibility
 
 STORY_PLANNER_VERSION = "story-first-selection-v6-videos-first"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
@@ -555,6 +556,7 @@ def select_story_first(
     seconds_per_slot: float,
     record: Callable[[str, Mapping[str, Any]], None],
     flagged: Callable[[str], bool] = lambda _asset: False,
+    subject: Callable[[str], SubjectVisibility] = lambda _asset: SubjectVisibility(0, 0.0),
     full_lines: Mapping[str, str] | None = None,
     life: Callable[[str], bool] = lambda _asset: True,
     family_tier: Mapping[str, int] | None = None,
@@ -651,6 +653,7 @@ def select_story_first(
         "flagged": flagged,
         "life": life,
         "plays": carries_motion,
+        "subject": subject,
     }
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}

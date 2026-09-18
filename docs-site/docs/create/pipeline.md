@@ -178,6 +178,19 @@ holds both a still and a video of the same instant, the video takes the frame un
 claims it: a video carries no sharpness measurement, so on a tie of everything else it used to lose
 to any still in the group.
 
+**A frame has to show the person it names.** Immich says which people it recognised in a
+picture, and until now that was the whole fact: present or not. A finish-line photo of a race
+named the runner it was taken for, and he was a speck against the right edge behind a dozen
+nearer faces. Two frames of that moment looked identical to the pick, so it took the sharper
+one and the film showed a crowd. Preparation now banks where every face Immich found sits in
+the frame, and each picture's line says how much of the frame the named person covers, whether
+he has a face's width of air between him and every border, and whether he is the largest face
+in the picture or one of the small ones. Inside a capture group the frame that shows him wins
+over the frame he is lost in, and between two frames that both show him the one showing more of
+him wins. A favourite still takes its own moment, a video still beats a still of the same
+instant, and a picture naming nobody is ordered exactly as before. The boxes carry no identity,
+only whether a name was matched to each, and they are read once per picture and banked.
+
 **The standing gate reads a video as a video.** The gate asks, of each candidate picture, whether it
 would stand on its own. A video used to arrive on that list looking like a still, described by
 whatever its one line said, and a real share of the videos that got that far were named weak: 9 of
@@ -294,7 +307,7 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | How do days group into stories? | A run of consecutive photographed days is a story; a day splits into two episodes when more than 90 minutes pass and the dominant place changes |
 | What is the story called? | Templated from facts: the activity at the place, or the place, or the date. Never retitled, never joined |
 | How much does a story weigh? | From the gate: remarkable seeds `minor`, maybe seeds `glimpse`, background gets nothing; three favourites raise a story to `major`. `dominant` comes from the thesis pass that names a central story, the same one the model path uses |
-| Which pictures show a moment? | A capture group is a moment; the favourite wins it, then sharpness, then capture order. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
+| Which pictures show a moment? | A capture group is a moment; the favourite wins it, then the frame that shows the named person over the frame he is a speck in, then sharpness, then capture order. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
 | Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a sensitive-content hit, a blurry, dark or blown-out frame is weak; a picture with people, an activity or a real venue stands |
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing. Nothing clears a flag except you, on the pool page |
 

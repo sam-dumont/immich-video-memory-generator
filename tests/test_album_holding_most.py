@@ -44,11 +44,42 @@ async def test_the_album_holding_most_of_the_cut_names_it() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_album_holding_less_than_half_named_nothing() -> None:
+async def test_an_album_holding_a_minority_of_the_cut_names_nothing() -> None:
     """Two pictures out of five in one album is a coincidence, not an occasion."""
     service = _service({"a1": [_BEST], "a2": [_BEST]})
 
     assert await service.album_holding_most(["a1", "a2", "a3", "a4", "a5"]) is None
+
+
+@pytest.mark.asyncio
+async def test_a_cut_split_over_albums_still_learns_the_one_holding_most_of_it() -> None:
+    """Four of ten in the day's album, three in another, three filed nowhere.
+
+    No album holds half, and the day is still called what the biggest of them
+    calls it.
+    """
+    service = _service(
+        {
+            "a1": [_SUNDAY],
+            "a2": [_SUNDAY],
+            "a3": [_SUNDAY],
+            "a4": [_SUNDAY],
+            "a5": [_BEST],
+            "a6": [_BEST],
+            "a7": [_BEST],
+        }
+    )
+
+    cut = [f"a{n}" for n in range(1, 11)]
+    assert await service.album_holding_most(cut) == "Sunday at the lake"
+
+
+@pytest.mark.asyncio
+async def test_two_albums_holding_the_same_pictures_answer_with_the_smaller_one() -> None:
+    """A catch-all that swallows the day is a worse name than the day's own album."""
+    service = _service({"a1": [_SUNDAY, _BEST], "a2": [_SUNDAY, _BEST]})
+
+    assert await service.album_holding_most(["a1", "a2"]) == "Sunday at the lake"
 
 
 @pytest.mark.asyncio
@@ -58,8 +89,8 @@ async def test_assets_in_no_album_at_all_answer_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_sample_is_capped_so_a_long_film_costs_a_bounded_number_of_reads() -> None:
-    """One request per asset: a 300-clip film must not become 300 requests."""
+async def test_every_picture_of_the_cut_is_asked_so_no_cap_decides_the_answer() -> None:
+    """A cut is a film's worth of pictures; all of them get a say in its name."""
     asked: list[str] = []
 
     async def request(method: str, endpoint: str, **kwargs):
@@ -70,10 +101,10 @@ async def test_the_sample_is_capped_so_a_long_film_costs_a_bounded_number_of_rea
         raise AssertionError
 
     service = AlbumService(request, version)
-    name = await service.album_holding_most([f"a{n}" for n in range(300)], limit=40)
+    name = await service.album_holding_most([f"a{n:03d}" for n in range(300)])
 
     assert name == "Sunday at the lake"
-    assert len(asked) == 40
+    assert len(asked) == 300
 
 
 @pytest.mark.asyncio

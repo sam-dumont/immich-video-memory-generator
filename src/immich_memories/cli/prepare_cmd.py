@@ -61,6 +61,7 @@ def _eligible_source(client, config: Config, windows: list[DateRange]):
 
 def _run_preparation(client, config: Config, assets) -> tuple[ProducerClock, PreparationResult]:
     from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
+    from immich_memories.analysis.subject_framing import face_boxes_of
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
 
     thumbnail_cache = ThumbnailCache(
@@ -80,6 +81,7 @@ def _run_preparation(client, config: Config, assets) -> tuple[ProducerClock, Pre
         description_model=config.editorial.description_model,
         pixel_producer_key=config.editorial.pixel_producer_key,
         fetch_preview=lambda asset_id: client.get_asset_thumbnail(asset_id, size="preview"),
+        fetch_faces=lambda asset_id: face_boxes_of(client.get_asset_faces(asset_id)),
         read_playback=client.get_video_playback_range,
         progress=clock.report,
     )

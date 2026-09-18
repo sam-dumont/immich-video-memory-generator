@@ -39,6 +39,7 @@ from immich_memories.analysis.editorial_preparation_pixels import (
 )
 from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
 from immich_memories.analysis.remote_facts import RemoteFactsError, offloaded_versions
+from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_inference import InferenceConfig
@@ -46,10 +47,12 @@ from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import check_cancelled as current_check_cancelled
 from immich_memories.store.caption_provenance import origins_for
 from immich_memories.store.editorial_preparation import (
+    faces_unread,
     initialize,
     missing_facts,
     private_database_path,
     remember_assets,
+    remember_faces,
 )
 
 
@@ -152,6 +155,10 @@ def _preview_refused(exc: BaseException) -> bool:
 
 def _noop_progress(_stage: str, _done: int, _total: int) -> None:
     pass
+
+
+def _naming_somebody(source: Sequence[Asset]) -> tuple[str, ...]:
+    return tuple(a.id for a in source if any(p.name.strip() for p in a.people))
 
 
 def _noop_asset(_asset_id: str) -> None:
@@ -265,6 +272,26 @@ class _Acquisition:
                     self.failures[f"pixel:{asset_id}"] = f"{type(exc).__name__}: {exc}"
                 self.report("pixels", index, len(asset_ids))
         refresh_threshold(connection)
+
+    def faces(self, connection: sqlite3.Connection, source: Sequence[Asset], fetch_faces) -> None:
+        """Bank where each face sits in the pictures that name somebody.
+
+        Only those pictures: a frame naming nobody has no subject to be framed well
+        or badly, so its geometry answers no question the cut asks. Without a reader
+        for them nothing is banked and every line stays what it was.
+        """
+        if fetch_faces is None:
+            return
+        asset_ids = faces_unread(connection, _naming_somebody(source))
+        with self.timed("faces", len(asset_ids)):
+            for index, asset_id in enumerate(asset_ids, 1):
+                self.check()
+                try:
+                    remember_faces(connection, asset_id, fetch_faces(asset_id))
+                except Exception as exc:
+                    self.failures[f"faces:{asset_id}"] = f"{type(exc).__name__}: {exc}"
+                self.report("faces", index, len(asset_ids))
+        connection.commit()
 
     def public_heads(self, asset_ids: Sequence[str], head_versions: Mapping[str, str]) -> None:
         self.check()
@@ -419,6 +446,7 @@ def prepare_editorial_annotations(
     description_model: str = DESCRIPTION_MODEL,
     pixel_producer_key: str = PRODUCER_KEY,
     fetch_preview: Callable[[str], bytes | None] | None = None,
+    fetch_faces: Callable[[str], Sequence[FaceBox]] | None = None,
     progress: Callable[[str, int, int], None] | None = None,
     on_asset: Callable[[str], None] | None = None,
     check_cancelled: Callable[[], None] | None = None,
@@ -486,6 +514,7 @@ def prepare_editorial_annotations(
         _acquire_pixels(
             stage, connection, pending(f"pixel:{pixel_producer_key}"), pixel_producer_key
         )
+        stage.faces(connection, source, fetch_faces)
         if preparation_config.demands_models:
             _acquire_model_facts(
                 stage, before, ids, available, pending, head_versions, preview_paths

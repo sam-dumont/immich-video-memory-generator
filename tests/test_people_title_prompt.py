@@ -66,7 +66,7 @@ def _people_prompt(tmp_path: Path, *, end: str = "2026-09-17", today: date | Non
             people_path=_people_file(tmp_path),
             today=today or date(2026, 9, 17),
         ),
-    )
+    ).text
 
 
 def test_a_two_person_film_carries_the_count_and_both_directions_of_the_pair(tmp_path):
@@ -88,7 +88,7 @@ def test_a_person_the_family_record_does_not_know_says_so_rather_than_vanishing(
         duration_days=953,
         person_names=["Ada Example", "Robin Example"],
         facts=MemoryTitleFacts(people_path=_people_file(tmp_path), today=date(2026, 9, 17)),
-    )
+    ).text
 
     assert "- Robin Example: birth date unknown" in prompt
     assert "- Ada Example -> Robin Example: no recorded relation" in prompt
@@ -117,7 +117,7 @@ def test_a_calendar_year_is_named_as_one(tmp_path):
         duration_days=364,
         person_names=["Ada Example"],
         facts=MemoryTitleFacts(people_path=_people_file(tmp_path), today=date(2026, 9, 17)),
-    )
+    ).text
 
     assert "the calendar year 2025" in prompt
     assert 'People condition (every picture satisfies it): "Ada Example"' in prompt
@@ -135,7 +135,7 @@ def test_the_films_own_reading_of_the_period_never_reaches_the_title_prompt(tmp_
         clip_descriptions=["the Example Festival main stage at dusk"],
         smart_objects=["stage", "banner"],
         facts=MemoryTitleFacts(people_path=_people_file(tmp_path), today=date(2026, 9, 17)),
-    )
+    ).text
 
     assert "Example Festival" not in prompt
     assert "banner" not in prompt
@@ -155,7 +155,7 @@ def test_a_people_film_is_told_the_album_it_sits_in(tmp_path):
             people_path=_people_file(tmp_path),
             today=date(2026, 9, 17),
         ),
-    )
+    ).text
 
     assert "Album this film sits in: Sunday at the lake" in prompt
 
@@ -178,7 +178,7 @@ def test_a_special_day_is_told_what_the_catalogue_called_it(tmp_path):
             people_path=_people_file(tmp_path),
             today=date(2026, 9, 17),
         ),
-    )
+    ).text
 
     assert "an afternoon at a themed bowling alley" in prompt
     assert "2025-12-21: Brussels(6)" in prompt
@@ -193,7 +193,7 @@ def test_an_album_memory_is_told_the_name_somebody_typed(tmp_path):
         end_date="2022-05-03",
         duration_days=2,
         facts=MemoryTitleFacts(album_name="Old Negatives 75"),
-    )
+    ).text
 
     assert "Old Negatives 75" in prompt
 
@@ -207,7 +207,7 @@ def test_a_trip_keeps_its_own_prompt(tmp_path):
         duration_days=9,
         daily_locations=["2024-08-26: Nicosia (35.17, 33.36)"],
         country="Cyprus",
-    )
+    ).text
 
     assert "Trip Pattern Classification" in prompt
     assert "trip_type" in prompt

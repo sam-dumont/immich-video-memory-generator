@@ -451,6 +451,7 @@ src/immich_memories/
 │   ├── signatures.py           # Tiers, onset, twins, duplicates, dyads, owner curve pairing
 │   ├── graph.py                # build_graph(): Immich roster + co-occurrence -> PeopleGraph
 │   ├── companion.py            # ~/.immich-memories/people.yaml; confirmed beats inferred
+│   ├── expression_window.py    # The earliest day a people condition can hold, from birth dates
 │   └── editor.py               # The companion editor's model: the file as rows, and back
 │
 ├── automation/                 # Smart automation (auto suggest/run)

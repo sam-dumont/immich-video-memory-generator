@@ -23,6 +23,7 @@ from immich_memories.api.compatibility import (
 )
 from immich_memories.api.models import (
     Asset,
+    AssetFace,
     AssetType,
     MetadataSearchResult,
     Person,
@@ -438,8 +439,8 @@ class ImmichClient:
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         return await self.albums.resolve_album(name_or_id)
 
-    async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
-        return await self.albums.album_holding_most(asset_ids, limit=limit)
+    async def album_holding_most(self, asset_ids: Sequence[str]) -> str | None:
+        return await self.albums.album_holding_most(asset_ids)
 
     async def list_album_assets(self, album_id: str) -> list[dict]:
         return await self.albums.list_album_assets(album_id)
@@ -503,6 +504,9 @@ class ImmichClient:
 
     async def get_asset(self, asset_id: str) -> Asset:
         return await self.assets.get_asset(asset_id)
+
+    async def get_asset_faces(self, asset_id: str) -> list[AssetFace]:
+        return await self.assets.get_asset_faces(asset_id)
 
     async def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
         return await self.assets.get_asset_thumbnail(asset_id, size)

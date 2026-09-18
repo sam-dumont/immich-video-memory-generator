@@ -187,22 +187,37 @@ An occasion (a special day, an album, a holiday, a month, a season, a year, an O
 the same treatment from what the occasion already is: the name the special-day catalogue gave it,
 the album's own name, the holiday, the places by day. Any memory whose material mostly sits in one
 Immich album is also told that album's name: a family day is often called nothing else, and reading
-a name somebody typed is not inventing one. The app asks Immich which albums hold each of the first
-40 selected assets and keeps the album holding at least half of them. Both prompts are told that place names arrive
-in English as the camera recorded them and should be written in your locale, which is what turns
-"Cyprus et Grèce" into "Chypre et Grèce".
+a name somebody typed is not inventing one. Where an album name and the catalogue's own words
+disagree, the prompt says the album wins: somebody typed it, the catalogue guessed it. Both prompts
+are told that place names arrive in English as the camera recorded them and should be written in
+your locale, which is what turns "Cyprus et Grèce" into "Chypre et Grèce".
+
+The app asks Immich which albums hold each picture of the cut, and the bar comes from the cut's own
+shape rather than a fixed share: the leading album has to hold more of the cut than the pictures no
+album holds at all. A day filed across two albums still learns the bigger one's name; two pictures
+out of ten in some catch-all learn nothing. Between albums holding as much of the cut as each other
+the smaller one wins, because a collection that swallows the day names it less well than the day's
+own album. Trips get the album name too.
 
 Neither prompt sees the film's own reading of the period. Those readings promote names off banners
 and shopfronts (a stage banner once became "the X festival"), and a title may not invent. The only
 proper nouns a title can use are the catalogue's words, the place names, the album name and the
-people's first names.
+people's first names, and that is checked rather than only asked for. A title with a capitalised word that
+appears in none of the facts the prompt carried is refused and the template names the memory
+instead; the same check drops a subtitle that names something unrecorded and keeps the title. A
+place written the way your locale spells it (Ghent → Gent, Brussels → Bruxelles) still counts as the
+recorded name, so the locale rule and the check do not fight. Refusing costs a plainer title and
+nothing else, which is why the check leans towards refusing.
 
 The model names people and occasion memories by default as soon as a reader is configured, in the
 wizard and on the CLI. `--title` still wins, the template is the fallback whenever the model fails
-or no reader is set, and a special day whose catalogue entry already carries a title keeps it. A
-special day the catalogue never found is named here too, from the day's own facts and with no
-catalogue entry to read, which is what lets a day the scan missed be filmed at all. Without a
-reader such a day falls back to its own date, which names no event.
+or no reader is set, and a special day whose catalogue entry already carries a title keeps it. A row
+the scan described but never named is a different case: words like "an outdoor music festival with
+multiple performances" are a fact about the day, not a title, so they go to the prompt as one and
+the reader still gets asked. A special day the catalogue never found is named here too, from the
+day's own facts and with no catalogue entry to read, which is what lets a day the scan missed be
+filmed at all. Without a reader either day falls back to the catalogue's words, or to its own date,
+which names no event.
 `--llm-title` extends the same treatment to trips; `--no-llm-title` pins the template everywhere,
 which is what a contact-sheet matrix wants so runs months apart stay comparable.
 

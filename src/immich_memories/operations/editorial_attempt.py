@@ -133,3 +133,13 @@ def read_editorial_attempt(directory: Path) -> dict[str, Any]:
         }
     finally:
         os.close(lease)
+
+
+def window_origin_note(directory: Path) -> str:
+    """How a run came by a window nobody typed, or nothing when the dates were asked for."""
+    try:
+        request = json.loads((directory / "status.private.json").read_text()).get("request")
+    except (OSError, ValueError):
+        return ""
+    origin = request.get("window_origin") if isinstance(request, dict) else None
+    return f"Window: nobody typed one — {origin}" if origin else ""

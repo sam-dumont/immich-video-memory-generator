@@ -18,6 +18,7 @@ from immich_memories.analysis.selection_trace import ClipStory
 from immich_memories.cli._helpers import console, print_error
 from immich_memories.operations.candidate_fates import read_trace
 from immich_memories.operations.caption_origins import caption_origin_note
+from immich_memories.operations.editorial_attempt import window_origin_note
 from immich_memories.operations.reader_words import stage_words
 from immich_memories.operations.run_index import attempt_dir_for_run
 from immich_memories.operations.storyboard import (
@@ -165,6 +166,9 @@ def register_reading_commands(runs: click.Group) -> None:
         )
         from immich_memories.audio.text_mood import music_mood_note
 
+        window = window_origin_note(attempt)
+        if window:
+            console.print(window, highlight=False, markup=False)
         origin = caption_origin_note(attempt, asset_id)
         if origin:
             console.print(origin, highlight=False, markup=False)
