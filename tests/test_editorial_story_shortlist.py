@@ -315,3 +315,59 @@ def test_a_favourite_keeps_the_frame_of_its_own_moment_against_a_video():
     )
 
     assert choice.primary == "starred"
+
+
+def _seen(**rungs):
+    """A visibility per asset, as the annotation line would have carried it."""
+    from immich_memories.analysis.subject_framing import SubjectVisibility
+
+    return lambda asset: SubjectVisibility(*rungs.get(asset, (0, 0.0)))
+
+
+def test_the_frame_that_shows_the_named_subject_carries_its_moment():
+    """A speck at the frame's edge lost the film its subject; the sharper frame used to win."""
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(speck="still", shown="still"),
+        quality=lambda asset: 1.0 if asset == "speck" else 0.0,
+        subject=_seen(speck=(1, 0.002), shown=(3, 0.06)),
+    )
+
+    assert choice.primary == "shown"
+    assert choice.alternatives == ["speck"]
+
+
+def test_two_frames_that_both_show_the_subject_prefer_the_one_showing_more_of_him():
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(distant="still", near="still"),
+        quality=lambda asset: 1.0 if asset == "distant" else 0.0,
+        subject=_seen(distant=(3, 0.01), near=(3, 0.08)),
+    )
+
+    assert choice.primary == "near"
+
+
+def test_a_favourite_keeps_its_moment_even_where_it_shows_the_subject_worst():
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(starred="still", shown="still"),
+        quality=lambda _asset: 0.0,
+        subject=_seen(starred=(1, 0.001), shown=(3, 0.09)),
+    )
+
+    assert choice.primary == "starred"
+
+
+def test_a_group_no_picture_names_anybody_in_keeps_the_frame_it_had():
+    from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
+
+    [choice] = _capture_group_moments(
+        _group(sharp="still", soft="still"),
+        quality=lambda asset: 1.0 if asset == "sharp" else 0.0,
+    )
+
+    assert choice.primary == "sharp"

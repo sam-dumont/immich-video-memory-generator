@@ -31,6 +31,7 @@ from immich_memories.analysis.editorial_text_gateway import SyncTextPromptReques
 from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPolicy
 from immich_memories.analysis.selection_source import SourceScope
 from immich_memories.analysis.selection_trace import Trace
+from immich_memories.analysis.subject_framing import FaceBox, face_boxes_of
 from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.analysis.text_period_insight import TEXT_PERIOD_MAX_OUTPUT_TOKENS
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -53,6 +54,11 @@ class EditorialRuntimePorts:
     load_people: Callable[[], Mapping[str, PersonPromptContext]] = _load_people
     fetch_preview: Callable[[Any, str], bytes | None] = lambda client, asset_id: (
         client.get_asset_thumbnail(asset_id, size="preview")
+    )
+    # Immich states where every face it found sits, but only on the asset itself:
+    # the search results a source snapshot is built from carry the names alone.
+    fetch_faces: Callable[[Any, str], Sequence[FaceBox]] = lambda client, asset_id: face_boxes_of(
+        client.get_asset(asset_id)
     )
     fetch_playback_range: Callable[[Any, str, int, int], tuple[bytes, int]] = (
         lambda client, asset_id, start, length: client.get_video_playback_range(

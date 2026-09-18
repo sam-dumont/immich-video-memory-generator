@@ -16,6 +16,7 @@ from immich_memories.analysis.editorial_description_contract import (
     validate_envelope,
 )
 from immich_memories.analysis.editorial_description_outcomes import unavailable_for
+from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset
 
 ASSET_COLUMNS = {
@@ -56,6 +57,10 @@ CREATE TABLE IF NOT EXISTS pixel_facts (
  needs_rotation INTEGER, computed_at TEXT);
 CREATE TABLE IF NOT EXISTS pixel_facts_thresholds (
  name TEXT PRIMARY KEY, value REAL, producer_key TEXT, n INTEGER, computed_at TEXT);
+CREATE TABLE IF NOT EXISTS face_boxes (
+ asset_id TEXT, named INTEGER, x1 REAL, y1 REAL, x2 REAL, y2 REAL);
+CREATE INDEX IF NOT EXISTS face_boxes_asset ON face_boxes (asset_id);
+CREATE TABLE IF NOT EXISTS face_reads (asset_id TEXT PRIMARY KEY, read_at TEXT);
 CREATE TABLE IF NOT EXISTS motion_bursts (
  asset_id TEXT PRIMARY KEY, burst_id TEXT, still_ids TEXT, video_ids TEXT, duration_seconds REAL,
  beats_a_still INTEGER, minimum_seconds REAL, computed_at TEXT);
@@ -136,6 +141,28 @@ def remember_assets(connection: sqlite3.Connection, assets: Sequence[Asset]) -> 
         people,
     )
     connection.commit()
+
+
+def remember_faces(connection: sqlite3.Connection, asset_id: str, boxes: Sequence[FaceBox]) -> None:
+    """Bank one picture's face geometry; a picture with no face is banked as read.
+
+    The boxes carry no identity, only whether Immich matched a name to each, which
+    is all any framing question needs and less than the store already holds.
+    """
+    connection.execute("DELETE FROM face_boxes WHERE asset_id=?", (asset_id,))
+    connection.executemany(
+        "INSERT INTO face_boxes (asset_id,named,x1,y1,x2,y2) VALUES (?,?,?,?,?,?)",
+        [(asset_id, int(b.named), b.x1, b.y1, b.x2, b.y2) for b in boxes],
+    )
+    connection.execute(
+        "INSERT OR REPLACE INTO face_reads (asset_id,read_at) VALUES (?,?)", (asset_id, now())
+    )
+
+
+def faces_unread(connection: sqlite3.Connection, asset_ids: Sequence[str]) -> tuple[str, ...]:
+    """The wanted pictures no face read has covered yet, in the caller's order."""
+    read = {str(row[0]) for row in connection.execute("SELECT asset_id FROM face_reads")}
+    return tuple(asset_id for asset_id in asset_ids if asset_id not in read)
 
 
 def missing_facts(

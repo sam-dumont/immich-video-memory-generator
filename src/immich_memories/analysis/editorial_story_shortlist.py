@@ -19,6 +19,7 @@ from immich_memories.analysis.editorial_story_pick_pages import (
     page_shares,
     pick_pages,
 )
+from immich_memories.analysis.subject_framing import SubjectVisibility
 
 MIN_GAP_IN_CAPTURE_GROUP_SECONDS = 300
 
@@ -191,6 +192,7 @@ def _capture_group_moments(
     flagged: Callable[[str], bool] = lambda _a: False,
     life: Callable[[str], bool] = lambda _a: True,
     plays: Callable[[dict], bool] = lambda _u: False,
+    subject: Callable[[str], SubjectVisibility] = lambda _a: SubjectVisibility(0, 0.0),
 ) -> list[DepictedChoice]:
     """Without a model inventory a capture group is the moment; the favourite, else the best unflagged
     picture that shows life, carries it.
@@ -198,6 +200,12 @@ def _capture_group_moments(
     Between two pictures that are otherwise equally entitled to the frame, the one that plays
     takes it: a second of the thing happening beats a sharper frame of it having happened. A
     video keeps losing on sharpness alone otherwise, because a video has no pixel facts.
+
+    Sharpness is the last word only between frames that show the same thing. A frame where the
+    named subject is a speck against the edge does not show what a frame of the same moment
+    showing him does, so visibility is read first, and how much of the frame he covers breaks
+    the tie between two frames that both show him. Pictures that name nobody all read zero,
+    which leaves the order exactly as it was.
     """
     groups: dict[str, list[dict]] = {}
     for u in units:
@@ -211,6 +219,8 @@ def _capture_group_moments(
                 flagged(u["asset_id"]),
                 not life(u["asset_id"]),
                 not plays(u),
+                -subject(u["asset_id"]).rung,
+                -subject(u["asset_id"]).share,
                 -quality(u["asset_id"]),
                 u["taken"],
             ),

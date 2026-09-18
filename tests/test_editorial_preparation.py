@@ -32,6 +32,7 @@ from immich_memories.analysis.editorial_preparation_detectors import (
     docling_pixels,
 )
 from immich_memories.analysis.editorial_preparation_pixels import pixel_facts
+from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset, Person
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.config_models_editorial import EditorialConfig
@@ -650,3 +651,43 @@ def test_a_caption_endpoint_that_wants_a_token_says_so_and_nothing_else(tmp_path
     assert result.failures["captions"] == (
         "caption endpoint http://vlm.test/v1 answered HTTP 401; set x"
     )
+
+
+def _named_asset(asset_id, *, named=True):
+    source = asset(asset_id)
+    return source.model_copy(
+        update={"people": list(source.people) if named else []},
+    )
+
+
+def _face(client_calls):
+    """Stands in for the Immich asset read that carries the face boxes."""
+
+    def fetch(asset_id):
+        client_calls.append(asset_id)
+        return (
+            FaceBox(x1=0.90, y1=0.40, x2=0.95, y2=0.48, named=True),
+            FaceBox(x1=0.20, y1=0.20, x2=0.50, y2=0.60, named=False),
+        )
+
+    return fetch
+
+
+def test_the_faces_of_a_picture_that_names_somebody_are_banked_once(tmp_path):
+    calls = []
+    assets = [_named_asset("aa1"), _named_asset("bb2", named=False)]
+
+    run(tmp_path, assets=assets, ports=successful_ports([]), fetch_faces=_face(calls))
+    run(tmp_path, assets=assets, ports=successful_ports([]), fetch_faces=_face(calls))
+
+    assert calls == ["aa1"]  # never the picture naming nobody, never twice
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        assert connection.execute("SELECT count(*) FROM face_boxes").fetchone()[0] == 2
+
+
+def test_a_run_without_a_face_reader_banks_nothing_and_leaves_the_rest_alone(tmp_path):
+    run(tmp_path, assets=[_named_asset("aa1")], ports=successful_ports([]))
+
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        assert connection.execute("SELECT count(*) FROM face_boxes").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM face_reads").fetchone()[0] == 0
