@@ -14,7 +14,11 @@ from datetime import datetime
 from typing import Any
 
 from immich_memories.analysis.editorial_story_pick_contract import ask_moment_pick
-from immich_memories.analysis.editorial_story_pick_pages import page_shares, pick_pages
+from immich_memories.analysis.editorial_story_pick_pages import (
+    MAX_LABELS_PER_ASK,
+    page_shares,
+    pick_pages,
+)
 
 MIN_GAP_IN_CAPTURE_GROUP_SECONDS = 300
 
@@ -447,13 +451,14 @@ def _vote_every_page(
     """Ask every page in chronological order, rolling the slots one leaves unused into the next.
 
     A page answers only for its own rows, so each request names a number the reader can
-    count. The story's vote is the union of theirs, in each order.
+    count; what an earlier page left unused never pushes a later ask past that number. The
+    story's vote is the union of theirs, in each order.
     """
     kept_by_order: list[list[str]] = [[], []]
     audit: list[dict] = []
     carried = 0
     for number, (positions, share) in enumerate(zip(groups, shares, strict=True), 1):
-        asked = min(share + carried, len(positions))
+        asked = min(share + carried, len(positions), max(share, MAX_LABELS_PER_ASK))
         votes: list[list[str]] = [[], []]
         if asked:
             votes = _vote_both_orders(
@@ -522,7 +527,7 @@ def _vote_the_shortlist(
             contract, story, "", count=count, allow_fewer=allow_fewer, sampled_motion=sampled_motion
         )
     )
-    groups = pick_pages(rows, overhead=overhead)
+    groups = pick_pages(rows, overhead=overhead, grant=count)
     shares = page_shares(
         [len(group) for group in groups],
         count,

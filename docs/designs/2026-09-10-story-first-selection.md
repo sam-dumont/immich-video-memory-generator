@@ -231,7 +231,13 @@ itself. The order is the owner's:
    product. Where the two orders split, a moment that plays takes the slot before a still. It is
    asked whatever the owner starred; only a story offering a single moment its
    grant reaches has nothing to ask. The star wins the frame of the moment the pick chooses, never its story's
-   slot.
+   slot. A large pick is cut into pages by request size and by how many labels one answer would
+   have to name (`editorial_story_pick_pages.MAX_LABELS_PER_ASK`), because the counting is what a
+   30B fails: asked for at most 51 and then at most 65, it returned 53 and 101. A reply that
+   overruns its page anyway is repaired once, and if it overruns again the reader's own order is
+   cut to that page's grant and recorded as a trim with its reason, the way the timing trim
+   records a dropped carrier. A reply that does not parse, or that names a row nobody offered,
+   still ends the attempt: it leaves no order to cut.
 5. **Carrier admission** — one picture per chosen moment is admitted if it is free, in context
    and spaced from what is already committed, and, when its story already holds a picture, if it
    does not look like the frames around it (`editorial_story_lookalike.py`: its own moment's, and
