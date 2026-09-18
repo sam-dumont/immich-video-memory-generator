@@ -73,46 +73,36 @@ def test_the_annotation_says_in_words_what_the_rung_counts():
 
 
 def test_immich_boxes_are_normalized_by_the_rendition_they_were_found_on():
-    from datetime import UTC, datetime
+    from immich_memories.api.models import AssetFace, Person
 
-    from immich_memories.api.models import Asset, AssetFace, Person
+    faces = [
+        AssetFace(
+            id="f1",
+            person=Person(id="p1", name="Named"),
+            boundingBoxX1=800,
+            boundingBoxY1=200,
+            boundingBoxX2=880,
+            boundingBoxY2=300,
+            imageWidth=1000,
+            imageHeight=1000,
+        ),
+        AssetFace(
+            id="f2",
+            boundingBoxX1=100,
+            boundingBoxY1=100,
+            boundingBoxX2=200,
+            boundingBoxY2=260,
+            imageWidth=1000,
+            imageHeight=800,
+        ),
+        AssetFace(id="f3", imageWidth=0, imageHeight=0),
+    ]
 
-    when = datetime(2022, 3, 27, tzinfo=UTC)
-    asset = Asset(
-        id="a1",
-        type="IMAGE",
-        file_created_at=when,
-        file_modified_at=when,
-        updated_at=when,
-        original_file_name="photo.jpg",
-        width=4000,
-        height=2666,
-        people=[
-            Person(
-                id="p1",
-                name="Named",
-                faces=[
-                    AssetFace(
-                        id="f1",
-                        boundingBoxX1=800,
-                        boundingBoxY1=200,
-                        boundingBoxX2=880,
-                        boundingBoxY2=300,
-                        imageWidth=1000,
-                        imageHeight=1000,
-                    )
-                ],
-            ),
-            Person(id="p2", name="", faces=[AssetFace(id="f2", imageWidth=0, imageHeight=0)]),
-        ],
+    assert face_boxes_of(faces) == (
+        FaceBox(x1=0.8, y1=0.2, x2=0.88, y2=0.3, named=True),
+        FaceBox(x1=0.1, y1=0.125, x2=0.2, y2=0.325, named=False),
     )
 
-    boxes = face_boxes_of(asset)
 
-    assert boxes == (FaceBox(x1=0.8, y1=0.2, x2=0.88, y2=0.3, named=True),)
-
-
-def test_an_asset_immich_found_no_face_on_produces_no_boxes():
-    from types import SimpleNamespace
-
-    assert face_boxes_of(SimpleNamespace(people=[])) == ()
+def test_a_picture_immich_found_no_face_in_produces_no_boxes():
+    assert face_boxes_of([]) == ()

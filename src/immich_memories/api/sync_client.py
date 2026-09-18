@@ -12,6 +12,7 @@ from immich_memories.api.album_service import AlbumRef
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.models import (
     Asset,
+    AssetFace,
     AssetType,
     MetadataSearchResult,
     Person,
@@ -121,6 +122,9 @@ class SyncImmichClient:
 
     def get_asset(self, asset_id: str) -> Asset:
         return self._run(self._async_client.get_asset(asset_id))
+
+    def get_asset_faces(self, asset_id: str) -> list[AssetFace]:
+        return self._run(self._async_client.get_asset_faces(asset_id))
 
     def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
         return self._run(self._async_client.get_asset_thumbnail(asset_id, size))

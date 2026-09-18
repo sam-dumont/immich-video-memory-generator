@@ -1,9 +1,10 @@
 """Whether a picture shows the people it names, read off the faces in it.
 
-A picture can name somebody and still not show them. In a finish-line frame the
-named runner is a speck against the right edge among a dozen nearer faces, and
-every fact the pick read -- the caption, the place, the heads, the people -- said
-only that he was there. Two frames of the same moment were indistinguishable to
+A picture can name somebody and still not show them. In the finish-line frame
+that prompted this, the named runner's face covers 0.41 % of the picture, sits
+hard against a border, and is half the size of the stranger's face beside it.
+Every fact the pick read -- the caption, the place, the heads, the people --
+said only that he was there. Two frames of the moment were indistinguishable to
 it, so it took the sharper one and the film showed a crowd.
 
 Two questions are answered here, from the picture's own boxes and its own frame:
@@ -114,32 +115,27 @@ def framing_visibility(line: str) -> SubjectVisibility:
     return SubjectVisibility(int(found.group(1)), float(found.group(2)) / 100)
 
 
-def face_boxes_of(asset: Any) -> tuple[FaceBox, ...]:
-    """Immich's faces for one asset, normalized by the frame each was detected on.
+def face_boxes_of(faces: Sequence[Any]) -> tuple[FaceBox, ...]:
+    """Immich's faces for one picture, normalized by the frame each was found on.
 
     Immich reports a face box in the pixels of whatever rendition it ran detection
     over, and states those dimensions beside it. Normalizing by the box's own
-    reference is the only way two boxes on one asset are comparable at all.
+    reference is the only way two boxes on one picture are comparable at all.
     """
-    boxes = []
-    for person in getattr(asset, "people", ()) or ():
-        named = bool((getattr(person, "name", "") or "").strip())
-        for face in getattr(person, "faces", ()) or ():
-            box = _normalized(face, named)
-            if box is not None:
-                boxes.append(box)
-    return tuple(boxes)
+    boxes = (_normalized(face) for face in faces)
+    return tuple(box for box in boxes if box is not None)
 
 
-def _normalized(face: Any, named: bool) -> FaceBox | None:
+def _normalized(face: Any) -> FaceBox | None:
     width = getattr(face, "image_width", 0) or 0
     height = getattr(face, "image_height", 0) or 0
     if width <= 0 or height <= 0:
         return None
+    person = getattr(face, "person", None)
     return FaceBox(
         x1=max(0.0, min(1.0, face.bounding_box_x1 / width)),
         y1=max(0.0, min(1.0, face.bounding_box_y1 / height)),
         x2=max(0.0, min(1.0, face.bounding_box_x2 / width)),
         y2=max(0.0, min(1.0, face.bounding_box_y2 / height)),
-        named=named,
+        named=bool(person and person.name.strip()),
     )

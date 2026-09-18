@@ -23,6 +23,7 @@ from immich_memories.api.compatibility import (
 )
 from immich_memories.api.models import (
     Asset,
+    AssetFace,
     AssetType,
     MetadataSearchResult,
     Person,
@@ -503,6 +504,9 @@ class ImmichClient:
 
     async def get_asset(self, asset_id: str) -> Asset:
         return await self.assets.get_asset(asset_id)
+
+    async def get_asset_faces(self, asset_id: str) -> list[AssetFace]:
+        return await self.assets.get_asset_faces(asset_id)
 
     async def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
         return await self.assets.get_asset_thumbnail(asset_id, size)

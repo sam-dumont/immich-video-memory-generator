@@ -55,10 +55,10 @@ class EditorialRuntimePorts:
     fetch_preview: Callable[[Any, str], bytes | None] = lambda client, asset_id: (
         client.get_asset_thumbnail(asset_id, size="preview")
     )
-    # Immich states where every face it found sits, but only on the asset itself:
-    # the search results a source snapshot is built from carry the names alone.
+    # Immich names the people it recognised on the asset itself but hands back no
+    # geometry there; where each face sits has its own endpoint.
     fetch_faces: Callable[[Any, str], Sequence[FaceBox]] = lambda client, asset_id: face_boxes_of(
-        client.get_asset(asset_id)
+        client.get_asset_faces(asset_id)
     )
     fetch_playback_range: Callable[[Any, str, int, int], tuple[bytes, int]] = (
         lambda client, asset_id, start, length: client.get_video_playback_range(
