@@ -28,6 +28,8 @@ class GenerationPreview:
     output_path: Path
     upload_intent: bool
     music_policy: str
+    title: str | None = None
+    subtitle: str | None = None
 
     @property
     def selected_total(self) -> int:
@@ -95,6 +97,9 @@ def print_generation_preview(preview: GenerationPreview) -> None:
     click.echo(
         f"Canvas: {preview.canvas.width}x{preview.canvas.height} ({preview.canvas.orientation})"
     )
+    click.echo(f"Title: {preview.title or 'from the template'}")
+    if preview.subtitle:
+        click.echo(f"Subtitle: {preview.subtitle}")
     click.echo(f"Music: {preview.music_policy}")
     click.echo(f"Output (planned): {preview.output_path}")
     click.echo(f"Upload: {'planned' if preview.upload_intent else 'disabled'}")

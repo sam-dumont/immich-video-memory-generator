@@ -438,8 +438,8 @@ class ImmichClient:
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         return await self.albums.resolve_album(name_or_id)
 
-    async def album_holding_most(self, asset_ids: Sequence[str], *, limit: int = 40) -> str | None:
-        return await self.albums.album_holding_most(asset_ids, limit=limit)
+    async def album_holding_most(self, asset_ids: Sequence[str]) -> str | None:
+        return await self.albums.album_holding_most(asset_ids)
 
     async def list_album_assets(self, album_id: str) -> list[dict]:
         return await self.albums.list_album_assets(album_id)

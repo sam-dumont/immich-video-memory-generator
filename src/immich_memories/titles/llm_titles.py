@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -75,6 +77,18 @@ class TitleSuggestion:
     subtitle: str | None = None
     trip_type: TripType | None = None
     map_mode: MapMode | None = None
+
+
+@dataclass(frozen=True)
+class TitlePrompt:
+    """The question put to the reader, and the facts its answer may name.
+
+    ``facts`` is empty for a prompt that makes the reader no such promise, and
+    an empty ``facts`` asks for nothing to be checked.
+    """
+
+    text: str
+    facts: str = ""
 
 
 @dataclass(frozen=True)
@@ -349,23 +363,22 @@ def _people_prompt(
     end: date,
     person_names: Sequence[str],
     facts: MemoryTitleFacts,
-) -> str:
+) -> TitlePrompt:
     condition = facts.people_condition or _plain_condition(person_names, facts.person_match)
     known = people_title_facts(person_names, start, end, people_path=facts.people_path)
     if facts.album_name:
         known += f"\nAlbum this film sits in: {facts.album_name}"
-    return (
+    span = span_title_facts(
+        start, end, person_names, people_path=facts.people_path, today=facts.today
+    )
+    return TitlePrompt(
         _load_prompt_template("title_people.md")
         .replace("{lang}", lang)
         .replace("{memory_type}", memory_type)
         .replace("{condition}", condition)
         .replace("{people_facts}", known)
-        .replace(
-            "{span}",
-            span_title_facts(
-                start, end, person_names, people_path=facts.people_path, today=facts.today
-            ),
-        )
+        .replace("{span}", span),
+        f"{condition}\n{known}\n{span}",
     )
 
 
@@ -405,21 +418,18 @@ def _occasion_prompt(
     *,
     daily_locations: Sequence[str] | None,
     person_names: Sequence[str],
-) -> str:
-    return (
+) -> TitlePrompt:
+    span = span_title_facts(
+        start, end, person_names, people_path=facts.people_path, today=facts.today
+    )
+    known = "\n".join(_occasion_lines(facts, start, end, daily_locations, person_names))
+    return TitlePrompt(
         _load_prompt_template("title_occasion.md")
         .replace("{lang}", lang)
         .replace("{memory_type}", memory_type)
-        .replace(
-            "{span}",
-            span_title_facts(
-                start, end, person_names, people_path=facts.people_path, today=facts.today
-            ),
-        )
-        .replace(
-            "{occasion_facts}",
-            "\n".join(_occasion_lines(facts, start, end, daily_locations, person_names)),
-        )
+        .replace("{span}", span)
+        .replace("{occasion_facts}", known),
+        f"{span}\n{known}",
     )
 
 
@@ -436,7 +446,7 @@ def build_title_prompt(
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
     facts: MemoryTitleFacts | None = None,
-) -> str:
+) -> TitlePrompt:
     """Build the prompt this memory is named from: people, occasion, or trip."""
     lang = _LOCALE_NAMES.get(locale, locale.capitalize())
     known = facts or MemoryTitleFacts()
@@ -466,6 +476,7 @@ def build_title_prompt(
         person_names=person_names,
         clip_descriptions=clip_descriptions,
         smart_objects=smart_objects,
+        album_name=known.album_name,
     )
 
 
@@ -481,8 +492,11 @@ def _trip_prompt(
     person_names: list[str] | None = None,
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
-) -> str:
+    album_name: str | None = None,
+) -> TitlePrompt:
     context_lines: list[str] = []
+    if album_name:
+        context_lines.append(f"Album name in Immich: {album_name}")
     if daily_locations:
         context_lines.append("Daily locations (detect the travel pattern):")
         for loc in daily_locations[:30]:
@@ -496,7 +510,7 @@ def _trip_prompt(
     if smart_objects:
         context_lines.append(f"Objects: {', '.join(smart_objects[:20])}")
 
-    return (
+    return TitlePrompt(
         _load_prompt_template()
         .replace("{lang}", lang)
         .replace("{memory_type}", memory_type)
@@ -505,6 +519,54 @@ def _trip_prompt(
         .replace("{duration_days}", str(duration_days))
         .replace("{context_lines}", "\n".join(context_lines))
     )
+
+
+# Languages spell the same place their own way (Brussels/Bruxelles,
+# Gent/Ghent), so a name the facts carry and a name the title writes are the
+# same name when they are this close, and different names below it.
+_SAME_NAME_RATIO = 0.6
+
+
+def _name_words(text: str) -> list[str]:
+    """Letter-only words, accents folded away so Genève matches Geneve."""
+    flattened = "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    )
+    return re.findall(r"[^\W\d_]+", flattened)
+
+
+def _is_a_known_name(word: str, known: set[str]) -> bool:
+    lowered = word.casefold()
+    return any(SequenceMatcher(None, lowered, name).ratio() >= _SAME_NAME_RATIO for name in known)
+
+
+def names_only_facts(line: str, facts: str) -> bool:
+    """Whether every name this line uses is a name the facts already use.
+
+    A capitalised word past the first is a proper noun in the languages the
+    title screens speak; the first word is capitalised by orthography alone and
+    proves nothing either way. So this refuses an invented name, not invention:
+    a reworded fact passes, a festival nobody recorded does not.
+    """
+    known = {word.casefold() for word in _name_words(facts)}
+    return all(
+        not word[:1].isupper() or _is_a_known_name(word, known) for word in _name_words(line)[1:]
+    )
+
+
+def _refusing_invented_names(
+    suggestion: TitleSuggestion | None, facts: str
+) -> TitleSuggestion | None:
+    """The suggestion, minus whatever part of it names something unrecorded."""
+    if suggestion is None or not facts:
+        return suggestion
+    if not names_only_facts(suggestion.title, facts):
+        logger.warning("Title names what no fact names; the template names this memory instead")
+        return None
+    if suggestion.subtitle and not names_only_facts(suggestion.subtitle, facts):
+        logger.info("Subtitle names what no fact names; dropping it")
+        return replace(suggestion, subtitle=None)
+    return suggestion
 
 
 async def generate_title_with_llm(
@@ -549,7 +611,7 @@ async def generate_title_with_llm(
 
     try:
         raw = await query_llm(
-            prompt,
+            prompt.text,
             llm_config,
             temperature=temperature,
             max_tokens=8000,
@@ -557,7 +619,7 @@ async def generate_title_with_llm(
             thinking=True,
             cache_path=cache_path,
         )
-        return parse_title_response(raw)
+        return _refusing_invented_names(parse_title_response(raw), prompt.facts)
     except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:
         logger.warning("LLM title generation failed: %s", e, exc_info=True)
         return None

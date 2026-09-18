@@ -268,7 +268,7 @@ def _title_prompts() -> tuple[str, str]:
             end_date="2024-02-08",
             duration_days=8,
             country="France",
-        ),
+        ).text,
         build_title_prompt(
             memory_type="trip",
             locale="en",
@@ -276,7 +276,7 @@ def _title_prompts() -> tuple[str, str]:
             end_date="2024-06-09",
             duration_days=9,
             country="Spain",
-        ),
+        ).text,
     )
 
 

@@ -165,4 +165,6 @@ still needs. Nothing is selected, so there is nothing to trace.
 
 `--no-render` selects for real, with every reading and every gate, and stops at the encode. The
 pictures it lists are the pictures it would have shipped, and the run is on record like any other.
-Use it to compare settings, or to time selection without paying for an encode you will delete.
+The plan it prints ends with the title and subtitle the film would open on, so a title can be tried
+without producing a file. Use it to compare settings, or to time selection without paying for an
+encode you will delete.
