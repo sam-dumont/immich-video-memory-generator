@@ -334,3 +334,52 @@ def test_a_bounded_failure_row_names_the_reasoning_that_took_the_budget(
     assert [row["reasoning_tokens"] for row in raised.value.attempts] == [8492, 8492]
     assert [row["finish_reason"] for row in raised.value.attempts] == ["length", "length"]
     assert [row["max_tokens"] for row in raised.value.attempts] == [1200, 2400]
+
+
+def test_refresh_replaces_the_answer_without_changing_its_identity(tmp_path, monkeypatch):
+    request = _request(tmp_path)
+    cache = JudgmentCache(request.cache_path)
+    cache.remember(request.judgment_key, "old answer")
+    cache.close()
+    calls = []
+
+    # WHY: Only the external model call is replaced; the SQLite bank remains real.
+    async def query(*args, **kwargs):
+        calls.append(1)
+        return "new answer"
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    refreshed = replace(request, refresh=True)
+    assert refreshed.judgment_key == request.judgment_key
+    assert asyncio.run(gateway.QueryTextRequester().request(refreshed)).raw == "new answer"
+    warm = asyncio.run(gateway.QueryTextRequester().request(request))
+    assert warm.raw == "new answer"
+    assert warm.cache_hit
+    assert len(calls) == 1
+
+
+def test_refresh_retries_a_banked_completion_failure(tmp_path, monkeypatch):
+    from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+
+    request = _request(tmp_path)
+    failure = TextCompletionFailure(
+        [
+            {"outcome": "incomplete", "raw": "{", "max_tokens": budget, "error": "truncated"}
+            for budget in (1200, 2400)
+        ]
+    )
+    cache = JudgmentCache(request.cache_path)
+    cache.remember_completion_failure(request.judgment_key, failure.as_record())
+    cache.close()
+    with pytest.raises(TextCompletionFailure):
+        asyncio.run(gateway.QueryTextRequester().request(request))
+
+    # WHY: Refresh must reach the provider even when bounded failure was persisted.
+    async def query(*args, **kwargs):
+        return "complete answer"
+
+    monkeypatch.setattr(gateway, "query_llm", query)
+    call = asyncio.run(gateway.QueryTextRequester().request(replace(request, refresh=True)))
+    assert call.raw == "complete answer"
+    assert not call.cache_hit
+    assert asyncio.run(gateway.QueryTextRequester().request(request)).cache_hit
