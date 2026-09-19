@@ -42,7 +42,6 @@ PREVIEW_STAGE = "previews"
 STAGES = (
     "Reading dates, places and people",
     "Reading event evidence",
-    "Reading the period account",
     "Building editorial cards",
     "Editing the memory",
     "Validating selected source timing",

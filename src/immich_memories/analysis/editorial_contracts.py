@@ -194,36 +194,6 @@ class InsightEvidence:
 
 
 @dataclass(frozen=True)
-class PeriodInsight:
-    """The provisional reading of one complete period wall."""
-
-    thesis: str | None
-    evidence: tuple[InsightEvidence, ...]
-    tensions: tuple[str, ...]
-    recurring_threads: tuple[str, ...]
-    unavailable_reason: str | None
-    revision: int
-    provenance: DecisionProvenance
-    reader: Literal["model", "rules"] = "model"
-
-    def __post_init__(self) -> None:
-        if self.revision < 0:
-            raise ValueError("period insight revision cannot be negative")
-        if self.reader == "rules":
-            if self.thesis is not None or self.evidence or self.unavailable_reason is not None:
-                raise ValueError("rules omit a thesis without declaring evidence unavailable")
-            return
-        if (self.thesis is None) == (self.unavailable_reason is None):
-            raise ValueError("period insight needs exactly one thesis or unavailable reason")
-        if self.thesis is not None and (not self.thesis.strip() or not self.evidence):
-            raise ValueError("period insight thesis needs visual evidence")
-        if self.unavailable_reason is not None and not self.unavailable_reason.strip():
-            raise ValueError("period insight unavailable reason cannot be blank")
-        if any(not item.episode_ids or not item.asset_ids for item in self.evidence):
-            raise ValueError("period insight evidence must identify episodes and assets")
-
-
-@dataclass(frozen=True)
 class DecisionProvenance:
     """Evidence that lets a decision be reproduced from its original request."""
 

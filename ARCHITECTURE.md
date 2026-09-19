@@ -11,12 +11,16 @@ The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
 Selection is the story-first editorial route, the only one: `generate` (or the Memory page's
 Cut) -> `build_smart_pipeline(editorial_context)` (`analysis/editorial_runtime.py`) ->
 `SmartPipeline.run_editorial_source()` -> `RuntimeEditorialPlanner.plan_source()`, which reports
-six stages: **Preparing source metadata -> Reading event evidence -> Reading the period account
+five stages: **Preparing source metadata -> Reading event evidence
 -> Building editorial cards -> Editing the memory -> Validating selected source timing**. Every
 attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 (`operations/editorial_attempt.py`, an OS lease tells interrupted from slow); the facts and banks
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
+
+Selection carries the exact episode reading identities into its audit lineage. The former
+pre-card period-insight pass only supplied audit prose and no selection decisions; it is no
+longer requested. Existing database rows are left untouched; no new period-insight rows are written.
 
 The period account (`analysis/editorial_story_reading.py`) reads the banked 90-minute episode
 readings, one page per calendar month, cut into parts only at a day boundary. No page carries
@@ -184,7 +188,7 @@ src/immich_memories/
 ├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
-│   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
+│   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
@@ -192,7 +196,7 @@ src/immich_memories/
 │   │                               # motion lines (one caption-seat sentence per video, read by
 │   │                               # the pick and by the standing gate's moving rows)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
-│   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
+│   ├── text_episode_reader.py  # Reading event evidence (paged, banked)
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
@@ -561,7 +565,6 @@ generate / Memory page Cut
                     ├── "Preparing source metadata": prepare_editorial_annotations
                     ├── TextEditorialPlanner.plan_prepared             (editorial_orchestration.py)
                     │     ├── "Reading event evidence": episode reader + cull
-                    │     ├── "Reading the period account": the thesis
                     │     ├── "Building editorial cards": build_moment_cards -> moment wall
                     │     └── "Editing the memory": plan_structure -> select_story_first
                     ├── "Validating selected source timing": bind_editorial_timeline

@@ -26,7 +26,6 @@ from immich_memories.analysis.editorial_story_replies import (
     read_episode_page,
 )
 from immich_memories.analysis.editorial_story_weighing import _apply_story_weights
-from immich_memories.analysis.text_period_wire import _compact_dates, _PeriodEpisodeFacts
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 
 HEADLINE_CHARS = 160
@@ -230,14 +229,18 @@ def story_episode_rows(moment_rows, *, readings, sources, lines, favourite):
     return rows
 
 
+def _compact_dates(first: datetime, last: datetime, *, shared_year: int | None) -> str:
+    pattern = "%m-%d" if shared_year is not None else "%Y-%m-%d"
+    first_text, last_text = first.strftime(pattern), last.strftime(pattern)
+    return first_text if first.date() == last.date() else f"{first_text}..{last_text}"
+
+
 def _prompt_row(row, *, shared_year: int | None) -> dict[str, Any]:
     """What the model sees: no wall aliases, no source identifiers, no run-scoped context."""
     first, last = _instant(row["taken"]), _instant(row.get("last_taken") or row["taken"])
     return {
         "reading": row.get("reading", ""),
-        "taken": _compact_dates(
-            _PeriodEpisodeFacts(first, last or first, "", (), 0, ""), shared_year=shared_year
-        )
+        "taken": _compact_dates(first, last or first, shared_year=shared_year)
         if first is not None
         else "",
         "places": row["places"],

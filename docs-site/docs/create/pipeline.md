@@ -25,8 +25,7 @@ flowchart TD
     end
 
     prep --> episodes["Reading event evidence: i/n"]
-    episodes --> period["Reading the period account: month"]
-    period --> cards["Building editorial cards"]
+    episodes --> cards["Building editorial cards"]
     cards --> edit["Editing the memory"]
     edit --> timing["Validating selected source timing"]
     timing --> render["Render: originals, photos,<br/>title screens, assembly, encode"]
@@ -35,7 +34,6 @@ flowchart TD
 
     caption -.->|"a 400 px tile per picture"| captioner(["caption server"])
     episodes -.-> reader(["the reader"])
-    period -.-> reader
     edit -.->|"800 px tiles and annotation lines"| reader
 ```
 
@@ -214,7 +212,7 @@ would crowd out a batch, they are compared first; every story is still evaluated
 that returns missing decisions or repeatedly truncated text is split into smaller groups while
 keeping parts of the same occasion together. All batches must finish before the decisions are used.
 
-The shipped design (the source model, the annotation store and its banks, the six stages, the two
+The shipped design (the source model, the annotation store and its banks, the five stages, the episode
 readings, the structure and story planners, carriers and durable attempts) is written up in
 [Story-first selection](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)
 in the repository.
@@ -302,7 +300,7 @@ nothing.
 ## Editing without a language model
 
 Set `advanced.editorial.reader: rules` (or leave it on `auto` with no `llm.model`) and the editor
-runs the same six stages with a rule answering each question a model would answer. Same stages, same
+runs the same five stages with a rule answering each question a model would answer. Same stages, same
 records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 
 | Question | Rule |
@@ -341,13 +339,16 @@ album, one event, a trip) survive it well; broad recaps are where the model earn
 
 The stage names are what the run reports: a row on the Memory page, a line in the terminal.
 
+Episode evidence goes straight into editorial cards. The editor still reads and groups the
+stories; there is no separate summary call before it. Audit records retain the identities of
+the episode readings used for the cut.
+
 | Stage | What runs | Where it can run |
 |---|---|---|
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
-| **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

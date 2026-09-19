@@ -25,7 +25,6 @@ from immich_memories.analysis.editorial_planner import EditorialPlan
 from immich_memories.analysis.editorial_rule_episodes import (
     EpisodeReader,
     RuleEpisodeReader,
-    rule_period,
 )
 from immich_memories.analysis.editorial_runtime_backend import ProductionPostCardBackend
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
@@ -55,11 +54,6 @@ from immich_memories.analysis.special_event_scope import (
 from immich_memories.analysis.text_episode_answers import TEXT_EPISODE_SCHEMA_VERSION
 from immich_memories.analysis.text_episode_prompt import TEXT_EPISODE_PROMPT_VERSION
 from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
-from immich_memories.analysis.text_period_insight import (
-    TEXT_PERIOD_PROMPT_VERSION,
-    run_text_period_insight,
-)
-from immich_memories.analysis.text_period_wire import TEXT_PERIOD_SCHEMA_VERSION
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.api.person_expression import PersonExpression
@@ -71,7 +65,6 @@ from immich_memories.planning.auto_duration import DURATION_FROM_DURATION_FLAG
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
 from immich_memories.store.episode_readings import EpisodeReadingProducer, EpisodeReadingStore
-from immich_memories.store.period_insights import PeriodInsightProducer, PeriodInsightStore
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
@@ -246,7 +239,6 @@ class RuntimeEditorialPlanner:
         planner: TextEditorialPlanner,
         *,
         episode_store: EpisodeReadingStore,
-        period_store: PeriodInsightStore,
         asset_ids: tuple[str, ...] | None = None,
         config: Config | None = None,
         backend: ProductionPostCardBackend | None = None,
@@ -256,7 +248,6 @@ class RuntimeEditorialPlanner:
         self._config = config
         self._backend = backend
         self._episode_store = episode_store
-        self._period_store = period_store
         self._asset_ids = frozenset(asset_ids) if asset_ids is not None else None
         self._person_expression = person_expression
         self.last_attempt_directory: Path | None = None
@@ -427,7 +418,6 @@ class RuntimeEditorialPlanner:
     def close(self) -> None:
         """Release every thread-owned SQLite connection; later reads reopen safely."""
         self._episode_store.close()
-        self._period_store.close()
 
 
 class EditorialInputsRequired(RuntimeError):
@@ -611,11 +601,10 @@ def _recorded(requester, stage: str, directory: Callable[[], Path]):
 
 def _reading_requesters(config, ports, reader_mode):
     if reader_mode == "rules":
-        return "rules-v1", None, None
+        return "rules-v1", None
     return (
         semantic_text_model_identity(config.llm, thinking=False),
         ports.episode_requester_factory(config),
-        ports.period_requester_factory(config),
     )
 
 
@@ -640,15 +629,7 @@ def build_editorial_planner(
     context_by_id = runtime_ports.load_people()
     people = adapt_editorial_people(context_by_id)
     episode_store = runtime_ports.episode_store_factory(store_path)
-    period_store = runtime_ports.period_store_factory(store_path)
-    model_id, episode_requester, period_requester = _reading_requesters(
-        config, runtime_ports, reader_mode
-    )
-    period_producer = PeriodInsightProducer(
-        model_id=model_id,
-        prompt_version=TEXT_PERIOD_PROMPT_VERSION,
-        schema_version=TEXT_PERIOD_SCHEMA_VERSION,
-    )
+    model_id, episode_requester = _reading_requesters(config, runtime_ports, reader_mode)
     scope = SourceScope(
         date_ranges=context.date_ranges,
         asset_ids=context.event_asset_ids if context.special_event_id else None,
@@ -719,17 +700,6 @@ def build_editorial_planner(
             albums=album_names,
         )
 
-    def period_reader(episodes: Any) -> Any:
-        if reader_mode == "rules":
-            return rule_period(episodes)
-        assert period_requester is not None
-        return run_text_period_insight(
-            episodes,
-            store=period_store,
-            producer=period_producer,
-            requester=period_requester,
-        )
-
     backend = ProductionPostCardBackend(
         config=config,
         context=context,
@@ -745,7 +715,6 @@ def build_editorial_planner(
         return backend._context.artifact_dir
 
     episode_requester = _recorded(episode_requester, "episodes", attempt_directory)
-    period_requester = _recorded(period_requester, "period", attempt_directory)
     try:
         planner = TextEditorialPlanner(
             selection_request=selection_request,
@@ -754,18 +723,15 @@ def build_editorial_planner(
                 preview_jpeg=lambda asset: cached_preview_bytes(thumbnail_cache, asset.id),
             ),
             episode_reader_factory=episode_reader_factory,
-            period_reader=period_reader,
             backend=backend,
             verdicts=EditorialVerdicts(store_path),
         )
     except BaseException:
         episode_store.close()
-        period_store.close()
         raise
     runtime = RuntimeEditorialPlanner(
         planner,
         episode_store=episode_store,
-        period_store=period_store,
         asset_ids=scope.asset_ids,
         config=config,
         backend=backend,
