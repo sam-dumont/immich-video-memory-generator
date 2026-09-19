@@ -201,6 +201,10 @@ whether one frame would make a good photograph. Standing votes are banked per pi
 key carries the caption seat that wrote those sentences: a different seat writes different rows and
 its predecessor's verdicts are not replayed against them.
 
+Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
+unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
+cached as an empty vote. A valid empty mapping still means the reader chose none of the offered items.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 

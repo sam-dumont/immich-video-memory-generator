@@ -40,6 +40,10 @@ class RecordingJudge:
 
     def ask(self, _stage: str, prompt: str, **_kwargs: object) -> str:
         self.calls.append(prompt)
+        if _stage.startswith("worthy"):
+            return '{"worthy": {}}'
+        if _stage.startswith("standing"):
+            return '{"weak": {}}'
         if prompt.startswith("Inventory distinct depicted moments"):
             sources = re.findall(r'"source": "(U\d+)"', prompt)
             return json.dumps(
