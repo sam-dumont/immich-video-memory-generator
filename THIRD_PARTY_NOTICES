@@ -276,7 +276,7 @@ antlr4-python3-runtime 4.9.3
   License: BSD
   URL: http://www.antlr.org
 
-anyio 4.12.1
+anyio 4.14.2
   License: MIT
   URL: https://github.com/agronholm/anyio
 
