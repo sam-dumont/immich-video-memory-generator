@@ -31,7 +31,6 @@ from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT
 from immich_memories.config_loader import Config
 from immich_memories.memory_types.date_builders import build_birthday_windows
 from immich_memories.store.episode_readings import EpisodeReadingStore
-from immich_memories.store.period_insights import PeriodInsightStore
 from immich_memories.timeperiod import DateRange
 from tests.conftest import make_asset, make_clip
 
@@ -80,16 +79,6 @@ def _create_annotation_store(path: Path, descriptions: dict[str, str]) -> None:
 
 
 class _ClosingEpisodeStore(EpisodeReadingStore):
-    def __init__(self, path: Path) -> None:
-        super().__init__(path)
-        self.close_calls = 0
-
-    def close(self) -> None:
-        self.close_calls += 1
-        super().close()
-
-
-class _ClosingPeriodStore(PeriodInsightStore):
     def __init__(self, path: Path) -> None:
         super().__init__(path)
         self.close_calls = 0
@@ -362,9 +351,7 @@ def test_runtime_acquires_each_exact_window_through_the_real_text_lane(tmp_path)
     )
 
     assert (
-        result.unavailable_reason
-        == repeated.unavailable_reason
-        == ("no readable episode evidence for period insight")
+        result.unavailable_reason == repeated.unavailable_reason == ("no readable episode evidence")
     )
     assert tuple(scope.date_ranges for scope in acquired_scopes) == ((earlier, later),)
 
@@ -424,11 +411,12 @@ def test_album_runtime_uses_only_the_captured_album_corpus(tmp_path) -> None:
         trace=Trace(),
     )
 
-    assert result.unavailable_reason == "no readable episode evidence for period insight"
+    assert result.unavailable_reason == "no readable episode evidence"
 
 
 def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
     tmp_path,
+    monkeypatch,
 ) -> None:
     store = tmp_path / "annotations.sqlite"
     _create_annotation_store(
@@ -463,16 +451,10 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
     later = make_clip("later", file_created_at=window.start.replace(hour=10))
     people_loads = 0
     episode_stores: list[_ClosingEpisodeStore] = []
-    period_stores: list[_ClosingPeriodStore] = []
 
     def episode_store(path: Path) -> _ClosingEpisodeStore:
         created = _ClosingEpisodeStore(path)
         episode_stores.append(created)
-        return created
-
-    def period_store(path: Path) -> _ClosingPeriodStore:
-        created = _ClosingPeriodStore(path)
-        period_stores.append(created)
         return created
 
     def load_people():
@@ -495,21 +477,13 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             }
         )
 
-    def period_requester(_config):
-        return lambda _prompt: json.dumps(
-            {
-                "schema_version": "period-insight-text-v1",
-                "thesis": "One shared race resolves in celebration.",
-                "evidence": [
-                    {
-                        "observation": "The finish resolves the morning effort.",
-                        "episodes": [1],
-                    }
-                ],
-                "tensions": ["Effort before relief."],
-                "recurring_threads": ["Showing up together."],
-            }
-        )
+    async def unexpected_summary(*args, **kwargs):
+        pytest.fail("Selection requested a summary that does not affect the cut")
+
+    # WHY: forbid extra network calls outside the supplied episode and editor boundaries.
+    monkeypatch.setattr(
+        "immich_memories.analysis.editorial_text_gateway.query_llm", unexpected_summary
+    )
 
     captured = []
 
@@ -527,13 +501,9 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             "earlier",
             "later",
         }
-        assert source.lineage["period_insight"]["evidence_key"]
-        assert len(source.period_evidence) == 1
-        support = source.period_evidence[0]
-        assert support.observation == "The finish resolves the morning effort."
-        assert support.asset_ids == ("earlier",)
-        assert len(support.episode_ids) == 1
-        assert support.episode_ids[0] != "1"  # canonical episode ID, not the prompt alias
+        assert source.lineage["episode_readings"]
+        assert all(row["evidence_key"] for row in source.lineage["episode_readings"])
+        assert source.period_evidence == ()
         assert b"A family starts a race together." in source.wall_bytes
         assert source.case.target_seconds == 60
         assert source.intent.product == "special_day"
@@ -566,9 +536,7 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             load_people=load_people,
             fetch_full_source=lambda _client, _scope: (later, earlier),
             episode_requester_factory=episode_requester,
-            period_requester_factory=period_requester,
             episode_store_factory=episode_store,
-            period_store_factory=period_store,
             structure_planner=structure_planner,
             structure_ports_factory=lambda _source: object(),
         ),
@@ -605,12 +573,7 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
         replace(captured[0], case=replace(captured[0].case, product="trip"))
     assert (context.artifact_dir / "plan.private.json").is_file()
     assert episode_stores[0].close_calls == 1
-    assert period_stores[0].close_calls == 1
-    assert len(trace.requests) == 2
-    assert tuple(request.model for request in trace.requests[:2]) == (
-        trace.requests[0].model,
-        trace.requests[0].model,
-    )
+    assert len(trace.requests) == 1
     assert trace.requests[0].model.startswith("text-model@text-")
 
 

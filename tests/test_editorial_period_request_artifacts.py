@@ -10,7 +10,6 @@ import pytest
 
 from immich_memories.analysis import editorial_runtime as runtime
 from immich_memories.analysis import editorial_text_gateway as gateway
-from immich_memories.analysis.editorial_planner import EditorialPlan
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.config_loader import Config
 from immich_memories.config_models_llm import LLMConfig
@@ -43,8 +42,8 @@ def records(directory):
     )
 
 
-def test_exact_complete_reply_is_retained_before_period_parser_rejects_it(tmp_path, monkeypatch):
-    from immich_memories.analysis.text_period_insight import _read_response
+def test_exact_complete_reply_is_retained_before_episode_parser_rejects_it(tmp_path, monkeypatch):
+    from immich_memories.analysis.text_episode_answers import _read_response_result
 
     seen = []
     raw = '  {"schema_version":"period-insight-text-v1","thesis":"A day","evidence":[]}\n'
@@ -60,7 +59,7 @@ def test_exact_complete_reply_is_retained_before_period_parser_rejects_it(tmp_pa
     monkeypatch.setattr(gateway, "query_llm", query)
     answer = requester(tmp_path)("Read every source.\n")
     assert answer == raw
-    assert _read_response(answer, None, ()) is None
+    assert not _read_response_result(answer, ()).readings
     assert callable(seen[0][2].pop("transport_observer"))
     assert seen == [
         (
@@ -205,11 +204,11 @@ def test_finish_write_failure_preserves_original_reply_or_exception(
     assert "Could not record private text response" in caplog.text
 
 
-def test_production_period_recording_follows_each_active_attempt_even_on_failure(
+def test_production_episode_recording_follows_each_active_attempt_even_on_failure(
     tmp_path, monkeypatch
 ):
     context = runtime.EditorialRunContext(
-        "period-control",
+        "episode-control",
         "A period",
         "monthly_highlights",
         (_window(2024, 7, 12),),
@@ -228,22 +227,18 @@ def test_production_period_recording_follows_each_active_attempt_even_on_failure
 
     async def query(prompt, *_args, **kwargs):
         calls.append((prompt, kwargs))
-        return "exact invalid period reply"
-
-    def period(_episodes, *, requester, **kwargs):
-        assert requester("exact period question") == "exact invalid period reply"
-        raise RuntimeError("period parser refused")
+        return "exact invalid episode reply"
 
     def plan_source(*args, **kwargs):
-        planner._planner._period_reader(object())
-        return SimpleNamespace(plan=EditorialPlan(), duration_realization=None)
+        reader = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+        assert reader._requester("exact episode question") == "exact invalid episode reply"
+        raise RuntimeError("episode parser refused")
 
     monkeypatch.setattr(gateway, "query_llm", query)
-    monkeypatch.setattr(runtime, "run_text_period_insight", period)
     monkeypatch.setattr(planner, "_plan_source", plan_source)
     attempts = []
     for _ in range(2):
-        with pytest.raises(RuntimeError, match="period parser refused"):
+        with pytest.raises(RuntimeError, match="episode parser refused"):
             planner.plan_source([], trace=Trace())
         attempts.append(planner.last_attempt_directory)
     assert len(calls) == 2 and len(set(attempts)) == 2
@@ -251,7 +246,7 @@ def test_production_period_recording_follows_each_active_attempt_even_on_failure
         assert len(records(attempt)) == 1
         assert [
             p.read_text() for p in attempt.glob("pre-planner-calls/*.response.private.txt")
-        ] == ["exact invalid period reply"]
+        ] == ["exact invalid episode reply"]
         assert json.loads((attempt / "status.private.json").read_text())["status"] == "failed"
     assert not (context.artifact_dir / "pre-planner-calls").exists()
     planner.close()

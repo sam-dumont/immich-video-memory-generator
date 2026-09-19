@@ -21,6 +21,7 @@ from immich_memories.analysis.editorial_orchestration import (
     TextEditorialWorkprint,
 )
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
+from immich_memories.analysis.editorial_rule_episodes import RuleEpisodeReader
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -33,17 +34,16 @@ from immich_memories.analysis.text_episode_reader import (
     CachedTextEpisodeReader,
     TextEpisodeReadDiagnostics,
 )
-from immich_memories.analysis.text_period_insight import run_text_period_insight
-from immich_memories.analysis.text_period_wire import TEXT_PERIOD_SCHEMA_VERSION
 from immich_memories.store.episode_readings import (
     EpisodeReadingProducer,
     EpisodeReadingStore,
 )
-from immich_memories.store.period_insights import PeriodInsightProducer, PeriodInsightStore
 from tests.conftest import make_asset, make_clip
 
 
 class _AnnotationLines:
+    contract = AnnotationContract("annotation-line-v1", ("description:test-v1",))
+
     def __init__(self, lines: dict[str, AssetAnnotationLine]) -> None:
         self._lines = lines
         self.requests: list[tuple[str, ...]] = []
@@ -57,7 +57,7 @@ class _AnnotationLines:
             missing_asset_ids=tuple(
                 asset_id for asset_id in asset_ids if asset_id not in self._lines
             ),
-            contract=AnnotationContract("annotation-line-v1", ("description:test-v1",)),
+            contract=self.contract,
         )
 
 
@@ -85,25 +85,20 @@ def test_episode_diagnostics_are_observed_before_a_later_stage_failure() -> None
     diagnostics = TextEpisodeReadDiagnostics()
     observed: list[TextEpisodeReadDiagnostics] = []
 
-    def fail_after_episode_read(_episodes):
-        raise RuntimeError("period failed after episode parsing")
+    def fail_after_episode_read(*args, **kwargs):
+        raise RuntimeError("editor failed after episode parsing")
 
     planner = TextEditorialPlanner(
         selection_request=EditorialSelectionRequest(scope=SourceScope()),
         source_dependencies=EditorialDependencies(source_fetcher=lambda _scope: (source,)),
-        episode_reader_factory=lambda _prepared: SimpleNamespace(
-            read=lambda _projections: SimpleNamespace(
-                diagnostics=diagnostics,
-                warnings=(),
-                request_trace=None,
-            )
+        episode_reader_factory=lambda _prepared: RuleEpisodeReader(
+            _AnnotationLines({"observed": AssetAnnotationLine("observed", "A family outside.")})
         ),
-        period_reader=fail_after_episode_read,
-        backend=_RecordingBackend(),
+        backend=SimpleNamespace(edit=fail_after_episode_read),
         episode_diagnostics_sink=observed.append,
     )
 
-    with pytest.raises(RuntimeError, match="period failed"):
+    with pytest.raises(RuntimeError, match="editor failed"):
         planner.plan(demanded, trace=Trace())
 
     assert observed == [diagnostics]
@@ -169,7 +164,6 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
         }
     )
     episode_store = EpisodeReadingStore(tmp_path / "annotations.sqlite")
-    period_store = PeriodInsightStore(tmp_path / "annotations.sqlite")
     episode_producer = EpisodeReadingProducer(
         model_id="text-judge-test",
         prompt_version="episode-prompt-v1",
@@ -177,13 +171,7 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
         annotation_renderer_version="annotation-line-v1",
         annotation_versions=("description:test-v1",),
     )
-    period_producer = PeriodInsightProducer(
-        model_id="text-judge-test",
-        prompt_version="period-prompt-v1",
-        schema_version=TEXT_PERIOD_SCHEMA_VERSION,
-    )
     episode_prompts: list[str] = []
-    period_prompts: list[str] = []
 
     def request_episode(prompt: str) -> str:
         episode_prompts.append(prompt)
@@ -207,23 +195,6 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
             }
         )
 
-    def request_period(prompt: str) -> str:
-        period_prompts.append(prompt)
-        return json.dumps(
-            {
-                "schema_version": TEXT_PERIOD_SCHEMA_VERSION,
-                "thesis": "A family race day resolves in a shared celebration.",
-                "evidence": [
-                    {
-                        "observation": "The finish turns effort into a family occasion.",
-                        "episodes": [1],
-                    }
-                ],
-                "tensions": ["Effort before relief."],
-                "recurring_threads": ["Family shows up."],
-            }
-        )
-
     def episode_reader_factory(prepared):
         return CachedTextEpisodeReader(
             store=episode_store,
@@ -232,20 +203,11 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
             requester=request_episode,
         )
 
-    def period_reader(episodes):
-        return run_text_period_insight(
-            episodes,
-            store=period_store,
-            producer=period_producer,
-            requester=request_period,
-        )
-
     backend = _RecordingBackend()
     planner = TextEditorialPlanner(
         selection_request=EditorialSelectionRequest(scope=SourceScope()),
         source_dependencies=EditorialDependencies(source_fetcher=lambda _scope: full_source),
         episode_reader_factory=episode_reader_factory,
-        period_reader=period_reader,
         backend=backend,
     )
     first_trace = Trace()
@@ -256,9 +218,7 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
 
     assert first == second == EditorialPlan(selections=(EditorialSelection("demanded-favourite"),))
     assert len(episode_prompts) == 1
-    assert len(period_prompts) == 1
     assert all(asset.id not in episode_prompts[0] for asset in full_source)
-    assert all(asset.id not in period_prompts[0] for asset in full_source)
     assert annotations.requests == [
         ("context-frame", "demanded-favourite", "demanded-junk"),
         ("context-frame", "demanded-favourite", "demanded-junk"),
@@ -272,8 +232,6 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
     assert cold.episodes.request_trace.actual_calls == 1
     assert warm.episodes.request_trace.actual_calls == 0
     assert warm.episodes.request_trace.cache_hit is True
-    assert cold.period.actual_calls == 1
-    assert warm.period.actual_calls == 0
     assert cold.cull.rejected[0].asset_id == "demanded-junk"
     assert cold.cull.survivors[0].asset_id == "context-frame"
     assert [candidate.asset_id for candidate in cold.scoped_survivors] == ["demanded-favourite"]
@@ -301,9 +259,5 @@ def test_text_editorial_planner_runs_the_real_banked_lane_with_full_context(
     assert first_trace.editorial_passes[-1].request_traces == (cold.episodes.request_trace,)
     assert [request.provenance.pass_name for request in first_trace.requests] == [
         "episode-reading-text",
-        "period-insight-text",
     ]
-    assert (
-        first_trace.requests[-1].provenance.pass_name == "period-insight-text"  # noqa: S105 - public editorial pass identity.
-    )
     assert second_trace.requests[-1].cache_hit is True

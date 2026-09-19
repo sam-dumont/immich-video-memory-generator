@@ -91,19 +91,6 @@ def setup_runtime(
             }
         )
 
-    def period(prompt):
-        assert not warm[0], "warm period request escaped exact bank"
-        calls["period"].append(prompt)
-        return json.dumps(
-            {
-                "schema_version": "period-insight-text-v1",
-                "thesis": "Moving home.",
-                "evidence": [{"observation": "Furniture is moved.", "episodes": [1]}],
-                "tensions": [],
-                "recurring_threads": [],
-            }
-        )
-
     def acquire(_client, scope):
         calls["acquire"].append(scope)
         return sources
@@ -144,7 +131,6 @@ def setup_runtime(
                     requested=len(assets), missing_by_producer={}, failures={}
                 ),
                 episode_requester_factory=lambda _: episode,
-                period_requester_factory=lambda _: period,
                 **options,
             ),
         )
@@ -207,7 +193,8 @@ def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
     assert replay.editorial_selections == cold.editorial_selections
     assert replay.clip_segments == cold.clip_segments
     assert len(image_calls) == before
-    assert len(calls["episode"]) == len(calls["period"]) == 1
+    assert len(calls["episode"]) == 1
+    assert not calls["period"]
     assert all(source.allow_live_motion for source in captures)
     for reader in pictures:
         reader.close()
