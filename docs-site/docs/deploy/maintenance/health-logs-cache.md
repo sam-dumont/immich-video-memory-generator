@@ -46,6 +46,21 @@ video...`; the bracketed run id ties every line of one run together (`-` outside
 `jq 'select(.run_id=="abc123")'` works. `IMMICH_MEMORIES_LOG_FILE=/path/to/file.log` writes the
 same lines to a file as well as stdout; in Docker, point it at a mounted path.
 
+## Selection usage records
+
+Each selection attempt saves `llm-usage.json` beside its private status record under
+`cache/editorial-runs/<memory>/attempts/<attempt>/`. It checkpoints measured model calls,
+cache hits and token counts as progress changes, then saves the final selection totals on
+success, failure or cancellation. This also works with `generate --no-render` and the web UI.
+A process killed without cleanup leaves its last checkpoint; the interrupted call may be missing.
+Writes replace the file atomically, so a failed write preserves the previous checkpoint.
+
+The per-model split retains the served model names. Reasoning tokens are a subset of output
+tokens, not an additional charge. These totals cover responses recorded by the shared model
+counters; preparation's caption and motion requests still need separate accounting. Treat the
+file as measured selection usage, not a complete first-use library bill. A successful rendered
+CLI run replaces it with the wider run total already collected by the CLI.
+
 ## Caches
 
 Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):

@@ -6,11 +6,14 @@ import fcntl
 import json
 import os
 from collections.abc import Mapping
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from immich_memories.analysis.llm_metrics import LLMCounters, collecting
+from immich_memories.analysis.llm_usage_record import write_llm_usage
 from immich_memories.operations.cancellation import PipelineCancelled
 from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageClock, StageUpdate
 from immich_memories.security import write_secret_file
@@ -45,18 +48,22 @@ class EditorialAttempt:
         }
         self._lease: int | None = None
         self._stage_clock = StageClock()
+        self._usage_scope = ExitStack()
+        self._usage: LLMCounters | None = None
 
     def __enter__(self) -> EditorialAttempt:
         self.directory.mkdir(parents=True, mode=0o700)
         self._lease = os.open(self.directory / ".lease", os.O_CREAT | os.O_RDWR, 0o600)
         try:
             fcntl.flock(self._lease, fcntl.LOCK_EX)
+            self._usage = self._usage_scope.enter_context(collecting())
             self._save()
             write_secret_file(
                 self.root / "latest-attempt.private.json",
                 json.dumps({"attempt_id": self.attempt_id, "directory": str(self.directory)}),
             )
         except BaseException:
+            self._usage_scope.close()
             os.close(self._lease)
             self._lease = None
             raise
@@ -90,6 +97,7 @@ class EditorialAttempt:
             self.record["calls_by_stage"] = dict(calls_by_stage)
 
     def _save(self) -> None:
+        write_llm_usage(self.directory, self._usage)
         self.record["updated_at"] = _now()
         write_secret_file(
             self.directory / "status.private.json",
@@ -110,6 +118,7 @@ class EditorialAttempt:
             self.record["finished_at"] = _now()
             self._save()
         finally:
+            self._usage_scope.close()
             if self._lease is not None:
                 os.close(self._lease)
                 self._lease = None
