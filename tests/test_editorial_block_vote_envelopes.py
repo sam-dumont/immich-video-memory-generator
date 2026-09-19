@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from immich_memories.analysis.editorial_block_votes import judge_standing, judge_worthiness
+from immich_memories.analysis.editorial_page_recovery import PageReadFailure
 from immich_memories.config_models_llm import LLMConfig
 from tests.test_editorial_duration_planner_integration import run
 from tests.test_editorial_story_first_planner import StoryJudge, make_source
@@ -29,9 +30,57 @@ class RecordedJudge:
     def __init__(self, reply: str):
         self.config = SimpleNamespace(llm=LLMConfig(model="model-a"))
         self.reply = reply
+        self.failures = []
 
     def ask(self, _stage, _prompt, **_kwargs):
         return self.reply
+
+    def record_failure(self, stage, record):
+        self.failures.append((stage, record))
+
+
+def test_malformed_vote_cannot_become_a_banked_rejection():
+    # WHY: replay the real reader's malformed identifier without calling the model.
+    judge = RecordedJudge('{"weak": {"P01 (near home)": "a screen"}}')
+    bank = {}
+    with pytest.raises(PageReadFailure):
+        judge_standing(
+            judge,
+            pictures=["photo"],
+            line_of=lambda _: "a screen",
+            contract="contract",
+            period_label="one month",
+            bank=bank,
+        )
+    assert not bank.get("rows")
+    assert judge.failures[0][1]["attempt_count"] == 3
+
+
+def test_invalid_labels_are_reasked_and_only_valid_votes_are_reused():
+    class RecoveringJudge(RecordedJudge):
+        def __init__(self):
+            super().__init__('{"weak": {"P01": "a screen"}}')
+            self.calls = 0
+
+        def ask(self, stage, prompt, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return '{"weak": {"P01 (near home)": "a screen"}}'
+            return super().ask(stage, prompt, **kwargs)
+
+    # WHY: one malformed model response followed by a valid answer exercises bank reuse.
+    judge, bank = RecoveringJudge(), {}
+    kwargs = {
+        "pictures": ["photo"],
+        "line_of": lambda _: "a screen",
+        "contract": "contract",
+        "period_label": "one month",
+        "bank": bank,
+    }
+    assert judge_standing(judge, **kwargs)["photo"][0] == 0
+    assert judge.calls == 3
+    assert judge_standing(judge, **kwargs)["photo"][0] == 0
+    assert judge.calls == 3
 
 
 def worthiness(reply: str, offered: tuple[str, ...]):
@@ -69,23 +118,20 @@ def test_a_flat_reply_names_the_same_happenings_as_a_wrapped_one():
         '{"F01": "belongs", "note": "the rest were ordinary"}',
         '{"picks": {"F01": "belongs"}}',
         '{"F99": "a label nobody offered"}',
+        '{"worthy": [42]}',
         "no JSON at all",
     ],
 )
 def test_a_bare_object_that_is_not_the_answer_is_not_read_as_one(reply):
-    tier, _reasons, rounds = worthiness(reply, OFFERED)
-    assert remarkable(tier) == set()
-    assert {entry["envelope"] for entry in rounds} == {"unreadable"}
+    with pytest.raises(PageReadFailure):
+        worthiness(reply, OFFERED)
 
 
-def test_a_round_that_reads_nothing_is_warned_about_and_recorded(caplog):
-    with caplog.at_level(logging.WARNING):
-        _tier, _reasons, rounds = worthiness("the month was unremarkable", OFFERED)
-    assert [entry["round"] for entry in rounds] == ["worthy-1-source", "worthy-1-hashed"]
-    assert all(entry["offered"] == len(OFFERED) and entry["picked"] == 0 for entry in rounds)
-    warnings = [record.getMessage() for record in caplog.records]
-    assert len(warnings) == 2
-    assert "worthy-1-source read 0 of 8 offered happenings (envelope=unreadable)" in warnings[0]
+def test_an_unreadable_round_reports_its_bounded_attempts():
+    with pytest.raises(PageReadFailure) as raised:
+        worthiness("the month was unremarkable", OFFERED)
+    assert raised.value.stage == "worthy-1-source"
+    assert len(raised.value.attempts) == 3
 
 
 def test_a_round_the_reader_could_open_is_not_warned_about(caplog):
@@ -100,7 +146,29 @@ def test_a_model_that_says_none_qualify_is_still_announced_as_a_zero(caplog):
     with caplog.at_level(logging.WARNING):
         _tier, _reasons, rounds = worthiness('{"worthy": {}}', OFFERED)
     assert [entry["envelope"] for entry in rounds] == ["wrapped", "wrapped"]
-    assert len(caplog.records) == 2, "a real 'none of these' and an unread reply both need saying"
+    assert len(caplog.records) == 2, "a valid empty vote remains visible in the run log"
+
+
+def test_near_home_context_is_not_written_as_part_of_the_vote_label():
+    class LabelReadingJudge(RecordedJudge):
+        def ask(self, _stage, prompt, **_kwargs):
+            labels = re.findall(r"^(F[^:]+):", prompt, re.MULTILINE)
+            return json.dumps({"worthy": dict.fromkeys(labels, "a meaningful occasion")})
+
+    # WHY: the real model copied the full text before the colon as its identifier.
+    tier, _, _ = judge_worthiness(
+        LabelReadingJudge(""),
+        happenings=["occasion"],
+        label_of={"occasion": "F01"},
+        text_of=lambda _: "a family celebration",
+        near_home=lambda _: True,
+        contract="contract",
+        contract_key="contract hash",
+        criterion="Pick occasions",
+        marker="",
+        period_label="one month",
+    )
+    assert tier == {"occasion": 0}
 
 
 class MixedEnvelopeJudge(RecordedJudge):
@@ -159,11 +227,15 @@ def test_the_gate_artifact_records_every_round_and_the_envelope_it_read(tmp_path
     assert all(entry["picked"] == entry["offered"] for entry in gate["rounds"])
 
 
-def test_the_standing_sibling_reads_a_flat_rejection_list_too():
+@pytest.mark.parametrize(
+    "reply",
+    ['```json\n{"P02": "a screen, nothing to show"}\n```', '{"weak": ["P02"]}'],
+)
+def test_the_standing_sibling_reads_a_flat_rejection_list_too(reply):
     """`weak` runs the same block vote over `P` labels, and its silent zero fails open: every
     picture would be left standing. The offer list makes the normalisation just as deterministic."""
     pictures = ("first", "second", "third")
-    judge = RecordedJudge('```json\n{"P02": "a screen, nothing to show"}\n```')
+    judge = RecordedJudge(reply)
     votes = judge_standing(
         judge,
         pictures=list(pictures),
