@@ -218,7 +218,9 @@ itself. The order is the owner's:
    Photo whose motion plays), whether anyone speaks in it, and what happens across it, from the
    motion sentence preparation banked; the criterion says to judge that rather than whether one
    frame would make a good photograph. Its bank key carries the caption seat that wrote those
-   sentences, the way a cull verdict carries the reading that produced it (#1064).
+   sentences, the way a cull verdict carries the reading that produced it (#1064). A moving clip
+   needs at least one standing approval. Playing motion cannot override two weak votes, even
+   inside an important story; worthwhile scenery and action absent from the still remain eligible.
 4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`; a valid
    shortfall whose sentence the reader forgot is asked once more and then taken as the choice it
    is, rather than ending the film) — the model
@@ -258,8 +260,9 @@ itself. The order is the owner's:
    moments up to three frames per moment. Each is admitted only when the same question confirms it
    differs from the kept frames of its moment and its neighbours in capture time; an unasked pair
    (no visual port, or the bound spent) adds nothing, and a refused variant is never readmitted. Freed slots are re-granted across stories in up to
-   three further passes, never to variants. An occasion whose every candidate failed still shows
-   once. The audience is not asked here: the gate reads the cut, not every candidate.
+   three further passes, never to variants. An occasion whose every candidate failed may still
+   show through a weak still, but rejected motion is never forced back in to fill it. The audience
+   is not asked here: the gate reads the cut, not every candidate.
 6. **The audience chain and the final duplicate pass** close the cut — sampled-pair confirmation
    over conserved pixels, then duplicate discovery over the material that will actually be
    displayed (`editorial_final_sampled_duplicates.py`).

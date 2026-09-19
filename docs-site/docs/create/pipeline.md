@@ -206,6 +206,10 @@ whether one frame would make a good photograph. Standing votes are banked per pi
 key carries the caption seat that wrote those sentences: a different seat writes different rows and
 its predecessor's verdicts are not replayed against them.
 
+A video or moving Live Photo needs at least one standing approval. Two weak votes exclude the
+clip even from an important story or an occasion fallback. Approved scenery and action remain
+eligible; a clip does not need to show people to earn its place.
+
 Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
 cached as an empty vote. A valid empty mapping still means the reader chose none of the offered items.
