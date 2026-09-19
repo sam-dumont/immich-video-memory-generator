@@ -34,7 +34,7 @@ def test_otd_admission_renders_original_occurrences_without_final_year_limit():
     assert intent.identity() != legacy.identity()
 
 
-def test_real_planner_budget_only_changes_leave_both_admission_ballots_and_tiers_equal(tmp_path):
+def test_real_planner_budget_only_changes_leave_occurrence_tiers_equal_without_ballots(tmp_path):
     source = make_source(tmp_path / "limited")
     limited_judge = ControlledStoryJudge()
     limited = run(source, limited_judge)
@@ -46,11 +46,7 @@ def test_real_planner_budget_only_changes_leave_both_admission_ballots_and_tiers
     )
     unlimited_judge = ControlledStoryJudge()
     unlimited = run(unlimited_source, unlimited_judge)
-    assert worthy_calls(limited_judge) == worthy_calls(unlimited_judge)
-    assert {stage.rsplit("-", 1)[-1] for stage, _ in worthy_calls(limited_judge)} == {
-        "source",
-        "hashed",
-    }
+    assert worthy_calls(limited_judge) == worthy_calls(unlimited_judge) == []
     assert limited["tiers"] == unlimited["tiers"]
     assert limited["contract_key"] != unlimited["contract_key"]
     assert len(limited["carriers"]) == 3
@@ -58,7 +54,7 @@ def test_real_planner_budget_only_changes_leave_both_admission_ballots_and_tiers
 
 
 def test_real_planner_changed_observed_evidence_changes_admission_requests(tmp_path):
-    source = make_source(tmp_path / "first")
+    source = make_source(tmp_path / "first", product="trip")
     first = ControlledStoryJudge()
     run(source, first)
     changed_wall = source.wall_bytes.replace(b"People play games.", b"People race boats.")

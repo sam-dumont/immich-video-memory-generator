@@ -16,9 +16,11 @@ class RecoveryJudge(StoryJudge):
         self.weak = weak
 
     def answer(self, stage, prompt):
-        if stage.startswith("worthy-"):
-            labels = re.findall(r"^(F\d+)(?: \(near home\))?:", prompt, re.MULTILINE)
-            return json.dumps({"worthy": dict.fromkeys(labels, "A meaningful occasion")})
+        if stage.startswith("story-episodes"):
+            result = json.loads(super().answer(stage, prompt))
+            for episode in result["new_episodes"]:
+                episode["role"] = "central"
+            return json.dumps(result)
         if stage.startswith("story-weighing"):
             labels = re.findall(r"^(K\d+) \|", prompt, re.MULTILINE)
             return json.dumps({"about": [], "weights": dict.fromkeys(labels, "major")})
