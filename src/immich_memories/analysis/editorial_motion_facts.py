@@ -173,9 +173,13 @@ class DemandedMotionResolver:
             for key in carrier["members"]
             if key in self.assets and self.assets[key].live_photo_video_id
         ]
-        sampled = sample_motion_members(members, maximum=self.sample_limit)
         metrics["candidate_carriers"] += 1
         metrics["candidate_stills"] += len(members)
+        if not members:
+            # A borrowed candidate flag must never reclassify an ordinary video into a
+            # Live rendering it has no members to resolve.
+            return current
+        sampled = sample_motion_members(members, maximum=self.sample_limit)
         metrics["unsampled_stills"] += len(members) - len(sampled)
         unit_key = (
             self.outcomes.begin(carrier, [motion_source_key(self.assets[key]) for key in sampled])

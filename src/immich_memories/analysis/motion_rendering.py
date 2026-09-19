@@ -87,7 +87,13 @@ def motion_renderings(
     """
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
-    live = [a for a in assets if getattr(a, "live_photo_video_id", None)]
+    # A motion rendering belongs to a photograph. A video-typed asset with a (borrowed or
+    # malformed) companion link is never Live material.
+    live = [
+        a
+        for a in assets
+        if getattr(a, "live_photo_video_id", None) and not getattr(a, "is_video", False)
+    ]
     durations = None
     if companion_assets is not None:
         durations = _companion_durations(live, companion_assets)
@@ -215,6 +221,13 @@ def _measured_trims(
     from immich_memories.processing.stitch_alignment import aligned_trims
 
     video_ids = [cast(str, asset.live_photo_video_id) for asset in cluster.assets]
+    if any(first == second for first, second in zip(video_ids, video_ids[1:], strict=False)):
+        # A shared-album alias repeats a companion already in the burst, so the join
+        # between the two would fetch that playback twice and correlate the video
+        # against itself, at an offset that is ~0 by construction. The burst keeps
+        # the metadata plan; the material guard below still offers the video once,
+        # by its earliest still.
+        return cluster.trim_points()
     measured = list(clock_offsets(video_ids))
     if len(measured) != len(video_ids) - 1:
         return None
