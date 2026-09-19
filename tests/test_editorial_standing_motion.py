@@ -4,6 +4,8 @@ import json
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from immich_memories.analysis.editorial_block_votes import (
     STANDING_PROMPT_VERSION,
     standing_pass_version,
@@ -34,14 +36,14 @@ CLIP = {
 STILL = {"asset_id": "still", "kind": "still", "members": ["still"]}
 
 
-def gate(judge, *, bank=None, motion_identity="", motion_line=None):
+def gate(judge, *, bank=None, motion_identity="", motion_line=None, clip=None):
     return StandingGate(
         judge,
         contract="contract",
         period_label="a period",
         line_of=lambda asset: f"10:00 | a scene at {asset}",
         life=lambda _asset: True,
-        unit_by_asset={"clip": ("E1", CLIP), "still": ("E1", STILL)},
+        unit_by_asset={"clip": ("E1", CLIP if clip is None else clip), "still": ("E1", STILL)},
         pictures_of={},
         bank=bank,
         save=None,
@@ -51,7 +53,7 @@ def gate(judge, *, bank=None, motion_identity="", motion_line=None):
     )
 
 
-def test_a_video_row_carries_its_motion_sentence_its_length_and_its_speech():
+def test_a_video_row_carries_its_motion_sentence_and_its_source_length():
     judge = VoteJudge()
     gate(judge, motion_line=lambda _unit: "A child runs across the grass and stops.").ensure(
         ["clip", "still"]
@@ -59,7 +61,7 @@ def test_a_video_row_carries_its_motion_sentence_its_length_and_its_speech():
 
     prompt = judge.calls[0]  # the block is asked in two orders
     assert "A child runs across the grass and stops." in prompt
-    assert "video 7 s source, speech." in prompt
+    assert "video 7 s source." in prompt
     # a still's row is its own line and nothing else
     assert re.search(r"^P\d+: 10:00 \| a scene at still$", prompt, re.MULTILINE)
 
@@ -87,3 +89,40 @@ def test_the_pass_version_is_the_criterion_and_the_producer_that_wrote_its_rows(
     assert standing_pass_version("") == STANDING_PROMPT_VERSION
     assert standing_pass_version("seat-a").startswith(f"{STANDING_PROMPT_VERSION}/")
     assert standing_pass_version("seat-a") != standing_pass_version("seat-b")
+
+
+@pytest.mark.parametrize("kind", ["video", "live-motion"])
+@pytest.mark.parametrize("fallback", [False, True])
+def test_measuring_speech_after_a_cut_reuses_its_standing_judgment(kind, fallback, tmp_path):
+    from immich_memories.analysis.editorial_preparation_motion import BankedMotionLines
+
+    motion = BankedMotionLines(store_path=tmp_path / "facts.sqlite", assets={}, described=False)
+    motion_line = motion.observe if fallback else lambda _unit: "A child walks."
+    clip = CLIP | {"kind": kind, "speech_regions": []}
+    bank, first = {}, VoteJudge()
+    before = gate(first, bank=bank, clip=clip, motion_line=motion_line)
+    before.ensure(["clip"])
+    assert len(first.calls) == 2
+
+    measured = clip | {"speech_regions": [[1.0, 2.0]]}
+    repeated = VoteJudge()
+    after = gate(repeated, bank=bank, clip=measured, motion_line=motion_line)
+    after.ensure(["clip"])
+
+    assert not repeated.calls
+    assert after.stands("clip", "major") == before.stands("clip", "major")
+    assert measured["speech_regions"] == [[1.0, 2.0]]
+
+
+@pytest.mark.parametrize(
+    "clip,description",
+    [(CLIP | {"raw_seconds": 9.0}, "A child walks."), (CLIP, "A child jumps.")],
+)
+def test_changed_source_duration_or_motion_evidence_still_needs_a_new_judgment(clip, description):
+    bank, first = {}, VoteJudge()
+    gate(first, bank=bank, motion_line=lambda _unit: "A child walks.").ensure(["clip"])
+
+    changed = VoteJudge()
+    gate(changed, bank=bank, clip=clip, motion_line=lambda _unit: description).ensure(["clip"])
+
+    assert len(changed.calls) == 2

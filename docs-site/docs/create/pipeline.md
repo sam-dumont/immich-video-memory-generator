@@ -200,11 +200,14 @@ only whether a name was matched to each, and they are read once per picture and 
 would stand on its own. A video used to arrive on that list looking like a still, described by
 whatever its one line said, and a real share of the videos that got that far were named weak: 9 of
 them in a 600-second year, 12 in a film spanning two and a half years. A moving row now says what it
-is, how long the source runs, whether anyone speaks in it, and what happens across it, taken from
+is, how long the source runs, and what happens across it, taken from
 the one motion sentence preparation banked. The criterion tells the reader to judge that, not
 whether one frame would make a good photograph. Standing votes are banked per picture, so the bank
 key carries the caption seat that wrote those sentences: a different seat writes different rows and
 its predecessor's verdicts are not replayed against them.
+
+Speech boundaries measured after a cut guide playback timing. Finding those boundaries does not
+reopen a settled standing judgment: speech presence alone says nothing about what was said.
 
 Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
@@ -357,7 +360,7 @@ the episode readings used for the cut.
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and

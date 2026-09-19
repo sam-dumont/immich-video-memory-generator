@@ -215,10 +215,11 @@ itself. The order is the owner's:
 3. **The standing gate rejects before the pick** (`editorial_story_carriers.StandingGate`) —
    "does each picture stand by itself?", reject-only, two orders. A favourite lowers the bar; a
    texture slot raises it. A moving row says what it is (video with its source length, or a Live
-   Photo whose motion plays), whether anyone speaks in it, and what happens across it, from the
+   Photo whose motion plays), and what happens across it, from the
    motion sentence preparation banked; the criterion says to judge that rather than whether one
    frame would make a good photograph. Its bank key carries the caption seat that wrote those
-   sentences, the way a cull verdict carries the reading that produced it (#1064).
+   sentences, the way a cull verdict carries the reading that produced it (#1064). Speech regions
+   measured after selection guide timing and do not change this question on a repeat.
 4. **The pick** (`editorial_story_shortlist.py`, `editorial_story_pick_contract.py`; a valid
    shortfall whose sentence the reader forgot is asked once more and then taken as the choice it
    is, rather than ending the film) — the model

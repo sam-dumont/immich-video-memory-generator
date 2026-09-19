@@ -130,7 +130,11 @@ class StandingGate:
         line = self._line_of(asset)
         if not line or asset not in self._unit_by_asset:
             return line
-        return moving_picture_row(line, self._unit_by_asset[asset][1], self._motion_line)
+        # Cut-time speech detection guides timing, not this picture's standing. Keep it out
+        # of both the source marker and the motion observer's plain-facts fallback.
+        unit = dict(self._unit_by_asset[asset][1])
+        unit.pop("speech_regions", None)
+        return moving_picture_row(line, unit, self._motion_line)
 
     def ensure(self, assets: Sequence[str]) -> None:
         unknown = [a for a in dict.fromkeys(assets) if a not in self.scores and self._line_of(a)]
