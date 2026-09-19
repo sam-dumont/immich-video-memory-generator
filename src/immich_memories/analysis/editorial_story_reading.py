@@ -17,8 +17,8 @@ from functools import partial
 from operator import itemgetter
 from typing import Any
 
-from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_prompt_pages import pages
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_story_grouping import _synthesize
 from immich_memories.analysis.editorial_story_replies import (

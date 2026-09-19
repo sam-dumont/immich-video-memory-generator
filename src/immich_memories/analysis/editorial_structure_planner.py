@@ -626,7 +626,7 @@ def _select(
         attached_audience=run.attached_audience,
         picture_facts=material.picture_evidence.records,
         calls=ports.judge.calls,
-        ladder_reads=selection.calls["inventory_pages"],
+        ladder_reads=0,
         carriers_at_selection=carriers_at_selection,
     )
 
@@ -718,7 +718,7 @@ def _story_selection(
         event_units=pool.units,
         family_of_moment=wall.family_of_moment,
         anchor_label=wall.anchor_label,
-        label_line=material.text.label,
+        description_of=material.text.description,
         quality=material.builder.quality,
         motion_line=ports.observe_story_motion,
         motion_identity=ports.story_motion_identity,

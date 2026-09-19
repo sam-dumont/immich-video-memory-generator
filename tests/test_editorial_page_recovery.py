@@ -18,7 +18,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.analysis.editorial_moment_inventory import inventory_event
 from immich_memories.analysis.editorial_page_recovery import PAGE_READ_SCHEMA, PageReadFailure
 from immich_memories.analysis.editorial_story_reading import read_period_story
 from immich_memories.analysis.editorial_story_replies import read_episode_page
@@ -493,58 +492,6 @@ def test_a_call_duration_reads_the_way_a_run_log_does():
 
     assert elapsed_label(45.2) == "45s"
     assert elapsed_label(542.0) == "9m2s"
-
-
-def _unit(index):
-    return {
-        "asset_id": f"a{index}",
-        "kind": "photo",
-        "taken": f"2024-06-19T09:{index:02d}:00",
-        "favourite": False,
-    }
-
-
-def test_the_moment_inventory_recovers_boundedly_too():
-    judge = RecordingJudge(lambda _stage, _prompt: "{not json at all")
-
-    with pytest.raises(PageReadFailure) as failure:
-        inventory_event(
-            judge,
-            event="F01",
-            units=[_unit(1)],
-            context="A day.",
-            line=lambda unit: f"a view of {unit['asset_id']}",
-            record=lambda _payload: None,
-        )
-
-    assert judge.stages == [
-        "moment-inventory-F01-1",
-        "moment-inventory-F01-1-retry",
-        "moment-inventory-F01-1-repair",
-    ]
-    assert judge.failures[0]["record"]["attempt_count"] == 3
-    assert judge.failures[0]["record"]["failure_kind"] == "unreadable_json"
-    assert "editorial source evidence unavailable" in str(failure.value)
-
-
-def test_a_page_that_reads_but_misses_pictures_is_recorded_as_a_different_failure():
-    """The matrix must tell "wrote nonsense" from "read the page and skipped sources"."""
-    judge = RecordingJudge(lambda _stage, _prompt: json.dumps({"moments": []}))
-
-    with pytest.raises(PageReadFailure):
-        inventory_event(
-            judge,
-            event="F01",
-            units=[_unit(1)],
-            context="A day.",
-            line=lambda unit: f"a view of {unit['asset_id']}",
-            record=lambda _payload: None,
-        )
-
-    recorded = judge.failures[0]["record"]
-    assert recorded["failure_kind"] == "contract_not_met"
-    assert "coverage is incomplete" in recorded["error"]
-    assert {row["failure_kind"] for row in recorded["attempts"]} == {"contract_not_met"}
 
 
 def test_a_throttled_text_reader_waits_instead_of_ending_the_run(tmp_path, monkeypatch):

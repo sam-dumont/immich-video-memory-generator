@@ -114,8 +114,7 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
         expected = "minor" if product == "album" else "major"
         assert {e["weight"] for e in plan["story"]["episodes"]} == {expected}
     assert all(
-        plan["story"]["calls"][key] == 0
-        for key in ("story_pages", "inventory_pages", "pick_calls", "standing_rounds")
+        plan["story"]["calls"][key] == 0 for key in ("story_pages", "pick_calls", "standing_rounds")
     )
     assert all(row["kind"] != "live-motion" for row in plan["carriers"])
     assert not plan["picture_facts"]

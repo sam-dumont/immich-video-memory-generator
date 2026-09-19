@@ -272,7 +272,7 @@ The same question lets a dense occasion fill its film. Five minutes of spacing i
 keeps a burst from taking several slots, and on a busy afternoon it also kept every moment after the
 first of each group out of the cut: a 90-second special day with 27 usable pictures shipped four. A
 film that is still short after every selection pass now spends its free slots inside the moments its
-stories already show, in funding order: the moments the inventory found and no pick took, alternating
+stories already show, in funding order: captioned candidates no pick took, alternating
 between capture groups, then up to three frames of each chosen moment. A frame gets in only when the
 question confirms it looks different from the kept frames of its moment and the ones just before and
 after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
@@ -355,7 +355,7 @@ the episode readings used for the cut.
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -381,10 +381,9 @@ hardware encoder, a lower resolution and fewer clips.
 
 ### What overlaps, and what cannot
 
-Reading is mostly a queue of one, and every pick below reads the stages above. Three places hold
+Reading is mostly a queue of one, and every pick below reads the stages above. These stages hold
 independent questions: the period account is read one calendar month per page and no month sees
-another, the moment inventory of one event knows nothing about the next event's, and the standing
-gate asks in blocks of twelve that do not see each other. Custom-subject and trip admission use
+another, and the standing gate asks in blocks of twelve that do not see each other. Custom-subject and trip admission use
 the same block pattern. Those are what
 `advanced.llm.reader_concurrency` overlaps, and nothing else in the reading can be made to overlap
 by raising it.
@@ -397,13 +396,8 @@ flowchart TB
     packs --> pages["The period account, one page per calendar month:<br/>no page sees another"]
     pages --> synthesis["The synthesis: one thesis over every episode"]
     synthesis --> weigh["Story weighing"]
-    weigh --> inventories
-    subgraph inventories["Moment inventories: one job per event"]
-        direction LR
-        i1["event 1"] ~~~ i2["event 2"] ~~~ iN["event n"]
-    end
-
-    inventories --> standing
+    weigh --> candidates["Shortlisted candidates from prepared captions:<br/>local, no model calls"]
+    candidates --> standing
     subgraph standing["Standing gate: pictures in blocks of 12, two orders again"]
         direction LR
         s1["block 1"] ~~~ sn["block n"]

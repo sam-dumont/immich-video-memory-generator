@@ -15,12 +15,10 @@ from datetime import date
 from operator import itemgetter
 from typing import Any
 
-from immich_memories.analysis.editorial_moment_inventory import inventory_event
 from immich_memories.analysis.editorial_person_period_facts import (
     arrival_notes,
     person_period_facts,
 )
-from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_story_carriers import (
     CarrierAdmission,
     StandingGate,
@@ -52,7 +50,7 @@ from immich_memories.analysis.editorial_story_trips import (
 )
 from immich_memories.analysis.subject_framing import SubjectVisibility
 
-STORY_PLANNER_VERSION = "story-first-selection-v6-videos-first"
+STORY_PLANNER_VERSION = "story-first-selection-v7-prepared-candidates"
 TIER_NAME = {0: "remarkable", 1: "maybe", 2: "background"}
 GATE_ORDER = {"remarkable": 0, "maybe": 1, "background": 2}
 
@@ -242,7 +240,7 @@ def _capture_group_choices(
     story_units: Mapping[str, list[dict]],
     **picking,
 ) -> dict[str, list[DepictedChoice]]:
-    """Cheap moments first; the model inventory runs only where slots land."""
+    """Capture groups establish story capacity before its candidates are shortlisted."""
     choices_of: dict[str, list[DepictedChoice]] = {}
     for s in stories:
         out = _capture_group_moments(story_units[s["key"]], **picking)
@@ -250,82 +248,6 @@ def _capture_group_choices(
             c.episode = s["key"]
         choices_of[s["key"]] = out
     return choices_of
-
-
-class _DayInventory:
-    """The model inventory, per day episode inside a funded story.
-
-    A day is a request the model handles; a hundred-picture stay is not. The favourite wins its
-    moment. A day whose inventory fails keeps its capture groups as moments.
-    """
-
-    def __init__(
-        self,
-        judge,
-        *,
-        unit_by_asset: Mapping[str, Any],
-        label_line: Callable[[dict], str],
-        record: Callable[[str, Mapping[str, Any]], None],
-        flagged: Callable[[str], bool],
-        life: Callable[[str], bool],
-        calls: dict[str, int],
-    ) -> None:
-        self._judge = judge
-        self._unit_by_asset = unit_by_asset
-        self._label_line = label_line
-        self._record = record
-        self._flagged = flagged
-        self._life = life
-        self._calls = calls
-
-    def read_days(self, jobs):
-        results = reader_map(self._judge, self.of_day, jobs)
-        for _choices, count in results:
-            self._calls["inventory_pages"] += count
-        return [choices for choices, _count in results]
-
-    def of_day(self, judge, job):
-        s, e, units = job
-        if len(units) <= 1:
-            return None, 0
-        try:
-            depicted, audit = inventory_event(
-                judge,
-                event=e.key,
-                units=units,
-                context=f"{s['title']}: {e.title}. {e.account}",
-                line=self._label_line,
-                record=lambda value: self._record(f"moment-inventory-{e.key}", value),
-            )
-        except ValueError as exc:
-            self._record(f"moment-inventory-{e.key}", {"status": "failed", "error": str(exc)})
-            return None, 0
-        taken_of = {u["asset_id"]: u["taken"] for u in units}
-        choices = [self._choice(d, s, taken_of) for d in depicted if d.primary in taken_of]
-        return choices or None, len(audit.get("pages") or [])
-
-    def _choice(self, d, s, taken_of) -> DepictedChoice:
-        members = [d.primary, *d.alternatives]
-        order = {a: i for i, a in enumerate(members)}
-        members.sort(
-            key=lambda a: (
-                not self._unit_by_asset[a][1].get("favourite"),
-                self._flagged(a),
-                not self._life(a),
-                # the inventory names a moment, not which of its pictures shows it: between
-                # two equals the one that plays takes the frame, as in a capture group
-                not carries_motion(self._unit_by_asset[a][1]),
-                order[a],
-            )
-        )
-        return DepictedChoice(
-            key=d.key,
-            episode=s["key"],
-            taken=taken_of.get(members[0], ""),
-            content=d.content,
-            primary=members[0],
-            alternatives=members[1:],
-        )
 
 
 def _shortlisted_units(
@@ -341,10 +263,8 @@ def _shortlisted_units(
     kind_of: Callable[[DepictedChoice], str],
 ) -> dict[str, set[str]]:
     """Per funded story, the pictures its slots can still land on: every member of the capture
-    groups its own shortlist keeps. A group is offered whole, because a competing nearby view
-    exists only inside one. Every funded story is read, whatever the owner starred: a shortlist
-    that only just covers the grant is exactly where the inventory, not the pick, finds the story
-    a further moment inside a group it already holds."""
+    groups its own shortlist keeps. Keeping each group whole preserves nearby alternatives
+    and usable depth without paying to reinterpret its prepared captions."""
     allowed: dict[str, set[str]] = {}
     for s in stories:
         if granted[s["key"]] == 0:
@@ -362,7 +282,7 @@ def _shortlisted_units(
     return allowed
 
 
-def _inventory_scope(stories, granted, choices_of, allowed) -> dict[str, dict[str, Any]]:
+def _candidate_scope(stories, granted, choices_of, allowed) -> dict[str, dict[str, Any]]:
     scope = {}
     for s in stories:
         if granted[s["key"]] == 0:
@@ -373,50 +293,36 @@ def _inventory_scope(stories, granted, choices_of, allowed) -> dict[str, dict[st
             "groups_shortlisted": sum(
                 1 for c in choices_of[s["key"]] if not spendable.isdisjoint(c.members)
             ),
-            "units_inventoried": len(spendable),
+            "units_offered": len(spendable),
         }
     return scope
 
 
-def _inventory_jobs(stories, granted, *, partition_grants, episode_of, units, parts, allowed):
-    jobs = []
-    for s in stories:
-        if granted[s["key"]] == 0 or not allowed.get(s["key"]):
-            continue
-        for key in s["episodes"]:
-            e = episode_of[key]
-            day_units = [u for u in units.of(e.moments) if u["asset_id"] in allowed[s["key"]]]
-            if parts.limit is not None:
-                day_units = [
-                    u
-                    for u in day_units
-                    if partition_grants[s["key"]].get(parts.of_asset(u["asset_id"]), 0)
-                ]
-            if day_units:
-                jobs.append((s, e, day_units))
-    return jobs
-
-
-def _inventory_funded_stories(
-    inventory: _DayInventory,
-    *,
-    stories: Sequence[Mapping[str, Any]],
-    granted: Mapping[str, int],
-    choices_of: dict[str, list[DepictedChoice]],
-    capture_groups: Callable[[list[dict]], list[DepictedChoice]],
-    **per_story,
-) -> None:
-    jobs = _inventory_jobs(stories, granted, **per_story)
-    merged: dict[str, list[DepictedChoice]] = {}
-    for (s, _episode, day_units), choices in zip(jobs, inventory.read_days(jobs), strict=True):
-        if choices is None:
-            choices = capture_groups(day_units)
-            for c in choices:
-                c.episode = s["key"]
-        merged.setdefault(s["key"], []).extend(choices)
-    for key, choices in merged.items():
-        if choices:
-            choices_of[key] = sorted(choices, key=lambda c: c.taken)
+def _caption_choices(stories, story_units, *, allowed, parts, partition_grants, description_of):
+    choices = {}
+    for story in stories:
+        key = story["key"]
+        candidates = [
+            unit
+            for unit in story_units[key]
+            if unit["asset_id"] in allowed.get(key, set())
+            and (
+                parts.limit is None
+                or partition_grants[key].get(parts.of_asset(unit["asset_id"]), 0)
+            )
+        ]
+        if candidates:
+            choices[key] = [
+                DepictedChoice(
+                    key=f"source:{unit['asset_id']}",
+                    episode=key,
+                    taken=unit["taken"],
+                    content=description_of(unit),
+                    primary=unit["asset_id"],
+                )
+                for unit in candidates
+            ]
+    return choices
 
 
 def _near_home_of_moments(near_home, units: _MomentUnits, unit_by_asset):
@@ -460,7 +366,7 @@ def _episodes_record(
             "seen": s["seen"],
             "day_episodes": s["episodes"],
             "units": len(story_units[s["key"]]),
-            # what the inventory read, beside the story's own size in capture groups
+            # Available captioned candidates beside the story's capture-group count.
             "depicted_moments": len(choices_of[s["key"]]),
             "groups_offered": groups_offered[s["key"]],
             "granted": len(chosen_by_story[s["key"]]),
@@ -556,7 +462,7 @@ def select_story_first(
     event_units: Mapping[str, list[dict]],
     family_of_moment: Mapping[str, str],
     anchor_label: Mapping[str, str],
-    label_line: Callable[[dict], str],
+    description_of: Callable[[dict], str],
     quality: Callable[[str], float],
     target_seconds: float,
     seconds_per_slot: float,
@@ -583,7 +489,7 @@ def select_story_first(
     film_span: tuple[date, date] | None = None,
     near_home: Callable[[str], bool | None] | None = None,
 ) -> StorySelection:
-    """Read the period into weighed stories, fund them, inventory them, choose standing pictures.
+    """Read the period into weighed stories, fund them, and choose captioned pictures.
 
     `moment_assets` maps a moment alias to its selectable asset ids; `family_of_moment` maps a
     moment alias to the time-and-place family whose `event_units` hold the playable units.
@@ -598,7 +504,6 @@ def select_story_first(
     calls = {
         "story_pages": 0,
         "story_pages_fresh": 0,
-        "inventory_pages": 0,
         "pick_calls": 0,
         "standing_rounds": 0,
     }
@@ -653,7 +558,7 @@ def select_story_first(
     # 2. Stories: their units over every day they span, in weight order.
     stories, story_units = _weighed_stories(story, story.audit.get("hints") or {}, units)
 
-    # 3. Cheap moments first (capture groups); the model inventory runs only where slots land.
+    # 3. Capture groups set capacity; captioned candidates preserve their available depth.
     picking: dict[str, Any] = {
         "quality": quality,
         "flagged": flagged,
@@ -673,8 +578,7 @@ def select_story_first(
     places = place_shares(stories, story_units, place_of=place_of, slots=slots, journey=journey)
     granted, partition_grants = parts.allocate(stories, choices_of, slots)
 
-    # 4. The model inventory, per day episode inside a funded story, over the capture groups that
-    #    story can still spend a slot on.
+    # 4. Reuse prepared descriptions within the funded stories' existing shortlists.
     kind_of = _kind_marker_of(unit_by_asset, story_lines)
     if rules is None:
         allowed = _shortlisted_units(
@@ -688,26 +592,16 @@ def select_story_first(
             life=life,
             kind_of=kind_of,
         )
-        record("story-inventory-scope", _inventory_scope(stories, granted, choices_of, allowed))
-        _inventory_funded_stories(
-            _DayInventory(
-                judge,
-                unit_by_asset=unit_by_asset,
-                label_line=label_line,
-                record=record,
-                flagged=flagged,
-                life=life,
-                calls=calls,
-            ),
-            stories=stories,
-            granted=granted,
-            partition_grants=partition_grants,
-            choices_of=choices_of,
-            episode_of={e.key: e for e in story.episodes},
-            units=units,
-            parts=parts,
-            allowed=allowed,
-            capture_groups=lambda day_units: _capture_group_moments(day_units, **picking),
+        record("story-candidate-scope", _candidate_scope(stories, granted, choices_of, allowed))
+        choices_of.update(
+            _caption_choices(
+                stories,
+                story_units,
+                allowed=allowed,
+                parts=parts,
+                partition_grants=partition_grants,
+                description_of=description_of,
+            )
         )
 
     # 5. Pick the moments that tell each story, then one picture per moment that stands by
