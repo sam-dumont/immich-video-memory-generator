@@ -209,7 +209,7 @@ src/immich_memories/
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
-│   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
+│   ├── editorial_structure_*.py    # The structure planner: wall, subject/trip admission + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through

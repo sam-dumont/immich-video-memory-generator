@@ -8,12 +8,14 @@ bare fenced mapping. Names in the fixtures are placeholders; the JSON shape is v
 import json
 import logging
 import re
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from immich_memories.analysis.editorial_block_votes import judge_standing, judge_worthiness
+from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_page_recovery import PageReadFailure
 from immich_memories.config_models_llm import LLMConfig
 from tests.test_editorial_duration_planner_integration import run
@@ -218,6 +220,12 @@ class FlatAnsweringJudge(StoryJudge):
 
 def test_the_gate_artifact_records_every_round_and_the_envelope_it_read(tmp_path):
     source = make_source(tmp_path)
+    case = replace(source.case, product="trip")
+    source = replace(
+        source,
+        case=case,
+        intent=build_editorial_intent(case.product, case.ranges, brief=case.brief),
+    )
     run(source, FlatAnsweringJudge())
     gate = json.loads(
         (source.artifact_dir / "derived-decisions/memory-worthy-gate.private.json").read_text()
