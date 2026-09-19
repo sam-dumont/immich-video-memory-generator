@@ -61,7 +61,6 @@ PHASE_MARKERS: tuple[str, ...] = (
     "Preparing previews",
     "Reading dates, places and people",
     "Reading event evidence",
-    "Reading the period account",
     "Building editorial cards",
     "Editing the memory",
     "Editorial selection complete",

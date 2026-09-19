@@ -113,10 +113,6 @@ def capture_structure_input(
         and asset.exif_info.latitude is not None
         and asset.exif_info.longitude is not None
     }
-    insight = workprint.period.insight
-    identity = workprint.period.identity
-    if identity is None:
-        raise ValueError("structure planning requires the workprint's exact period identity")
     eligible_hash = hashlib.sha256(
         json.dumps(
             workprint.prepared.candidate_ids, sort_keys=True, separators=(",", ":"), default=str
@@ -153,15 +149,17 @@ def capture_structure_input(
             speech_producer(config.speech),
         ),
         store_path=store_path,
-        period_evidence=insight.evidence,
         episode_readings=episode_reading_cards(workprint.episodes, workprint.cards, wall.aliases),
         lineage={
-            "period_insight": {
-                "producer_key": identity.producer_key,
-                "evidence_key": identity.evidence_key,
-                "pages": workprint.period.pages,
-                "episodes": len(workprint.period.episode_grounding),
-            },
+            "episode_readings": [
+                {
+                    "group_id": episode.identity.group_id,
+                    "producer_key": episode.identity.producer_key,
+                    "evidence_key": episode.identity.evidence_key,
+                }
+                for episode in workprint.episodes.episodes
+                if episode.identity is not None
+            ],
             "eligible_ids_sha256": eligible_hash,
             "sources": "conserved production workprint, no refetch",
         },

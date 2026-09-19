@@ -67,4 +67,23 @@ def test_a_cache_only_run_still_leaves_a_record(tmp_path) -> None:
 
 
 def test_an_unwritable_directory_does_not_fail_a_finished_run(tmp_path) -> None:
-    write_llm_usage(tmp_path / "never-created", _counters())
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("occupied")
+    write_llm_usage(blocked, _counters())
+    assert blocked.read_text() == "occupied"
+
+
+def test_failed_checkpoint_replacement_preserves_the_previous_usage(tmp_path, monkeypatch):
+    import os
+
+    write_llm_usage(tmp_path, LLMCounters(calls=1, prompt_tokens=50))
+
+    def unavailable_replace(*args):
+        raise OSError("disk cannot replace checkpoint")
+
+    # WHY: fail the filesystem's atomic commit, preserving the last durable charge total.
+    monkeypatch.setattr(os, "replace", unavailable_replace)
+    write_llm_usage(tmp_path, LLMCounters(calls=2, prompt_tokens=100))
+
+    assert json.loads((tmp_path / USAGE_FILE).read_text())["prompt_tokens"] == 50
+    assert sorted(p.name for p in tmp_path.iterdir()) == [USAGE_FILE]

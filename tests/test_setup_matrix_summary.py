@@ -5,8 +5,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
+from immich_memories.analysis.llm_metrics import collecting, record_reply
+from immich_memories.analysis.llm_usage_record import write_llm_usage
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from setup_matrix_capture import apply_exact_usage  # noqa: E402
 from setup_matrix_summary import (  # noqa: E402
     REFERENCE_CELL,
     build_markdown,
@@ -291,6 +297,34 @@ def test_a_price_with_no_token_count_buys_nothing() -> None:
     price = PRICES["hosted_melious"]["gemma-4-31b"]
     assert estimated_cost({"tokens_in": None, "tokens_out": None}, price) is None
     assert estimated_cost({"tokens_in": 10, "tokens_out": 1}, None) is None
+
+
+@pytest.mark.parametrize(
+    "stage,known",
+    [("caption_controls", True), ("caption", True), ("motion", True), ("reader", False)],
+)
+@pytest.mark.parametrize("old_cost", [None, 42.0])
+def test_report_does_not_price_preparation_or_unknown_usage_as_hosted_reader_tokens(
+    tmp_path, stage, known, old_cost
+):
+    with collecting() as counters:
+        record_reply(prompt_tokens=1000, completion_tokens=100, stage=stage, usage_known=known)
+    write_llm_usage(tmp_path, counters)
+    usage = {"est_cost": old_cost}
+    apply_exact_usage(usage, tmp_path)
+    row = _row(
+        "mixed-cost",
+        hosted=True,
+        reader="hosted_melious",
+        reader_model="gemma-4-31b",
+        hosted_usage=usage,
+    )
+
+    summary = _priced([_row(REFERENCE_CELL), row])
+
+    assert summary["cells"][1]["hosted_usage"]["est_cost"] is None
+    expected = "preparation" if known else "usage"
+    assert any(expected in note for note in summary["unmeasured"])
 
 
 def test_the_contract_column_carries_the_rejections_and_the_repairs() -> None:

@@ -2,12 +2,12 @@
 
 A reader can return HTTP 200 and no usable answer, reject its first image, or
 answer correctly at an unacceptable cost. Send a real picture first, followed
-by an episode read, period read and story pick using the production contracts.
+by an episode read and story pick using the production contracts.
 Then project the library's call envelope against its time and cost ceilings.
 
 One call per shape, deliberately. The stages wrap `query_llm` in a retry that
 doubles the budget or repairs the JSON; a probe wants the first answer, not the
-recovered one. Stop on the first failed shape, with at most four shapes per cell.
+recovered one. Stop on the first failed shape, with at most three shapes per cell.
 
     uv run python scripts/setup_matrix_probe_readers.py --cell mac-hosted-openai-luna
     uv run python scripts/setup_matrix.py --probe-readers-only --lane mac
@@ -57,17 +57,8 @@ from immich_memories.analysis.text_episode_answers import (  # noqa: E402
 from immich_memories.analysis.text_episode_reader import (  # noqa: E402
     TEXT_EPISODE_MAX_OUTPUT_TOKENS,
 )
-from immich_memories.analysis.text_period_insight import TEXT_PERIOD_MAX_OUTPUT_TOKENS  # noqa: E402
-from immich_memories.analysis.text_period_wire import (  # noqa: E402
-    _read_response,
-    _response_problem,
-)
 from immich_memories.config_loader import Config  # noqa: E402
 from immich_memories.store.episode_readings import EpisodeReadingIdentity  # noqa: E402
-from immich_memories.store.period_insights import (  # noqa: E402
-    PeriodEpisodeGrounding,
-    PeriodInsightIdentity,
-)
 
 PROMPTS = Path(__file__).resolve().parent / "reader_probe_prompts"
 PROBE_PICTURE = PROMPTS.parent.parent / "tests/e2e/fixtures/library/home-football-lawn-01.jpg"
@@ -145,25 +136,6 @@ def _episode_scopes(prompt: str) -> tuple[_EpisodeRequestScope, ...]:
     return tuple(scopes)
 
 
-def _period_grounding(prompt: str) -> tuple[PeriodEpisodeGrounding, ...]:
-    """One grounding row per numbered table row, so cited aliases resolve as they would."""
-    rows = []
-    for line in prompt.splitlines():
-        match = re.match(r"^(\d+)\t", line)
-        if match is None:
-            continue
-        number = int(match.group(1))
-        rows.append(
-            PeriodEpisodeGrounding(
-                episode_id=f"probe-episode-{number}",
-                evidence_key=f"probe-evidence-{number}",
-                rendered_line=line,
-                representative_asset_ids=(f"probe-asset-{number}",),
-            )
-        )
-    return tuple(rows)
-
-
 def _story_pick_labels(prompt: str) -> set[str]:
     return set(re.findall(r"^(M\d+) \|", prompt, flags=re.MULTILINE))
 
@@ -174,15 +146,6 @@ def _episode_verdict(raw: str, prompt: str) -> str:
     if not result.readings:
         return "parser: no episode read from the answer"
     return f"ok ({len(result.readings)}/{len(scopes)} episodes read)"
-
-
-def _period_verdict(raw: str, prompt: str) -> str:
-    grounding = _period_grounding(prompt)
-    identity = PeriodInsightIdentity.from_grounding(producer_key="reader-probe", episodes=grounding)
-    reading = _read_response(raw, identity, grounding)
-    if reading is None:
-        return f"parser: {_response_problem(raw, grounding)}"
-    return f"ok ({len(reading.evidence)} evidence rows)"
 
 
 def _story_pick_verdict(raw: str, prompt: str) -> str:
@@ -208,7 +171,6 @@ def _picture_verdict(raw: str, _prompt: str) -> str:
 SHAPES = (
     ("picture-facts", None, picture_facts.MAX_OUTPUT_TOKENS, True, _picture_verdict),
     ("episodes", "episodes.txt", TEXT_EPISODE_MAX_OUTPUT_TOKENS, True, _episode_verdict),
-    ("period", "period.txt", TEXT_PERIOD_MAX_OUTPUT_TOKENS, True, _period_verdict),
     ("story-pick", "story-pick.txt", STORY_PICK_MAX_TOKENS, False, _story_pick_verdict),
 )
 

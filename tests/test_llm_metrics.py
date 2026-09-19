@@ -83,6 +83,24 @@ async def test_a_healthy_call_records_one_call_and_no_truncation() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "usage,unmetered", [(None, 1), ({"prompt_tokens": 0, "completion_tokens": 0}, 0)]
+)
+async def test_absent_reader_usage_is_distinct_from_a_reported_zero(usage, unmetered):
+    from immich_memories.analysis.llm_query import query_llm
+
+    # WHY: the provider response determines whether the token counts are known.
+    with (
+        collecting() as counters,
+        patch("httpx.AsyncClient.post", return_value=_openai_response(usage=usage)),
+    ):
+        await query_llm("Describe this", _thinking_config(thinking=False))
+
+    assert counters.calls == 1
+    assert counters.unmetered_calls == unmetered
+
+
+@pytest.mark.asyncio
 async def test_token_usage_is_recorded_when_the_server_reports_it() -> None:
     """Servers that omit `usage` must not break counting — tokens stay zero."""
     from immich_memories.analysis.llm_query import query_llm

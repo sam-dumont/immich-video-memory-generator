@@ -1,4 +1,4 @@
-"""Factual episode cards and an explicitly omitted thesis, never stored as model answers."""
+"""Factual episode cards, never stored as model answers."""
 
 from __future__ import annotations
 
@@ -6,23 +6,16 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
-from immich_memories.analysis.editorial_contracts import DecisionProvenance, PeriodInsight
 from immich_memories.analysis.selection_source_groups import EditorialGroupProjection
 from immich_memories.analysis.text_episode_reader import (
     EpisodeEditorialEvidence,
     TextEpisodeReadResult,
 )
-from immich_memories.analysis.text_period_insight import TextPeriodInsightResult
 from immich_memories.store.episode_readings import (
     BankedEpisodeReading,
     EpisodeReadingIdentity,
     EpisodeReadingProducer,
     EpisodeRepresentative,
-)
-from immich_memories.store.period_insights import (
-    PeriodEpisodeGrounding,
-    PeriodInsightIdentity,
-    PeriodInsightProducer,
 )
 
 RULES_VERSION = "rules-v1"
@@ -83,36 +76,3 @@ class RuleEpisodeReader:
             )
             episodes.append(EpisodeEditorialEvidence(projection, identity, reading, False, None))
         return TextEpisodeReadResult(tuple(episodes), batch, (), 0)
-
-
-def rule_period(episodes: TextEpisodeReadResult) -> TextPeriodInsightResult:
-    grounding = tuple(
-        PeriodEpisodeGrounding(
-            e.projection.group.group_id,
-            e.reading.identity.evidence_key,
-            e.reading.what_happened,
-            tuple(r.asset_id for r in e.reading.representatives),
-        )
-        for e in episodes.episodes
-        if e.reading is not None
-    )
-    producer = PeriodInsightProducer(RULES_VERSION, RULES_VERSION, RULES_VERSION)
-    identity = PeriodInsightIdentity.from_grounding(producer_key=producer.key(), episodes=grounding)
-    provenance = DecisionProvenance(
-        "period",
-        RULES_VERSION,
-        RULES_VERSION,
-        RULES_VERSION,
-        episodes.annotation_batch.requested_asset_ids,
-        (),
-        identity.evidence_key,
-        False,
-    )
-    return TextPeriodInsightResult(
-        PeriodInsight(None, (), (), (), None, 0, provenance, reader="rules"),
-        grounding,
-        (),
-        None,
-        0,
-        identity,
-    )

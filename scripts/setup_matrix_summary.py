@@ -127,14 +127,28 @@ def _usage_gaps(row: dict) -> list[str]:
         return []
     gaps = []
     if usage.get("est_cost") is None:
-        gaps.append(
-            f"{row['id']}: what the API cost. The provider returns no price with a completion and"
-            " the manifest holds no list price for this reader and model, so there is nothing to"
-            " multiply the tokens by."
+        reason = (
+            "The record includes preparation calls. Their tokens cannot use the hosted reader's price."
+            if _preparation_calls(usage)
+            else "The provider omitted usage for some calls; the token total is incomplete."
+            if usage.get("unmetered_calls")
+            else "The provider returns no price with a completion and the manifest holds no list "
+            "price for this reader and model, so there is nothing to multiply the tokens by."
         )
-    if usage.get("counted_exactly") is False:
+        gaps.append(f"{row['id']}: what the API cost. {reason}")
+    if usage.get("unmetered_calls"):
+        gaps.append(f"{row['id']}: provider usage missing for {usage['unmetered_calls']} calls.")
+    elif usage.get("counted_exactly") is False:
         gaps.append(f"{row['id']}: exact token counts. The run summary rounds at or above 1000.")
     return gaps
+
+
+def _preparation_calls(usage: dict) -> int:
+    return usage.get("preparation_calls") or sum(
+        spend.get("calls", 0)
+        for stage, spend in (usage.get("by_stage") or {}).items()
+        if stage != "reader"
+    )
 
 
 def _contract_gaps(row: dict) -> list[str]:
@@ -161,7 +175,13 @@ def estimated_cost(usage: dict, price: dict | None) -> float | None:
     carries the run summary's own rounding with it.
     """
     tokens_in, tokens_out = usage.get("tokens_in"), usage.get("tokens_out")
-    if not price or tokens_in is None or tokens_out is None:
+    if (
+        not price
+        or tokens_in is None
+        or tokens_out is None
+        or usage.get("unmetered_calls")
+        or _preparation_calls(usage)
+    ):
         return None
     spent = tokens_in * float(price["input_per_million"])
     spent += tokens_out * float(price["output_per_million"])
@@ -180,9 +200,9 @@ def _apply_price(row: dict, pricing: dict) -> None:
     shop = pricing.get(row.get("reader") or "") or {}
     price = shop.get(row.get("reader_model") or "")
     cost = estimated_cost(usage, price if isinstance(price, dict) else None)
+    usage["est_cost"] = cost
     if cost is None:
         return
-    usage["est_cost"] = cost
     usage["cost_currency"] = shop.get(CURRENCY)
     usage["price_source"] = price.get("source")
     usage["price_retrieved"] = price.get("retrieved")

@@ -1,13 +1,8 @@
-"""Story-first selection: find what matters, give it weight, add texture that stands by itself.
+"""Story-first selection over reusable episode assessments.
 
-The order is the owner's. Day episodes are read from descriptions (reliable atoms). The v44
-memory-worthy gate reads every happening as remarkable, maybe or background. One synthesis
-groups the day episodes into the STORIES of the memory (a holiday, a week-long stay, an afternoon)
-and weighs each story in words: dominant, major, minor, glimpse, none. The only arithmetic
-turns those words into slots, capped by the moments a story actually holds. A funded story is
-inventoried over its whole span, the model picks the moments that tell it, and every candidate
-picture must stand by itself before it carries. Nothing is refilled with variants; when the
-moments run out the film is shorter.
+Episode importance comes from scoped admission or the existing monthly reading. Stories get
+weighted slots capped by available moments, then carrier selection checks their pictures.
+When the moments run out, the film is shorter.
 """
 
 from __future__ import annotations
@@ -151,7 +146,15 @@ def _episode_hints(
             key: value
             for key, value in (
                 ("relations", _relation_counts(rows, lines)),
-                ("gate", units.gate_of(e.moments)),
+                (
+                    "gate",
+                    units.gate_of(e.moments)
+                    or {
+                        "central": "remarkable",
+                        "supporting": "maybe",
+                        "incidental": "background",
+                    }.get(e.page_role, ""),
+                ),
                 ("arrivals", arrivals_of(e.moments)),
             )
             if value
@@ -217,7 +220,10 @@ def _weighed_stories(
     for s in story.stories:
         moment_keys = [m for key in s["episodes"] for m in episode_of[key].moments]
         story_units[s["key"]] = units.of(moment_keys)
-        s["gate"] = units.gate_of(moment_keys)
+        readings = (str(hints.get(k, {}).get("gate") or "") for k in s["episodes"])
+        s["gate"] = units.gate_of(moment_keys) or min(
+            readings, key=lambda value: GATE_ORDER.get(value, 3), default=""
+        )
         s["seen"] = {
             "days": len({u["taken"][:10] for u in story_units[s["key"]]}),
             "moments": sum(int(hints.get(k, {}).get("moments", 0)) for k in s["episodes"]),

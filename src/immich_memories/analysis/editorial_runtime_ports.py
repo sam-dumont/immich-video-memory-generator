@@ -33,11 +33,9 @@ from immich_memories.analysis.selection_source import SourceScope
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.subject_framing import FaceBox, face_boxes_of
 from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
-from immich_memories.analysis.text_period_insight import TEXT_PERIOD_MAX_OUTPUT_TOKENS
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.people.context import PersonPromptContext, load_people_prompt_context
 from immich_memories.store.episode_readings import EpisodeReadingStore
-from immich_memories.store.period_insights import PeriodInsightStore
 
 if TYPE_CHECKING:
     from immich_memories.config_loader import Config
@@ -69,8 +67,8 @@ class EditorialRuntimePorts:
         [FullEditorialSource, SourceScope], Sequence[Asset | VideoClipInfo]
     ] = fetch_full_window_source
     # The episode reads are the one stage with a fan-out worth queueing, so the
-    # batch coordinator is built here and nowhere else. The period account is a
-    # single prompt and the story picks read the stages before them.
+    # batch coordinator is built here and nowhere else. Story picks depend on
+    # the stages before them.
     episode_requester_factory: Callable[[Config], Callable[[str], str]] = lambda config: (
         SyncTextPromptRequester(
             config.llm,
@@ -80,18 +78,7 @@ class EditorialRuntimePorts:
             batch=BatchCoordinator(config.llm, BatchPolicy.from_config(config.llm)),
         )
     )
-    period_requester_factory: Callable[[Config], Callable[[str], str]] = lambda config: (
-        SyncTextPromptRequester(
-            config.llm,
-            max_tokens=TEXT_PERIOD_MAX_OUTPUT_TOKENS,
-            timeout_seconds=config.llm.timeout_seconds,
-            thinking=False,
-            # The period reader handles overflow by paging the evidence.
-            retry_larger=False,
-        )
-    )
     episode_store_factory: Callable[[Path], EpisodeReadingStore] = EpisodeReadingStore
-    period_store_factory: Callable[[Path], PeriodInsightStore] = PeriodInsightStore
     structure_planner: Callable[
         [StructurePlanningInput, StructurePlannerPorts], StructurePlanningResult
     ] = plan_structure

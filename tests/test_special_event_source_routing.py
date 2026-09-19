@@ -211,13 +211,6 @@ def test_production_wall_receives_only_selected_event_even_if_port_returns_whole
             }
         ],
     }
-    period = {
-        "schema_version": "period-insight-text-v1",
-        "thesis": "An occasion.",
-        "evidence": [{"observation": "People meet.", "episodes": [1]}],
-        "tensions": [],
-        "recurring_threads": [],
-    }
     planner = build_editorial_planner(
         client=object(),
         config=config,
@@ -227,7 +220,6 @@ def test_production_wall_receives_only_selected_event_even_if_port_returns_whole
             load_people=lambda: {},
             fetch_full_source=lambda _client, _scope: tuple(clips.values()),
             episode_requester_factory=lambda _config: lambda _prompt: json.dumps(episode),
-            period_requester_factory=lambda _config: lambda _prompt: json.dumps(period),
             structure_planner=plan,
             structure_ports_factory=lambda _source: object(),
         ),

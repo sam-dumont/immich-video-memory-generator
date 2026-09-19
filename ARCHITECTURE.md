@@ -11,12 +11,16 @@ The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
 Selection is the story-first editorial route, the only one: `generate` (or the Memory page's
 Cut) -> `build_smart_pipeline(editorial_context)` (`analysis/editorial_runtime.py`) ->
 `SmartPipeline.run_editorial_source()` -> `RuntimeEditorialPlanner.plan_source()`, which reports
-six stages: **Preparing source metadata -> Reading event evidence -> Reading the period account
+five stages: **Preparing source metadata -> Reading event evidence
 -> Building editorial cards -> Editing the memory -> Validating selected source timing**. Every
 attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 (`operations/editorial_attempt.py`, an OS lease tells interrupted from slow); the facts and banks
 it reads live in `<cache>/annotations.sqlite` (`store/`). The design is summarised in
 `docs/designs/2026-09-10-story-first-selection.md`.
+
+Selection carries the exact episode reading identities into its audit lineage. The former
+pre-card period-insight pass only supplied audit prose and no selection decisions; it is no
+longer requested. Existing database rows are left untouched; no new period-insight rows are written.
 
 The period account (`analysis/editorial_story_reading.py`) reads the banked 90-minute episode
 readings, one page per calendar month, cut into parts only at a day boundary. No page carries
@@ -141,6 +145,9 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_render.py`: local source preparation/assembly or configured worker handoff
+- `processing/source_preparation.py`: bounded completion queue with worker-owned clients;
+  `generate_clips.py` gives each source its own scratch directory and restores editorial order.
+  `DownloadCoordinator.sources_for` shares downloaded components across workers by source ID.
 - `processing/remote_render.py`: authenticated jobs, bounded polling, a SHA-256-checked download,
   and a staged film that reuses the worker's decode when the bytes match
 - `processing/remote_render_plan.py`: frozen cut serialization, including certified Live material
@@ -181,7 +188,7 @@ src/immich_memories/
 ├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
-│   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> period account -> cards -> edit
+│   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
@@ -189,7 +196,7 @@ src/immich_memories/
 │   │                               # motion lines (one caption-seat sentence per video, read by
 │   │                               # the pick and by the standing gate's moving rows)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
-│   ├── text_episode_reader.py  # Reading event evidence (paged, banked); period_insight*.py = the account
+│   ├── text_episode_reader.py  # Reading event evidence (paged, banked)
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner
@@ -202,7 +209,7 @@ src/immich_memories/
 │   ├── editorial_page_recovery.py  # Bounded ask/retry/repair for a stage that reads its own JSON envelope
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
-│   ├── editorial_structure_*.py    # The structure planner: wall, memory-worthy + standing gates, audience, record
+│   ├── editorial_structure_*.py    # The structure planner: wall, subject/trip admission + standing gates, audience, record
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
@@ -226,7 +233,8 @@ src/immich_memories/
 │   ├── llm_wire.py             # The two request dialects, what a reply says, and the reasoning budget
 │   ├── llm_batch.py            # A stage's independent prompts as one provider batch (half price, async): the two wire dialects and their transports
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
-│   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
+│   ├── llm_preparation_usage.py # Caption/control/motion usage, including unmetered failed attempts
+│   ├── llm_usage_record.py     # Atomic usage checkpoints, split per model/stage, with unknown usage
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it;
 │                               # may_play: a join earns its length, a lone Live Photo is put to
@@ -558,7 +566,6 @@ generate / Memory page Cut
                     ├── "Preparing source metadata": prepare_editorial_annotations
                     ├── TextEditorialPlanner.plan_prepared             (editorial_orchestration.py)
                     │     ├── "Reading event evidence": episode reader + cull
-                    │     ├── "Reading the period account": the thesis
                     │     ├── "Building editorial cards": build_moment_cards -> moment wall
                     │     └── "Editing the memory": plan_structure -> select_story_first
                     ├── "Validating selected source timing": bind_editorial_timeline

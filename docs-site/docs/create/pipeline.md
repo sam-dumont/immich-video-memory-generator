@@ -25,8 +25,7 @@ flowchart TD
     end
 
     prep --> episodes["Reading event evidence: i/n"]
-    episodes --> period["Reading the period account: month"]
-    period --> cards["Building editorial cards"]
+    episodes --> cards["Building editorial cards"]
     cards --> edit["Editing the memory"]
     edit --> timing["Validating selected source timing"]
     timing --> render["Render: originals, photos,<br/>title screens, assembly, encode"]
@@ -35,7 +34,6 @@ flowchart TD
 
     caption -.->|"a 400 px tile per picture"| captioner(["caption server"])
     episodes -.-> reader(["the reader"])
-    period -.-> reader
     edit -.->|"800 px tiles and annotation lines"| reader
 ```
 
@@ -59,9 +57,16 @@ story offers a single moment and the grant reaches it, because a dense tail of f
 otherwise bury a story's beginning. Favourites still help establish a story's importance, subject to
 source and audience eligibility, but they do not order which stories a film funds. When a period
 holds more stories than the film has slots, a detected trip goes first among the stories of its
-weight; then the memory-worthy reading and the number of distinct moments decide, then the order the
-reader listed its stories in, then the order things happened. A well starred December cannot push
+weight; then the existing episode reading and number of distinct moments decide, then the order
+the reader listed its stories in, then the order things happened. Custom-subject and trip films
+use their admission reading instead. A well starred December cannot push
 January out of the year.
+
+**General films skip the preliminary importance ballot.** The model-backed editor reuses the
+monthly episode reading's assessment for year, month and other general films. A central occasion
+keeps its minimum importance even if a later weighting answer dismisses it. Custom-subject and trip
+films still check which happenings belong before building their story. Source eligibility,
+audience checks and duration limits still apply.
 
 **A period can be about someone arriving.** Where your people file knows a person, it also knows
 the month the library first holds a picture of them and the month they start appearing regularly.
@@ -201,6 +206,10 @@ whether one frame would make a good photograph. Standing votes are banked per pi
 key carries the caption seat that wrote those sentences: a different seat writes different rows and
 its predecessor's verdicts are not replayed against them.
 
+Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
+unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
+cached as an empty vote. A valid empty mapping still means the reader chose none of the offered items.
+
 Coverage is checked, not assumed. Required source and annotation coverage is verified before
 selection, and an incomplete run is never reported as complete.
 
@@ -210,7 +219,7 @@ would crowd out a batch, they are compared first; every story is still evaluated
 that returns missing decisions or repeatedly truncated text is split into smaller groups while
 keeping parts of the same occasion together. All batches must finish before the decisions are used.
 
-The shipped design (the source model, the annotation store and its banks, the six stages, the two
+The shipped design (the source model, the annotation store and its banks, the five stages, the episode
 readings, the structure and story planners, carriers and durable attempts) is written up in
 [Story-first selection](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/docs/designs/2026-09-10-story-first-selection.md)
 in the repository.
@@ -298,7 +307,7 @@ nothing.
 ## Editing without a language model
 
 Set `advanced.editorial.reader: rules` (or leave it on `auto` with no `llm.model`) and the editor
-runs the same six stages with a rule answering each question a model would answer. Same stages, same
+runs the same five stages with a rule answering each question a model would answer. Same stages, same
 records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 
 | Question | Rule |
@@ -337,13 +346,16 @@ album, one event, a trip) survive it well; broad recaps are where the model earn
 
 The stage names are what the run reports: a row on the Memory page, a line in the terminal.
 
+Episode evidence goes straight into editorial cards. The editor still reads and groups the
+stories; there is no separate summary call before it. Audit records retain the identities of
+the episode readings used for the cut.
+
 | Stage | What runs | Where it can run |
 |---|---|---|
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
-| **Reading the period account** | The banked episode readings placed into day episodes, one page per calendar month, then one thesis over all of them. One bounded repair if malformed. Banked | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: trip detection over the film's pictures, the memory-worthy gate, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. The moment inventory reads only the capture groups a funded story can spend a slot on, standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate both read each video's banked motion sentence, each Live Photo's banked motion residual and each clip's banked speech; whatever the cut has to measure itself is banked per picture for the next cut | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -371,24 +383,20 @@ hardware encoder, a lower resolution and fewer clips.
 
 Reading is mostly a queue of one, and every pick below reads the stages above. Three places hold
 independent questions: the period account is read one calendar month per page and no month sees
-another, the moment inventory of one event knows nothing about the next event's, and the worthiness
-and standing gates ask in blocks of twelve that do not see each other. Those are what
+another, the moment inventory of one event knows nothing about the next event's, and the standing
+gate asks in blocks of twelve that do not see each other. Custom-subject and trip admission use
+the same block pattern. Those are what
 `advanced.llm.reader_concurrency` overlaps, and nothing else in the reading can be made to overlap
 by raising it.
 
 ```mermaid
 flowchart TB
     packs["Event evidence, pack by pack"]
+    packs -.-> admission["Custom-subject or trip admission:<br/>two orders per block of 12"]
+    admission --> pages
     packs --> pages["The period account, one page per calendar month:<br/>no page sees another"]
     pages --> synthesis["The synthesis: one thesis over every episode"]
-
-    synthesis --> worthy
-    subgraph worthy["Memory-worthy gate: happenings in blocks of 12, each block asked in two orders"]
-        direction LR
-        w1["block 1"] ~~~ w2["block 2"] ~~~ wn["block n"]
-    end
-
-    worthy --> weigh["Story weighing"]
+    synthesis --> weigh["Story weighing"]
     weigh --> inventories
     subgraph inventories["Moment inventories: one job per event"]
         direction LR
@@ -412,8 +420,11 @@ queue instead of overlapping.
 
 `generate_memory()` takes over from the plan under a file lock.
 
-- **Originals** of the selected sources are downloaded (3 workers by default,
-  `analysis.download_workers`) and each interval trimmed with FFmpeg. A video always plays. A Live
+- **Originals** enter a bounded download-and-prepare queue (2 workers by default,
+  `analysis.source_prepare_workers`, configurable from 1 to 4). Each worker downloads one selected
+  source and prepares its interval or photograph while other workers continue. Shared source
+  components download once; completed clips return to editorial order before assembly.
+  A video always plays. A Live
   Photo plays its video only when its measured motion reached 1.5; below that its photograph is
   held, and the pick was offered it as a still. Live companions of different sizes
   are fitted to a common frame without stretching or changing their selected timing.
@@ -460,8 +471,8 @@ timing trim included, and the selection sheet prints it.
 
 | Cache | Location | Holds |
 |---|---|---|
-| Annotation store | `~/.immich-memories/cache/annotations.sqlite` | every fact per picture and producer, the motion residuals and speech regions a cut measured included; the episode, period, cull and judgment banks |
-| Structure banks | `~/.immich-memories/cache/structure-banks/` | the memory-worthy and standing votes, thumbnail hashes |
+| Annotation store | `~/.immich-memories/cache/annotations.sqlite` | every fact per picture and producer, the motion residuals and speech regions a cut measured included; the episode, cull and judgment banks |
+| Structure banks | `~/.immich-memories/cache/structure-banks/` | custom-subject and trip admission votes, standing votes, thumbnail hashes |
 | Attempts | `~/.immich-memories/cache/editorial-runs/` | one directory per cut |
 | Downloaded videos | `~/.immich-memories/cache/video-cache` | 10 GB, 7 days |
 | Immich previews | `~/.immich-memories/cache/thumbnails` | 10 GB |

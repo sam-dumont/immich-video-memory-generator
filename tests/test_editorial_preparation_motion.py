@@ -21,7 +21,10 @@ from immich_memories.analysis.editorial_preparation_motion import (
     missing_motion,
     motion_sources,
     prepare_motion_lines,
+    seat_asker,
 )
+from immich_memories.analysis.llm_metrics import collecting
+from immich_memories.analysis.llm_usage_record import USAGE_FILE, write_llm_usage
 from immich_memories.api.models import Asset, AssetType
 from immich_memories.processing.playback_keyframes import SampledKeyframes
 from immich_memories.store.cut_measurements import (
@@ -29,6 +32,7 @@ from immich_memories.store.cut_measurements import (
     remember_motion_residual,
 )
 from immich_memories.store.editorial_preparation import initialize, private_database_path
+from tests.test_editorial_preparation_captions import _CaptionServer
 
 
 def picture(asset_id, *, kind=AssetType.IMAGE, live=None, name="IMG.JPG"):
@@ -97,6 +101,80 @@ def produce(store, sources, *, sample=sampled, seat):
             check_cancelled=lambda: None,
             progress=lambda *_: None,
         )
+
+
+def test_motion_retries_report_usage_before_validation_and_warm_reuse_is_free(store, tmp_path):
+    reply = {
+        "model": "served-motion-revision",
+        "choices": [{"finish_reason": "stop", "message": {"content": answer("A person waves.")}}],
+        "usage": {
+            "prompt_tokens": 600,
+            "completion_tokens": 80,
+            "prompt_tokens_details": {"cached_tokens": 200},
+            "completion_tokens_details": {"reasoning_tokens": 50},
+        },
+    }
+    truncated = {**reply, "choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+    server = _CaptionServer(None, replies=[truncated, reply])
+    sources = motion_sources((video("one"),), residual_of=lambda _: None)
+    ask = seat_asker(server.base_url, api_key="", timeout=5)
+    try:
+        with collecting() as usage:
+            assert produce(store, sources, seat=ask).described == 1
+        write_llm_usage(tmp_path, usage)
+        with sqlite3.connect(store) as connection:
+            remaining = missing_motion(connection, sources)
+        with collecting() as warm:
+            produce(store, remaining, seat=ask)
+    finally:
+        server.close()
+
+    report = json.loads((tmp_path / USAGE_FILE).read_text())
+    assert report["calls"] == 2
+    assert report["by_stage"]["motion"]["calls"] == 2
+    assert report["by_model"]["served-motion-revision"]["calls"] == 2
+    assert report["prompt_tokens"] == 1200
+    assert report["cached_prompt_tokens"] == 400
+    assert report["completion_tokens"] == 160
+    assert report["reasoning_tokens"] == 100
+    assert report["usage_complete"] is True
+    assert warm.calls == 0
+
+
+@pytest.mark.parametrize(
+    "provider_usage,unknown", [(None, 1), ({"prompt_tokens": 0, "completion_tokens": 0}, 0)]
+)
+def test_motion_usage_distinguishes_missing_counts_from_zero(tmp_path, provider_usage, unknown):
+    reply = {
+        "choices": [{"finish_reason": "stop", "message": {"content": answer("A person waves.")}}],
+        "usage": provider_usage,
+    }
+    server = _CaptionServer(None, replies=[reply])
+    try:
+        with collecting() as usage:
+            seat_asker(server.base_url, api_key="", timeout=5)(frame(100))
+        write_llm_usage(tmp_path, usage)
+    finally:
+        server.close()
+
+    report = json.loads((tmp_path / USAGE_FILE).read_text())
+    assert report["calls"] == 1
+    assert report["unmetered_calls"] == unknown
+    assert report["usage_complete"] is (unknown == 0)
+
+
+def test_refused_motion_request_still_records_an_unmetered_attempt(tmp_path):
+    server = _CaptionServer("required-token")
+    try:
+        with collecting() as usage, pytest.raises(PermissionError):
+            seat_asker(server.base_url, api_key="", timeout=5)(frame(100))
+        write_llm_usage(tmp_path, usage)
+    finally:
+        server.close()
+
+    report = json.loads((tmp_path / USAGE_FILE).read_text())
+    assert report["calls"] == report["unmetered_calls"] == 1
+    assert report["by_stage"]["motion"]["calls"] == 1
 
 
 def still_missing(store, sources):

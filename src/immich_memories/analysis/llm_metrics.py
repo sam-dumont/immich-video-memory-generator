@@ -51,6 +51,7 @@ class ModelSpend:
     """One model's share of a run, for the runs that ask more than one."""
 
     calls: int = 0
+    unmetered_calls: int = 0
     prompt_tokens: int = 0
     cached_prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -61,12 +62,14 @@ class ModelSpend:
 class LLMCounters:
     """What the model was asked, and what it cost.
 
-    `by_model` is a run-level tally and `since`/`snapshot` do not carry it: a
+    `by_model` and `by_stage` are run-level tallies; `since`/`snapshot` do not carry them. A
     phase delta is read as totals, and attributing a delta per model would be
     code with no reader.
     """
 
     calls: int = 0
+    unmetered_calls: int = 0
+    preparation_calls: int = 0
     cache_hits: int = 0
     prompt_tokens: int = 0
     cached_prompt_tokens: int = 0
@@ -80,6 +83,7 @@ class LLMCounters:
     # Keep the historical field name so stored run metrics remain readable.
     wall_seconds: float = 0.0
     by_model: dict[str, ModelSpend] = field(default_factory=dict)
+    by_stage: dict[str, ModelSpend] = field(default_factory=dict)
     # The subset of the three counters above that a provider batch answered
     # rather than a live call. A subset rather than a separate tally, so every
     # existing reader of `calls` still sees every reply the run paid for; what
@@ -103,6 +107,8 @@ class LLMCounters:
         with self._lock:
             candidates = {
                 "llm_calls": self.calls,
+                "llm_unmetered_calls": self.unmetered_calls,
+                "llm_preparation_calls": self.preparation_calls,
                 "llm_cache_hits": self.cache_hits,
                 "llm_prompt_tokens": self.prompt_tokens,
                 "llm_cached_prompt_tokens": self.cached_prompt_tokens,
@@ -122,6 +128,8 @@ class LLMCounters:
         with self._lock:
             return LLMCounters(
                 calls=self.calls - mark.calls,
+                unmetered_calls=self.unmetered_calls - mark.unmetered_calls,
+                preparation_calls=self.preparation_calls - mark.preparation_calls,
                 cache_hits=self.cache_hits - mark.cache_hits,
                 prompt_tokens=self.prompt_tokens - mark.prompt_tokens,
                 cached_prompt_tokens=self.cached_prompt_tokens - mark.cached_prompt_tokens,
@@ -142,6 +150,8 @@ class LLMCounters:
         with self._lock:
             return LLMCounters(
                 calls=self.calls,
+                unmetered_calls=self.unmetered_calls,
+                preparation_calls=self.preparation_calls,
                 cache_hits=self.cache_hits,
                 prompt_tokens=self.prompt_tokens,
                 cached_prompt_tokens=self.cached_prompt_tokens,
@@ -163,8 +173,10 @@ def record_reply(
     completion_tokens: int = 0,
     reasoning_tokens: int = 0,
     model: str | None = None,
+    stage: str = "reader",
+    usage_known: bool = True,
 ) -> None:
-    """One reply arrived from the model. Retries count separately, as they cost.
+    """Account for one completion attempt. Retries count separately, as they cost.
 
     `model` is whatever the server named in its own reply, not what the config
     asked for: a route that silently serves something else bills for what it
@@ -173,17 +185,27 @@ def record_reply(
     for counters in _active.get():
         with counters._lock:
             counters.calls += 1
+            counters.unmetered_calls += not usage_known
+            counters.preparation_calls += stage != "reader"
             counters.prompt_tokens += prompt_tokens
             counters.cached_prompt_tokens += cached_prompt_tokens
             counters.completion_tokens += completion_tokens
             counters.reasoning_tokens += reasoning_tokens
-            if model:
-                spend = counters.by_model.setdefault(model, ModelSpend())
+            for groups, key in ((counters.by_model, model), (counters.by_stage, stage)):
+                if not key:
+                    continue
+                spend = groups.setdefault(key, ModelSpend())
                 spend.calls += 1
+                spend.unmetered_calls += not usage_known
                 spend.prompt_tokens += prompt_tokens
                 spend.cached_prompt_tokens += cached_prompt_tokens
                 spend.completion_tokens += completion_tokens
                 spend.reasoning_tokens += reasoning_tokens
+
+
+def token_counts_reported(*values: object) -> bool:
+    """Zero is reported usage; absent, invalid and negative counts are unknown."""
+    return all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in values)
 
 
 def record_batch_reply(

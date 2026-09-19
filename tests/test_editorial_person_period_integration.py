@@ -128,17 +128,18 @@ class PeriodJudge(ControlledStoryJudge):
         self.only_competing_event = only_competing_event
 
     def answer(self, stage, prompt):
-        if stage.startswith("worthy-"):
-            worthy = {"F02": "Another worthwhile stage of settling into a home"}
-            if not self.only_competing_event:
-                worthy["F01"] = "Moving home is a meaningful life change"
-            return json.dumps({"worthy": worthy})
         raw = super().answer(stage, prompt)
         if stage.startswith("story-episodes"):
             result = json.loads(raw)
             for fragment in result["fragments"]:
                 # the period's second event is the page's second episode row
                 fragment["episode"] = "S0001" if fragment["reading"] == "r1" else "S0002"
+            for episode in result["new_episodes"]:
+                episode["role"] = (
+                    "incidental"
+                    if self.only_competing_event and episode["id"] == "S0001"
+                    else "central"
+                )
             return json.dumps(result)
         if stage.startswith("story-understanding") and self.only_competing_event:
             result = json.loads(raw)
@@ -166,7 +167,7 @@ def test_unsampled_person_period_facts_reach_editorial_stages_but_not_picture_ev
     assert set(plan["person_period_facts"]) == {"F01"}
     assert tuple(plan["person_period_facts"]["F01"][0]["grounding_moment_ids"]) == (aliases[1],)
     worthy = [row["prompt"] for row in judge.calls if row["stage"].startswith("worthy-")]
-    assert len(worthy) == 2 and all(expected in prompt for prompt in worthy)
+    assert not worthy
     story_pages = [
         row["prompt"] for row in judge.calls if row["stage"].startswith("story-episodes")
     ]
@@ -204,7 +205,7 @@ def test_person_period_context_does_not_force_its_event_into_the_film(tmp_path):
     judge = PeriodJudge(only_competing_event=True)
     plan = run(captured, judge)
     worthy = [row["prompt"] for row in judge.calls if row["stage"].startswith("worthy-")]
-    assert worthy and all("Rowan" in prompt for prompt in worthy)
+    assert not worthy
     assert set(plan["person_period_facts"]) == {"F01"}
     assert plan["carriers"]
     assert all(int(c["asset_id"].rsplit("-", 1)[1]) >= 30 for c in plan["carriers"])

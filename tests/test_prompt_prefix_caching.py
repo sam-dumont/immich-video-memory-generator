@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -40,6 +39,10 @@ class RecordingJudge:
 
     def ask(self, _stage: str, prompt: str, **_kwargs: object) -> str:
         self.calls.append(prompt)
+        if _stage.startswith("worthy"):
+            return '{"worthy": {}}'
+        if _stage.startswith("standing"):
+            return '{"weak": {}}'
         if prompt.startswith("Inventory distinct depicted moments"):
             sources = re.findall(r'"source": "(U\d+)"', prompt)
             return json.dumps(
@@ -223,35 +226,6 @@ def _episode_read_prompts() -> tuple[str, str]:
     )
 
 
-def _period_prompts() -> tuple[str, str]:
-    from immich_memories.analysis.text_period_wire import _PeriodEpisodeFacts, _prompt_for
-
-    def facts(day: int, place: str) -> _PeriodEpisodeFacts:
-        moment = datetime(2024, 2, day, 10, 0, tzinfo=UTC)
-        return _PeriodEpisodeFacts(
-            first_taken_at=moment,
-            last_taken_at=moment,
-            place=place,
-            people=("a parent",),
-            asset_count=day,
-            what_happened=f"something at {place}",
-        )
-
-    return (
-        _prompt_for((facts(1, "a river"),)),
-        _prompt_for((facts(2, "a park"), facts(3, "a beach"))),
-    )
-
-
-def _synthesis_prompts() -> tuple[str, str]:
-    from immich_memories.analysis.text_period_wire import _SYNTHESIS_PROMPT
-
-    return (
-        _SYNTHESIS_PROMPT.format(part_count=2, episode_count=9, parts="part 1: a river"),
-        _SYNTHESIS_PROMPT.format(part_count=3, episode_count=14, parts="part 1: a park"),
-    )
-
-
 def _title_prompts() -> tuple[str, str]:
     """Both trips: people and occasion titles are a stage of their own.
 
@@ -305,8 +279,6 @@ STAGES = [
     ("story-weighing", _weighing_prompts, 1500),
     ("story-pick", _pick_prompts, 900),
     ("episode-read", _episode_read_prompts, 800),
-    ("period-insight", _period_prompts, 600),
-    ("period-synthesis", _synthesis_prompts, 800),
     ("title", _title_prompts, 1500),
     ("special-day", _special_day_prompts, 900),
 ]

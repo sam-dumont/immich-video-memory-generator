@@ -12,7 +12,6 @@ from immich_memories.analysis.editorial_contracts import (
     InsightEvidence,
     LivePhotoRenderingFamily,
     PassTrace,
-    PeriodInsight,
     RequestTrace,
     TraceDecision,
     live_photo_rendering_family_id,
@@ -179,38 +178,3 @@ def test_an_observation_nobody_can_trace_back_to_pictures_is_refused(overrides: 
     }
     with pytest.raises(ValueError):
         InsightEvidence(**fields)
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"revision": -1},
-        {"unavailable_reason": "no wall"},
-        {"thesis": None},
-        {"thesis": "  "},
-        {"evidence": ()},
-        {"thesis": None, "unavailable_reason": " "},
-    ],
-)
-def test_a_period_reading_must_be_exactly_a_grounded_thesis_or_a_stated_absence(
-    overrides: dict,
-) -> None:
-    """A blank half-reading downstream reads as a period with nothing worth showing."""
-    fields = {
-        "thesis": "a month of long walks",
-        "evidence": (
-            InsightEvidence(
-                observation="the same walk recurs",
-                episode_ids=("episode-1",),
-                asset_ids=("asset-1",),
-            ),
-        ),
-        "tensions": (),
-        "recurring_threads": (),
-        "unavailable_reason": None,
-        "revision": 0,
-        "provenance": _provenance(),
-        **overrides,
-    }
-    with pytest.raises(ValueError):
-        PeriodInsight(**fields)

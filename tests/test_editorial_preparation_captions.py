@@ -18,6 +18,8 @@ from immich_memories.analysis.editorial_description_contract import (
 )
 from immich_memories.analysis.editorial_description_outcomes import digest, unavailable_for
 from immich_memories.analysis.editorial_description_wire import request_bytes, tile_preview
+from immich_memories.analysis.llm_metrics import collecting
+from immich_memories.analysis.llm_usage_record import USAGE_FILE, write_llm_usage
 from immich_memories.operations.cancellation import (
     PipelineCancelled,
     cancellation_scope,
@@ -145,6 +147,67 @@ def test_actual_call_outcome_keys_match_durable_failure_contract():
     assert len(row) == 10
 
 
+def test_controls_and_worker_captions_reach_attempt_and_run_totals(open_endpoint):
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        with collecting() as run_usage, collecting() as attempt_usage:
+            assert run(connection, base_url=open_endpoint.base_url) == {}
+
+    for usage in (attempt_usage, run_usage):
+        assert usage.calls == 4
+        assert usage.prompt_tokens == 4 * 310
+        assert usage.completion_tokens == 4 * 22
+
+
+def test_usage_report_separates_controls_from_captions(tmp_path, open_endpoint):
+    with sqlite3.connect(":memory:") as connection:
+        initialize(connection)
+        with collecting() as usage:
+            assert run(connection, base_url=open_endpoint.base_url) == {}
+    write_llm_usage(tmp_path, usage)
+
+    report = json.loads((tmp_path / USAGE_FILE).read_text())
+    assert report["by_stage"]["caption_controls"]["calls"] == 3
+    assert report["by_stage"]["caption"]["calls"] == 1
+    assert report["by_model"]["served-caption-revision"]["calls"] == 4
+
+
+def test_invalid_reply_is_counted_and_missing_usage_is_not_reported_as_free(tmp_path):
+    reply = {
+        "model": "served-caption-revision",
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {
+                    "content": json.dumps(
+                        {"description": "Two people walk a dog.", "setting": "a park"}
+                    )
+                },
+            }
+        ],
+        "usage": {"prompt_tokens": 310, "completion_tokens": 22},
+    }
+    invalid = {**reply, "choices": [{"finish_reason": "stop", "message": {"content": "bad JSON"}}]}
+    server = _CaptionServer(None, replies=[reply] * 3 + [invalid, {**reply, "usage": None}])
+    try:
+        with sqlite3.connect(":memory:") as connection:
+            initialize(connection)
+            with collecting() as usage:
+                assert run(connection, base_url=server.base_url) == {}
+        write_llm_usage(tmp_path, usage)
+    finally:
+        server.close()
+
+    report = json.loads((tmp_path / USAGE_FILE).read_text())
+    assert report["calls"] == 5
+    assert report["prompt_tokens"] == 4 * 310
+    assert report["completion_tokens"] == 4 * 22
+    assert report["unmetered_calls"] == 1
+    assert report["usage_complete"] is False
+    assert report["by_stage"]["caption"]["calls"] == 2
+    assert report["by_stage"]["caption"]["unmetered_calls"] == 1
+
+
 class _CaptionServer:
     """A caption endpoint, optionally gated on a bearer token, that records what it was sent."""
 
@@ -155,6 +218,7 @@ class _CaptionServer:
         open_probe: bool = False,
         served: dict | None = None,
         answer: dict | None = None,
+        replies: list[dict] | None = None,
     ) -> None:
         self.seen_authorization: list[str | None] = []
         inventory = json.dumps(
@@ -162,6 +226,7 @@ class _CaptionServer:
         ).encode()
         completion = json.dumps(
             {
+                "model": "served-caption-revision",
                 "choices": [
                     {
                         "finish_reason": "stop",
@@ -176,6 +241,7 @@ class _CaptionServer:
                 "usage": {"completion_tokens": 22, "prompt_tokens": 310},
             }
         ).encode()
+        completions = [json.dumps(reply).encode() for reply in replies] if replies else [completion]
         server = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -202,7 +268,7 @@ class _CaptionServer:
 
             def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's name
                 self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                self._answer(completion)
+                self._answer(completions.pop(0) if len(completions) > 1 else completions[0])
 
             def log_message(self, *args: object) -> None:
                 return
