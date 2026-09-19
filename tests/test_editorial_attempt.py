@@ -57,9 +57,18 @@ def test_concurrent_attempts_have_separate_artifacts_and_truthful_status(tmp_pat
     "error,status", [(PipelineCancelled("stop"), "cancelled"), (ValueError("bad data"), "failed")]
 )
 def test_cancel_and_failure_are_durable_without_becoming_completed(tmp_path, error, status):
+    from immich_memories.analysis.llm_metrics import active, record_reply
+    from immich_memories.analysis.llm_usage_record import USAGE_FILE
+
     attempt = EditorialAttempt(tmp_path, request={})
     with pytest.raises(type(error)), attempt:
+        record_reply(prompt_tokens=101, completion_tokens=7, model="reader")
         raise error
+    usage = json.loads((attempt.directory / USAGE_FILE).read_text())
+    assert usage["calls"] == 1
+    assert usage["prompt_tokens"] == 101
+    assert usage["completion_tokens"] == 7
+    assert active() is None
     record = read_editorial_attempt(attempt.directory)
     assert record["status"] == status
     assert record["error_type"] == type(error).__name__
@@ -71,7 +80,9 @@ def test_process_crash_is_interrupted_without_a_time_based_guess(tmp_path):
 import os,sys
 from pathlib import Path
 from immich_memories.operations.editorial_attempt import EditorialAttempt
+from immich_memories.analysis.llm_metrics import record_reply
 with EditorialAttempt(Path(sys.argv[1]), request={}) as attempt:
+    record_reply(prompt_tokens=91, completion_tokens=9, model='reader')
     attempt.stage('Reading events')
     os._exit(9)
 """
@@ -81,6 +92,9 @@ with EditorialAttempt(Path(sys.argv[1]), request={}) as attempt:
     record = read_editorial_attempt(directory)
     assert record["status"] == "interrupted"
     assert record["stage"] == "Reading events"
+    usage = json.loads((directory / "llm-usage.json").read_text())
+    assert usage["prompt_tokens"] == 91
+    assert usage["completion_tokens"] == 9
     assert json.loads((directory / "status.private.json").read_text())["status"] == "running"
 
 
@@ -115,3 +129,44 @@ def test_an_attempt_that_made_no_recorded_calls_omits_the_stage_families(tmp_pat
         attempt.complete(selected=1)
 
     assert "calls_by_stage" not in read_editorial_attempt(attempt.directory)
+
+
+def test_selection_spend_is_saved_at_progress_and_completion_without_rendering(tmp_path):
+    from immich_memories.analysis.llm_metrics import record_reply
+    from immich_memories.analysis.llm_usage_record import USAGE_FILE
+
+    with EditorialAttempt(tmp_path, request={}) as attempt:
+        record_reply(prompt_tokens=120, completion_tokens=14, model="reader")
+        attempt.stage("Editing the memory")
+        checkpoint = json.loads((attempt.directory / USAGE_FILE).read_text())
+        assert checkpoint["calls"] == 1
+        assert checkpoint["prompt_tokens"] == 120
+        record_reply(prompt_tokens=30, completion_tokens=6, model="reader")
+        attempt.complete(selected=2)
+
+    final = json.loads((attempt.directory / USAGE_FILE).read_text())
+    assert final["calls"] == 2
+    assert final["prompt_tokens"] == 150
+    assert final["completion_tokens"] == 20
+    assert final["by_model"]["reader"]["calls"] == 2
+
+
+def test_selection_attempts_have_separate_spend_without_erasing_the_run_total(tmp_path):
+    from immich_memories.analysis.llm_metrics import collecting, record_reply
+    from immich_memories.analysis.llm_usage_record import USAGE_FILE
+
+    with collecting() as run:
+        record_reply(prompt_tokens=100, model="before-selection")
+        directories = []
+        for tokens in (10, 20):
+            with EditorialAttempt(tmp_path, request={}) as attempt:
+                record_reply(prompt_tokens=tokens, model="reader")
+                attempt.complete(selected=1)
+                directories.append(attempt.directory)
+        record_reply(prompt_tokens=40, model="after-selection")
+
+    assert run.prompt_tokens == 170
+    assert [json.loads((d / USAGE_FILE).read_text())["prompt_tokens"] for d in directories] == [
+        10,
+        20,
+    ]

@@ -18,6 +18,8 @@ import logging
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from immich_memories.security import write_secret_file
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -33,21 +35,22 @@ __all__ = ["USAGE_FILE", "write_llm_usage"]
 
 def _usage_record(counters: LLMCounters) -> dict:
     """Every counter the run holds, unrounded, with the per-model split beside it."""
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "calls": counters.calls,
-        "cache_hits": counters.cache_hits,
-        "prompt_tokens": counters.prompt_tokens,
-        "cached_prompt_tokens": counters.cached_prompt_tokens,
-        "completion_tokens": counters.completion_tokens,
-        "reasoning_tokens": counters.reasoning_tokens,
-        "truncated": counters.truncated,
-        "wall_seconds": round(counters.wall_seconds, 3),
-        "batch_calls": counters.batch_calls,
-        "batch_prompt_tokens": counters.batch_prompt_tokens,
-        "batch_completion_tokens": counters.batch_completion_tokens,
-        "by_model": {name: asdict(spend) for name, spend in sorted(counters.by_model.items())},
-    }
+    with counters._lock:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "calls": counters.calls,
+            "cache_hits": counters.cache_hits,
+            "prompt_tokens": counters.prompt_tokens,
+            "cached_prompt_tokens": counters.cached_prompt_tokens,
+            "completion_tokens": counters.completion_tokens,
+            "reasoning_tokens": counters.reasoning_tokens,
+            "truncated": counters.truncated,
+            "wall_seconds": round(counters.wall_seconds, 3),
+            "batch_calls": counters.batch_calls,
+            "batch_prompt_tokens": counters.batch_prompt_tokens,
+            "batch_completion_tokens": counters.batch_completion_tokens,
+            "by_model": {name: asdict(spend) for name, spend in sorted(counters.by_model.items())},
+        }
 
 
 def write_llm_usage(attempt_dir: Path, counters: LLMCounters | None) -> None:
@@ -59,6 +62,8 @@ def write_llm_usage(attempt_dir: Path, counters: LLMCounters | None) -> None:
     if counters is None or not (counters.calls or counters.cache_hits):
         return
     try:
-        (attempt_dir / USAGE_FILE).write_text(json.dumps(_usage_record(counters), indent=2) + "\n")
+        write_secret_file(
+            attempt_dir / USAGE_FILE, json.dumps(_usage_record(counters), indent=2) + "\n"
+        )
     except OSError:  # WHY: a full disk must not turn a finished film into a failed run
         logger.warning("Could not write the run's LLM usage record to %s", attempt_dir)
