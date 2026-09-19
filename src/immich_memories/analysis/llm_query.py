@@ -403,6 +403,9 @@ def _ollama_answer(
         prompt_tokens=body.get("prompt_eval_count", 0) or 0,
         completion_tokens=body.get("eval_count", 0) or 0,
         model=served_model(body),
+        usage_known=llm_metrics.token_counts_reported(
+            body.get("prompt_eval_count"), body.get("eval_count")
+        ),
     )
     # Ollama reports no reasoning token count, only the thinking text, so the presence of a
     # block is the whole signal that this endpoint thinks on the caller's budget. Same
@@ -535,6 +538,9 @@ async def _query_anthropic(
             # never breaks them out, so there is no reasoning subset to report.
             completion_tokens=usage.get("output_tokens", 0) or 0,
             model=served_model(body),
+            usage_known=llm_metrics.token_counts_reported(
+                usage.get("input_tokens"), usage.get("output_tokens")
+            ),
         )
         raw_text = anthropic_answer(body, resp, transport_observer)
         if _grow_anthropic_for_reasoning(endpoint, body, usage, answered=raw_text is not None):

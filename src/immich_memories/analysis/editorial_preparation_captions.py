@@ -32,6 +32,7 @@ from immich_memories.analysis.editorial_description_wire import (
 from immich_memories.analysis.editorial_description_wire import (
     tile_preview,
 )
+from immich_memories.analysis.llm_preparation_usage import record_preparation_attempt
 from immich_memories.store.caption_provenance import (
     CaptionOrigin,
     remember_origin,
@@ -92,7 +93,9 @@ def _model_inventory(base_url: str, *, timeout: float, api_key: str) -> list[dic
     return [row for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
 
 
-def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> CallOutcome:
+def _ask_one(
+    base_url: str, image: bytes, *, timeout: float, api_key: str, stage: str = "caption"
+) -> CallOutcome:
     wire = json.dumps(_request_payload(image, api_model=API_MODEL)).encode()
     request = urllib.request.Request(  # noqa: S310
         f"{base_url}/chat/completions",
@@ -107,9 +110,16 @@ def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> Ca
     raw_sha256: str | None = None
     completion_tokens: int | None = None
     prompt_tokens: int | None = None
+    body: object = None
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             body = json.loads(response.read())
+        if not isinstance(body, dict):
+            raise ValueError("caption response is not an object")
+        usage = body.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        completion_tokens = _optional_int(usage.get("completion_tokens"))
+        prompt_tokens = _optional_int(usage.get("prompt_tokens"))
         choice = body["choices"][0]
         finish_reason = choice.get("finish_reason")
         content = choice["message"]["content"]
@@ -117,9 +127,6 @@ def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> Ca
             raise ValueError("model content is not text")
         raw_content = content
         raw_sha256 = hashlib.sha256(content.encode()).hexdigest()
-        usage = body.get("usage") or {}
-        completion_tokens = _optional_int(usage.get("completion_tokens"))
-        prompt_tokens = _optional_int(usage.get("prompt_tokens"))
         if finish_reason != "stop":
             raise ValueError(f"model finish reason is {finish_reason!r}")
         envelope = _validate_envelope(json.loads(content))
@@ -145,6 +152,8 @@ def _ask_one(base_url: str, image: bytes, *, timeout: float, api_key: str) -> Ca
         error = f"invalid:{exc}"
     except (OSError, TimeoutError, urllib.error.URLError) as exc:
         error = type(exc).__name__
+    finally:
+        record_preparation_attempt(body, stage=stage, elapsed_seconds=time.monotonic() - started)
     return CallOutcome(
         envelope=None,
         error=error,
@@ -192,7 +201,11 @@ def check_provider(
         buffer = io.BytesIO()
         Image.new("RGB", (400, 400), rgb).save(buffer, "JPEG", quality=90)
         control = _ask_one(
-            base_url, tile_preview(buffer.getvalue()), timeout=timeout, api_key=api_key
+            base_url,
+            tile_preview(buffer.getvalue()),
+            timeout=timeout,
+            api_key=api_key,
+            stage="caption_controls",
         )
         if control.envelope is None:
             # A refused control says nothing about the schema; it never reached it.

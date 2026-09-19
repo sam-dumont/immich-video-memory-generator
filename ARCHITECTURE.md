@@ -233,7 +233,8 @@ src/immich_memories/
 │   ├── llm_wire.py             # The two request dialects, what a reply says, and the reasoning budget
 │   ├── llm_batch.py            # A stage's independent prompts as one provider batch (half price, async): the two wire dialects and their transports
 │   ├── llm_providers.py        # Named providers: their URL, their adapter, the way they reason
-│   ├── llm_usage_record.py     # llm-usage.json: the run's unrounded token spend, split per model
+│   ├── llm_preparation_usage.py # Caption/control/motion usage, including unmetered failed attempts
+│   ├── llm_usage_record.py     # Atomic usage checkpoints, split per model/stage, with unknown usage
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it;
 │                               # may_play: a join earns its length, a lone Live Photo is put to

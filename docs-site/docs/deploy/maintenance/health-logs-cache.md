@@ -55,11 +55,20 @@ success, failure or cancellation. This also works with `generate --no-render` an
 A process killed without cleanup leaves its last checkpoint; the interrupted call may be missing.
 Writes replace the file atomically, so a failed write preserves the previous checkpoint.
 
-The per-model split retains the served model names. Reasoning tokens are a subset of output
-tokens, not an additional charge. These totals cover responses recorded by the shared model
-counters; preparation's caption and motion requests still need separate accounting. Treat the
-file as measured selection usage, not a complete first-use library bill. A successful rendered
-CLI run replaces it with the wider run total already collected by the CLI.
+The totals include caption controls, library captions and motion assessments, including invalid
+answers and retries. `by_stage` separates `caption_controls`, `caption`, `motion` and `reader`;
+`by_model` retains model names supplied by the server. The three caption control images count
+too. Reusing prepared facts adds no preparation calls.
+
+`unmetered_calls` counts recorded attempts without complete token usage. These leave
+`usage_complete: false`; the token totals are the known subtotal. The terminal and saved-run
+summary name this gap. A reported zero is distinct from missing usage. Reasoning tokens remain
+a subset of output tokens, not an additional charge.
+
+The setup matrix leaves cost unpriced when usage is incomplete or the total includes preparation:
+local caption compute cannot be priced using the hosted reader's rate. Counts remain available
+by stage and model for separate pricing. A successful rendered CLI run replaces the file with
+the wider run total already collected by the CLI.
 
 ## Caches
 

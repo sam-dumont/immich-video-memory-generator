@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 USAGE_FILE = "llm-usage.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 __all__ = ["USAGE_FILE", "write_llm_usage"]
 
@@ -39,6 +39,9 @@ def _usage_record(counters: LLMCounters) -> dict:
         return {
             "schema_version": SCHEMA_VERSION,
             "calls": counters.calls,
+            "unmetered_calls": counters.unmetered_calls,
+            "preparation_calls": counters.preparation_calls,
+            "usage_complete": counters.unmetered_calls == 0,
             "cache_hits": counters.cache_hits,
             "prompt_tokens": counters.prompt_tokens,
             "cached_prompt_tokens": counters.cached_prompt_tokens,
@@ -50,6 +53,7 @@ def _usage_record(counters: LLMCounters) -> dict:
             "batch_prompt_tokens": counters.batch_prompt_tokens,
             "batch_completion_tokens": counters.batch_completion_tokens,
             "by_model": {name: asdict(spend) for name, spend in sorted(counters.by_model.items())},
+            "by_stage": {name: asdict(spend) for name, spend in sorted(counters.by_stage.items())},
         }
 
 

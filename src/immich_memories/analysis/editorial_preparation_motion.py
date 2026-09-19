@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -38,6 +39,7 @@ from immich_memories.analysis.editorial_preparation_captions import (
     bearer_headers,
 )
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
+from immich_memories.analysis.llm_preparation_usage import record_preparation_attempt
 from immich_memories.api.models import Asset
 from immich_memories.processing.playback_keyframes import SampledKeyframes, sample_keyframes
 from immich_memories.store.cut_measurements import (
@@ -192,6 +194,8 @@ def seat_asker(base_url: str, *, api_key: str, timeout: float) -> Callable[[byte
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"} | bearer_headers(api_key),
         )
+        body: object = None
+        started = time.monotonic()
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
                 body = json.loads(response.read())
@@ -201,6 +205,12 @@ def seat_asker(base_url: str, *, api_key: str, timeout: float) -> Callable[[byte
                     f"caption endpoint {base_url} answered HTTP {exc.code}; {CAPTION_KEY_HINT}"
                 ) from exc
             raise
+        finally:
+            record_preparation_attempt(
+                body, stage="motion", elapsed_seconds=time.monotonic() - started
+            )
+        if not isinstance(body, dict):
+            raise ValueError("motion response is not an object")
         choice = body["choices"][0]
         if choice.get("finish_reason") != "stop":
             return ""

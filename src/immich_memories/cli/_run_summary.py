@@ -61,6 +61,15 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
         parts.append(f"{_clock(counters.wall_seconds)} summed request time")
 
     lines = ["", "  LLM   " + " · ".join(parts)]
+    if counters.unmetered_calls:
+        noun = "call" if counters.unmetered_calls == 1 else "calls"
+        lines.append(
+            f"        Token usage missing for {counters.unmetered_calls} {noun}; totals are incomplete"
+        )
+    if counters.preparation_calls:
+        lines.append(
+            f"        Includes {counters.preparation_calls} preparation calls; reader pricing does not cover them"
+        )
     if counters.reasoning_tokens:
         lines.append(
             f"        {_thousands(counters.reasoning_tokens)} of the completion tokens were reasoning"
@@ -162,6 +171,8 @@ def render_llm_totals(metrics: dict) -> str:
 
     counters = LLMCounters(
         calls=int(metrics.get("llm_calls", 0)),
+        unmetered_calls=int(metrics.get("llm_unmetered_calls", 0)),
+        preparation_calls=int(metrics.get("llm_preparation_calls", 0)),
         cache_hits=int(metrics.get("llm_cache_hits", 0)),
         prompt_tokens=int(metrics.get("llm_prompt_tokens", 0)),
         completion_tokens=int(metrics.get("llm_completion_tokens", 0)),
