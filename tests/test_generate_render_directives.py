@@ -12,7 +12,7 @@ from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
 from immich_memories.processing.assembly_config import AssemblyClip
-from immich_memories.processing.download_coordinator import DownloadResult, DownloadTarget
+from immich_memories.processing.download_coordinator import DownloadResult
 from tests.conftest import make_clip
 
 
@@ -121,7 +121,7 @@ def test_live_photo_directed_to_still_skips_burst_download_and_uses_photo_render
     )
     photo_render = MagicMock(return_value=rendered)
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {}
+    coordinator.sources_for.return_value = {}
     video_download = MagicMock(side_effect=AssertionError("motion must not be downloaded"))
     monkeypatch.setattr(
         "immich_memories.generate_photos._render_photo_as_clip",
@@ -136,7 +136,7 @@ def test_live_photo_directed_to_still_skips_burst_download_and_uses_photo_render
         download_coordinator=coordinator,
     )
 
-    coordinator.prefetch.assert_called_once_with([])
+    coordinator.prefetch.assert_not_called()
     video_download.assert_not_called()
     photo_render.assert_called_once()
     assert photo_render.call_args.args[0] is clip
@@ -156,6 +156,7 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
     clip = make_clip("video-still", duration=10.0)
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video")
+    clip.local_path = video_path
     frame_path = tmp_path / "exact-frame.jpg"
     frame_path.write_bytes(b"frame")
     rendered = AssemblyClip(
@@ -179,7 +180,7 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
         ),
     )
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {
+    coordinator.sources_for.return_value = {
         clip.asset.id: DownloadResult(
             asset_id=clip.asset.id,
             download_id=clip.asset.id,
@@ -207,7 +208,7 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
         download_coordinator=coordinator,
     )
 
-    coordinator.prefetch.assert_called_once_with([clip.asset])
+    coordinator.prefetch.assert_not_called()
     exact_frame.assert_called_once()
     assert exact_frame.call_args.args[0] == video_path
     assert exact_frame.call_args.kwargs["timestamp"] == 4.25
@@ -420,14 +421,16 @@ def test_live_photo_directed_to_motion_preserves_legacy_burst_rendering(
     segment = tmp_path / "segment.mp4"
     segment.write_bytes(b"segment")
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {}
+    coordinator.sources_for.return_value = {}
     video_download = MagicMock(return_value=merged)
     video_extract = MagicMock(return_value=segment)
     photo_render = MagicMock(side_effect=AssertionError("motion must not render as a photo"))
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", video_download)
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", video_extract)
     monkeypatch.setattr("immich_memories.generate_photos._render_photo_as_clip", photo_render)
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 4.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 4.0
+    )
 
     result = _extract_clips(
         params,
@@ -436,9 +439,7 @@ def test_live_photo_directed_to_motion_preserves_legacy_burst_rendering(
         download_coordinator=coordinator,
     )
 
-    coordinator.prefetch.assert_called_once_with(
-        [DownloadTarget(id="burst-a"), DownloadTarget(id="burst-b")]
-    )
+    coordinator.prefetch.assert_not_called()
     assert video_download.call_args.args[2] is clip
     video_extract.assert_called_once()
     photo_render.assert_not_called()
@@ -461,6 +462,7 @@ def test_no_render_directive_preserves_legacy_video_extraction(
     clip = make_clip("legacy-video", duration=5.0)
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
+    clip.local_path = source
     segment = tmp_path / "segment.mp4"
     segment.write_bytes(b"segment")
     params = GenerationParams(
@@ -471,7 +473,7 @@ def test_no_render_directive_preserves_legacy_video_extraction(
         clip_segments={clip.asset.id: (1.25, 3.75)},
     )
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {
+    coordinator.sources_for.return_value = {
         clip.asset.id: DownloadResult(
             asset_id=clip.asset.id,
             download_id=clip.asset.id,
@@ -480,7 +482,9 @@ def test_no_render_directive_preserves_legacy_video_extraction(
     }
     video_extract = MagicMock(return_value=segment)
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", video_extract)
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 2.5)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 2.5
+    )
 
     result = _extract_clips(
         params,
@@ -490,7 +494,7 @@ def test_no_render_directive_preserves_legacy_video_extraction(
     )
 
     assert params.editorial_selections == ()
-    coordinator.prefetch.assert_called_once_with([clip.asset])
+    coordinator.prefetch.assert_not_called()
     video_extract.assert_called_once_with(
         source,
         start_time=1.25,

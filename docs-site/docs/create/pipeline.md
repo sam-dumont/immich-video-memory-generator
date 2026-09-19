@@ -412,8 +412,11 @@ queue instead of overlapping.
 
 `generate_memory()` takes over from the plan under a file lock.
 
-- **Originals** of the selected sources are downloaded (3 workers by default,
-  `analysis.download_workers`) and each interval trimmed with FFmpeg. A video always plays. A Live
+- **Originals** enter a bounded download-and-prepare queue (2 workers by default,
+  `analysis.source_prepare_workers`, configurable from 1 to 4). Each worker downloads one selected
+  source and prepares its interval or photograph while other workers continue. Shared source
+  components download once; completed clips return to editorial order before assembly.
+  A video always plays. A Live
   Photo plays its video only when its measured motion reached 1.5; below that its photograph is
   held, and the pick was offered it as a still. Live companions of different sizes
   are fitted to a common frame without stretching or changing their selected timing.

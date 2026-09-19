@@ -141,6 +141,9 @@ these helper modules:
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
 - `generate_render.py`: local source preparation/assembly or configured worker handoff
+- `processing/source_preparation.py`: bounded completion queue with worker-owned clients;
+  `generate_clips.py` gives each source its own scratch directory and restores editorial order.
+  `DownloadCoordinator.sources_for` shares downloaded components across workers by source ID.
 - `processing/remote_render.py`: authenticated jobs, bounded polling, a SHA-256-checked download,
   and a staged film that reuses the worker's decode when the bytes match
 - `processing/remote_render_plan.py`: frozen cut serialization, including certified Live material
