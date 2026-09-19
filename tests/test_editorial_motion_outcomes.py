@@ -259,7 +259,7 @@ def test_known_wrapped_status_is_preserved_without_inventing_unknown_status(runt
     assert result[0]["kind"] == "live-still" and cost["unavailable_sources"] == 1
 
 
-def test_empty_native_sample_set_keeps_the_still_and_is_exactly_replayable(runtime):
+def test_empty_native_sample_set_leaves_the_carrier_untouched_and_journals_nothing(runtime):
     source, calls, _failed = runtime
     source.assets = {
         "still-0": source.assets["still-0"].model_copy(update={"live_photo_video_id": None})
@@ -268,9 +268,11 @@ def test_empty_native_sample_set_keeps_the_still_and_is_exactly_replayable(runti
     carrier = _carrier("still-0")
     cold, metrics = motion.production_motion_resolver(source)([carrier])
     reference = replay_from_output(source.artifact_dir)
-    assert len(reference.read()["units"]) == 1
+    assert len(reference.read()["units"]) == 0
     warm, _ = motion.production_motion_resolver(changed(source, motion_outcome_replay=reference))(
         [carrier]
     )
-    assert warm == cold and cold[0]["kind"] == "live-still"
+    # A motion candidate with no linked Live member is not reclassified: the row keeps its
+    # own kind, and nothing was sampled, so there is no attempt outcome to replay.
+    assert warm == cold and cold[0]["kind"] == "live-motion"
     assert calls == [] and metrics["sampled_sources"] == 0

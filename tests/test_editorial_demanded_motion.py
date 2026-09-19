@@ -97,6 +97,53 @@ def test_a_failed_preview_keeps_the_photograph_and_is_not_banked_as_a_fact(tmp_p
     assert resolver([_carrier("still-0")])[0][0]["kind"] == "live-motion"
 
 
+def test_a_borrowed_candidate_flag_never_reclassifies_an_ordinary_video(tmp_path):
+    video = make_asset("ordinary-video", duration="0:00:15").model_copy(
+        update={"type": AssetType.VIDEO}
+    )
+
+    def forbidden(_video):
+        raise AssertionError("an ordinary video has no Live companion to fetch")
+
+    resolver = DemandedMotionResolver(
+        assets={"ordinary-video": video},
+        cache_path=tmp_path / "motion.sqlite",
+        fetch_video=forbidden,
+    )
+    carriers = [
+        {
+            "asset_id": "ordinary-video",
+            "members": ["ordinary-video"],
+            "kind": "video",
+            "seconds": 6.0,
+            "raw_seconds": 15.46,
+            "motion_candidate": True,
+            "motion_assessed": True,
+            "live_material": {"stale": True},
+        }
+    ]
+
+    [row], metrics = resolver(carriers)
+
+    assert row["kind"] == "video" and row["seconds"] == 6.0 and row["raw_seconds"] == 15.46
+    assert "motion_evidence" not in row and row["live_material"] == {"stale": True}
+    assert metrics["candidate_carriers"] == 1 and metrics["candidate_stills"] == 0
+
+
+def test_a_live_candidate_with_a_linked_member_still_resolves(tmp_path):
+    resolver = DemandedMotionResolver(
+        assets=_assets(1),
+        cache_path=tmp_path / "motion.sqlite",
+        fetch_video=lambda _video: b"preview",
+        measure=lambda _payload: {"residual": 2.0},
+    )
+
+    [row], metrics = resolver([_carrier("still-0")])
+
+    assert row["kind"] == "live-motion"
+    assert metrics["candidate_carriers"] == 1 and metrics["candidate_stills"] == 1
+
+
 def test_programming_errors_and_a_blocked_network_are_not_silently_swallowed(tmp_path):
     def forbidden(_video):
         raise RuntimeError("HTTP blocked")

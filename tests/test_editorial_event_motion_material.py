@@ -175,6 +175,101 @@ def test_projection_still_rejects_a_manifest_that_reintroduces_unreviewed_motion
         )
 
 
+def test_a_video_typed_asset_with_a_rendering_is_an_ordinary_video_unit(tmp_path):
+    from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
+    from immich_memories.analysis.editorial_structure_material import UnitBuilder, read_wall
+    from immich_memories.analysis.motion_rendering import MotionRendering
+    from immich_memories.api.models import AssetType
+
+    captured = live_source(tmp_path, pictures=2, add_context=False)
+    video = make_asset("ordinary-video", duration="0:00:15")
+    video.type = AssetType.VIDEO
+    [moment] = captured.moment_asset_ids
+    captured = replace(
+        captured,
+        assets={**captured.assets, video.id: video},
+        moment_asset_ids={moment: (*captured.moment_asset_ids[moment], video.id)},
+    )
+    wall = read_wall(captured)
+    [family] = wall.event_assets
+    builder = UnitBuilder(
+        captured,
+        StructurePlannerPorts(
+            judge=None,
+            thumbnail_hash=lambda _: None,
+            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+        ),
+        wall,
+        renderings={
+            video.id: MotionRendering(
+                video_ids=(video.id,),
+                trim_points=((0.0, 3.0),),
+                shutter_timestamps=(0.0,),
+                duration_seconds=3.0,
+                still_ids=(video.id,),
+                minimum_seconds=3.5,
+            )
+        },
+        never_auto=set(),
+        document_sources={},
+    )
+
+    units = builder.units_of(family)
+
+    row = next(u for u in units if u["asset_id"] == video.id)
+    assert row["kind"] == "video"
+    assert row["members"] == [video.id] and row["video_ids"] == [video.id]
+    assert "motion_candidate" not in row and "live_material" not in row
+
+
+def test_a_carrier_the_projection_would_refuse_retires_before_the_film_finalizes(tmp_path):
+    from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
+    from immich_memories.analysis.editorial_structure_planner import plan_structure
+    from tests.test_editorial_story_first_planner import make_source
+
+    captured = make_source(tmp_path)
+
+    corrupted: list[str] = []
+
+    def corrupting(carriers):
+        # The disagreement the failed 2022 run recorded: a carrier whose kind its
+        # source media cannot honour, which the strict projection refuses. One carrier.
+        if carriers:
+            corrupted.append(carriers[0]["asset_id"])
+            return [carriers[0] | {"kind": "video"}, *carriers[1:]], {"new_motion_downloads": 0}
+        return carriers, {"new_motion_downloads": 0}
+
+    result = plan_structure(
+        captured,
+        StructurePlannerPorts(
+            judge=ControlledStoryJudge(),
+            thumbnail_hash=lambda _: None,
+            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+            resolve_motion=corrupting,
+        ),
+    ).plan
+
+    assert corrupted, "the resolver saw the carrier before it retired"
+    surviving = {row["asset_id"] for row in result["carriers"]}
+    assert corrupted[-1] not in surviving, "an unprojectable carrier must not survive"
+    assert surviving, "the rest of the film keeps its place"
+    [row] = [row for row in result["cut_carriers"] if row["asset_id"] == corrupted[-1]]
+    assert row["reason"] and row["review_stage"]
+
+    # The recorded film stays whole: its carriers project, membership and timing consistent.
+    _, candidates = demand(list(captured.assets.values()))
+    projected = project_source_rendering(
+        result["carriers"],
+        candidates,
+        config=captured.config,
+        include_live_photos=True,
+        companion_assets=captured.companion_assets,
+    )
+    assert {row.asset_id for row in projected.plan.selections} == surviving
+
+
 def test_duplicate_positive_companions_keep_exact_timing_through_projection(tmp_path):
     captured = live_source(tmp_path, pictures=6, add_context=False)
     members = list(captured.assets.values())
