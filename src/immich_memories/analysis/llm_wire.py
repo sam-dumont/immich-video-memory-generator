@@ -720,6 +720,9 @@ def interpret_openai_response(
         reasoning_tokens=(usage.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
         or 0,
         model=served_model(body),
+        usage_known=llm_metrics.token_counts_reported(
+            usage.get("prompt_tokens"), usage.get("completion_tokens")
+        ),
     )
     try:
         return _openai_completion(

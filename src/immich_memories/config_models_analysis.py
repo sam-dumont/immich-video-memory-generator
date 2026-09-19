@@ -27,6 +27,12 @@ class AnalysisConfig(BaseModel):
         le=8,
         description="Concurrent isolated clients used for video and thumbnail prefetching",
     )
+    source_prepare_workers: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="Concurrent selected-source download and preparation workers",
+    )
     max_album_assets: int = Field(
         default=10000,
         ge=1,

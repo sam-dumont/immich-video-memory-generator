@@ -636,16 +636,17 @@ def _select(
 def _worthiness_gate(
     source, ports, wall: Wall, material: Material, *, admission, admission_key, record
 ):
-    """THE FIRST JUDGEMENT, as litigated: memory-worthy or background, per happening, the v44
-    gate verbatim (twelve-row blocks, two orders, the near-home marker from GPS). Its reading
-    goes to the synthesis as evidence and weighs whatever the synthesis leaves unplaced."""
+    """Keep scoped admission; ordinary story importance comes from the story reading."""
     if ports.rules is not None:
         tiers, reasons = ports.rules.worthiness(wall, _near_home_test(source, wall))
         record("memory-worthy-gate", {"version": "rules-v1", "tiers": tiers, "reasons": reasons})
         return tiers, reasons, ""
+    criterion, marker = worth_criterion_v44(source.case.product, source.intent.subject)
+    if not marker:
+        record("memory-worthy-gate", {"version": "story-importance-v1", "rounds": []})
+        return {}, {}, ""
     bank_path = source.bank_dir / "memory-worthy.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
-    criterion, marker = worth_criterion_v44(source.case.product, source.intent.subject)
     gate_tier, gate_reason, gate_rounds = judge_worthiness(
         ports.judge,
         happenings=wall.fam_ids,

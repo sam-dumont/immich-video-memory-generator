@@ -46,6 +46,30 @@ video...`; the bracketed run id ties every line of one run together (`-` outside
 `jq 'select(.run_id=="abc123")'` works. `IMMICH_MEMORIES_LOG_FILE=/path/to/file.log` writes the
 same lines to a file as well as stdout; in Docker, point it at a mounted path.
 
+## Selection usage records
+
+Each selection attempt saves `llm-usage.json` beside its private status record under
+`cache/editorial-runs/<memory>/attempts/<attempt>/`. It checkpoints measured model calls,
+cache hits and token counts as progress changes, then saves the final selection totals on
+success, failure or cancellation. This also works with `generate --no-render` and the web UI.
+A process killed without cleanup leaves its last checkpoint; the interrupted call may be missing.
+Writes replace the file atomically, so a failed write preserves the previous checkpoint.
+
+The totals include caption controls, library captions and motion assessments, including invalid
+answers and retries. `by_stage` separates `caption_controls`, `caption`, `motion` and `reader`;
+`by_model` retains model names supplied by the server. The three caption control images count
+too. Reusing prepared facts adds no preparation calls.
+
+`unmetered_calls` counts recorded attempts without complete token usage. These leave
+`usage_complete: false`; the token totals are the known subtotal. The terminal and saved-run
+summary name this gap. A reported zero is distinct from missing usage. Reasoning tokens remain
+a subset of output tokens, not an additional charge.
+
+The setup matrix leaves cost unpriced when usage is incomplete or the total includes preparation:
+local caption compute cannot be priced using the hosted reader's rate. Counts remain available
+by stage and model for separate pricing. A successful rendered CLI run replaces the file with
+the wider run total already collected by the CLI.
+
 ## Caches
 
 Everything lives under `~/.immich-memories/cache/` (or `cache.directory`):

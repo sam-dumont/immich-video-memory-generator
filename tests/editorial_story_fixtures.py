@@ -36,7 +36,7 @@ class AnnualStoryJudge(ControlledStoryJudge):
                             "id": key,
                             "title": f"Game occasion {key}",
                             "account": "People play a game.",
-                            "role": "supporting",
+                            "role": "central",
                         }
                         for key in keys
                     ],

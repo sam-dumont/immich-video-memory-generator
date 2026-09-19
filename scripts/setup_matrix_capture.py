@@ -94,6 +94,8 @@ class HostedUsage:
     """What a hosted reader reported about itself. Missing stays missing."""
 
     calls: int | None = None
+    unmetered_calls: int | None = None
+    preparation_calls: int | None = None
     cache_hits: int | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
@@ -124,6 +126,8 @@ class HostedUsage:
     def as_dict(self) -> dict:
         return {
             "calls": self.calls,
+            "unmetered_calls": self.unmetered_calls,
+            "preparation_calls": self.preparation_calls,
             "cache_hits": self.cache_hits,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
@@ -214,13 +218,17 @@ def parse_llm_line(text: str) -> HostedUsage:
     calls = _CALLS.search(body)
     hits = _CACHE_HITS.search(body)
     tokens_in, tokens_out, exact = _tokens(body)
+    unmetered = re.search(r"Token usage missing for (\d+) calls?; totals are incomplete", text)
+    preparation = re.search(r"Includes (\d+) preparation calls; reader pricing", text)
     tail = body.rsplit("·", 1)[-1].strip().removesuffix(" summed request time")
     return HostedUsage(
         calls=int(calls.group(1)) if calls else None,
+        unmetered_calls=int(unmetered.group(1)) if unmetered else 0,
+        preparation_calls=int(preparation.group(1)) if preparation else 0,
         cache_hits=int(hits.group(1)) if hits else 0,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
-        counted_exactly=exact,
+        counted_exactly=exact and not bool(unmetered),
         wall_seconds=clock_seconds(tail),
         usage_source="log",
     )
@@ -530,6 +538,8 @@ _FROM_RECORD = {
     "completion_tokens": "tokens_out",
     "reasoning_tokens": "reasoning_tokens",
     "wall_seconds": "wall_seconds",
+    "unmetered_calls": "unmetered_calls",
+    "preparation_calls": "preparation_calls",
 }
 
 
@@ -558,7 +568,11 @@ def apply_exact_usage(usage: dict, attempt_dir: Path) -> None:
     for name, field_name in _FROM_RECORD.items():
         if isinstance(counted.get(name), int | float):
             usage[field_name] = counted[name]
-    usage["counted_exactly"] = True
+    usage["counted_exactly"] = not bool(counted.get("unmetered_calls"))
+    if isinstance(counted.get("by_stage"), dict):
+        usage["by_stage"] = counted["by_stage"]
+    if isinstance(counted.get("by_model"), dict):
+        usage["by_model"] = counted["by_model"]
     usage["usage_source"] = "record"
 
 

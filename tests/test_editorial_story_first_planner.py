@@ -246,9 +246,7 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     assert not [stage for stage in asked if stage.startswith(SKIPPED_STAGES)], sorted(asked)
     assert any(stage.startswith("story-episodes") for stage in asked)
     assert any(stage.startswith("moment-inventory") for stage in asked)
-    assert any(stage.startswith("worthy-") for stage in asked), (
-        "the memory-worthy gate must run first"
-    )
+    assert not any(stage.startswith("worthy-") for stage in asked)
     assert any(stage.startswith("standing-") for stage in asked), (
         "every carrier is asked to stand by itself"
     )
@@ -378,7 +376,7 @@ def test_default_is_story_first_and_old_switch_cannot_restore_legacy(
         monkeypatch.setenv("IMMICH_MEMORIES_EDITORIAL_STORY_FIRST", old_switch)
     judge = StoryJudge()
     plan = run(make_source(tmp_path), judge)
-    assert any(call["stage"].startswith("worthy-") for call in judge.calls)
+    assert not any(call["stage"].startswith("worthy-") for call in judge.calls)
     assert plan["schema_version"] == "structure-plan-v88-story-first"
     assert "story" in plan
     assert not any(call["stage"].startswith(SKIPPED_STAGES) for call in judge.calls)

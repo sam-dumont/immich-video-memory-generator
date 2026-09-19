@@ -40,7 +40,6 @@ from immich_memories.analysis.text_episode_reader import (
     TextEpisodeReadDiagnostics,
     TextEpisodeReadResult,
 )
-from immich_memories.analysis.text_period_insight import TextPeriodInsightResult
 from immich_memories.operations.cut_progress import StageUpdate
 
 if TYPE_CHECKING:
@@ -72,7 +71,6 @@ class TextEditorialWorkprint:
     input_candidates: tuple[ClipWithSegment, ...]
     prepared: PreparedEditorialSource
     episodes: TextEpisodeReadResult
-    period: TextPeriodInsightResult
     cull: CullDecisionResult
     scoped_survivors: tuple[EditorialCandidate, ...]
     structure: StructureWorkprint
@@ -88,7 +86,6 @@ class TextEditorialPlanner:
         selection_request: EditorialSelectionRequest,
         source_dependencies: EditorialDependencies,
         episode_reader_factory: Callable[[PreparedEditorialSource], EpisodeReader],
-        period_reader: Callable[[TextEpisodeReadResult], TextPeriodInsightResult],
         backend: PostCardEditorialBackend,
         verdicts: EditorialVerdicts | None = None,
         episode_diagnostics_sink: Callable[[TextEpisodeReadDiagnostics], None] | None = None,
@@ -96,7 +93,6 @@ class TextEditorialPlanner:
         self._selection_request = selection_request
         self._source_dependencies = source_dependencies
         self._episode_reader_factory = episode_reader_factory
-        self._period_reader = period_reader
         self._backend = backend
         self._verdicts = verdicts
         self._episode_diagnostics_sink = episode_diagnostics_sink
@@ -155,16 +151,14 @@ class TextEditorialPlanner:
         episodes = self._read_episodes(
             episode_projections, reader=episode_reader, trace=trace, on_stage=on_stage
         )
-        period = self._read_period(episodes, trace=trace, on_stage=on_stage)
-        if period.insight.unavailable_reason is not None:
-            return _unavailable(trace, period.insight.unavailable_reason)
+        if not any(episode.reading is not None for episode in episodes.episodes):
+            return _unavailable(trace, "no readable episode evidence")
 
         _stage(on_stage, "Building editorial cards")
         workprint = self._build_workprint(
             candidates,
             prepared=prepared,
             episodes=episodes,
-            period=period,
             reader=episode_reader,
             demanded_ids=demanded_ids,
         )
@@ -190,27 +184,12 @@ class TextEditorialPlanner:
             trace.record_request(episodes.request_trace)
         return episodes
 
-    def _read_period(
-        self,
-        episodes: TextEpisodeReadResult,
-        *,
-        trace: Trace,
-        on_stage: Callable[[StageUpdate], None] | None,
-    ) -> TextPeriodInsightResult:
-        _stage(on_stage, "Reading the period account")
-        period = self._period_reader(episodes)
-        _record_warnings(trace, period.warnings)
-        if period.request_trace is not None:
-            trace.record_request(period.request_trace)
-        return period
-
     def _build_workprint(
         self,
         candidates: tuple[ClipWithSegment, ...],
         *,
         prepared: PreparedEditorialSource,
         episodes: TextEpisodeReadResult,
-        period: TextPeriodInsightResult,
         reader: EpisodeReader,
         demanded_ids: tuple[str, ...],
     ) -> TextEditorialWorkprint | None:
@@ -245,7 +224,6 @@ class TextEditorialPlanner:
             input_candidates=candidates,
             prepared=prepared,
             episodes=episodes,
-            period=period,
             cull=cull,
             scoped_survivors=scoped_survivors,
             structure=structure,

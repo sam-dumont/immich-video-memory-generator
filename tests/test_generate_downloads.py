@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories.config_loader import Config
+from immich_memories.generate import GenerationParams
 from tests.conftest import make_clip
 
 
@@ -95,18 +97,15 @@ def test_disabled_cache_extraction_preserves_existing_local_path(
     segment.write_bytes(b"segment")
     clip = make_clip("existing-local", duration=5.0)
     clip.local_path = str(local)
-    params = MagicMock()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(clips=[clip], output_path=tmp_path / "film.mp4", config=Config())
 
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", lambda *_args: local)
     monkeypatch.setattr(
         "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
     )
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     _extract_clips(params, None, tmp_path)
 
@@ -169,10 +168,10 @@ def test_disabled_cache_http_failure_removes_partial_run_owned_file(tmp_path: Pa
     assert client.download_asset.call_count == 2
 
 
-def test_extraction_uses_prefetched_video_and_keeps_ffmpeg_sequential(
+def test_extraction_uses_the_worker_source_without_downloading_again(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Prefetch provides sources; segment extraction still runs in the caller thread."""
+    """A worker prepares the source its coordinator already downloaded."""
     from immich_memories.generate_clips import _extract_clips
     from immich_memories.processing.download_coordinator import DownloadResult
 
@@ -181,14 +180,9 @@ def test_extraction_uses_prefetched_video_and_keeps_ffmpeg_sequential(
     segment = tmp_path / "segment.mp4"
     segment.write_bytes(b"segment")
     clip = make_clip("prefetched", duration=5.0)
-    params = MagicMock()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(clips=[clip], output_path=tmp_path / "film.mp4", config=Config())
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {
+    coordinator.sources_for.return_value = {
         clip.asset.id: DownloadResult(clip.asset.id, clip.asset.id, source)
     }
 
@@ -196,11 +190,13 @@ def test_extraction_uses_prefetched_video_and_keeps_ffmpeg_sequential(
     extract_clip = MagicMock(return_value=segment)
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", download_clip)
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", extract_clip)
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
 
-    coordinator.prefetch.assert_called_once_with([clip.asset])
+    assert coordinator.sources_for.call_args.args[1] == [clip.asset]
     download_clip.assert_not_called()
     extract_clip.assert_called_once()
 
@@ -214,14 +210,9 @@ def test_extraction_does_not_prefetch_existing_local_path(tmp_path: Path, monkey
     segment.write_bytes(b"segment")
     clip = make_clip("already-local", duration=5.0)
     clip.local_path = str(local)
-    params = MagicMock()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(clips=[clip], output_path=tmp_path / "film.mp4", config=Config())
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {}
+    coordinator.sources_for.return_value = {}
 
     monkeypatch.setattr(
         "immich_memories.generate_downloads.download_clip", MagicMock(return_value=local)
@@ -229,16 +220,16 @@ def test_extraction_does_not_prefetch_existing_local_path(tmp_path: Path, monkey
     monkeypatch.setattr(
         "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
     )
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
 
-    coordinator.prefetch.assert_called_once_with([])
+    assert coordinator.sources_for.call_args.args[1] == []
 
 
-def test_extraction_prefetches_live_burst_components_before_sequential_merge(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_extraction_gets_live_burst_components_before_merging(tmp_path: Path, monkeypatch) -> None:
     from immich_memories.generate_clips import _extract_clips
     from immich_memories.processing.download_coordinator import DownloadTarget
 
@@ -249,25 +240,22 @@ def test_extraction_prefetches_live_burst_components_before_sequential_merge(
     clip = make_clip("burst-parent", duration=5.0)
     clip.live_burst_video_ids = ["burst-a", "burst-b"]
     clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
-    params = MagicMock()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(clips=[clip], output_path=tmp_path / "film.mp4", config=Config())
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {}
+    coordinator.sources_for.return_value = {}
     download_clip = MagicMock(return_value=merged)
 
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", download_clip)
     monkeypatch.setattr(
         "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
     )
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
 
-    prefetched = coordinator.prefetch.call_args.args[0]
+    prefetched = coordinator.sources_for.call_args.args[1]
     assert prefetched == [DownloadTarget(id="burst-a"), DownloadTarget(id="burst-b")]
     download_clip.assert_called_once()
 
@@ -321,13 +309,9 @@ def test_extraction_uses_burst_prefetch_results_without_component_retries(
     clip = make_clip("burst-parent", duration=5.0)
     clip.live_burst_video_ids = ["burst-failed", "burst-ready"]
     clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
-    params = MagicMock()
-    params.client = _Client()
-    params.clips = [clip]
-    params.progress_callback = None
-    params.clip_segments = {}
-    params.clip_rotations = {}
-    params.config = MagicMock()
+    params = GenerationParams(
+        clips=[clip], client=_Client(), output_path=tmp_path / "film.mp4", config=Config()
+    )
     merged = tmp_path / "merged.mp4"
     segment = tmp_path / "segment.mp4"
     segment.write_bytes(b"segment")
@@ -342,7 +326,9 @@ def test_extraction_uses_burst_prefetch_results_without_component_retries(
     monkeypatch.setattr(
         "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
     )
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     _extract_clips(params, cache_batch, tmp_path, download_coordinator=coordinator)
 
@@ -359,12 +345,13 @@ def test_extraction_does_not_prefetch_static_photo(tmp_path: Path, monkeypatch) 
     clip.asset.type = AssetType.IMAGE
     params = GenerationParams(clips=[clip], output_path=tmp_path / "memory.mp4", config=Config())
     coordinator = MagicMock()
-    coordinator.prefetch.return_value = {}
+    coordinator.sources_for.return_value = {}
 
     def render_photo(source, request, output_dir, *, duration_seconds):
         assert source is clip
-        assert request is params
-        assert output_dir == tmp_path
+        assert request.clips == params.clips
+        assert request.config is params.config
+        assert output_dir == tmp_path / ".source_preparation" / "0"
         assert duration_seconds is None
 
     # WHY: rendering downloads media and invokes FFmpeg; inspect its request only.
@@ -372,7 +359,7 @@ def test_extraction_does_not_prefetch_static_photo(tmp_path: Path, monkeypatch) 
 
     _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
 
-    coordinator.prefetch.assert_called_once_with([])
+    assert coordinator.sources_for.call_args.args[1] == []
 
 
 class TestAlignBurstSubset:
@@ -441,7 +428,9 @@ def test_an_unextractable_source_leaves_the_film_by_name(tmp_path: Path, monkeyp
 
     # WHY: the FFmpeg boundary — one source fails to cut, the other yields a real file.
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", extract)
-    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+    monkeypatch.setattr(
+        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 5.0
+    )
 
     with caplog.at_level("WARNING"):
         assembled = _extract_clips(params, MagicMock(), tmp_path)

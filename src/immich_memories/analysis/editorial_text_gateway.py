@@ -139,7 +139,7 @@ class QueryTextRequester:
     ) -> str:
         """Ask the provider once, unless this exact question is already banked as failed."""
         failure = TextCompletionFailure.from_record(
-            cache.completion_failure_for(request.judgment_key)
+            None if request.refresh else cache.completion_failure_for(request.judgment_key)
         )
         if failure is not None:
             llm_metrics.record_cache_hit()
@@ -154,6 +154,8 @@ class QueryTextRequester:
         cache: JudgmentCache, request: TextRequest, accepts: Callable[[str], bool] | None
     ) -> str | None:
         """Drop a banked answer the caller refuses; replaying it can never recover."""
+        if request.refresh:
+            return None
         raw = cache.answer_for(request.judgment_key)
         if raw is None:
             return None

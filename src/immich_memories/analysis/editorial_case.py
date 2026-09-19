@@ -78,6 +78,7 @@ class TextRequest:
     timeout_seconds: int
     thinking: bool = False
     json_object: bool = False
+    refresh: bool = False
     json_fields: tuple[str, ...] = ()
     json_empty_array_pairs: tuple[tuple[str, str], ...] = ()
 

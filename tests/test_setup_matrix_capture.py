@@ -48,7 +48,7 @@ from immich_memories.analysis.llm_usage_record import (  # noqa: E402
     write_llm_usage,
 )
 from immich_memories.cli._generate_display import saved_path_line  # noqa: E402
-from immich_memories.cli._run_summary import render_run_summary  # noqa: E402
+from immich_memories.cli._run_summary import render_llm_totals, render_run_summary  # noqa: E402
 
 # Excerpts of the first real Mac lane run, copied out of its own logs.
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "setup_matrix"
@@ -158,6 +158,27 @@ def test_the_runs_own_usage_record_replaces_the_rounded_line(tmp_path: Path) -> 
     assert usage["wall_seconds"] == 325.649
     assert usage["counted_exactly"] is True
     assert usage["usage_source"] == "record"
+
+
+def test_unmetered_usage_survives_live_saved_and_log_only_reports():
+    counters = LLMCounters(
+        calls=2, prompt_tokens=880, completion_tokens=120, unmetered_calls=1, preparation_calls=1
+    )
+    text = render_run_summary(
+        total_seconds=10,
+        analysis_seconds=8,
+        generation_seconds=2,
+        eligible=3,
+        planned=2,
+        counters=counters,
+    )
+    warning = "Token usage missing for 1 call; totals are incomplete"
+    assert warning in text
+    assert warning in render_llm_totals(counters.as_metrics())
+    usage = parse_run_summary(text).usage
+    assert usage.unmetered_calls == 1
+    assert usage.preparation_calls == 1
+    assert usage.counted_exactly is False
 
 
 def test_a_cell_whose_run_left_no_record_keeps_what_the_line_said(tmp_path: Path) -> None:

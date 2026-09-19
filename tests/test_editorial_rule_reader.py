@@ -90,7 +90,6 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
             fetch_full_source=lambda *_: sources,
             fetch_preview=lambda _client, key: _distinct_preview(key),
             episode_requester_factory=forbidden,
-            period_requester_factory=forbidden,
         ),
     )
     _, result = SmartPipeline(planner=planner).run_editorial_source(sources)

@@ -150,13 +150,6 @@ def _read_response_result(
     return _EpisodeResponse(tuple(readings), diagnostic)
 
 
-def _read_response(
-    raw: str,
-    scopes: tuple[_EpisodeRequestScope, ...],
-) -> tuple[_EpisodePageReading, ...]:
-    return _read_response_result(raw, scopes).readings
-
-
 def _episode_payload(raw: str) -> tuple[dict[str, object] | None, bool]:
     payload = final_json_object(raw)
     if payload is not None and payload.get("schema_version") == TEXT_EPISODE_SCHEMA_VERSION:

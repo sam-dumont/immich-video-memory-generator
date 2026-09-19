@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -326,6 +326,53 @@ def _rendered_clip(extraction: _Extraction, clip, progress: float, name: str):
     return _extracted_segment(extraction, clip, video_path, progress, name)
 
 
+def _prepare_in_workers(params, video_cache, output_dir, directives, coordinator, report):
+    from immich_memories.processing.output_canvas import resolve_generation_canvas
+    from immich_memories.processing.probe_cache import ProbeCache
+    from immich_memories.processing.source_preparation import prepare_sources
+
+    canvas = resolve_generation_canvas(params)
+    ordered = {}
+    jobs = list(enumerate(params.clips))
+
+    def prepare(client, job):
+        index, clip = job
+        work_dir = output_dir / ".source_preparation" / str(index)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        worker_params = replace(params, client=client, output_canvas=canvas, progress_callback=None)
+        extraction = _Extraction(
+            worker_params,
+            video_cache,
+            work_dir,
+            directives,
+            coordinator.sources_for(client, _prefetch_assets([clip], directives)),
+            ProbeCache(),
+            lambda *_args: None,
+        )
+        name = clip.asset.original_file_name or clip.asset.id[:8]
+        try:
+            return _rendered_clip(extraction, clip, 0.0, name)
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as exc:
+            if clip.editorial_live_manifest is not None:
+                raise
+            logger.warning("%s leaves the film: %s", name, exc)
+            return None
+
+    for completed, (index, rendered) in enumerate(
+        prepare_sources(
+            jobs,
+            client=coordinator.worker_client,
+            prepare=prepare,
+            workers=params.config.analysis.source_prepare_workers,
+        ),
+        1,
+    ):
+        if rendered is not None:
+            ordered[index] = rendered
+        report("extract", completed / len(jobs) * 0.7, f"Prepared {completed}/{len(jobs)} sources")
+    return [ordered[index] for index in sorted(ordered)]
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: CacheBatch | None,
@@ -345,7 +392,9 @@ def _extract_clips(
     total = len(params.clips)
     prefetched: dict[str, DownloadResult] | None = None
     if download_coordinator is not None:
-        prefetched = download_coordinator.prefetch(_prefetch_assets(params.clips, directives))
+        return _prepare_in_workers(
+            params, video_cache, output_dir, directives, download_coordinator, _report
+        )
     extraction = _Extraction(
         params, video_cache, output_dir, directives, prefetched, probe_cache, _report
     )
@@ -387,6 +436,7 @@ def _cleanup_temp_dirs(output_dir: Path) -> None:
         ".live_merges",
         ".assembly_temps",
         ".temporary_downloads",
+        ".source_preparation",
         "photos",
     ):
         path = output_dir / subdir

@@ -6,6 +6,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeGuard
@@ -128,7 +129,36 @@ class DownloadCoordinator:
         self._download_operation = download_operation
         self._worker_lock = threading.Lock()
         self._active_workers = 0
+        self._source_locks: dict[str, threading.Lock] = {}
+        self._prepared_sources: dict[str, DownloadResult] = {}
         self.max_observed_workers = 0
+
+    def sources_for(
+        self, client: SyncImmichClient, assets: Iterable[PrefetchAsset]
+    ) -> dict[str, DownloadResult]:
+        """Resolve just one selected source's components, sharing aliases across workers."""
+        results = {}
+        for asset in assets:
+            download_id = self._download_id(asset)
+            with self._worker_lock:
+                lock = self._source_locks.setdefault(download_id, threading.Lock())
+            with lock:
+                if download_id not in self._prepared_sources:
+                    self._prepared_sources[download_id] = self._download_one(
+                        client, asset, download_id
+                    )
+                shared = self._prepared_sources[download_id]
+            results[asset.id] = DownloadResult(asset.id, download_id, shared.path, shared.error)
+        return results
+
+    @contextmanager
+    def worker_client(self):
+        """Keep a source worker's connection on its owning thread through preparation."""
+        client = self._client_factory()
+        try:
+            yield client
+        finally:
+            client.close()
 
     def prefetch(
         self,

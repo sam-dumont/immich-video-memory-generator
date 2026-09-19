@@ -117,6 +117,7 @@ analysis:
 
   # Downloads
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
+  source_prepare_workers: 2      # Selected-source download and preparation workers (1-4)
 
   # Duration sizing
   optimal_clip_duration: 5.0     # Expected seconds per clip when a trip or album sizes its own duration (2-15s)

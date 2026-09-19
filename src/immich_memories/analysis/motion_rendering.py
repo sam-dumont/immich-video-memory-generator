@@ -221,6 +221,13 @@ def _measured_trims(
     from immich_memories.processing.stitch_alignment import aligned_trims
 
     video_ids = [cast(str, asset.live_photo_video_id) for asset in cluster.assets]
+    if any(first == second for first, second in zip(video_ids, video_ids[1:], strict=False)):
+        # A shared-album alias repeats a companion already in the burst, so the join
+        # between the two would fetch that playback twice and correlate the video
+        # against itself, at an offset that is ~0 by construction. The burst keeps
+        # the metadata plan; the material guard below still offers the video once,
+        # by its earliest still.
+        return cluster.trim_points()
     measured = list(clock_offsets(video_ids))
     if len(measured) != len(video_ids) - 1:
         return None

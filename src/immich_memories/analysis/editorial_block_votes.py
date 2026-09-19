@@ -13,15 +13,17 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from functools import partial
 from typing import NamedTuple
 
+from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_structure_json import _first_object
 
 logger = logging.getLogger(__name__)
 
 BLOCK_SIZE = 12
-BLOCK_CACHE_VERSION = "block-votes-v2-exact-model-question"
+BLOCK_CACHE_VERSION = "block-votes-v3-validated-labels"
 
 WORTH_PROMPT_VERSION = "memory-worthy-v2-contract"
 WORTH_CRITERION_V44 = (
@@ -108,17 +110,20 @@ def _answer_map(obj: object, answer_key: str, allowed: set[str]) -> tuple[object
 
 def _picks(raw: str, answer_key: str, allowed: set[str]) -> tuple[dict[str, str], str]:
     """The labels named with their reasons, and the envelope the answer arrived in."""
-    try:
-        obj, _tail = _first_object(raw)
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError, AttributeError):
-        return {}, "unreadable"
+    obj, _tail = _first_object(raw)
     value, envelope = _answer_map(obj, answer_key, allowed)
     if isinstance(value, list):
-        value = dict.fromkeys((v for v in value if isinstance(v, str)), "")
-    if not isinstance(value, Mapping):
-        return {}, "unreadable"
+        if not all(isinstance(v, str) for v in value):
+            raise ValueError("vote lists must contain only offered labels")
+        value = dict.fromkeys(value, "")
+    if not isinstance(value, Mapping) or not allowed.issuperset(value):
+        raise ValueError(
+            f"Return a {answer_key!r} mapping using only these exact labels: "
+            + ", ".join(sorted(allowed))
+            + "; context such as '(near home)' is not part of a label"
+        )
     return (
-        {k: " ".join(str(v).split()[:12]) for k, v in value.items() if k in allowed},
+        {k: " ".join(str(v).split()[:12]) for k, v in value.items()},
         envelope,
     )
 
@@ -186,13 +191,13 @@ def _ask_orders(
 ) -> dict[str, dict[str, str]]:
     votes: dict[str, dict[str, str]] = {}
     for order_name, order in orders:
-        try:
-            raw = judge.ask(f"{stage}-{order_name}", prompts[order_name], max_tokens=max_tokens)
-        except ValueError as exc:  # TextCompletionFailure: this order abstains, the other votes
-            votes[order_name] = {}
-            votes[f"{order_name}_failed"] = {"__error__": str(exc)[:200]}
-            continue
-        picked, envelope = _picks(raw, answer_key, {label_of[x] for x in order})
+        picked, envelope = read_page_answer(
+            judge,
+            stage=f"{stage}-{order_name}",
+            prompt=prompts[order_name],
+            max_tokens=max_tokens,
+            read=partial(_picks, answer_key=answer_key, allowed={label_of[x] for x in order}),
+        )
         votes[order_name] = picked
         votes[f"{order_name}_envelope"] = {"shape": envelope}
     return votes
@@ -473,7 +478,7 @@ def judge_worthiness(
         stage="worthy",
         items=happenings,
         label_of=label_of,
-        row_of=lambda f: f"{label_of[f]}{' (near home)' if near_home(f) else ''}: {text_of(f)}",
+        row_of=lambda f: f"{label_of[f]}: {'(near home) ' if near_home(f) else ''}{text_of(f)}",
         prompt_of=prompt_of,
         answer_key="worthy",
         bank_key=bank_key,
