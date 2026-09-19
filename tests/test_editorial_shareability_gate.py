@@ -106,8 +106,13 @@ def test_a_refused_carrier_is_replaced_from_its_own_anchor_and_the_film_stays_ch
     ]
     pools = {
         "early": [
-            {"asset_id": "also-refused", "taken": "2021-06-05T09:10"},
-            {"asset_id": "clean", "taken": "2021-06-05T09:20", "why": "the same morning"},
+            {"asset_id": "also-refused", "taken": "2021-06-05T09:10", "event": "morning"},
+            {
+                "asset_id": "clean",
+                "taken": "2021-06-05T09:20",
+                "event": "morning",
+                "why": "the same morning",
+            },
         ]
     }
 
@@ -120,12 +125,82 @@ def test_a_refused_carrier_is_replaced_from_its_own_anchor_and_the_film_stays_ch
 
     assert [unit["asset_id"] for unit in kept] == ["clean", "late"]
     assert kept[0]["event"] == "morning"
-    assert "replaces an unshareable carrier" in kept[0]["why"]
+    assert kept[0]["why"] == "the same morning"
     assert log["substituted"] == [
         {"from": "early", "to": "clean", "event": "morning", "verdict": "family_only"}
     ]
     assert log["tightened"] == [{"asset_id": "early", "event": "morning", "verdict": "family_only"}]
     assert log["checked"] == 4
+
+
+def test_a_replacement_is_built_from_the_pool_unit_and_inherits_only_story_context():
+    refused = {
+        "asset_id": "held-live",
+        "kind": "live-motion",
+        "members": ["held-live"],
+        "video_ids": ["companion"],
+        "trim_points": [[0.0, 3.0]],
+        "live_material": {"stale": True},
+        "motion_candidate": True,
+        "motion_assessed": True,
+        "residual": 2.4,
+        "seconds": 6.0,
+        "raw_seconds": 3.0,
+        "standing": "named",
+        "depicted_moment": "G7",
+        "event_intention": "a poetry afternoon",
+        "story_episode": "S4",
+        "story_role": "supporting",
+        "story_weight": "minor",
+        "event": "E1",
+        "anchor": "F01",
+        "chapter": 2,
+        "taken": "2021-06-05T09:00",
+        "why": "Poetry: a Live Photo of the book",
+    }
+    video = {
+        "asset_id": "ordinary-video",
+        "kind": "video",
+        "members": ["ordinary-video"],
+        "video_ids": ["ordinary-video"],
+        "trim_points": [],
+        "residual": None,
+        "seconds": 6.0,
+        "raw_seconds": 15.46,
+        "taken": "2021-06-05T09:20",
+        "event": "E1",
+        "anchor": "F01",
+        "chapter": 2,
+        "line": "the race video's own line",
+    }
+
+    kept, log = gate(
+        [refused],
+        {"held-live": "do_not_show", "ordinary-video": None},
+        {"held-live": [video]},
+    )
+
+    assert kept[0] == {
+        **video,
+        "story_episode": "S4",
+        "story_role": "supporting",
+        "story_weight": "minor",
+        "why": "Audience-safe alternative within the same story",
+    }
+    assert log["substituted"] == [
+        {"from": "held-live", "to": "ordinary-video", "event": "E1", "verdict": "do_not_show"}
+    ]
+
+
+def test_a_replacement_keeps_its_own_nomination_reason():
+    carriers = [{"asset_id": "refused", "taken": "2021-06-05T09:00"}]
+    pools = {
+        "refused": [{"asset_id": "own-why", "taken": "2021-06-05T09:30", "why": "the same morning"}]
+    }
+
+    kept, _log = gate(carriers, {"refused": "do_not_show", "own-why": None}, pools)
+
+    assert kept[0]["why"] == "the same morning"
 
 
 def test_an_anchor_with_no_shareable_replacement_loses_the_slot_rather_than_borrowing_one():

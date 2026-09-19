@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from immich_memories.analysis.motion_rendering import MotionRendering, motion_renderings
+from immich_memories.api.models import AssetType
 
 NOON = datetime(2024, 6, 4, 12, 0, tzinfo=UTC)
 
@@ -26,6 +27,8 @@ def _live(index: int, *, seconds: float = 0.0):
     asset = make_asset(
         f"still-{index}", file_created_at=NOON + timedelta(seconds=seconds), duration=None
     )
+    # A Live Photo is a photograph: the motion offer rides on an IMAGE-typed still.
+    asset.type = AssetType.IMAGE
     asset.live_photo_video_id = f"video-{index}"
     return asset
 
@@ -144,6 +147,21 @@ def test_measured_alignment_survives_removing_a_duplicate_companion() -> None:
         [first, other], _config(), companion_assets=companions, clock_offsets=measured_offsets
     )[first.id]
     assert rendering.material == reproduced.material
+
+
+def test_a_video_typed_asset_is_never_a_live_still_no_matter_its_link() -> None:
+    """A video with a (borrowed or malformed) companion link is not Live material;
+    only a photograph can be offered a motion rendering."""
+    from tests.conftest import make_asset
+
+    video = make_asset("plain-video", file_created_at=NOON, duration="0:00:15")
+    video.live_photo_video_id = "video-9"
+
+    assert motion_renderings([video], _config()) == {}
+    assert (
+        motion_renderings([video], _config(), companion_assets={"video-9": _companion("video-9")})
+        == {}
+    )
 
 
 def test_a_still_whose_companion_is_absent_stays_an_ordinary_photograph() -> None:

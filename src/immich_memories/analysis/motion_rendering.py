@@ -87,7 +87,13 @@ def motion_renderings(
     """
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
-    live = [a for a in assets if getattr(a, "live_photo_video_id", None)]
+    # A motion rendering belongs to a photograph. A video-typed asset with a (borrowed or
+    # malformed) companion link is never Live material.
+    live = [
+        a
+        for a in assets
+        if getattr(a, "live_photo_video_id", None) and not getattr(a, "is_video", False)
+    ]
     durations = None
     if companion_assets is not None:
         durations = _companion_durations(live, companion_assets)

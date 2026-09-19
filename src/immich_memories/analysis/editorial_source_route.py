@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
 from immich_memories.analysis.motion_rendering import (
@@ -18,6 +18,7 @@ from immich_memories.operations.cut_progress import StageUpdate
 from immich_memories.processing.live_material import LiveRenderMaterial
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
     from immich_memories.analysis.selection_source import PreparedEditorialSource
     from immich_memories.analysis.selection_trace import Trace
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
@@ -213,6 +214,58 @@ def _bound_carrier(
     return clip, end
 
 
+def projection_problem(
+    row: Mapping[str, Any], asset_type: AssetType, *, include_live_photos: bool
+) -> str | None:
+    """Why this carrier cannot render from its source, or None when projection accepts it.
+
+    The same question ``_projected_clip`` enforces, asked before the film finalizes: a
+    carrier that fails it retires in the planner instead of dying at the render with every
+    model call already spent.
+    """
+    carrier = _carrier_from(dict(row))
+    if carrier.kind == "live-motion":
+        if not include_live_photos or asset_type != AssetType.IMAGE:
+            return "editorial Live motion is outside the requested media contract"
+        return None
+    if asset_type == AssetType.VIDEO:
+        if carrier.kind != "video" and carrier.frame is None:
+            return "editorial video still requires an exact source frame"
+        return None
+    if asset_type == AssetType.IMAGE and carrier.mode == "still":
+        if carrier.start != 0 or carrier.frame is not None:
+            return "editorial photograph cannot claim video source timing"
+        return None
+    return "editorial carrier kind disagrees with source media"
+
+
+def retire_unprojectable(
+    carriers: list[dict], source: StructurePlanningInput, cut_carriers: list[dict]
+) -> list[dict]:
+    """Drop the carriers the strict projection refuses, retiring them into ``cut_carriers``.
+
+    The projection question asked before membership and timing finalize, so hours of model
+    work never die at the render: the gates upstream have already had their chance to
+    substitute, and the film may simply shrink here. A retired row carries its ``reason``
+    and ``review_stage``.
+    """
+    kept: list[dict] = []
+    for carrier in carriers:
+        asset = source.assets.get(carrier["asset_id"])
+        problem = (
+            projection_problem(carrier, asset.type, include_live_photos=source.allow_live_motion)
+            if asset is not None
+            else "editorial carrier has no captured source"
+        )
+        if problem is None:
+            kept.append(carrier)
+        else:
+            cut_carriers.append(
+                carrier | {"reason": problem, "review_stage": "projection-finalize"}
+            )
+    return kept
+
+
 def _projected_clip(
     carrier: _Carrier,
     row: dict,
@@ -226,9 +279,10 @@ def _projected_clip(
     """Re-time the demanded clip against the rendering its carrier kind claims."""
     clip = by_id[carrier.asset_id].clip
     asset = clip.asset
+    problem = projection_problem(row, asset.type, include_live_photos=include_live_photos)
+    if problem is not None:
+        raise ValueError(problem)
     if carrier.kind == "live-motion":
-        if not include_live_photos or asset.type != AssetType.IMAGE:
-            raise ValueError("editorial Live motion is outside the requested media contract")
         return _live_motion_clip(
             carrier,
             row,
@@ -238,14 +292,8 @@ def _projected_clip(
             clock_offsets=clock_offsets,
         )
     if asset.type == AssetType.VIDEO:
-        if carrier.kind != "video" and carrier.frame is None:
-            raise ValueError("editorial video still requires an exact source frame")
         return clip
-    if asset.type == AssetType.IMAGE and carrier.mode == "still":
-        if carrier.start != 0 or carrier.frame is not None:
-            raise ValueError("editorial photograph cannot claim video source timing")
-        return clip.model_copy(update={"duration_seconds": carrier.seconds})
-    raise ValueError("editorial carrier kind disagrees with source media")
+    return clip.model_copy(update={"duration_seconds": carrier.seconds})
 
 
 def _live_motion_clip(

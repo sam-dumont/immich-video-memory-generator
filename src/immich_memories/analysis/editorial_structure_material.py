@@ -33,6 +33,7 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_lines import AnchorRows, UnitLines
 from immich_memories.analysis.motion_rendering import motion_renderings
+from immich_memories.api.models import AssetType
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
 
 MOTION_CAP_SECONDS = 6.0
@@ -210,7 +211,10 @@ class UnitBuilder:
                 "moment": self._moment_of_asset.get(a),
                 "taken": asset.file_created_at.isoformat(),
             }
-            if a in self._renderings:
+            # A rendering belongs to a photograph. A video-typed id here falls through to
+            # the ordinary video branch, so borrowed rendering state can never make a
+            # video pretend to be Live material.
+            if a in self._renderings and asset.type is AssetType.IMAGE:
                 r = self._renderings[a]
                 if r.material is None:
                     raise ValueError("Live rendering lacks canonical source material")
