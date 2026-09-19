@@ -1,4 +1,4 @@
-"""Read a text episode answer without repairing it.
+"""Read a text episode answer with page-scoped label normalization.
 
 Every reading is per page and per episode alias: a row the model invented, mislabelled or
 contradicted is dropped and counted, and the page it belonged to is simply left unread.
@@ -10,6 +10,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import TypeGuard
 
 from immich_memories.analysis.cull_answer import CULL_BUCKETS
 from immich_memories.analysis.strict_json import bounded_model_text, final_json_object
@@ -203,9 +204,16 @@ def _one_reading(
 
 def _representative_named(item: object, asset_ids: tuple[str, ...]) -> tuple[str, str] | None:
     """The asset and reason one representative row names, or None when it names neither."""
-    if not isinstance(item, dict) or not _is_alias(item.get("asset")):
+    if not isinstance(item, dict):
         return None
-    asset_alias = item["asset"]
+    asset_alias = item.get("asset")
+    if isinstance(asset_alias, str):
+        label = asset_alias.removeprefix("asset ")
+        asset_alias = next(
+            (index for index in range(1, len(asset_ids) + 1) if str(index) == label), None
+        )
+    if not _is_alias(asset_alias):
+        return None
     reason = bounded_model_text(item.get("reason"), max_chars=_REPRESENTATIVE_REASON_MAX_CHARS)
     if reason is None or not 1 <= asset_alias <= len(asset_ids):
         return None
@@ -269,5 +277,5 @@ def _cull_decisions(
     return tuple(decisions), discarded_invalid, discarded_conflicting
 
 
-def _is_alias(value: object) -> bool:
+def _is_alias(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
