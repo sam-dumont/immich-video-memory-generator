@@ -245,6 +245,19 @@ def _instant(value):
         return None
 
 
+def capture_space_available(unit: Mapping[str, Any], occupied: Sequence[Mapping[str, Any]]) -> bool:
+    """Apply the existing five-minute capture spacing to a source's own time and moment."""
+    group, taken = unit.get("moment"), _instant(unit.get("taken"))
+    if group is None or taken is None:
+        return True
+    return not any(
+        other.get("moment") == group
+        and (when := _instant(other.get("taken"))) is not None
+        and abs((taken - when).total_seconds()) < MIN_GAP_IN_CAPTURE_GROUP_SECONDS
+        for other in occupied
+    )
+
+
 def _spaced(
     chosen: Sequence[DepictedChoice],
     unit_by_asset: Mapping[str, Any],
@@ -257,24 +270,14 @@ def _spaced(
     Candidate comparison keeps nearby alternatives with ``among_choices=False``;
     physical capacity and the final cut still enforce their mutual exclusion.
     """
-    occupied = [(u.get("moment"), _instant(u.get("taken"))) for u in already]
+    occupied = list(already)
     kept: list[DepictedChoice] = []
     for c in sorted(chosen, key=lambda c: c.taken):
         unit = unit_by_asset[c.primary][1]
-        group, t = unit.get("moment"), _instant(unit["taken"])
-        if t is None:
-            kept.append(c)
-            continue
-        close = any(
-            g == group
-            and kt is not None
-            and abs((t - kt).total_seconds()) < MIN_GAP_IN_CAPTURE_GROUP_SECONDS
-            for g, kt in occupied
-        )
-        if not close:
+        if capture_space_available(unit, occupied):
             kept.append(c)
             if among_choices:
-                occupied.append((group, t))
+                occupied.append(unit)
     return kept
 
 

@@ -99,6 +99,36 @@ def gate(carriers, verdicts, pools, audience="family"):
     )
 
 
+@pytest.mark.parametrize("depth", [False, True])
+def test_replacements_respect_survivors_and_each_other_before_buying_a_verdict(depth):
+    def photo(asset, minute, second=0):
+        return {
+            "asset_id": asset,
+            "moment": "concert",
+            "taken": f"2021-06-05T19:{minute:02d}:{second:02d}+00:00",
+        }
+
+    original = [photo("held-a", 0) | {"depth": depth}, photo("held-b", 10), photo("kept", 20)]
+    pools = {
+        "held-a": [photo("kept-pose", 20, 1), photo("new-a", 30)],
+        "held-b": [photo("new-a-pose", 30, 1), photo("new-b", 35)],
+    }
+    checked = []
+
+    def verdict(unit):
+        # WHY: the audience model is the external boundary; conflicts should cost no call.
+        checked.append(unit["asset_id"])
+        return "do_not_show" if unit["asset_id"].startswith("held-") else "share"
+
+    kept, log = share.apply_gate(
+        original, verdict_of=verdict, pool_for=lambda c: pools[c["asset_id"]]
+    )
+
+    assert [c["asset_id"] for c in kept] == ["kept", "new-a", "new-b"]
+    assert "kept-pose" not in checked and "new-a-pose" not in checked
+    assert log["checked"] == 5
+
+
 def test_a_refused_carrier_is_replaced_from_its_own_anchor_and_the_film_stays_chronological():
     carriers = [
         {"asset_id": "late", "event": "afternoon", "taken": "2021-06-05T15:00"},
