@@ -37,8 +37,6 @@ from immich_memories.timeperiod import DateRange
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from rich.progress import TaskID
 
     from immich_memories.analysis.editorial_planner import EditorialSelection
@@ -59,13 +57,11 @@ def _decide_duration(
     memory_type: str | None,
     clips: list,
     photos: list | None,
-    windows: Sequence[DateRange],
     config: Config,
 ) -> DurationDecision:
     """Fit the film to its material, now that the CLI has discovered some."""
     from immich_memories.planning.auto_duration import (
         DURATION_FROM_DURATION_FLAG,
-        candidate_day_count,
         decide_memory_duration,
     )
 
@@ -77,7 +73,6 @@ def _decide_duration(
         requested_source=requested_source or DURATION_FROM_DURATION_FLAG,
         preset_seconds=preset_duration,
         memory_type=memory_type,
-        candidate_days=candidate_day_count(windows),
         avg_clip_duration=config.analysis.optimal_clip_duration,
         photo_duration=config.photos.duration,
         title_duration=title_config.title_duration if title_config.enabled else 0.0,
@@ -378,7 +373,6 @@ def run_pipeline_and_generate(
         memory_type=memory_type,
         clips=clips,
         photos=resolved.photo_assets,
-        windows=tuple(date_ranges) if date_ranges else (date_range,),
         config=config,
     )
     duration = duration_decision.seconds

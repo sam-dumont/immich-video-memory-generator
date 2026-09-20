@@ -18,7 +18,7 @@ def unit(asset_id, **changes):
         "video_ids": [],
         "favourite": False,
         "taken": "2020-01-01T12:00:00+00:00",
-        "event": asset_id,
+        "event": "shared-episode",
         "seconds": 4.0,
     } | changes
 
@@ -50,7 +50,20 @@ def run(units, *, outcomes=None, hashes=None, records=None, **options):
     return kept, audit, calls
 
 
-def test_cross_date_event_and_format_discovery_preserves_original_survivor_fields_and_order():
+def test_matching_pixels_in_separate_episodes_do_not_buy_a_comparison():
+    original = [
+        unit("morning-portrait", event="breakfast"),
+        unit("evening-portrait", event="dinner", taken="2020-01-01T18:00:00+00:00"),
+    ]
+
+    kept, audit, calls = run(original)
+
+    assert kept == original
+    assert calls == []
+    assert audit["nominations"] == []
+
+
+def test_cross_date_events_preserve_original_survivor_fields_without_comparing():
     original = [
         unit("video", kind="video", event="later-event", taken="2025-08-01T12:00:00+00:00"),
         unit("distinct", taken="2023-03-01T12:00:00+00:00"),
@@ -59,12 +72,11 @@ def test_cross_date_event_and_format_discovery_preserves_original_survivor_field
     before = deepcopy(original)
     outcomes = {frozenset(("video", "favorite")): True}
     kept, audit, calls = run(original, outcomes=outcomes)
-    assert [row["asset_id"] for row in kept] == ["distinct", "favorite"]
-    assert all(row is original[index] for row, index in zip(kept, [1, 2], strict=True))
+    assert kept == original
+    assert all(row is old for row, old in zip(kept, original, strict=True))
     assert original == before
-    assert audit["removals"][0]["keeper"] == "favorite"
-    assert audit["removals"][0]["asset_id"] == "video"
-    assert ("favorite", "video") in calls and not audit["incomplete"]
+    assert audit["removals"] == []
+    assert calls == [] and not audit["incomplete"]
 
 
 def test_episode_variants_are_compared_despite_different_framing_and_captions():
@@ -230,17 +242,19 @@ def test_one_negative_displayed_member_keeps_the_complete_motion_unit():
     assert audit["nominations"][0]["status"] == "sampled_different"
 
 
-def test_hash_nomination_for_one_member_cannot_hide_an_unmatched_displayed_member():
+def test_hash_close_member_cannot_hide_a_different_displayed_member_in_the_episode():
     original = [
         unit("keep"),
         unit("remove", kind="live-motion", video_ids=["sample", "extra"]),
     ]
     _records, hashes = inputs(original)
     hashes["extra"] = "ffffffffffffffff"
-    kept, audit, calls = run(original, hashes=hashes)
+    kept, audit, calls = run(
+        original, hashes=hashes, outcomes={frozenset(("keep", "sample")): True}
+    )
     assert kept == original and not audit["removals"]
-    assert audit["nominations"][0]["status"] == "unmatched_displayed_member"
-    assert calls == [("keep", "sample")]
+    assert audit["nominations"][0]["status"] == "sampled_different"
+    assert set(calls) == {("keep", "sample"), ("extra", "keep")}
 
 
 def test_direct_relation_is_not_transitive_and_keepers_never_get_removed_later():
@@ -265,7 +279,7 @@ def test_actual_favorite_precedes_objective_quality_without_changing_metadata():
 def test_existing_quality_then_capture_time_choose_keeper_without_model_preference():
     original = [
         unit("early", taken="2020-01-01T12:00:00+00:00"),
-        unit("better", taken="2024-01-01T12:00:00+00:00"),
+        unit("better", taken="2020-01-01T12:01:00+00:00"),
     ]
     kept, _audit, _calls = run(original, objective_quality={"early": 0.2, "better": 0.8})
     assert [row["asset_id"] for row in kept] == ["better"]
@@ -406,7 +420,7 @@ def test_missing_or_invalid_hash_cannot_be_a_cut_verdict(bad_hash):
     original = [unit("a"), unit("b")]
     kept, audit, calls = run(original, hashes={"a": "0" * 16, "b": bad_hash})
     assert kept == original and calls == [] and audit["incomplete"]
-    assert audit["nominations"] == []
+    assert audit["nominations"][0]["status"] == "unavailable_material"
 
 
 def test_existing_hash_threshold_is_inclusive_and_only_nominates():
@@ -414,8 +428,9 @@ def test_existing_hash_threshold_is_inclusive_and_only_nominates():
     kept, audit, calls = run(original, hashes={"a": "0" * 16, "b": "00000000000003FF"}, outcomes={})
     assert kept == original and calls == [("a", "b")]
     assert audit["nominations"][0]["nominated_edges"][0]["distance"] == 10
-    kept, audit, calls = run(original, hashes={"a": "0" * 16, "b": "00000000000007ff"})
-    assert kept == original and calls == [] and not audit["nominations"]
+    kept, audit, calls = run(original, hashes={"a": "0" * 16, "b": "00000000000007ff"}, outcomes={})
+    assert kept == original and calls == [("a", "b")]
+    assert audit["nominations"][0]["nominated_edges"][0]["signals"] == ["same-episode"]
 
 
 def test_a_hash_nominated_pair_carries_its_distance_and_a_description_one_does_not():
@@ -439,7 +454,7 @@ def test_a_hash_nominated_pair_carries_its_distance_and_a_description_one_does_n
         preview_hashes={"a": "0" * 16, "b": "f" * 16, "c": "00000000000003ff"},
         confirm_relation=confirm,
     )
-    assert sorted(asked) == [("a", "b", None), ("a", "c", 10)]
+    assert sorted(asked) == [("a", "b", None), ("a", "c", 10), ("b", "c", None)]
 
 
 def test_replay_reuses_stable_relations_without_changing_semantic_audit():
@@ -496,7 +511,7 @@ def test_standalone_video_with_own_id_declared_still_requires_one_sample_only():
 
 @pytest.mark.parametrize("same", [True, False])
 def test_far_hash_own_description_nomination_still_needs_positive_pixels(same):
-    original = [unit("a"), unit("b", kind="video", taken="2025-08-01T12:00:00+00:00")]
+    original = [unit("a"), unit("b", kind="video", taken="2020-01-01T12:01:00+00:00")]
     records, _hashes = inputs(original)
     for record in records.values():
         record["description"] = "Four people stand together smiling toward the camera indoors."
@@ -511,7 +526,7 @@ def test_far_hash_own_description_nomination_still_needs_positive_pixels(same):
     assert calls == [("a", "b")]
     edge = audit["nominations"][0]["nominated_edges"][0]
     assert edge["distance"] == 27
-    assert edge["signals"] == ["own-description"]
+    assert edge["signals"] == ["same-episode", "own-description"]
     assert audit["maximum_hash_distance"] == 10
     if same:
         assert audit["removals"][0]["direct_member_proof"][0]["relation"]["same"] is True
@@ -521,7 +536,7 @@ def test_far_hash_own_description_nomination_still_needs_positive_pixels(same):
 
 @pytest.mark.parametrize("own_text", [None, "", "the a of"])
 def test_empty_own_description_never_borrows_original_caption_for_nomination(own_text):
-    original = [unit("a"), unit("b")]
+    original = [unit("a", event="first"), unit("b", event="second")]
     records, _hashes = inputs(original)
     for record in records.values():
         record.update(
@@ -533,8 +548,8 @@ def test_empty_own_description_never_borrows_original_caption_for_nomination(own
     assert kept == original and calls == [] and audit["nominations"] == []
 
 
-def test_far_hash_distinct_own_descriptions_do_not_nominate():
-    original = [unit("a"), unit("b")]
+def test_far_hash_distinct_own_descriptions_in_separate_episodes_do_not_nominate():
+    original = [unit("a", event="first"), unit("b", event="second")]
     records, _hashes = inputs(original)
     records["a"]["description"] = "Cyclists racing through mountain roads."
     records["b"]["description"] = "Friends sitting around dinner table laughing."

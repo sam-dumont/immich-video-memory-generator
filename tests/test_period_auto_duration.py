@@ -1,4 +1,4 @@
-"""A film's length comes from the material its period holds, not from a preset."""
+"""Calendar presets set the target; insufficient material can shorten it."""
 
 from __future__ import annotations
 
@@ -10,15 +10,9 @@ from immich_memories.planning.auto_duration import (
     DURATION_FROM_MATERIAL,
     DURATION_FROM_PRESET,
     DURATION_FROM_SHORT_FORM,
-    candidate_day_count,
     decide_memory_duration,
 )
-from immich_memories.timeperiod import DateRange
 
-_MONTH = DateRange(
-    start=datetime(2024, 2, 1, tzinfo=UTC),
-    end=datetime(2024, 2, 29, 23, 59, tzinfo=UTC),
-)
 _MONTH_PRESET_SECONDS = 60.0
 
 
@@ -55,7 +49,6 @@ def _decide(
         requested_source=requested_source,
         preset_seconds=_MONTH_PRESET_SECONDS,
         memory_type="monthly_highlights",
-        candidate_days=candidate_day_count([_MONTH]),
         avg_clip_duration=5.0,
         photo_duration=4.0,
         title_duration=3.5,
@@ -63,12 +56,36 @@ def _decide(
     )
 
 
-def test_a_sparsely_photographed_month_gets_a_shorter_film_than_a_dense_one() -> None:
+def test_months_with_enough_material_keep_the_one_minute_target() -> None:
     sparse = _decide(_photographed_month(4))
     dense = _decide(_photographed_month(22))
 
-    assert sparse.seconds < _MONTH_PRESET_SECONDS < dense.seconds
+    assert sparse.seconds == dense.seconds == _MONTH_PRESET_SECONDS
     assert sparse.source == dense.source == DURATION_FROM_MATERIAL
+
+
+def test_a_dense_year_keeps_its_ten_minute_target() -> None:
+    first = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
+    photos = [
+        _photo(f"year-{day}-{index}", first + timedelta(days=day))
+        for day in range(365)
+        for index in range(4)
+    ]
+
+    decision = decide_memory_duration(
+        [],
+        photos,
+        requested_seconds=None,
+        requested_source=DURATION_FROM_MATERIAL,
+        preset_seconds=600.0,
+        memory_type="year_in_review",
+        avg_clip_duration=5.0,
+        photo_duration=4.0,
+        title_duration=3.5,
+        ending_duration=4.0,
+    )
+
+    assert decision.seconds == 600.0
 
 
 def test_an_explicit_duration_wins_over_the_material() -> None:
@@ -118,30 +135,6 @@ def test_a_film_never_exceeds_what_a_thin_month_can_fill() -> None:
     assert decision.seconds < _MONTH_PRESET_SECONDS
 
 
-def test_overlapping_windows_are_counted_once() -> None:
-    rolling_year = DateRange(
-        start=datetime(2024, 1, 1, tzinfo=UTC), end=datetime(2024, 12, 31, tzinfo=UTC)
-    )
-    inside_it = DateRange(
-        start=datetime(2024, 6, 1, tzinfo=UTC), end=datetime(2024, 6, 30, tzinfo=UTC)
-    )
-
-    assert candidate_day_count([rolling_year, inside_it]) == 366
-
-
-def test_separate_windows_add_up() -> None:
-    """A holiday through the years draws from one short window per year."""
-    windows = [
-        DateRange(
-            start=datetime(year, 12, 24, tzinfo=UTC),
-            end=datetime(year, 12, 26, tzinfo=UTC),
-        )
-        for year in (2022, 2023, 2024)
-    ]
-
-    assert candidate_day_count(windows) == 9
-
-
 def test_an_occasion_keeps_the_length_its_active_hours_bought() -> None:
     """A special day's preset already came from its material; its days are not coverage."""
     noon = datetime(2024, 2, 7, 12, 0, tzinfo=UTC)
@@ -154,7 +147,6 @@ def test_an_occasion_keeps_the_length_its_active_hours_bought() -> None:
         requested_source=DURATION_FROM_MATERIAL,
         preset_seconds=90.0,
         memory_type="special_day",
-        candidate_days=1,
         avg_clip_duration=5.0,
         photo_duration=4.0,
         title_duration=3.5,

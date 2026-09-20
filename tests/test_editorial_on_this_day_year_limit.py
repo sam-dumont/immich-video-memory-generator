@@ -220,7 +220,7 @@ def test_model_chooses_event_and_picture_before_acquisition_and_warm_is_exact(tm
         (f"year-{y}" for y in (2030, 2031, 2032)), 1
     )
     assert sum(row["granted"] for row in plan["story"]["episodes"]) == 3
-    assert len([c for c in judge.calls if c["stage"].startswith("moment-inventory")]) == 3
+    assert not any(c["stage"].startswith("moment-inventory") for c in judge.calls)
     assert len([c for c in judge.calls if c["stage"].startswith("story-pick-")]) >= 3
     # Equal descriptions may reuse an audience verdict; no unused event is read.
     assert 1 <= len([c for c in judge.calls if c["stage"].startswith("shareability-")]) <= 3

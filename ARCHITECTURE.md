@@ -540,9 +540,10 @@ src/immich_memories/
 cancellation and metrics context into each worker. Each job owns a text judge
 and audit directory; completed call records are merged in source order.
 `editorial_block_votes.py` commits vote-bank updates on the caller thread.
-`editorial_story_planner.py` overlaps event inventories, retaining sequential
-pages within each event. Prompts and judgment identities do not include the
-concurrency setting.
+`editorial_story_reading.py` overlaps independent monthly readings. The story planner
+uses prepared captions inside each funded story's shortlist without another model
+inventory. `editorial_prompt_pages.py` bounds the remaining text request pages.
+Prompts and judgment identities do not include the concurrency setting.
 
 How many jobs overlap comes from `llm_providers.reader_concurrency`, which reads
 the endpoint when `llm.reader_concurrency` is unset: one job for a model on this

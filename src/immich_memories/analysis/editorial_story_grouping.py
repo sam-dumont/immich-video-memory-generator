@@ -12,8 +12,8 @@ import json
 from functools import partial
 from typing import Any
 
-from immich_memories.analysis.editorial_moment_inventory import pages
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
+from immich_memories.analysis.editorial_prompt_pages import pages
 from immich_memories.analysis.editorial_story_replies import (
     STORY_VERSION,
     _read_synthesis,

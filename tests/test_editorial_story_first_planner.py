@@ -205,21 +205,6 @@ class StoryJudge(AnnualJudge):
             return json.dumps({"weak": {}})  # every canal picture stands
         if stage.startswith("story-threads"):
             return json.dumps({"same": []})  # separate days stay separate stories
-        if stage.startswith("moment-inventory"):
-            sources = re.findall(r'"source": "(U\d+)"', prompt.split("NEW SOURCES", 1)[1])
-            return json.dumps(
-                {
-                    "moments": [
-                        {
-                            "same_as": None,
-                            "sources": [source],
-                            "primary": source,
-                            "content": f"A distinct view of the canal, {source}",
-                        }
-                        for source in sources
-                    ]
-                }
-            )
         return super().answer(stage, prompt)
 
 
@@ -245,7 +230,7 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     asked = {call["stage"] for call in judge.calls}
     assert not [stage for stage in asked if stage.startswith(SKIPPED_STAGES)], sorted(asked)
     assert any(stage.startswith("story-episodes") for stage in asked)
-    assert any(stage.startswith("moment-inventory") for stage in asked)
+    assert not any(stage.startswith("moment-inventory") for stage in asked)
     assert not any(stage.startswith("worthy-") for stage in asked)
     assert any(stage.startswith("standing-") for stage in asked), (
         "every carrier is asked to stand by itself"
@@ -254,7 +239,7 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
         "Proposed picture" not in call["prompt"]
         for call in judge.calls
         if call["stage"].startswith("story-pick-")
-    ), "the pick reads the inventory; pictures are observed for the cut, not for every choice"
+    ), "the pick reads prepared captions; pictures are observed for the cut, not for every choice"
     assert all(carrier["story_weight"] in {"dominant", "minor"} for carrier in plan["carriers"])
 
     families = plan["calls_by_stage"]
@@ -267,7 +252,6 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
         "story-understanding",
         "story-weighing",
         "story-pick",
-        "moment-inventory",
         "standing",
         "shareability",
     }, sorted(families)
@@ -282,48 +266,21 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     assert plan["content_seconds"] <= plan["target_seconds"]
 
 
-def _inventory_offers(judge):
-    """Per story, what its moment inventory was shown: source aliases, capture groups, timestamps."""
-    offers = {}
-    for row in judge.calls:
-        if not row["stage"].startswith("moment-inventory"):
-            continue
-        page = row["prompt"].split("NEW SOURCES", 1)[1]
-        offer = offers.setdefault(row["stage"].rsplit("-", 1)[0], {})
-        for field, pattern in (
-            ("sources", r'"source": "(U\d+)"'),
-            ("groups", r'"capture_group": "(G\d+)"'),
-            ("taken", r'"taken": "([^"]+)"'),
-        ):
-            offer.setdefault(field, set()).update(re.findall(pattern, page))
-    return offers
-
-
-def test_inventory_reads_only_the_shortlisted_capture_groups(tmp_path):
-    """Two eight-outing stories, two slots each: the inventory reads the six capture groups the
-    grant can still reach, not all eight."""
+def test_picture_candidates_are_limited_to_shortlisted_capture_groups(tmp_path):
     captured = make_source(tmp_path, seconds=16, occasions=16, pictures=5)
     judge = StoryJudge()
     plan = run(captured, judge)
 
     scope = json.loads(
-        next(captured.artifact_dir.rglob("story-inventory-scope.private.json")).read_text()
+        next(captured.artifact_dir.rglob("story-candidate-scope.private.json")).read_text()
     )
     assert len(scope) == 2
     for row in scope.values():
         assert row["groups_offered"] == 8
         assert row["groups_shortlisted"] == 6
-        assert row["units_inventoried"] == 30
-
-    offers = _inventory_offers(judge)
-    assert len(offers) == 2
-    for offer in offers.values():
-        assert len(offer["groups"]) == 6
-        assert len(offer["sources"]) <= 30
-    # every carrier comes from a group the inventory actually read
-    read = set().union(*(offer["taken"] for offer in offers.values()))
-    assert {row["taken"] for row in plan["carriers"]} <= read
-    assert plan["calls_by_stage"]["moment-inventory"]["asked"] == 4
+        assert row["units_offered"] == 30
+    assert plan["carriers"]
+    assert not any(c["stage"].startswith("moment-inventory") for c in judge.calls)
 
 
 class LastMomentJudge(StoryJudge):
@@ -337,7 +294,7 @@ class LastMomentJudge(StoryJudge):
         return super().answer(stage, prompt)
 
 
-def test_a_starred_story_is_inventoried_and_its_pick_is_still_asked(tmp_path):
+def test_a_starred_story_keeps_its_captioned_choices_and_its_pick_is_still_asked(tmp_path):
     """One slot, one starred outing, two outings to choose between: the star settles nothing."""
     captured = make_source(tmp_path, seconds=8, occasions=4, pictures=3)
     captured = replace(
@@ -350,17 +307,8 @@ def test_a_starred_story_is_inventoried_and_its_pick_is_still_asked(tmp_path):
     judge = LastMomentJudge()
     plan = run(captured, judge)
 
-    starred = {  # the starred story holds the first and third outings
-        captured.assets[f"o{occasion}-p{picture}"].file_created_at.isoformat()
-        for occasion in (0, 2)
-        for picture in range(3)
-    }
-    offers = _inventory_offers(judge)
-    assert len(offers) == 2  # the starred story is read like any other
-    assert set().union(*(offer["taken"] for offer in offers.values())) & starred
-
     asked = [call["stage"] for call in judge.calls if call["stage"].startswith("story-pick-")]
-    assert len(asked) == 2 * len(offers)  # two reading orders per story, the starred one included
+    assert len(asked) == 4  # two reading orders per story, the starred one included
     carried = {row["asset_id"] for row in plan["carriers"]}
     assert "o2-p2" in carried  # the last moment of the starred story, which the pick named
     assert "o0-p1" not in carried  # the star is an indicator, not the story's slot
@@ -555,7 +503,7 @@ class CompanyReplacementJudge(StoryJudge):
 
 @pytest.mark.parametrize("weak", [False, True])
 def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, weak):
-    """The real story, inventory and standing pipeline; only the standing votes differ."""
+    """The real story, caption-choice and standing pipeline; only the standing votes differ."""
     from immich_memories.analysis.editorial_story_planner import select_story_first
 
     relations = ["parent", "parent", "grandparent", "parent", "parent"]
@@ -598,7 +546,7 @@ def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, w
         event_units={"outing": units},
         family_of_moment={alias: "outing"},
         anchor_label={"outing": "F01"},
-        label_line=lambda unit: lines[unit["asset_id"]],
+        description_of=lambda unit: lines[unit["asset_id"]],
         quality=lambda _asset: 1.0,
         life=lambda asset_id: asset_id != held,
         target_seconds=7,

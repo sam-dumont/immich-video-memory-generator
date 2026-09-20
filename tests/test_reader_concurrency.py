@@ -76,48 +76,6 @@ def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_p
     assert [c["judgment_key"] for c in cold.calls] == [c["judgment_key"] for c in warm.calls]
 
 
-def test_event_inventories_overlap_without_changing_the_full_cut(tmp_path, monkeypatch):
-    from immich_memories.analysis import editorial_text_gateway as gateway
-    from tests.test_editorial_duration_planner_integration import run, semantic_plan
-    from tests.test_editorial_story_first_planner import StoryJudge, make_source
-
-    scripted = StoryJudge()
-    source = make_source(tmp_path / "reference", pictures=20)
-    reference = run(source, scripted)
-    answers = {key[0]: value for key, value in scripted.bank.items()}
-    active = maximum = 0
-    lock = threading.Lock()
-    overlap = threading.Event()
-
-    async def completion(prompt, _config, **_kwargs):
-        nonlocal active, maximum
-        if prompt.startswith("Inventory distinct depicted moments"):
-            with lock:
-                active += 1
-                maximum = max(maximum, active)
-                if active == 2:
-                    overlap.set()
-            overlap.wait(timeout=0.15)
-            await asyncio.sleep(0.01)
-            with lock:
-                active -= 1
-        return answers[prompt]
-
-    # WHY: replay exact scripted provider answers through the production recorder and bank.
-    monkeypatch.setattr(gateway, "query_llm", completion)
-    source = make_source(tmp_path / "concurrent", pictures=20)
-    source.config.llm.model = "test-reader"
-    source.config.llm.reader_concurrency = 2
-    source.artifact_dir.mkdir(parents=True, exist_ok=True)
-    judge = StructureTextJudge(
-        source.config, source.artifact_dir, cache_path=tmp_path / "judgments.sqlite"
-    )
-    result = run(source, judge)
-    assert maximum == 2
-    assert semantic_plan(result) == semantic_plan(reference)
-    assert [c["stage"] for c in judge.calls] == [c["stage"] for c in scripted.calls]
-
-
 def test_cancellation_reaches_workers_before_they_send_a_request(tmp_path, monkeypatch):
     import pytest
 

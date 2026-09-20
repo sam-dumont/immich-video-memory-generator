@@ -237,6 +237,8 @@ def _nominations(
         for remove in ordered[position + 1 :]:
             kept_id, removed_id = keeper["asset_id"], remove["asset_id"]
             same_episode = nearby_episode(keeper, remove)
+            if not same_episode:
+                continue
             edges = [
                 edge
                 for left in index.members[removed_id]
@@ -440,8 +442,8 @@ def reduce_final_sampled_duplicates(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Retain original order and source fields; only direct sampled proof permits removal.
 
-    All selected dates, events and media kinds can nominate one another. Shared capture
-    episode and existing own-description similarity are discovery signals only; a hash
+    Only selected material from the same nearby capture episode is compared. Existing
+    own-description similarity is a discovery signal only; a hash
     nomination also hands the callback its own distance, which the callback may spend
     instead of a second arrangement. A pair nominated by its episode alone asks the
     episode callback instead, because no pixels corroborate it. The callbacks own
@@ -477,7 +479,7 @@ def reduce_final_sampled_duplicates(
     unresolved = _closed_nominations(nominations, removed_ids)
     survivors = [unit for unit in original if unit["asset_id"] not in removed_ids]
     return survivors, {
-        "policy": "final-displayed-sampled-duplicates-v3",
+        "policy": "final-displayed-sampled-duplicates-v4-episode",
         "scope": "direct sampled editorial redundancy only; no equality of unseen video motion",
         "maximum_hash_distance": SELECTS_MAX_CORROBORATION,
         "description_nomination": "existing describes_the_same_thing on own description only",
