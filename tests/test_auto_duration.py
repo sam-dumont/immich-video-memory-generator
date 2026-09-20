@@ -54,7 +54,6 @@ def _decide_trip(
     photos: list[Asset],
     memory_type: str = "trip",
 ):
-    start = datetime(2026, 7, 1, tzinfo=UTC)
     return _decide_duration(
         requested,
         requested_source=None,
@@ -62,7 +61,6 @@ def _decide_trip(
         memory_type=memory_type,
         clips=clips,
         photos=photos,
-        windows=(DateRange(start=start, end=start + timedelta(days=11)),),
         config=Config(),
     )
 

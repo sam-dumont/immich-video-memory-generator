@@ -34,6 +34,7 @@ from immich_memories.analysis.editorial_shareability_audience import (
     exposure_members,
     parse_audience_verdict,
 )
+from immich_memories.analysis.editorial_story_shortlist import capture_space_available
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
 
 NEVER_AUTO = "never_auto"
@@ -579,11 +580,12 @@ def _first_shareable(
     used: set[str],
     verdict_of: Callable[[Mapping[str, Any]], str | None],
     audience: str,
+    occupied: Sequence[Mapping[str, Any]],
 ) -> tuple[Mapping[str, Any] | None, int]:
     """The first unused pool unit that passes its own gate, and the checks it cost."""
     checked = 0
     for unit in pool:
-        if str(unit.get("asset_id")) in used:
+        if str(unit.get("asset_id")) in used or not capture_space_available(unit, occupied):
             continue
         verdict = verdict_of(unit)
         if verdict is not None:
@@ -591,6 +593,13 @@ def _first_shareable(
         if verdict is None or allowed(verdict, audience):
             return unit, checked
     return None, checked
+
+
+# The story-level editorial context a refused carrier may lend its replacement. Everything
+# else — its standing, its depicted moment, its motion/timing/frame/speech/evidence fields —
+# is the refused asset's own; a replacement that inherited it would be judged and rendered
+# as a material it is not.
+STORY_CONTEXT_KEYS = ("story_episode", "story_role", "story_weight")
 
 
 def apply_gate(
@@ -604,29 +613,31 @@ def apply_gate(
 
     ``verdict_of`` returns the (already tightened) verdict for a unit or None when no check applies.
     ``pool_for`` returns the same anchor's remaining shareable units, in preference order.
-    A refused carrier is replaced by the first pool unit that itself passes; otherwise its slot is
-    dropped. The film may shrink; no other anchor fills the gap.
+    Reserve every surviving carrier before choosing replacements. A replacement must fit the
+    same capture spacing as normal selection before buying its audience verdict. If none fits
+    and passes, the slot is dropped; no other anchor fills the gap.
     """
-    kept: list[dict] = []
+    verdicts = [verdict_of(carrier) for carrier in carriers]
+    kept = [
+        carrier
+        for carrier, verdict in zip(carriers, verdicts, strict=True)
+        if verdict is None or allowed(verdict, audience)
+    ]
     used = {str(c.get("asset_id")) for c in carriers}
     log: dict[str, Any] = {
         "audience": audience,
-        "checked": 0,
+        "checked": sum(verdict is not None for verdict in verdicts),
         "tightened": [],
         "substituted": [],
         "dropped": [],
     }
-    for carrier in carriers:
-        verdict = verdict_of(carrier)
-        if verdict is not None:
-            log["checked"] += 1
+    for carrier, verdict in zip(carriers, verdicts, strict=True):
         if verdict is None or allowed(verdict, audience):
-            kept.append(carrier)
             continue
         log["tightened"].append(
             {"asset_id": carrier.get("asset_id"), "event": carrier.get("event"), "verdict": verdict}
         )
-        replacement, checked = _first_shareable(pool_for(carrier), used, verdict_of, audience)
+        replacement, checked = _first_shareable(pool_for(carrier), used, verdict_of, audience, kept)
         log["checked"] += checked
         if replacement is None:
             log["dropped"].append(
@@ -638,11 +649,11 @@ def apply_gate(
             )
             continue
         used.add(str(replacement.get("asset_id")))
-        new = {
-            **carrier,
-            **replacement,
-            "why": f"{replacement.get('why') or 'shareable rung'} (replaces an unshareable carrier)",
-        }
+        new = (
+            {key: carrier[key] for key in STORY_CONTEXT_KEYS if key in carrier}
+            | dict(replacement)
+            | {"why": replacement.get("why") or "Audience-safe alternative within the same story"}
+        )
         kept.append(new)
         log["substituted"].append(
             {

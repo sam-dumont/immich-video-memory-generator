@@ -680,28 +680,52 @@ def select_story_first(
 
 
 def alternatives_pool(
-    selection: StorySelection, event_units: Mapping[str, list[dict]]
+    selection: StorySelection,
+    event_units: Mapping[str, list[dict]],
+    anchor_label: Mapping[str, str],
 ) -> Callable[[Mapping[str, Any]], list[dict]]:
-    """For the audience gate: when a carrier is held, offer the same moment's other pictures."""
+    """For the audience gate: when a carrier is held, offer the same moment's other pictures.
+
+    Each pool unit is bound to the context of the moment it actually shows: the spares of one
+    carrier can come from another moment, family or even story, and a row that named the
+    refused carrier there would misdescribe the picture the film then shows.
+    """
     unit_by_asset = {u["asset_id"]: u for units in event_units.values() for u in units}
+    context_of_asset = {
+        u["asset_id"]: {"event": family, "anchor": anchor_label.get(family, family)}
+        for family, units in event_units.items()
+        for u in units
+    }
+    # A unit row's moment is a loosely-typed field; the map keys are the story's moment ids.
+    chapter_of_moment: dict[Any, int] = {
+        moment: number
+        for number, row in enumerate(selection.episodes, 1)
+        for episode in row["day_episodes"]
+        for moment in _moments_of(selection, episode)
+    }
 
     def pool_for(carrier: Mapping[str, Any]) -> list[dict]:
         return [
-            unit_by_asset[a]
+            unit
+            | context_of_asset[a]
             | {
-                "event": carrier.get("event"),
-                "anchor": carrier.get("anchor"),
-                "chapter": carrier.get("chapter"),
-                "why": carrier.get("why"),
+                "chapter": chapter_of_moment.get(unit.get("moment")),
                 # The page and the sheet print this under the thumbnail. A replacement
                 # describes itself; it never borrows the refused picture's description.
                 "line": selection.lines.get(a) or "Replaces a picture the audience gate refused",
             }
             for a in selection.alternatives_of.get(carrier["asset_id"], [])
-            if a in unit_by_asset
+            if (unit := unit_by_asset.get(a)) is not None
         ]
 
     return pool_for
+
+
+def _moments_of(selection: StorySelection, episode_key: str) -> Sequence[str]:
+    for episode in selection.story.episodes:
+        if episode.key == episode_key:
+            return episode.moments
+    return []
 
 
 def story_plan_fields(selection: StorySelection) -> dict[str, Any]:

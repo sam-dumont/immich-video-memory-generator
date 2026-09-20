@@ -278,13 +278,15 @@ question confirms it looks different from the kept frames of its moment and the 
 after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
 stays short.
 
-**4. The final film, over what actually shipped.** The pictures in the cut are checked against each
-other again. A pair is nominated when any of three signals fires: hashes within 10 bits,
-descriptions that read as the same thing (Jaccard over words of four letters or more, at 0.60), or
-the same capture episode within the 90-minute window. That 0.60 is the knee of a measured curve over
-1,124,250 real pairs from the cache: 0.60 collapses 33 pairs, 0.55 collapses 74, 0.50 collapses 135.
-The count triples per step below it, which is where genuinely different shots start merging.
-Nominated pairs are then asked as pairs, by the same question as step 2.
+**4. The final film, over what actually shipped.** Only pictures selected from the same capture
+episode, within the 90-minute window, are compared. Matching hashes or similar captions from
+unrelated episodes do not buy a model call. Within an episode, a hash distance of at most 10 bits
+can corroborate the same-picture question from step 2.
+
+Audience-safe replacements must also respect the existing five-minute capture spacing. The gate
+reserves all surviving pictures first, then checks each replacement against those survivors and
+earlier replacements. It skips a conflicting candidate before asking for an audience verdict.
+If no suitable alternative remains, the film gets shorter.
 
 The episode signal is there because the other two miss the obvious case. Two frames of the same
 minute on a dark bus, shot from slightly different angles, have distant hashes and get two
