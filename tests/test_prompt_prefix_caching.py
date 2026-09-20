@@ -119,25 +119,6 @@ def _exposure_prompts() -> tuple[str, str]:
     )
 
 
-def _inventory_prompts() -> tuple[str, str]:
-    from immich_memories.analysis.editorial_moment_inventory import inventory_event
-
-    judge = RecordingJudge()
-    units = [
-        {"asset_id": f"a{i:03d}", "taken": f"2024-02-0{i % 9 + 1}T10:00:00Z", "moment": f"m{i}"}
-        for i in range(90)
-    ]
-    inventory_event(
-        judge,
-        event="S0001",
-        units=units,
-        context="A walk by the river, then lunch.",
-        line=lambda u: f"a picture taken at {u['taken']}",
-    )
-    assert len(judge.calls) >= 2, "the fixture must be big enough to page"
-    return judge.calls[0], judge.calls[1]
-
-
 def _episode_page_prompts() -> tuple[str, str]:
     from immich_memories.analysis.editorial_story_reading import _episode_page_prompt
 
@@ -271,9 +252,6 @@ STAGES = [
     ("standing", _standing_prompts, 800),
     ("shareability-activity", _activity_prompts, 2800),
     ("shareability-exposure", _exposure_prompts, 1000),
-    # 1400, not 1500: the inferred episode context left the preamble, so the head is
-    # ~90 bytes shorter and the same for every film asking the same day.
-    ("moment-inventory", _inventory_prompts, 1400),
     ("story-episodes", _episode_page_prompts, 900),
     ("story-grouping", _grouping_prompts, 1500),
     ("story-weighing", _weighing_prompts, 1500),
@@ -301,11 +279,3 @@ def test_a_repair_round_keeps_the_head_it_was_asked_with():
 
     original = _grouping_prompts()[0]
     assert json_format_repair_prompt(original).startswith(original)
-
-
-def test_the_preamble_survives_a_json_round_trip_of_the_evidence():
-    """Two pages of different evidence still agree on everything before the evidence."""
-    first, second = _inventory_prompts()
-    head = first[: shared_prefix(first, second)]
-    assert "NEW SOURCES" not in head
-    assert json.dumps({"source": "U0001"}) not in head

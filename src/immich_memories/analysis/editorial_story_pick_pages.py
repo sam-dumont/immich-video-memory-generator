@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from immich_memories.analysis.editorial_moment_inventory import pages
+from immich_memories.analysis.editorial_prompt_pages import pages
 from immich_memories.analysis.editorial_story_reading import PAGE_CHARS
 
 # How many labels one reply may have to name. The counting, not the reading, is what fails:

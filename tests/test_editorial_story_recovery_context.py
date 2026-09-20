@@ -65,3 +65,42 @@ def test_recovery_keeps_weak_people_pictures_and_owner_favourites(tmp_path, obje
     files = list(source.artifact_dir.rglob("story-selection.private.json"))
     assert len(files) == 1
     assert "o0-p0" in json.loads(files[0].read_text())["kept_without_standing"]
+
+
+def test_recovery_does_not_force_a_rejected_motion_clip_back_into_the_film(tmp_path):
+    from immich_memories.api.models import AssetType
+
+    source = recovery_source(tmp_path, pictures=1)
+    assets = dict(source.assets)
+    assets["o0-p0"] = assets["o0-p0"].model_copy(
+        update={"type": AssetType.VIDEO, "duration_seconds": 7.0}
+    )
+    source = replace(source, assets=assets)
+
+    plan = run(source, RecoveryJudge(weak=True))
+
+    assert plan["carriers"]
+    assert "o0-p0" not in {carrier["asset_id"] for carrier in plan["carriers"]}
+
+
+def test_approved_scenery_video_remains_selectable_without_people(tmp_path):
+    from immich_memories.api.models import AssetType
+
+    source = recovery_source(tmp_path, pictures=1)
+    assets = dict(source.assets)
+    assets["o0-p0"] = assets["o0-p0"].model_copy(
+        update={"type": AssetType.VIDEO, "duration_seconds": 7.0}
+    )
+    annotations = dict(source.audience_annotations)
+    description = "A waterfall pours into a rocky pool."
+    annotations["o0-p0"] = replace(annotations["o0-p0"], text=description, description=description)
+    source = replace(
+        source,
+        assets=assets,
+        audience_annotations=annotations,
+        annotations={key: row.text for key, row in annotations.items()},
+    )
+
+    plan = run(source, RecoveryJudge())
+
+    assert any(c["asset_id"] == "o0-p0" and c["kind"] == "video" for c in plan["carriers"])

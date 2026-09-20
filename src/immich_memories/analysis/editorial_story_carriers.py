@@ -4,8 +4,8 @@ A funded story offers its open moments; the standing gate asks whether each cand
 stands by itself; the pick chooses which moments tell the story; and one picture per chosen
 moment is admitted as a carrier if it is free, in context and spaced from what is already
 committed. The audience gate judges the finished cut, not every candidate. Freed slots are
-re-granted across the stories in further passes, never to variants. An occasion whose every
-candidate failed still shows once.
+re-granted across the stories in further passes, never to variants. Occasion recovery may keep
+a weak still, but cannot override rejected motion.
 """
 
 from __future__ import annotations
@@ -170,6 +170,10 @@ class StandingGate:
         """A story of one or two pictures has no context for a weak picture to serve."""
         return self._pictures_of.get(story_key, 0) <= 2
 
+    def rejected_motion(self, asset: str) -> bool:
+        """Playing motion cannot override missing or unanimously weak standing evidence."""
+        return carries_motion(self._unit_by_asset[asset][1]) and self.scores.get(asset, 0) == 0
+
     def has_required_context(self, asset: str, weight: str, story_key: str) -> bool:
         """The existing context requirement is eligibility, not a recoverable weak vote."""
         starred = bool(self._unit_by_asset[asset][1].get("favourite"))
@@ -187,8 +191,11 @@ class StandingGate:
         must stand entirely alone (named weak by neither order). Inside a dominant or major story a
         picture with people or animals in it serves its purpose with context and is only ORDERED by
         the gate, never removed; a lifeless one (a room, an object) needs one order's approval. In a
-        minor story a picture with life needs one order, a lifeless one both."""
+        minor story a picture with life needs one order, a lifeless one both. Moving clips always
+        need at least one standing approval; their media kind cannot override two weak votes."""
         score = self.scores.get(asset, 0)
+        if self.rejected_motion(asset):
+            return False
         lively = self._life(asset)
         thin = self.thin(story_key)
         if not self.has_required_context(asset, weight, story_key):
@@ -305,8 +312,10 @@ class CarrierAdmission:
 
     def carrier_for(self, choice, s, index, candidates):
         for asset in candidates:
-            # Recovery may waive standing votes, never this eligibility invariant.
-            if not self.gate.has_required_context(asset, s["weight"], s["key"]):
+            # Recovery may keep a weak still, not override rejected motion or source context.
+            if self.gate.rejected_motion(asset) or not self.gate.has_required_context(
+                asset, s["weight"], s["key"]
+            ):
                 continue
             # Other stories may have committed carriers since picks were compared.
             # Recovery and an alternate source must obey the actual capture clock too.
@@ -697,8 +706,8 @@ class CarrierAdmission:
 
     def _is_unshown_occasion(self, s) -> bool:
         """An OCCASION (a story the gate read remarkable, or one the owner starred) whose every
-        candidate failed the gate still shows once, rather than vanishing. A weak frame beats a
-        missing occasion; a thin "maybe" day gets nothing."""
+        candidate failed the gate may still show once through a weak still. Rejected motion is
+        never rescued to fill a slot; a thin "maybe" day gets nothing."""
         return (
             s["weight"] in WEIGHED_STORY_WEIGHTS
             and (s["gate"] == "remarkable" or s["seen"]["favourites"] > 0)

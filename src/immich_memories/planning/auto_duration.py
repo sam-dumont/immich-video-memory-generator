@@ -7,12 +7,8 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING
 
 from immich_memories.api.models import Asset, VideoClipInfo
-
-if TYPE_CHECKING:
-    from immich_memories.timeperiod import DateRange
 
 # What set a film's length, in the words a run record and a log line use.
 DURATION_FROM_MATERIAL = "the material"
@@ -32,22 +28,9 @@ _MAX_DIVERSE_SECONDS_PER_DAY = 30.0
 _MAX_CAPACITY_PHOTOS_PER_DAY = 4
 _DURATION_ROUNDING_SECONDS = 5.0
 
-# A period longer than an occasion is lived in photographed days, the same unit
-# the trip curve counts. One day in three carrying pictures is the density the
-# presets were written for, so a period at that density keeps the length its
-# preset asks for; below it the film shortens, above it the film grows. Growth
-# is on the square root because the twentieth photographed day adds less to a
-# film than the second, and the bounds keep a month from becoming a trip.
-_TYPICAL_PHOTOGRAPHED_DAY_FRACTION = 1.0 / 3.0
-_PERIOD_MIN_PRESET_FRACTION = 0.5
-_PERIOD_MAX_PRESET_FRACTION = 1.5
-
 # A trip and an album have no calendar period to measure coverage against:
 # their span is whatever their media turns out to cover.
 _TRIP_CURVE_TYPES = ("trip", "album")
-# An occasion's preset already came from its own material, the hours it stayed
-# awake, so reading its days as coverage would count the same evidence twice.
-_OWN_CURVE_TYPES = ("special_day",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,51 +113,6 @@ def special_day_editorial_duration_seconds(hours: float) -> float:
             _SPECIAL_DAY_BASE_SECONDS + hours * _SPECIAL_DAY_SECONDS_PER_ACTIVE_HOUR,
         ),
     )
-
-
-def period_editorial_duration_seconds(
-    preset_seconds: float, *, photographed_days: int, candidate_days: int
-) -> float:
-    """How long a month, a season, a year or a person's memory runs.
-
-    The trip curve counts the days a trip was lived; a calendar period is the
-    same question with a denominator, because a month is a month whether it was
-    photographed on four days or on twenty. The preset states the length the
-    type wants at ordinary density, and this moves it with the density actually
-    found, within half and one and a half times that length.
-
-    A period of a single day has no density to read -- an occasion's length
-    already comes from its active hours -- so its preset is returned untouched.
-    """
-    if preset_seconds <= 0 or candidate_days <= 1 or photographed_days <= 0:
-        return max(0.0, preset_seconds)
-    typical_days = max(1.0, candidate_days * _TYPICAL_PHOTOGRAPHED_DAY_FRACTION)
-    density = math.sqrt(photographed_days / typical_days)
-    return min(
-        preset_seconds * _PERIOD_MAX_PRESET_FRACTION,
-        max(preset_seconds * _PERIOD_MIN_PRESET_FRACTION, preset_seconds * density),
-    )
-
-
-def candidate_day_count(windows: Sequence[DateRange]) -> int:
-    """How many calendar days a memory may draw from, counting an overlap once.
-
-    A birthday memory's flashback windows sit inside its rolling year, and a
-    holiday's windows are one short block per year. Both have to answer "how
-    long is this period" with the same number a single continuous span would.
-    """
-    spans = sorted((window.start.date(), window.end.date()) for window in windows)
-    total = 0
-    covered_to: date | None = None
-    for start, end in spans:
-        if covered_to is not None and start <= covered_to:
-            if end > covered_to:
-                total += (end - covered_to).days
-                covered_to = end
-            continue
-        total += (end - start).days + 1
-        covered_to = end
-    return total
 
 
 def _asset_day(asset: Asset) -> date:
@@ -267,7 +205,6 @@ def decide_memory_duration(
     requested_source: str,
     preset_seconds: float | None,
     memory_type: str | None,
-    candidate_days: int,
     avg_clip_duration: float,
     photo_duration: float,
     title_duration: float,
@@ -292,7 +229,6 @@ def decide_memory_duration(
         memory_type,
         floor_seconds,
         photographed_days=material.photographed_days,
-        candidate_days=candidate_days,
     )
     capacity_seconds = material.diverse_capacity_seconds(
         still_duration=max(0.0, photo_duration),
@@ -313,18 +249,11 @@ def _editorial_target(
     preset_seconds: float,
     *,
     photographed_days: int,
-    candidate_days: int,
 ) -> float:
     """The length this type's own curve asks for, before capacity caps it."""
     if memory_type in _TRIP_CURVE_TYPES:
         return trip_editorial_duration_seconds(photographed_days)
-    if memory_type in _OWN_CURVE_TYPES:
-        return preset_seconds
-    return period_editorial_duration_seconds(
-        preset_seconds,
-        photographed_days=photographed_days,
-        candidate_days=candidate_days,
-    )
+    return preset_seconds
 
 
 def _rounded_down(seconds: float) -> float:

@@ -85,3 +85,31 @@ def test_existing_central_episode_reading_protects_an_occasion_without_an_extra_
     assert plan["carriers"], "the already-read central occasion must retain a place"
     assert all(row["asset_id"].startswith(("o0-", "o2-")) for row in plan["carriers"])
     assert not any(call["stage"].startswith("worthy-") for call in judge.calls)
+
+
+def test_capture_group_choices_do_not_need_a_second_model_inventory(tmp_path):
+    source = make_source(tmp_path)
+    # WHY: deterministic replies replace the paid model while the real planner runs.
+    judge = StoryJudge()
+
+    plan = run(source, judge)
+
+    assert plan["carriers"]
+    assert len({row["asset_id"] for row in plan["carriers"]}) == len(plan["carriers"])
+    assert {row["asset_id"] for row in plan["carriers"]} <= source.assets.keys()
+    assert plan["content_seconds"] <= plan["target_seconds"]
+    assert not any(call["stage"].startswith("moment-inventory") for call in judge.calls)
+
+
+def test_picture_pick_reuses_prepared_descriptions_without_reinterpreting_them(tmp_path):
+    source = make_source(tmp_path, seconds=8)
+    # WHY: deterministic replies replace the paid model while keeping real prompt construction.
+    judge = StoryJudge()
+
+    plan = run(source, judge)
+
+    assert plan["carriers"]
+    picks = [call["prompt"] for call in judge.calls if call["stage"].startswith("story-pick-")]
+    assert picks
+    assert all("A clothed person walks along the canal" in prompt for prompt in picks)
+    assert not any(call["stage"].startswith("moment-inventory") for call in judge.calls)

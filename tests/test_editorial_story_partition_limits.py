@@ -66,11 +66,7 @@ def test_equal_weight_occasions_keep_chronology_and_a_star_cannot_reorder_them(t
         f"y{year}-e0-p2" for year in (2030, 2031, 2032)
     ]
     assert plan["intent_report"]["violations"] == []
-    # The funded occasion keeps its full three-picture choice either way: the star sits on the
-    # occasion that chronology left out, so it reduces nothing the inventory has to read.
-    inventories = [row for row in judge.calls if row["stage"].startswith("moment-inventory")]
-    assert len(inventories) == 3
-    assert all(any(f"S{number:04d}" in row["stage"] for row in inventories) for number in (1, 3, 5))
+    assert not any(row["stage"].startswith("moment-inventory") for row in judge.calls)
 
 
 def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions(tmp_path):

@@ -8,11 +8,11 @@ import Video from '@site/src/components/Video';
 # Memory types
 
 Ten types. Most of them are a date range with a filter on it; four are not, and those are the ones
-worth reading about. The length below is what a type asks for at ordinary density, not a cap and not
-a promise: the run fits it to the material the period turns out to hold. `--duration` on the CLI
-overrides that, and so does **Auto duration** off on the [Memory page](./web-ui.mdx).
+worth reading about. Each type has its own normal target below. A thin period can produce a shorter
+film. `--duration` on the CLI overrides the target, and so does **Auto duration** off on the
+[Memory page](./web-ui.mdx).
 
-| Type | Covers | Length at ordinary density |
+| Type | Covers | Normal target |
 |---|---|---|
 | `year_in_review` | one calendar year | 10 min |
 | `monthly_highlights` | one month | 60 s |
@@ -27,9 +27,9 @@ overrides that, and so does **Auto duration** off on the [Memory page](./web-ui.
 
 ## How long a film runs
 
-A film's length is decided after discovery, not before it, so a thin month gets a short film and a
-crowded one gets a longer film. Four things can set it, and the run log and the run record both say
-which one did:
+Calendar memories keep their normal targets: one minute for a month and ten minutes for a year.
+More photos give the editor more choices without increasing the target. Discovery can shorten a
+film when there is not enough usable material. The run log and record say what set its length:
 
 | What set it | When |
 |---|---|
@@ -39,12 +39,9 @@ which one did:
 | the preset floor | neither flag, and the period holds nothing to measure |
 
 A trip and an album count active days: 30 s plus 10 s an active day, held between 60 s and 5 min. An
-occasion counts active hours: 30 s plus 6 s an active hour, held between 60 s and 3 min. Every other
-type counts **photographed days** against the days its period covers. One day in three carrying
-pictures is the density the lengths above were written for, so a period at that density keeps its
-length; a thinner period shortens and a denser one grows, between half and one and a half times it.
-Growth follows the square root of the density, because the twentieth photographed day adds less to a
-film than the second.
+occasion counts active hours: 30 s plus 6 s an active hour, held between 60 s and 3 min. Other types
+use their preset target. Twelve one-minute monthly memories do not make a twelve-minute yearly
+memory: the year has its own ten-minute target.
 
 Whatever the curve asks for, a film never runs longer than the varied excerpts its period can fill,
 counted a day at a time and capped at 30 s a day. That is the same bound that stops a trip from

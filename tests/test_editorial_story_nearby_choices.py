@@ -21,12 +21,7 @@ class CompanyJudge(ControlledStoryJudge):
             rows = re.findall(r"^(M\d{2}) \| (.*)$", prompt, re.MULTILINE)
             ordered = sorted(rows, key=lambda row: "Friends sharing the outing" not in row[1])
             return json.dumps({"keep": [label for label, _ in ordered[:count]]})
-        result = super().answer(stage, prompt)
-        if stage.startswith("moment-inventory"):
-            data = json.loads(result)
-            data["moments"][1]["content"] = "Friends sharing the outing"
-            return json.dumps(data)
-        return result
+        return super().answer(stage, prompt)
 
 
 def nearby_source(tmp_path, *, favourite=False, held=False):
@@ -42,8 +37,10 @@ def nearby_source(tmp_path, *, favourite=False, held=False):
         row = annotations[later]
         text = row.text.replace(old.isoformat(), new.isoformat())
         if held:
-            text = "A person is bathing in a bathtub."
-        annotations[later] = replace(row, text=text, description=text if held else row.description)
+            text = "Friends sharing the outing. A person is bathing in a bathtub."
+        else:
+            text = "Friends sharing the outing. " + text
+        annotations[later] = replace(row, text=text, description=text)
     return replace(
         source,
         assets=assets,
@@ -96,7 +93,7 @@ def test_actual_planner_observes_the_admitted_pictures_and_not_every_choice(tmp_
         )
         return record
 
-    # WHY: the editorial judge; the pick answers from the inventory, with no preview line.
+    # WHY: the editorial judge; the pick answers from prepared captions, with no preview line.
     class ObservedJudge(CompanyJudge):
         def answer(self, stage, prompt):
             if stage.startswith("story-pick-"):

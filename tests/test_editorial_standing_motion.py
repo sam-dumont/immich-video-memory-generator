@@ -126,3 +126,55 @@ def test_changed_source_duration_or_motion_evidence_still_needs_a_new_judgment(c
     gate(changed, bank=bank, clip=clip, motion_line=lambda _unit: description).ensure(["clip"])
 
     assert len(changed.calls) == 2
+
+
+@pytest.mark.parametrize("kind", ["video", "live-motion"])
+def test_motion_rejected_in_both_orders_cannot_bypass_standing_in_a_major_story(kind):
+    from immich_memories.analysis.editorial_structure_lines import UnitLines
+
+    unit = CLIP | {"kind": kind}
+    lines = UnitLines({"clip": "2022-01-01 | An empty room with tiled floors."})
+    admission = StandingGate(
+        VoteJudge(),
+        contract="Show the family visit",
+        period_label="a year",
+        line_of=lambda _asset: lines.line(unit),
+        life=lambda _asset: lines.shows_life(unit),
+        unit_by_asset={"clip": ("E1", unit)},
+        pictures_of={"K01": 7},
+        bank=None,
+        save=None,
+        calls={"standing_rounds": 0},
+        score_of=lambda _asset: 0,
+    )
+    admission.ensure(["clip"])
+
+    assert not admission.stands("clip", "major", "K01")
+
+
+@pytest.mark.parametrize("kind", ["video", "live-motion"])
+@pytest.mark.parametrize("pictures", [1, 7])
+def test_approved_motion_can_stand_when_its_still_has_no_people(kind, pictures):
+    from immich_memories.analysis.editorial_structure_lines import UnitLines
+
+    unit = CLIP | {"kind": kind}
+    lines = UnitLines({"clip": "2022-01-01 | An empty diving board above a pool."})
+    judge = VoteJudge()
+    admission = StandingGate(
+        judge,
+        contract="Show the visit",
+        period_label="a year",
+        line_of=lambda _asset: lines.line(unit),
+        life=lambda _asset: lines.shows_life(unit),
+        unit_by_asset={"clip": ("E1", unit)},
+        pictures_of={"K01": pictures},
+        bank=None,
+        save=None,
+        calls={"standing_rounds": 0},
+        motion_line=lambda _unit: "A swimmer dives from the board into the pool.",
+    )
+    admission.ensure(["clip"])
+
+    assert admission.stands("clip", "major", "K01")
+    assert len(judge.calls) == 2
+    assert all("A swimmer dives" in prompt for prompt in judge.calls)
