@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
+from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
+
+# The reader is certain or it says nothing: the probe measured a spread of up to 0.174
+# between reads of one picture, so a bar near the middle would be a coin toss.
+SCREEN_CERTAIN = 0.9
+
 SCREEN_DOCUMENT_LABELS = frozenset(
     {
         "screenshot_from_computer",
@@ -105,6 +111,19 @@ def screenshot_by_resolution(line: str) -> bool:
     return (min(w, h), max(w, h)) in PHONE_SCREEN_SIZES
 
 
+def read_as_a_screen(line: str) -> bool:
+    """The optional picture reader says this is a screen. Silent without its row.
+
+    This is the arm that catches a TV or a watch face, which no head answers for: the
+    document head calls every one of them a photograph.
+    """
+    facts = picture_facts_on(line)
+    screen = facts.get("screen")
+    return (isinstance(screen, float) and screen >= SCREEN_CERTAIN) or facts.get(
+        "what"
+    ) == "screen_or_document"
+
+
 def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
     """Use grounded annotation fields, without reclassifying the event's importance.
 
@@ -114,7 +133,9 @@ def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
     excluded = {}
     for asset_id, line in annotations.items():
         document = _DOCUMENT_FIELD.search(line)
-        if document and document.group(1) in SCREEN_DOCUMENT_LABELS:
+        if read_as_a_screen(line):
+            excluded[asset_id] = "picture-facts:screen"
+        elif document and document.group(1) in SCREEN_DOCUMENT_LABELS:
             excluded[asset_id] = f"document-head:{document.group(1)}"
         elif _SCREEN_TEXT.search(line):
             excluded[asset_id] = "screen-description"

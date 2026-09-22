@@ -14,6 +14,7 @@ from immich_memories.analysis.editorial_rule_reader import (
     PRIVATE_VENUES,
     PUBLIC_VENUES,
     RuleStructureReader,
+    nothing_to_show,
 )
 from immich_memories.config_models_editorial_preparation import (
     EditorialPreparationConfig,
@@ -68,3 +69,32 @@ def test_people_an_activity_or_an_outdoor_place_stands(heads):
 
 def test_a_picture_the_heads_say_nothing_about_is_context():
     assert standing() == 1
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        "worth 0.04; what=empty_room_ceiling_or_floor",
+        "worth 0.09; what=accidental_or_blurred_frame",
+        "worth 0.02; what=lone_everyday_object",
+        "worth 0.07; what=body_part_closeup",
+    ],
+)
+def test_the_picture_reader_can_answer_zero_where_the_heads_see_nothing_wrong(segment):
+    assert nothing_to_show(f"2026-08-25 12:00 | A room. | picture: {segment}")
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        "worth 0.04; what=people_moment",
+        "worth 0.55; what=empty_room_ceiling_or_floor",
+        "worth 0.97; what=place_or_scenery",
+    ],
+)
+def test_one_low_number_or_one_label_on_its_own_is_not_enough(segment):
+    assert not nothing_to_show(f"2026-08-25 12:00 | A room. | picture: {segment}")
+
+
+def test_a_line_with_no_picture_row_answers_nothing():
+    assert not nothing_to_show("2026-08-25 12:00 | A room. | DARK")

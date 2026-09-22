@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import urllib.error
@@ -431,3 +432,26 @@ def plain_picture_facts(facts: PictureFacts) -> str:
         if (label := facts.choice(name)) and label != _QUIET_CHOICES.get(name)
     )
     return "picture: " + "; ".join(parts) if parts else ""
+
+
+_SEGMENT = re.compile(r"(?:^|\|)\s*picture:\s*([^|]*)")
+_NUMBER = re.compile(r"^([a-z-]+) (\d\.\d+)$")
+_LABEL = re.compile(r"^([a-z]+)=([a-z_]+)$")
+
+
+def picture_facts_on(line: str) -> dict[str, float | str]:
+    """The numbers and labels a line's picture segment carries; empty when it has none.
+
+    A gate reads facts off the line rather than the bank, so the same evidence answers
+    whether a cut is prepared, replayed or read back from an artifact.
+    """
+    found = _SEGMENT.search(line)
+    if found is None:
+        return {}
+    facts: dict[str, float | str] = {}
+    for part in found.group(1).split(";"):
+        if number := _NUMBER.match(part.strip()):
+            facts[number.group(1)] = float(number.group(2))
+        elif label := _LABEL.match(part.strip()):
+            facts[label.group(1)] = label.group(2)
+    return facts

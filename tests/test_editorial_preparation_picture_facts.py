@@ -18,6 +18,7 @@ from immich_memories.analysis.editorial_preparation_picture_facts import (
     QUESTIONS,
     PictureFactsSource,
     missing_picture_facts,
+    picture_facts_on,
     plain_picture_facts,
     prepare_picture_facts,
     question_set_hash,
@@ -219,3 +220,18 @@ def test_the_segment_names_what_was_seen_and_stays_quiet_about_the_rest():
     assert plain_picture_facts(watched) == (
         "picture: screen 0.98; worth 0.12; what=screen_or_document; child=nappy_or_underwear_only"
     )
+
+
+def test_the_segment_is_read_back_off_a_line_and_nothing_else_on_it_is():
+    line = (
+        "2026-08-25 12:00 | A picture of a room. | picture: screen 0.98; worth 0.12; "
+        "what=screen_or_document; child=nappy_or_underwear_only | DARK"
+    )
+
+    assert picture_facts_on(line) == {
+        "screen": 0.98,
+        "worth": 0.12,
+        "what": "screen_or_document",
+        "child": "nappy_or_underwear_only",
+    }
+    assert picture_facts_on("2026-08-25 12:00 | A picture of a room. | DARK") == {}

@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
+from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
@@ -288,6 +289,8 @@ class RuleStructureReader:
             return 0
         if any(marker in line for marker in ("SOFT (blurry)", "DARK", "BLOWN OUT")):
             return 0
+        if nothing_to_show(line):
+            return 0
         if self.source.intent.product == "album":
             return 2
         return self._visual_standing(heads, known_people=bool(asset.people))
@@ -315,3 +318,24 @@ class RuleStructureReader:
         ):
             return 2
         return 1
+
+
+# Below this the reader is saying the picture carries nothing, and it has to agree with
+# itself: a low number alone refuses real moments, and the label alone refuses a ceiling
+# somebody meant to photograph.
+_NOT_WORTH = 0.10
+_NOTHING_KINDS = frozenset(
+    {
+        "empty_room_ceiling_or_floor",
+        "accidental_or_blurred_frame",
+        "lone_everyday_object",
+        "body_part_closeup",
+    }
+)
+
+
+def nothing_to_show(line: str) -> bool:
+    """The optional picture reader says this frame carries nothing. Silent without its row."""
+    facts = picture_facts_on(line)
+    worth = facts.get("worth")
+    return isinstance(worth, float) and worth < _NOT_WORTH and facts.get("what") in _NOTHING_KINDS

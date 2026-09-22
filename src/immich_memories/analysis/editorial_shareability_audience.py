@@ -17,6 +17,8 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
+
 
 def _clean(value: object) -> str:
     return " ".join(str(value or "").split())
@@ -236,3 +238,33 @@ def _parse_exposure_verdict(
         "requested_members": sorted(positive),
         "unresolved_members": sorted(unresolved),
     }
+
+
+# The reader is certain or it says nothing: fresh reads of one picture spread up to 0.174.
+_CERTAIN = 0.9
+_UNCOVERED = frozenset({"bare_torso", "underwear_only", "nude"})
+_ACTIVITY_HOLDS = ("bathing", "breastfeeding")
+
+
+def picture_facts_hold(line: str) -> str | None:
+    """The hold the optional picture reader adds to a line, or None. It never clears one.
+
+    A nappy is ordinary family content by the owner's 09-21 ruling, and so is swimwear.
+    Coverage names a body, never an activity, so the strongest a coverage fact reaches on
+    its own is family viewing; only a readable personal record is refused outright.
+    """
+    facts = picture_facts_on(line)
+    if not facts:
+        return None
+    if _certain(facts.get("record")):
+        return "do_not_show"
+    uncovered = {facts.get("adult"), facts.get("child")} & _UNCOVERED
+    if uncovered or facts.get("child") == "nude":
+        return "family_only"
+    if any(_certain(facts.get(name)) for name in _ACTIVITY_HOLDS):
+        return "family_only"
+    return None
+
+
+def _certain(value: object) -> bool:
+    return isinstance(value, float) and value >= _CERTAIN
