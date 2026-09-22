@@ -28,6 +28,10 @@ need a model. The rules cut can skip an occasion or spend a slot on a mundane ob
 before you share it. Move to `no_captions` once `models fetch` has run (below): the detectors and
 the six context heads then give the family-viewing gate real evidence.
 
+Set `trips.homebase_latitude` and `trips.homebase_longitude`. Without a homebase the rules editor
+cannot tell a trip from a week at home, so it cuts every run of photographed days on the calendar
+week and a three-week holiday arrives as three stories instead of one.
+
 ## Preparation tiers: what the NAS pays
 
 `editorial.preparation.tier` names which producers this box runs.

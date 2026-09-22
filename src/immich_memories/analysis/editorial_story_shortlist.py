@@ -158,6 +158,9 @@ def shortlist_story_moments(
     plays is taken before a still that would otherwise fill its place, and motion the cap shut
     out is reached for afterwards: this is a video product. Relationship markers nominate
     opportunities; standing and audience admission come after.
+
+    A story holding more favourites than the cap is sampled across its span rather than
+    truncated: the earliest favourites of a long story are its first days, not the story.
     """
     limit = max(6, 3 * grant)
     if len(choices) <= limit:
@@ -166,7 +169,7 @@ def shortlist_story_moments(
     moving = [c for c in choices if c not in stars and plays(c)]
     lively = [c for c in choices if c not in stars + moving and any(life(a) for a in c.members)]
     rest = [c for c in choices if c not in stars + moving and c not in lively]
-    picked = stars[:limit]
+    picked = _spread(stars, limit)
     picked.extend(_spread(moving, limit - len(picked)))
     picked.extend(_spread(lively, limit - len(picked)))
     picked.extend(_spread(rest, limit - len(picked)))

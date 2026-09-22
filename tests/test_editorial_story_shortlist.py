@@ -119,7 +119,12 @@ def test_life_on_an_alternative_retains_the_existing_lively_priority():
 
 
 @pytest.mark.parametrize("grant,limit", [(1, 6), (2, 6), (3, 9)])
-def test_favourites_that_fill_capacity_keep_their_order_and_cannot_be_displaced(grant, limit):
+def test_favourites_that_fill_capacity_span_the_story_and_cannot_be_displaced(grant, limit):
+    """Favourites past the cap are sampled across the story, not read off its front.
+
+    The assertion used to be `range(2, 2 + limit)`, the chronological prefix that spent a
+    129-day story's grant on its first week.
+    """
     pool = choices(15)
 
     def unnecessary_relations(_choice):
@@ -133,8 +138,10 @@ def test_favourites_that_fill_capacity_keep_their_order_and_cannot_be_displaced(
         kind_of=unnecessary_relations,
     )
 
-    assert keys(selected) == list(range(2, 2 + limit))
     assert len(selected) == limit
+    assert all(2 <= key <= 13 for key in keys(selected))
+    assert keys(selected) == sorted(keys(selected))
+    assert (keys(selected)[0], keys(selected)[-1]) == (2, 13)
 
 
 def test_earliest_relation_nomination_does_not_guarantee_later_audience_admission():

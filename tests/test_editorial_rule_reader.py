@@ -94,10 +94,12 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
     )
     _, result = SmartPipeline(planner=planner).run_editorial_source(sources)
     assert result.selected_clips
-    if product != "album":
-        assert sources[0].id in {clip.asset.id for clip in result.selected_clips}
-    else:
+    if product == "album":
         assert len(result.selected_clips) >= 3
+    elif product != "on_this_day":
+        assert sources[0].id in {clip.asset.id for clip in result.selected_clips}
+    # A one-shot grant now takes the middle favourite of its story rather than its first,
+    # so on_this_day is asserted on its own contract of one shot per year, below.
     attempt = planner.last_attempt_directory
     plan = json.loads((attempt / "plan.private.json").read_text())
     assert plan["reader"] == "rules-v1"
@@ -111,8 +113,12 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
             2024: 1,
         }
     else:
+        # The twenty-two day fixture is no longer one story but four weekly ones, so the
+        # assertion is on the story holding the owner's favourites. A week with no
+        # indicator at all weighs none.
         expected = "minor" if product == "album" else "major"
-        assert {e["weight"] for e in plan["story"]["episodes"]} == {expected}
+        assert expected in {e["weight"] for e in plan["story"]["episodes"]}
+        assert {e["weight"] for e in plan["story"]["episodes"]} <= {expected, "none"}
     assert all(
         plan["story"]["calls"][key] == 0 for key in ("story_pages", "pick_calls", "standing_rounds")
     )

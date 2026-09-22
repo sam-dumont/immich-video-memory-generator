@@ -490,12 +490,16 @@ class CarrierAdmission:
         return picked
 
     def _repeat_pick(self, eligible, n, chosen) -> list[DepictedChoice]:
-        """A story already asked in this partition refills mechanically, never with a new call."""
+        """A story already asked in this partition refills mechanically, never with a new call.
+
+        A story with more favourites than its grant spends it across the story's whole span;
+        the favourites the spread passes over stay behind it, for when one cannot be placed.
+        """
         stars = [c for c in eligible if self.starred_choice(c)]
         rest = [c for c in eligible if not self.starred_choice(c)]
-        preferred = [*stars, *_spread(rest, max(0, n - len(stars[:n])))]
+        preferred = [*_spread(stars, n), *_spread(rest, max(0, n - len(stars)))]
         local: list[DepictedChoice] = []
-        for c in (*preferred, *(c for c in rest if c not in preferred)):
+        for c in (*preferred, *(c for c in (*stars, *rest) if c not in preferred)):
             if len(local) >= n or not self.compatible(c, [*chosen, *local]):
                 continue
             local.append(c)

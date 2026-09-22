@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime
 from operator import itemgetter
 from statistics import median
 from typing import Any
 
 import numpy as np
 
+from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
@@ -23,6 +24,14 @@ from immich_memories.analysis.editorial_story_weighing import (
     _floor_weights,
     consecutive_runs,
 )
+
+
+def _calendar_week(day: str) -> tuple[int, int] | tuple[()]:
+    """The ISO (year, week) of a day episode; empty when the episode has no dated unit."""
+    try:
+        return date.fromisoformat(day[:10]).isocalendar()[:2]
+    except ValueError:
+        return ()
 
 
 class NoModelJudge:
@@ -174,10 +183,46 @@ class RuleStructureReader:
             )
         return episodes
 
+    def _away_from_home(self, episode) -> bool | None:
+        points = [
+            self.source.gps.get(asset_id)
+            for moment in episode.moments
+            for asset_id in self.source.moment_asset_ids.get(moment, ())
+        ]
+        near = near_home_of(home_of(self.source.config.trips), points)
+        return None if near is None else not near
+
+    def _runs(self, episodes, hints) -> list[list[str]]:
+        """Consecutive photographed days, cut into stories a film can spend a grant on.
+
+        A stretch away from home stays whole however long it lasts, because a trip is one
+        story, and a day at home ends it: two trips either side of a week at home are two
+        stories, not one. A run at home is cut on the calendar week; without that, a
+        densely photographed year merges into a single 129-day story whose grant is spent
+        on its first week and whose remaining months never come into view. A day whose
+        pictures say nothing about where they were does not end a trip.
+        """
+        away_of = {e.key: self._away_from_home(e) for e in episodes}
+        runs: list[list[str]] = []
+        for keys in consecutive_runs({e.key: e for e in episodes}, lambda key: hints[key]["day"]):
+            chunks: dict[tuple, list[str]] = {}
+            dated = next((w for k in keys if (w := _calendar_week(hints[k]["day"]))), ())
+            away, was_away, trips = False, False, 0
+            for key in keys:
+                known = away_of[key]
+                if known is not None:
+                    away = known
+                trips += away and not was_away
+                was_away = away
+                week = _calendar_week(hints[key]["day"]) or dated
+                chunks.setdefault((True, trips) if away else (False, week), []).append(key)
+            runs.extend(chunks.values())
+        return runs
+
     def _stories(self, episodes, hints):
         by_key = {e.key: e for e in episodes}
         stories = []
-        for index, keys in enumerate(consecutive_runs(by_key, lambda key: hints[key]["day"]), 1):
+        for index, keys in enumerate(self._runs(episodes, hints), 1):
             relations: Counter[str] = Counter()
             for key in keys:
                 relations.update(hints[key].get("relations", {}))

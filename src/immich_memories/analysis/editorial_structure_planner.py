@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from collections import ChainMap
 from collections.abc import Sequence
@@ -27,6 +26,7 @@ from immich_memories.analysis.editorial_final_sampled_duplicates import (
     displayed_sample_members,
     reduce_final_sampled_duplicates,
 )
+from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
@@ -80,7 +80,7 @@ FLAGGED_LINE = re.compile(r"nsfw=yes|exposure=(partial|nude)")
 
 
 def _near_home_test(source: StructurePlanningInput, wall: Wall):
-    home = (source.config.trips.homebase_latitude, source.config.trips.homebase_longitude)
+    home = home_of(source.config.trips)
 
     def near_home(f):
         pts: list[tuple[float, Any]] = []
@@ -90,15 +90,7 @@ def _near_home_test(source: StructurePlanningInput, wall: Wall):
             if not exif or exif.latitude is None:
                 continue
             pts.append((exif.latitude, exif.longitude))
-        if not pts or home[0] is None or home[1] is None:
-            return None
-        la, lo = sum(x[0] for x in pts) / len(pts), sum(x[1] for x in pts) / len(pts)
-        la1, lo1, la2, lo2 = map(math.radians, (home[0], home[1], la, lo))
-        h = (
-            math.sin((la2 - la1) / 2) ** 2
-            + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
-        )
-        return 2 * 6371.0 * math.asin(math.sqrt(h)) <= 10.0
+        return near_home_of(home, pts)
 
     return near_home
 
