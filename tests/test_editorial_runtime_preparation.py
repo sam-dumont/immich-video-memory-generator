@@ -138,7 +138,7 @@ def test_missing_required_producer_blocks_all_editing_and_records_failed_attempt
     attempt = planner.last_attempt_directory
     assert read_editorial_attempt(attempt)["status"] == "failed"
     report = json.loads((attempt / "preparation.private.json").read_text())
-    assert len(report["missing_by_producer"]) == 5
+    assert len(report["missing_by_producer"]) == 8
     assert all(len(ids) == 3 for ids in report["missing_by_producer"].values())
 
 

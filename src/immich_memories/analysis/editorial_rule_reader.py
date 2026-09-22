@@ -12,7 +12,10 @@ from typing import Any
 import numpy as np
 
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
-from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
+from immich_memories.analysis.editorial_preparation_picture_facts import (
+    NOTHING_KINDS,
+    picture_facts_on,
+)
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
@@ -320,16 +323,6 @@ class RuleStructureReader:
         return 1
 
 
-_NOTHING_KINDS = frozenset(
-    {
-        "empty_room_ceiling_or_floor",
-        "accidental_or_blurred_frame",
-        "lone_everyday_object",
-        "body_part_closeup",
-    }
-)
-
-
 def nothing_to_show(line: str) -> bool:
     """The optional picture reader says this frame carries nothing. Silent without its row.
 
@@ -338,4 +331,4 @@ def nothing_to_show(line: str) -> bool:
     falls under 0.10, and the ceiling everybody agrees carries nothing scores 0.99. What
     separates those pictures is the reader naming the kind of frame it is looking at.
     """
-    return picture_facts_on(line).get("what") in _NOTHING_KINDS
+    return picture_facts_on(line).get("what") in NOTHING_KINDS

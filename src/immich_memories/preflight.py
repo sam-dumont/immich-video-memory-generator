@@ -507,7 +507,7 @@ def _platform_tag() -> str:
 
 
 def check_encoder(config: Config) -> CheckResult:
-    """Report the digest-pinned DINOv2 export the six context heads run on."""
+    """Report the digest-pinned DINOv2 export the eight context heads run on."""
     if not config.editorial.preparation.demands_models:
         return CheckResult(
             name="Encoder", status=CheckStatus.SKIPPED, message="Not required by metadata_only"

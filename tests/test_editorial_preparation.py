@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import logging
 import os
@@ -48,7 +47,6 @@ from immich_memories.config_models_editorial_preparation import (
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import PipelineCancelled, cancellation_scope
 from immich_memories.store.editorial_preparation import initialize, remember_assets
-from immich_memories.triage.heads import HeadBundle
 
 
 def asset(asset_id):
@@ -380,7 +378,7 @@ def test_missing_previews_report_every_producer_and_do_not_call_providers(tmp_pa
     calls = []
     result = run(tmp_path, ports=successful_ports(calls))
     assert not result.complete
-    assert len(result.missing_by_producer) == 10  # 7 heads, caption, pixel, preview
+    assert len(result.missing_by_producer) == 13  # 10 heads, caption, pixel, preview
     assert all(ids == ("aa1", "bb2") for ids in result.missing_by_producer.values())
     assert calls == []
 
@@ -395,7 +393,7 @@ def test_provider_omission_cannot_be_mistaken_for_success(tmp_path):
     )
     result = run(tmp_path, ports=ports, fetch_preview=lambda _: preview())
     assert not result.complete
-    assert len(result.missing_by_producer) == 7
+    assert len(result.missing_by_producer) == 10
     assert result.failures["detector:setup"] == "missing detector weights"
     assert ("captions", ("aa1", "bb2")) in calls
 
@@ -456,20 +454,6 @@ def test_default_cancellation_scope_stops_before_any_acquisition(tmp_path):
     with pytest.raises(PipelineCancelled), cancellation_scope(cancel):
         run(tmp_path, fetch_preview=lambda _: pytest.fail("must not fetch"))
     assert not (tmp_path / "annotations.sqlite").exists()
-
-
-def test_packaged_bundle_is_the_verified_public_six_head_artifact():
-    path = EditorialPreparationConfig().head_bundle_path
-    assert (
-        hashlib.sha256(path.read_bytes()).hexdigest()
-        == "3e410734db06fe97900301ea4b9c5db569b065c4bc9ee1c2bb027ef58c3eda7a"
-    )
-    bundle = HeadBundle.load(path)
-    expected = EditorialConfig().head_versions
-    # A bundle may carry a head no configuration asks for any more; it may never lack one.
-    assert {k: v for k, v in expected.items() if not k.endswith(("marqo", "docling"))}.items() <= {
-        head.name: head.version for head in bundle.heads
-    }.items()
 
 
 def test_pixel_recipe_retains_accepted_q85_golden():

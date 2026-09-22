@@ -86,7 +86,7 @@ def test_cold_offload_then_warm_reuses_all_facts_without_network(monkeypatch, tm
     assert len(calls) == 2
     assert all(set(names) == {"heads", "nsfw_marqo", "doc_docling"} for names in calls)
     rows = banked_rows(tmp_path)
-    assert len(rows) == 14
+    assert len(rows) == 20
     for head, version, key in rows:
         assert version == EditorialConfig().head_versions[head]
         assert key == f"pinned-{'heads' if head in PUBLIC_HEAD_VERSIONS else head}"

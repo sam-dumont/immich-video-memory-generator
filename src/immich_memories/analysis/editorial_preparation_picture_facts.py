@@ -57,6 +57,18 @@ _WHAT_CRITERIA = {
     "body_part_closeup": "a close-up of a body part",
 }
 
+# The kinds of frame that carry nothing a film can show. Whoever answers, the reader on the
+# line or the distilled `frame_kind` head, this is the union the standing gate reads.
+NOTHING_KINDS = frozenset(
+    {
+        "empty_room_ceiling_or_floor",
+        "accidental_or_blurred_frame",
+        "lone_everyday_object",
+        "body_part_closeup",
+    }
+)
+CARRYING_KINDS = frozenset(_WHAT_CRITERIA) - NOTHING_KINDS
+
 QUESTIONS: Mapping[str, Mapping[str, Any]] = {
     "screen": {
         "type": "noul",

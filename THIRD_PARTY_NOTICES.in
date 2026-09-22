@@ -20,8 +20,22 @@ DINOv2 small (facebook/dinov2-small)
   URL: https://huggingface.co/facebook/dinov2-small
   Paper: Oquab et al., "DINOv2: Learning Robust Visual Features without
     Supervision", 2023
-  Note: the six linear heads that read its features are trained by this project
+  Note: the eight linear heads that read its features are trained by this project
     and ship inside the Python package under the project licence.
+
+Open Images V7 photographs (the training data behind the bundled heads)
+  Role: the pictures the eight linear heads were fitted on; no photograph is
+    redistributed, only the coefficients fitted from them
+  Artifact: 6,604 photographs by 4,951 distinct creators, read once at training
+    time from the CVDF mirror of Open Images V7. Creator, profile URL and
+    landing page are recorded per image in the training manifests. The
+    `frame_kind`, `screen` and `uncovered_person` heads used the partition the
+    five older heads were fitted on plus a 2,986-picture top-up
+  License: CC BY 2.0, filtered on each row's own licence field
+  Copyright: the individual photographers named in the Open Images manifests
+  URL: https://storage.googleapis.com/openimages/web/download_v7.html
+  Note: no photograph from a private library was used, and this notice does not
+    relicense the source photographs.
 
 Marqo NSFW image detector (Marqo/nsfw-image-detection-384)
   Role: the sensitive-content detector behind the family-viewing gate

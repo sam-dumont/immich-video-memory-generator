@@ -526,7 +526,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--torch-threads", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--provider", default="auto", choices=("auto", "cpu", "coreml"))
     parser.add_argument("--encoder", default=DEFAULT_ENCODER)
-    parser.add_argument("--bundle", default=str(DEFAULT_BUNDLE / "public-6heads-v3.npz"))
+    parser.add_argument("--bundle", default=str(DEFAULT_BUNDLE / "public-8heads-v4.npz"))
     parser.add_argument("--detector-cache", default="")
     parser.add_argument("--marqo-onnx", default="")
     parser.add_argument("--allow-downloads", action="store_true")

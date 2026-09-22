@@ -35,7 +35,7 @@ BUNDLED_HEADS = (
     / "immich_memories"
     / "triage"
     / "bundled_heads"
-    / "public-6heads-v3.npz"
+    / "public-8heads-v4.npz"
 )
 TOKENS = 1 + PATCH_GRID * PATCH_GRID
 

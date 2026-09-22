@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
-from immich_memories.analysis.editorial_preparation_picture_facts import plain_picture_facts
+from immich_memories.analysis.editorial_preparation_picture_facts import (
+    CARRYING_KINDS,
+    plain_picture_facts,
+)
 from immich_memories.analysis.subject_framing import framing_annotation, subject_framing
 from immich_memories.store.asset_annotations import (
     AssetAnnotationFactBatch,
@@ -36,7 +39,12 @@ _HEAD_SILENCE = {
     "doc_docling": frozenset({"photograph"}),
     "nsfw_marqo": frozenset({"no"}),
     "venue": frozenset({"other"}),
+    "screen": frozenset({"no"}),
+    "uncovered_person": frozenset({"no"}),
+    # A frame kind is only worth a reader's attention when it says the frame carries nothing.
+    "frame_kind": CARRYING_KINDS,
 }
+_HEAD_RENAMES = {"doc_docling": "document", "nsfw_marqo": "nsfw", "frame_kind": "frame"}
 
 
 @dataclass(frozen=True)
@@ -313,8 +321,7 @@ def _head_bits(facts: StoredAssetAnnotationFacts, head_versions: Mapping[str, st
     for head in sorted(head_versions):
         label = heads.get(head)
         if label and label not in _HEAD_SILENCE.get(head, frozenset()):
-            rendered_head = head.replace("doc_docling", "document").replace("nsfw_marqo", "nsfw")
-            bits.append(f"{rendered_head}={label}")
+            bits.append(f"{_HEAD_RENAMES.get(head, head)}={label}")
     return bits
 
 

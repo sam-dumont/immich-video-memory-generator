@@ -26,9 +26,12 @@ def _default_head_versions() -> dict[str, str]:
         "activity": "public-v1",
         "children": "public-v1",
         "doc_docling": "det-v2",
+        "frame_kind": "public-v1",
         "location": "public-v1",
         "nsfw_marqo": "det-v2",
         "people": "public-v1",
+        "screen": "public-v1-strict",
+        "uncovered_person": "public-v1",
         "venue": "oi-v3",
     }
 

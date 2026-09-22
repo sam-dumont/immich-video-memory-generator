@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, field_validator
 
 # The producers the service serves, in the order it serves them. "heads" is the
-# DINOv2 encoder with the six public context heads; the other two are the detectors.
+# DINOv2 encoder with the eight public context heads; the other two are the detectors.
 SERVED_PRODUCERS = ("heads", "nsfw_marqo", "doc_docling")
 
 

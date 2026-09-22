@@ -142,11 +142,11 @@ class EditorialPreparationConfig(BaseModel):
 
     @property
     def demands_models(self) -> bool:
-        """Whether the ONNX encoder, the six heads and the two detectors are asked for."""
+        """Whether the ONNX encoder, the eight heads and the two detectors are asked for."""
         return self.tier in {"full", "no_captions"}
 
     @property
     def head_bundle_path(self) -> Path:
         if self.head_bundle.strip():
             return Path(self.head_bundle).expanduser()
-        return Path(__file__).parent / "triage" / "bundled_heads" / "public-6heads-v3.npz"
+        return Path(__file__).parent / "triage" / "bundled_heads" / "public-8heads-v4.npz"
