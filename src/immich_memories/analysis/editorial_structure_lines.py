@@ -2,13 +2,14 @@
 
 Junk culled by facts: an anchor with nothing showable gets no primary. These readings are
 text-only — the flag and people tail of a line is stripped before the story reader sees it, so a
-picture is judged on what it shows.
+picture is judged on what it shows. A reader with no sentence to read is handed those facts
+back separately, because they are then the only evidence of what the picture holds.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 LIVING = re.compile(
@@ -20,11 +21,38 @@ _FACT_PREFIX = re.compile(
 )
 
 
+def metadata_life(
+    assets: Mapping[str, Any], audience_annotations: Mapping[str, Any]
+) -> Callable[[str], bool]:
+    """Whether a picture shows somebody, from the facts a bank holds beside its line.
+
+    Immich's own named faces answer first; the people head answers where it saw
+    somebody. Both are stripped off the line before `description` reads it, so a reader
+    with no sentence to read has no other way to reach them.
+    """
+
+    def shows_life(asset_id: str) -> bool:
+        asset = assets.get(asset_id)
+        if asset is not None and (asset.people or asset.faces):
+            return True
+        record = audience_annotations.get(asset_id)
+        heads = dict(record.heads) if record else {}
+        return heads.get("people", "undetermined") not in {"none", "undetermined"}
+
+    return shows_life
+
+
 class UnitLines:
     """The annotation line of a playable unit, and the facts read out of it."""
 
-    def __init__(self, lines: Mapping[str, str]) -> None:
+    def __init__(
+        self,
+        lines: Mapping[str, str],
+        *,
+        life_without_prose: Callable[[str], bool] | None = None,
+    ) -> None:
         self._lines = lines
+        self._life_without_prose = life_without_prose or (lambda _asset_id: False)
 
     def label(self, u: dict) -> str:
         media = {
@@ -46,11 +74,9 @@ class UnitLines:
         return described[0] if described else ""
 
     def shows_life(self, u) -> bool:
-        return (
-            bool(LIVING.search(self.description(u)))
-            or u["kind"] in ("live-motion", "video")
-            or bool(u.get("favourite"))
-        )
+        prose = self.description(u)
+        shown = bool(LIVING.search(prose)) if prose else self._life_without_prose(u["asset_id"])
+        return shown or u["kind"] in ("live-motion", "video") or bool(u.get("favourite"))
 
     def lone_object(self, u) -> bool:
         return not self.shows_life(u)

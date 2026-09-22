@@ -31,7 +31,11 @@ from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
     StructurePlanningInput,
 )
-from immich_memories.analysis.editorial_structure_lines import AnchorRows, UnitLines
+from immich_memories.analysis.editorial_structure_lines import (
+    AnchorRows,
+    UnitLines,
+    metadata_life,
+)
 from immich_memories.analysis.motion_rendering import motion_renderings
 from immich_memories.api.models import AssetType
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
@@ -351,7 +355,14 @@ def build_material(
         document_sources=document_sources,
     )
     units = {f: builder.units_of(f) for f in wall.fam_ids}
-    text = UnitLines(lines)
+    text = UnitLines(
+        lines,
+        # The no-model reader has no sentence to read, so it is handed the people facts
+        # the line strips. A model reader keeps judging the caption it was given.
+        life_without_prose=metadata_life(source.assets, source.audience_annotations)
+        if ports.rules is not None
+        else None,
+    )
     # The story reader reads what the pictures show, not the flag/people tail of the line.
     story_lines = dict(lines)
     for family_units in units.values():

@@ -327,6 +327,7 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | How much does a story weigh? | From the gate: remarkable seeds `minor`, maybe seeds `glimpse`, background gets nothing; three favourites raise a story to `major`. `dominant` comes from the thesis pass that names a central story, the same one the model path uses |
 | Which pictures show a moment? | A capture group is a moment; the favourite wins it, then the frame that shows the named person over the frame he is a speck in, then sharpness, then capture order. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
 | Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a sensitive-content hit, a blurry, dark or blown-out frame is weak; a picture with people, an activity or a real venue stands |
+| Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite" |
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing. Nothing clears a flag except you, on the pool page |
 
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
