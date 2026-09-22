@@ -2,8 +2,9 @@
 
 The reader is asked a frozen set of yes/no and multiple-choice questions about one 800 px tile
 and answers with a probability per question. Only the raw numbers are banked: this producer
-names what it sees, and the gates downstream own what that means. It is off unless a deployment
-configures it, it talks to nothing but its configured endpoint, and it is paid once per source.
+names what it sees, and the gates downstream own what that means. It is on, it talks to nothing
+but its configured endpoint, and it is paid once per source. A deployment with nothing at that
+endpoint pays one line and keeps its pictures owed for a run that finds a reader there.
 
 The question texts are hashed into the producer string, so rewording one does not quietly mix
 two answer sets in a bank; the old rows stop answering and the pictures are read again.
@@ -290,23 +291,44 @@ def prepare_picture_facts(
     concurrency: int,
     check_cancelled: Callable[[], None],
     progress: Callable[[str, int, int], None],
+    reader_label: str = "",
 ) -> PictureFactsPreparation:
-    """Bank a row, or a settled refusal, for each source; transport failures stay undone."""
+    """Bank a row, or a settled refusal, for each source; transport failures stay undone.
+
+    A reader that is simply not there costs one line, not one failure per picture: when the
+    first batch comes back as nothing but transport failures the pass stops, and every source
+    stays owed for a later run to read once something answers. ``reader_label`` is the address
+    that line names; a reader answering some pictures and failing others is unchanged.
+    """
     initialize_picture_facts(connection)
     outcome = PictureFactsPreparation()
     reader = threading.Semaphore(concurrency)
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
-        for start in range(0, len(sources), max(1, concurrency)):
+    step = max(1, concurrency)
+    with ThreadPoolExecutor(max_workers=step) as pool:
+        for start in range(0, len(sources), step):
             check_cancelled()
-            batch = sources[start : start + max(1, concurrency)]
+            batch = sources[start : start + step]
             futures = [
                 pool.submit(copy_context().run, _describe, source, preview_for, ask, reader)
                 for source in batch
             ]
-            for source, future in zip(batch, futures, strict=True):
-                _settle(connection, source, future.result(), outcome)
+            results = [future.result() for future in futures]
+            for source, result in zip(batch, results, strict=True):
+                _settle(connection, source, result, outcome)
             progress("picture_facts", start + len(batch), len(sources))
+            if start == 0 and all(result.facts is None for result in results):
+                _silent_reader(outcome, reader_label, owed=len(sources))
+                break
     return outcome
+
+
+def _silent_reader(outcome: PictureFactsPreparation, label: str, *, owed: int) -> None:
+    """Replace the batch's per-picture transport failures with the one line they all say."""
+    first = next(iter(outcome.failures.values()), "no answer")
+    outcome.failures.clear()
+    outcome.failures["reader"] = (
+        f"reader at {label} did not answer: {first}; {owed} pictures left unread"
+    )
 
 
 def _settle(
@@ -365,7 +387,9 @@ def acquire_picture_facts(
     """Read every picture this pass has not read yet, or report why the reader could not.
 
     An endpoint that is not there is one producer's problem, named once against the
-    endpoint. Nothing here is a demanded fact, so no absence of it can block a cut.
+    endpoint: the provider folds a silent reader into a single ``reader`` entry, so this
+    pass contributes one line whatever the library's size. Nothing here is a demanded fact,
+    so no absence of it can block a cut.
     """
     owed = _owed(connection, assets, served) if config.enabled else ()
     if not owed:
@@ -381,6 +405,7 @@ def acquire_picture_facts(
                 concurrency=config.concurrency,
                 check_cancelled=stage.check,
                 progress=stage.report,
+                reader_label=config.base_url,
             )
     except Exception as exc:
         stage.failures["picture_facts"] = (

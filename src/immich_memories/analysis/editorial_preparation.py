@@ -92,7 +92,15 @@ class PreparationResult:
 
     @property
     def complete(self) -> bool:
-        return not self.missing_by_producer and not self.failures
+        """Whether the cut has what it was promised.
+
+        The optional picture reader is never part of that: nothing downstream demands its
+        rows, so an install whose reader is not up still cuts its films and is one line
+        poorer in this report rather than unable to start.
+        """
+        return not self.missing_by_producer and all(
+            key.startswith("picture_facts") for key in self.failures
+        )
 
     @property
     def producer_failures(self) -> tuple[str, ...]:

@@ -199,6 +199,36 @@ def test_a_reader_that_refuses_settles_the_row_rather_than_failing_the_run(tmp_p
     assert plain_picture_facts(banked["a1"]) == ""
 
 
+def test_a_reader_that_is_not_there_costs_one_line_and_leaves_every_picture_owed(tmp_path):
+    absent = _ReaderEndpoint()
+    address = absent.base_url
+    absent.close()
+    sources = tuple(PictureFactsSource(f"a{index}", f"digest-{index}") for index in range(3))
+
+    with closing(sqlite3.connect(tmp_path / "facts.sqlite")) as connection:
+        outcome = prepare_picture_facts(
+            connection=connection,
+            sources=sources,
+            preview_for=_preview,
+            ask=reader_asker(address, timeout=10),
+            concurrency=1,
+            check_cancelled=lambda: None,
+            progress=lambda *_: None,
+            reader_label=address,
+        )
+        banked = settled_picture_facts(
+            connection, {s.asset_id: s.digest for s in sources}, PICTURE_FACTS_PRODUCER
+        )
+        still_owed = missing_picture_facts(connection, sources)
+
+    assert list(outcome.failures) == ["reader"]
+    assert outcome.failures["reader"].startswith(f"reader at {address} did not answer: ")
+    assert outcome.failures["reader"].endswith("; 3 pictures left unread")
+    assert outcome.requests == 1, "the pass stopped rather than asking a reader that is not there"
+    assert banked == {}
+    assert still_owed == sources
+
+
 def test_the_segment_names_what_was_seen_and_stays_quiet_about_the_rest():
     watched = PictureFacts(
         DESCRIBED,

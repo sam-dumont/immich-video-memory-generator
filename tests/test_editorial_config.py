@@ -191,11 +191,8 @@ def test_captions_are_asked_for_one_at_a_time_by_default() -> None:
     assert EditorialPreparationConfig().caption_concurrency == 1
 
 
-def test_the_picture_facts_reader_is_off_until_a_deployment_asks_for_it():
-    default = EditorialPreparationConfig()
-
-    assert default.picture_facts.enabled is False
-    assert default.demands_picture_facts is False
+def test_the_picture_facts_reader_is_on_by_default():
+    assert EditorialPreparationConfig().picture_facts.enabled is True
 
 
 def test_an_enabled_picture_facts_reader_needs_an_endpoint_without_credentials():

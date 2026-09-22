@@ -29,13 +29,14 @@ def _endpoint(value: str, field: str) -> str:
 
 
 class PictureFactsConfig(BaseModel):
-    """An optional local typed-decision reader, asked once per picture at ingest.
+    """A local typed-decision reader, asked once per picture at ingest.
 
-    Off unless a deployment turns it on, and it is told exactly one endpoint: nothing here
-    reaches anything the run was not already configured to contact.
+    On, because what it answers is worth having and it is told exactly one endpoint: the
+    address below and nothing else, which is a local one. A deployment with nothing there
+    pays one line in the preparation report and cuts its films as before.
     """
 
-    enabled: bool = False
+    enabled: bool = True
     base_url: str = "http://127.0.0.1:8080/v1"
     timeout_seconds: float = Field(default=120, gt=0)
     concurrency: int = Field(

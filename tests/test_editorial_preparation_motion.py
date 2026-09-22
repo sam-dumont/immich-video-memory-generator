@@ -400,13 +400,13 @@ def test_an_unfinished_motion_line_blocks_the_cut_like_a_caption(tmp_path):
 
 @pytest.mark.parametrize("tier", ["no_captions", "metadata_only"])
 def test_a_tier_without_a_caption_seat_never_asks_for_motion(tmp_path, tier):
-    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import without_picture_facts
 
     def refuse(**_):
         pytest.fail("motion ran under a tier without a caption seat")
 
     result = prepare(
-        tmp_path, refuse, preparation_config=EditorialPreparationConfig(tier=tier), head_versions={}
+        tmp_path, refuse, preparation_config=without_picture_facts(tier=tier), head_versions={}
     )
 
     assert result.complete
