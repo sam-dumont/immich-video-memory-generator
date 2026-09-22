@@ -469,6 +469,7 @@ def select_story_first(
     record: Callable[[str, Mapping[str, Any]], None],
     flagged: Callable[[str], bool] = lambda _asset: False,
     subject: Callable[[str], SubjectVisibility] = lambda _asset: SubjectVisibility(0, 0.0),
+    representative_rank: Callable[[str, int, int], tuple] | None = None,
     full_lines: Mapping[str, str] | None = None,
     life: Callable[[str], bool] = lambda _asset: True,
     family_tier: Mapping[str, int] | None = None,
@@ -565,6 +566,7 @@ def select_story_first(
         "life": life,
         "plays": carries_motion,
         "subject": subject,
+        "rank": representative_rank,
     }
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}

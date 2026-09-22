@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_story_pick_contract import ask_moment_pick
@@ -196,6 +197,7 @@ def _capture_group_moments(
     life: Callable[[str], bool] = lambda _a: True,
     plays: Callable[[dict], bool] = lambda _u: False,
     subject: Callable[[str], SubjectVisibility] = lambda _a: SubjectVisibility(0, 0.0),
+    rank: Callable[[str, int, int], tuple] | None = None,
 ) -> list[DepictedChoice]:
     """Without a model inventory a capture group is the moment; the favourite, else the best unflagged
     picture that shows life, carries it.
@@ -209,23 +211,31 @@ def _capture_group_moments(
     showing him does, so visibility is read first, and how much of the frame he covers breaks
     the tie between two frames that both show him. Pictures that name nobody all read zero,
     which leaves the order exactly as it was.
+
+    A reader with no model behind it passes its own ``rank``, which reads capture facts
+    instead of a caption and knows where a picture sits inside its burst.
     """
     groups: dict[str, list[dict]] = {}
     for u in units:
         groups.setdefault(u.get("moment") or u["asset_id"], []).append(u)
     choices = []
     for moment, members in groups.items():
+        place = {u["asset_id"]: i for i, u in enumerate(sorted(members, key=itemgetter("taken")))}
         ordered = sorted(
             members,
             key=lambda u: (
-                not u.get("favourite"),
-                flagged(u["asset_id"]),
-                not life(u["asset_id"]),
-                not plays(u),
-                -subject(u["asset_id"]).rung,
-                -subject(u["asset_id"]).share,
-                -quality(u["asset_id"]),
-                u["taken"],
+                rank(u["asset_id"], place[u["asset_id"]], len(members))
+                if rank is not None
+                else (
+                    not u.get("favourite"),
+                    flagged(u["asset_id"]),
+                    not life(u["asset_id"]),
+                    not plays(u),
+                    -subject(u["asset_id"]).rung,
+                    -subject(u["asset_id"]).share,
+                    -quality(u["asset_id"]),
+                    u["taken"],
+                )
             ),
         )
         choices.append(

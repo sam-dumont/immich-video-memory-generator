@@ -21,6 +21,7 @@ from immich_memories.analysis.editorial_episode_documents import factual_moment_
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
+from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_lookalike import (
@@ -537,6 +538,12 @@ def _story_selection(
         lines=material.story_lines,
         flagged=lambda asset_id: bool(FLAGGED_LINE.search(source.annotations.get(asset_id, ""))),
         subject=lambda asset_id: framing_visibility(source.annotations.get(asset_id, "")),
+        # With no model to compare pictures, a capture group's frame is won on capture facts.
+        representative_rank=rule_representative_rank(
+            source.assets, source.annotations, source.motion_residuals
+        )
+        if ports.rules is not None
+        else None,
         life=lambda asset_id: _shows_life(material, unit_of, asset_id),
         full_lines=source.annotations,
         contract=contract + "\n\n" + source.intent.story_prompt_block(),

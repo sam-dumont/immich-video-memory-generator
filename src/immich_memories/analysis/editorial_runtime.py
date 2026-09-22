@@ -689,7 +689,7 @@ def build_editorial_planner(
     def episode_reader_factory(prepared: Any) -> EpisodeReader:
         annotations = readings.reader(prepared)
         if reader_mode == "rules":
-            return RuleEpisodeReader(annotations)
+            return RuleEpisodeReader(annotations, by_quality=True)
         assert episode_requester is not None
         contract = annotations.contract
         producer = EpisodeReadingProducer(
