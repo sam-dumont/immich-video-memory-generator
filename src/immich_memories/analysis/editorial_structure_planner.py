@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
@@ -71,7 +72,7 @@ from immich_memories.analysis.editorial_structure_record import (
     provider_metrics,
     shave_content_duration,
 )
-from immich_memories.analysis.editorial_thin_layer import story_asset_ids
+from immich_memories.analysis.editorial_thin_gates import ThinGates
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -384,16 +385,15 @@ def _select(
     )
     run.carriers = list(selection.carriers)
     if ports.thin is not None:
-        run.carriers = ports.thin.polish(
+        run.carriers = _thin_polish(
+            source,
+            ports,
+            material,
+            selection,
+            pool,
+            gate,
             run.carriers,
-            judge=ports.judge,
-            stories=selection.story.stories,
-            hints=selection.story.audit.get("hints") or {},
-            asset_ids_of=story_asset_ids(
-                selection.story.episodes, selection.story.stories, pool.moment_assets
-            ),
             contract=contract,
-            line_of=lambda asset_id: selection.lines.get(asset_id, ""),
             record=record_story,
         )
     required = frozenset(source.owner_required_asset_ids)
@@ -608,6 +608,52 @@ def _story_selection(
         looks_alike=looks_alike,
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
         near_home=_near_home_test(source, wall),
+    )
+
+
+def _thin_polish(
+    source, ports, material: Material, selection, pool, gate, carriers, *, contract, record
+):
+    """The model's one read of the rules cut this run built.
+
+    The draft was built blind: its standing answers came from rules and no bank was consulted,
+    so a gate refusal here leaves a slot rather than a silently shorter draft. This gate asks
+    the model the same question and banks its answers, which is what makes a second run free.
+    """
+    if ports.thin is None:
+        return carriers
+    unit_by_asset = {u["asset_id"]: (f, u) for f, units in material.units.items() for u in units}
+    unit_of = {asset: unit for asset, (_family, unit) in unit_by_asset.items()}
+    bank_path = source.bank_dir / "picture-stands.private.json"
+    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    standing = StandingGate(
+        ports.judge,
+        contract=contract,
+        period_label=source.case.label,
+        line_of=lambda asset_id: selection.lines.get(asset_id, ""),
+        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
+        unit_by_asset=unit_by_asset,
+        pictures_of={s["key"]: s["seen"]["pictures"] for s in selection.story.stories},
+        bank=bank,
+        save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+        calls=selection.calls,
+        motion_line=ports.observe_story_motion,
+        motion_identity=ports.story_motion_identity,
+    )
+    return ports.thin.polish(
+        carriers,
+        judge=ports.judge,
+        gates=ThinGates(
+            standing=standing,
+            audience=gate,
+            thumbnail_hash=ports.thumbnail_hash,
+            audience_name=source.audience,
+        ),
+        catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets),
+        contract=contract,
+        line_of=lambda asset_id: selection.lines.get(asset_id, ""),
+        record=record,
+        protected=source.owner_required_asset_ids,
     )
 
 
