@@ -71,6 +71,7 @@ from immich_memories.analysis.editorial_structure_record import (
     provider_metrics,
     shave_content_duration,
 )
+from immich_memories.analysis.editorial_thin_layer import story_asset_ids
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -340,8 +341,12 @@ def _select(
         lines=source.annotations,
         bank_path=audit_dir / "shareability.private.json",
         check_audience=audience_check_for(
+            # A run that only polishes a rules draft still has the captions its tier produces;
+            # the reduced check belongs to a run with no model at all.
             "no_captions"
-            if ports.rules and source.config.editorial.preparation.demands_models
+            if ports.rules is not None
+            and ports.thin is None
+            and source.config.editorial.preparation.demands_models
             else source.config.editorial.preparation.tier
         ),
     )
@@ -378,6 +383,19 @@ def _select(
         looks_alike=_looks_alike_relation(ports, material, episode_relation, relation_records),
     )
     run.carriers = list(selection.carriers)
+    if ports.thin is not None:
+        run.carriers = ports.thin.polish(
+            run.carriers,
+            judge=ports.judge,
+            stories=selection.story.stories,
+            hints=selection.story.audit.get("hints") or {},
+            asset_ids_of=story_asset_ids(
+                selection.story.episodes, selection.story.stories, pool.moment_assets
+            ),
+            contract=contract,
+            line_of=lambda asset_id: selection.lines.get(asset_id, ""),
+            record=record_story,
+        )
     required = frozenset(source.owner_required_asset_ids)
     if required:
         # After the read, never before it: the owner's ticks change no prompt.

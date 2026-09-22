@@ -392,6 +392,20 @@ descriptions: picture content was classified, not read.*
 Rules are a degraded mode, not an equal-quality alternative. Prefiltered requests (a person, an
 album, one event, a trip) survive it well; broad recaps are where the model earns its cost.
 
+## Letting the model polish a rules cut instead of planning one
+
+`advanced.editorial.thin_model_layer: true` puts the two readers in series rather than making you
+choose. The rules reader builds the whole cut with no model call at all, and the model is then
+asked one closed question over the finished film: which of these shots adds nothing to it? Blocks
+of at most twelve, both orders, reject-only, the shape the standing gate is already asked in. A
+shot both orders name leaves; a shot one order names is offered a replacement from its own story
+and keeps its place until one passes. A picture you starred keeps its place whatever the vote said;
+only a gate takes it out.
+
+It needs a period the library holds an account of, which cataloguing writes. Without one the run
+plans the film with the story-first planner exactly as it always has, so the switch can never leave
+a library without a film. It is off by default.
+
 ## The stages, and what each one costs
 
 The stage names are what the run reports: a row on the Memory page, a line in the terminal.

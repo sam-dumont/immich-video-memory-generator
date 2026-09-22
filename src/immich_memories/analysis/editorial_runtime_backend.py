@@ -9,7 +9,7 @@ from dataclasses import replace
 from itertools import chain
 from operator import itemgetter
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.editorial_case import Case
 from immich_memories.analysis.editorial_demanded_previews import DemandedPreviewReader
@@ -34,11 +34,13 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_io import StructureReranker, StructureTextJudge
 from immich_memories.analysis.editorial_structure_source import capture_structure_input
+from immich_memories.analysis.editorial_thin_layer import ThinPolish, catalogued_period
 from immich_memories.analysis.editorial_thumbnail_hashes import CachedThumbnailHasher
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.security import write_secret_file
+from immich_memories.store.library_overviews import library_period_account
 
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_runtime import EditorialRunContext
@@ -272,7 +274,27 @@ class ProductionPostCardBackend:
             if demanded_previews is not None
             else picture_facts.metrics,
             clock_offsets=self.clock_offsets(source, resources),
+            **self._thin_polish(source),
         )
+
+    def _thin_polish(self, source: StructurePlanningInput) -> dict[str, Any]:
+        """Build the draft with the no-model reader and let the model polish it, when asked.
+
+        Only for a period the library holds an account of: without one there is nothing to
+        polish against, and the run plans the film the way it always has.
+        """
+        if not self._config.editorial.thin_model_layer or source.store_path is None:
+            return {}
+        period = catalogued_period(source.case.ranges)
+        account = library_period_account(source.store_path, period) if period else ""
+        if not account:
+            return {}
+        from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+
+        return {
+            "rules": RuleStructureReader(source),
+            "thin": ThinPolish(account=account, bank_dir=source.bank_dir),
+        }
 
     def _adopt(
         self, result: StructurePlanningResult, artifact_dir: Path, allowed_ids: set[str]

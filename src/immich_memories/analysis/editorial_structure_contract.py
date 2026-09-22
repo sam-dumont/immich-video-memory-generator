@@ -23,6 +23,7 @@ from immich_memories.security import write_secret_file
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
     from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+    from immich_memories.analysis.editorial_thin_layer import ThinPolish
 
 
 class SampledPairConfirmer(Protocol):
@@ -230,6 +231,9 @@ class StructurePlannerPorts:
     )
     attached_material_metrics: Callable[[], Mapping[str, Any]] | None = None
     rules: RuleStructureReader | None = None
+    # Set when the model polishes a rules draft instead of planning the film: the reader above
+    # builds the draft with no model and this reads the finished cut once.
+    thin: ThinPolish | None = None
     # Measured Live companion clock offsets for content-aligned stitch joins
     # (#1012); None keeps the metadata plan. Lazy in production: it fetches
     # companions only for bursts it is actually asked about.

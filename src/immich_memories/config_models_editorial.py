@@ -35,6 +35,14 @@ class EditorialConfig(BaseModel):
 
     preparation: EditorialPreparationConfig = Field(default_factory=EditorialPreparationConfig)
     reader: Literal["auto", "model", "rules"] = "auto"
+    thin_model_layer: bool = Field(
+        default=False,
+        description=(
+            "Build the cut with the no-model reader and let the model polish it, instead of "
+            "planning the whole film with the model. Needs a catalogued period; without one the "
+            "run falls back to the story-first planner"
+        ),
+    )
 
     def resolve_reader(self, model: str) -> Literal["model", "rules"]:
         """A blank model selects the bounded rules reader unless explicitly required."""
