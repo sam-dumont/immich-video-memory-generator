@@ -28,7 +28,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
     hash_pair_relation,
     picture_pair_relation,
 )
-from immich_memories.analysis.editorial_story_planner import select_story_first
+from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
@@ -50,6 +50,7 @@ from immich_memories.analysis.editorial_structure_finishing import (
     check_empty_attached,
     final_duplicate_review,
     observe_attached,
+    replacement_offers,
     resolve_motion_and_timing,
     trim_to_timing,
 )
@@ -425,6 +426,9 @@ def _select(
     final_duplicate_review(
         run,
         ports,
+        replacements_for=replacement_offers(
+            alternatives_pool(selection, material.units, wall.anchor_label)
+        ),
         source_relation=source_relation,
         episode_relation=episode_relation,
         picture_records=material.picture_evidence.records,

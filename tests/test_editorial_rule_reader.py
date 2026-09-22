@@ -131,6 +131,13 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
     # The cut ends with a duplicate review of its own rather than reporting it unavailable.
     assert plan["final_duplicate_review"]["status"] in {"complete", "incomplete"}
     assert plan["final_duplicate_review"]["policy"] == FINAL_HASH_REVIEW_POLICY
+    # A refused frame is refilled from its own moment or its story before the film shortens,
+    # so the record always says where every slot it touched came from.
+    assert set(plan["final_duplicate_review"]["replaced_from"]) <= {"moment", "story"}
+    assert all(
+        row.get("replacement") in {None, *(c["asset_id"] for c in plan["carriers"])}
+        for row in plan["final_duplicate_review"]["removals"]
+    )
     import sqlite3
 
     with sqlite3.connect(

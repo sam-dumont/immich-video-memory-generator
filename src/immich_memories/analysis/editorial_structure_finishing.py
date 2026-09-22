@@ -9,7 +9,7 @@ that build one.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -182,6 +182,42 @@ def _sampled_duplicate_review(
     )
 
 
+def replacement_offers(pool_for: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]]]):
+    """Label the audience gate's own pool by where each offer comes from.
+
+    The pool a held carrier draws on is already the moment's other pictures first, in the
+    order the quality key ranked them, and then the story's unshown moments. Naming the two
+    rungs is all the duplicate review needs to say which one refilled a slot.
+    """
+
+    def offers(carrier: Mapping[str, Any]) -> list[tuple[str, Mapping[str, Any]]]:
+        moment = set(carrier.get("moment_alternatives") or ())
+        return [
+            ("moment" if unit.get("asset_id") in moment else "story", unit)
+            for unit in pool_for(carrier)
+        ]
+
+    return offers
+
+
+def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequence[str]) -> None:
+    """A refilled slot arrives after motion was resolved and the budget settled.
+
+    Its picture is resolved like any other retained unit, and the film is fitted to the cap
+    it was already fitted to, so a replacement cannot buy the film length the trim refused.
+    """
+    if not added:
+        return
+    filled = set(added)
+    retained = RetainedMotion(ports.resolve_motion)
+    resolved = {
+        c["asset_id"]: c for c in retained([c for c in run.carriers if c["asset_id"] in filled])
+    }
+    run.carriers = [resolved.get(c["asset_id"], c) for c in run.carriers]
+    if run.final_content_cap > 0:
+        run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+
+
 def final_duplicate_review(
     run: PlanRun,
     ports: StructurePlannerPorts,
@@ -195,6 +231,8 @@ def final_duplicate_review(
     quality,
     pixel_facts,
     owner_required: Sequence[str] = (),
+    replacements_for: Callable[[Mapping[str, Any]], Sequence[tuple[str, Mapping[str, Any]]]]
+    | None = None,
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward."""
@@ -208,7 +246,10 @@ def final_duplicate_review(
         # ended with no review at all while a model film ended with one. The preview hashes
         # the burst pass already cached ask the same question over the whole finished cut.
         reviewed = review_cut_by_cached_hashes(
-            run.carriers, thumbnail_hash=ports.thumbnail_hash, protected_asset_ids=protected
+            run.carriers,
+            thumbnail_hash=ports.thumbnail_hash,
+            protected_asset_ids=protected,
+            replacements_for=replacements_for,
         )
     else:
         reviewed = _sampled_duplicate_review(
@@ -238,6 +279,9 @@ def final_duplicate_review(
         }
         for carrier in before_duplicates
         if carrier["asset_id"] in removed
+    )
+    _settle_replacements(
+        run, ports, [row["replacement"] for row in removed.values() if "replacement" in row]
     )
 
 
