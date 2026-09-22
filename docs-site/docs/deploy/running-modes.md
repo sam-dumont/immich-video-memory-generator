@@ -69,12 +69,14 @@ Facts are banked per picture and per producer. Changing tiers erases nothing, an
 library can add captions later, a month at a time. The second cut over a prepared period pays
 only a preview check.
 
-### The optional picture reader
+### The picture reader
 
-Off by default, on any tier. It asks a local typed-decision reader a frozen set of eleven
+On by default, on any tier. It asks a local typed-decision reader a frozen set of eleven
 questions about each picture, once, at preparation time, and banks the raw probabilities. It is
-the only producer here that needs a GPU box of its own, and a run that does not turn it on never
-opens a socket to it.
+the only producer here that needs a GPU box of its own. An install with nothing at that address
+pays one line in the preparation report, naming the address and how many pictures went unread,
+and cuts its films exactly as it did before: those pictures stay owed, and a later run reads them
+once something answers. Set `enabled: false` to stop asking.
 
 ```yaml
 advanced:
@@ -419,7 +421,7 @@ jsDelivr fonts) are `network:` switches, all off, and
 |---|---|---|---|
 | rules + `metadata_only` | nothing | one question from the music stage after the render, if an `llm` endpoint is configured at all | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
 | rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
-| any mode, `picture_facts.enabled` | nothing extra | nothing extra | an 800 px tile of every picture in the period goes once to `picture_facts.base_url`, and to nothing else. It is off by default |
+| any mode, `picture_facts` | nothing extra | nothing extra | an 800 px tile of every picture in the period goes once to `picture_facts.base_url`, and to nothing else. It is on by default, and that address is on this machine; point it at another host and that is the consent step |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
 | `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |

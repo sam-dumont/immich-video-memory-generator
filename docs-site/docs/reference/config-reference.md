@@ -458,8 +458,8 @@ editorial:
     venue: oi-v3
   preparation:
     tier: full                   # full | no_captions | metadata_only
-    picture_facts:               # optional local typed-decision picture reader, off by default
-      enabled: false
+    picture_facts:               # local typed-decision picture reader, on; see the note below
+      enabled: true
       base_url: http://127.0.0.1:8080/v1
       timeout_seconds: 120
       concurrency: 1
@@ -478,6 +478,14 @@ editorial:
 ```
 
 Tier 2: lives under `advanced:` when the app writes the file.
+
+`picture_facts` is on. It asks the local typed-decision reader at `picture_facts.base_url` a
+frozen set of questions about each picture once, at preparation time, and contacts that address
+and nothing else. Nothing downstream demands its answers, so an install with no reader there
+costs one line in the preparation report and cuts its films exactly as before: one
+`picture_facts:reader` entry naming the address and how many pictures went unread, never one
+entry per picture. Those pictures stay owed and are read by a later run once something answers.
+Set `enabled: false` to stop asking.
 
 Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts

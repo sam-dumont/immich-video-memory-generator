@@ -189,10 +189,11 @@ holds both a still and a video of the same instant, the video takes the frame un
 claims it: a video carries no sharpness measurement, so on a tie of everything else it used to lose
 to any still in the group.
 
-**Optionally, the pixels answer for themselves, once.** The picture reader
-([running modes](../deploy/running-modes.md#the-optional-picture-reader)) is off by default. Turn
-it on and preparation asks a local typed-decision model eleven frozen questions about each
-picture's 800 px tile and banks the probabilities. Three gates read them, and only when the row
+**The pixels answer for themselves, once.** The picture reader
+([running modes](../deploy/running-modes.md#the-picture-reader)) is on. Preparation asks a local
+typed-decision model eleven frozen questions about each picture's 800 px tile and banks the
+probabilities; an install with nothing at that local address pays one line in the preparation
+report and cuts as before. Three gates read them, and only when the row
 exists: a picture the reader calls a screen at 0.9 or better stops being a scene carrier, which is
 what finally catches a TV frame the document head reports as a photograph; a readable personal
 record at 0.9 or better, and bare or uncovered coverage, bathing or breastfeeding, add an audience
@@ -304,7 +305,7 @@ question confirms it looks different from the kept frames of its moment and the 
 after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
 stays short. The three rungs are spent on pictures that could carry a frame: the ladder walks a moment's members in order, so a member the standing gate or a source rule already refused used to consume one. Where the members were ranked on capture facts rather than by a model, position says little, and a moment of eight pictures whose third-ranked frame scored nothing shipped two frames with five usable ones left behind. Those are now skipped rather than counted, and the spares that remain are offered furthest first in capture time from the frames of that moment already in the cut. One single-day memory went from 15 shots and 80.9 s to 18 and 89.8 s of a 94 s target.
 
-**Without a model, steps 3 and 4 ask the hashes.** Step 2 needs a reader, so the no-model editor reported `lookalike: unavailable` and asked nothing. It now builds the same question from the perceptual hashes the burst pass already caches, at the same corroboration distance of 10 bits, bounded to one story or one calendar day. A frame that plays is never a repeat of a still, a preview with no cached hash answers unknown rather than distinct, and a favourite is still never refused for looking like a picture you did not star. That matters for more than repetition: the depth pass refuses to run without a look-alike relation, so a no-model film could not deepen the moments it already showed. With one, a sparse year film went from 98 shots and 384 s of a 600 s target to 159 and 599.7 s, a single-day memory from 7 shots to 15, and a day that produced no film at all produced one.
+**Steps 3 and 4 ask the hashes first, whatever the reader is.** Step 2 needs a reader, so the no-model editor reported `lookalike: unavailable` and asked nothing. The question is now built from the perceptual hashes the burst pass already caches, at the same corroboration distance of 10 bits, bounded to one story or one calendar day. A frame that plays is never a repeat of a still, a preview with no cached hash answers unknown rather than distinct, and a favourite is still never refused for looking like a picture you did not star. A film with a model asks the hashes first too, and pays a look-alike call only where they do not corroborate: a pair they call alike is a repeat with no call at all, and a pair they answer differently or cannot settle is put to the reader exactly as before. The measured reason: the look-alike stage was 61 % of a film's recovery calls and 60 % of its answers disagreed between the two pair orders, while the hashes settle the near-identical half for nothing. That matters for more than repetition: the depth pass refuses to run without a look-alike relation, so a no-model film could not deepen the moments it already showed. With one, a sparse year film went from 98 shots and 384 s of a 600 s target to 159 and 599.7 s, a single-day memory from 7 shots to 15, and a day that produced no film at all produced one.
 
 **4. The final film, over what actually shipped.** Only pictures selected from the same capture
 episode, within the 90-minute window, are compared. Matching hashes or similar captions from
@@ -330,19 +331,21 @@ quality itself, capture time, then asset id. A favourited copy wins even at a lo
 flagged that one on purpose. Each removal writes which picture went, which kept its slot, the
 hamming distance, and which signal nominated the pair.
 
-Without a model the final review is the cached hashes again. Nothing nominates a pair from what
-its pictures were described as holding, so it reads every frame of one story or one day against
-every other rather than only the ones inside a 90-minute episode: two frames of the same subject
-four shots apart on a thin day are never asked about until here. It stops at the edge of a story
-and a day, and at 6 bits rather than the 10 a nominated pair is confirmed at. Nothing
+The cached hashes get the finished film first, on every tier. Nothing nominates a pair from what
+its pictures were described as holding, so this pass reads every frame of one story or one day
+against every other rather than only the ones inside a 90-minute episode: two frames of the same
+subject four shots apart on a thin day are never asked about until here. It stops at the edge of a
+story and a day, and at 6 bits rather than the 10 a nominated pair is confirmed at. Nothing
 corroborates a pair here, so the hash is the whole verdict; measured over thirty no-model runs at
 10 bits, 50 of 61 refusals sat at 9 or 10 bits and 20 of those were between frames months apart.
 Which picture survives, in order: a carrier you ticked, then the favourite, then the frame that
-moves, then the earlier one.
+moves, then the earlier one. A film with a model then runs the sampled review above over what
+this pass left, and the run's `final_duplicate_review` record lists both passes' removals with
+the free one's own record under `hash_review`.
 
 A refused frame does not leave a hole in the film. Its slot is offered the same pictures the
-family-viewing gate would offer: the moment's own other frames first, in the order the no-model
-quality key ranked them, then a moment of the same story the film has not shown. It takes the
+family-viewing gate would offer: the moment's own other frames first, in the order the quality
+key ranked them, then a moment of the same story the film has not shown. It takes the
 first that is not itself a repeat of something already kept. The film only gets shorter when
 neither rung has one, and the record says how many slots each rung filled. A frame whose preview was
 never cached is kept and named, and the run's `final_duplicate_review` record then says
@@ -366,9 +369,9 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | How much does a story weigh? | From the gate: remarkable seeds `minor`, maybe seeds `glimpse`, background gets nothing; three favourites raise a story to `major`. `dominant` comes from the thesis pass that names a central story, the same one the model path uses |
 | Which pictures show a moment? | A capture group is a moment. Which picture carries it is one readable order over facts a CPU-only install already has: the owner's favourite, then a frame that moves (a video, or a Live Photo whose measured motion clears the threshold), then Immich's named people (more of them first), then the frame that shows the named person over the frame he is a speck in, then the absence of a `SOFT`/`DARK`/`BLOWN OUT` pixel warning, then whether the people head saw anybody, then the middle of the burst rather than its ends, and only then the clock. The episode card names the same picture. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
 | Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a sensitive-content hit, a blurry, dark or blown-out frame is weak. Otherwise: nobody, nothing happening and a private or utility interior (`bedroom`, `medical`, `private_facility`) does not stand on its own; people, an activity, or an outdoor or public place does; an unlabelled indoor scene is context. Every label named there is one the shipped head bundle can emit, which a test asserts against the bundle itself |
-| Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite" |
+| Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite". This one is not the rules reader's: a line with no prose on it is read this way whatever the reader, because a blank line is not evidence that nobody is in the picture, and on a captioned tier it only ever answers for the pictures the captioner could not describe |
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing. Nothing clears a flag except you, on the pool page |
-| How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back; the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it |
+| How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it. The ends are not the rules reader's: on every tier the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back when the target leaves no room |
 
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
 which reader spoke.
