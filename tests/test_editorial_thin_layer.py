@@ -25,6 +25,9 @@ class FitJudge:
 
 
 class Standing:
+    """# WHY: the standing gate's own reader; the answers are stated so the layer's route is
+    read against a verdict the test chose."""
+
     def __init__(self, scores=None) -> None:
         self.scores = scores or {}
 
@@ -36,6 +39,8 @@ class Standing:
 
 
 class Audience:
+    """# WHY: the production audience gate needs detector rows this fixture has no source for."""
+
     def __init__(self, verdicts=None) -> None:
         self.verdicts = verdicts or {}
 

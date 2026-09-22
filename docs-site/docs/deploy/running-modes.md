@@ -39,6 +39,12 @@ What each model did on one real month, and what stopped three of them:
 [Readers](./readers.md). Rules and the local model reader cost nothing in API fees. Electricity and
 hardware were not metered.
 
+The two are not exclusive. `advanced.editorial.thin_model_layer: true` runs them in series: the
+rules reader cuts the film with no model call, and the model then reads the finished cut once and
+says which of its shots add nothing to it. It needs a period the library holds an account of, which
+cataloguing writes; without one the run plans the film the way `reader: model` always has. Off by
+default, and described on [Pipeline](../create/pipeline.md).
+
 `rules` makes no reader request, which is not the same as no model request anywhere in the run. With
 an `llm` endpoint configured, the music stage still asks it one question after the render: 854
 prompt and 54 completion tokens on the fixture month, 1,033 and 59 on a real one. A rules cell with

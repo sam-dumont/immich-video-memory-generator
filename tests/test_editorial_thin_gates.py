@@ -6,7 +6,8 @@ from immich_memories.analysis.editorial_thin_gates import ThinGates
 
 
 class Standing:
-    """Answers from a score map the test states, and records what it was asked about."""
+    """# WHY: the production standing gate puts one picture at a time to the reader; this states
+    the answers instead, so each rule below is read against a verdict the test chose."""
 
     def __init__(self, scores, thin_stories=()):
         self.scores = scores
@@ -22,6 +23,9 @@ class Standing:
 
 
 class Audience:
+    """# WHY: the production audience gate reads detector rows and a picture-evidence overlay
+    this fixture has no source for; it has its own tests."""
+
     def __init__(self, verdicts=None):
         self.verdicts = verdicts or {}
         self.asked: list[str] = []
