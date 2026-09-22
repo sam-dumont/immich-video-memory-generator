@@ -443,7 +443,7 @@ triage hook: they load, they validate, they do nothing.
 ```yaml
 editorial:
   reader: auto                  # auto | model | rules
-  thin_model_layer: false        # let the model polish a rules draft instead of planning the film
+  thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
@@ -493,14 +493,14 @@ Photos as stills, and write no semantic model banks. Saved plans identify the pr
 
 ### The thin model layer
 
-`thin_model_layer: true` changes what a model install spends its calls on. The cut is built by the
-rules reader, with no model at all, and the model is then asked one closed question over the
-finished film: which of these shots adds nothing to it? What the answer and the gates leave open
-is refilled from the same stories, and nothing else moves.
+`thin_model_layer` decides what a model install spends its calls on. On (the default), the cut is
+built by the rules reader, with no model at all, and the model is then asked one closed question
+over the finished film: which of these shots adds nothing to it? What the answer and the gates
+leave open is refilled from the same stories, and nothing else moves.
 
 It needs a period the library holds an account of, which cataloguing writes. Without one the run
-plans the film with the story-first planner exactly as it does today, so switching it on can never
-leave a library without a film. It is off by default.
+plans the film with the story-first planner exactly as it always has, so a library is never left
+without a film. `false` makes the model plan the whole film even when an account exists.
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

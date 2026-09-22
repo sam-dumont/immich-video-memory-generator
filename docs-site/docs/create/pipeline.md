@@ -394,8 +394,7 @@ album, one event, a trip) survive it well; broad recaps are where the model earn
 
 ## Letting the model polish a rules cut instead of planning one
 
-`advanced.editorial.thin_model_layer: true` puts the two readers in series rather than making you
-choose. The rules reader builds the whole cut with no model call at all, and the model is then
+On a model install the two readers run in series rather than making you choose. The rules reader builds the whole cut with no model call at all, and the model is then
 asked one closed question over the finished film: which of these shots adds nothing to it? Blocks
 of at most twelve, both orders, reject-only, the shape the standing gate is already asked in. A
 shot both orders name leaves; a shot one order names is offered a replacement from its own story
@@ -413,8 +412,9 @@ the company of the whole film; one the vote refuses is revoked, and the shot it 
 comes back.
 
 It needs a period the library holds an account of, which cataloguing writes. Without one the run
-plans the film with the story-first planner exactly as it always has, so the switch can never leave
-a library without a film. It is off by default.
+plans the film with the story-first planner exactly as it always has, so a library is never left
+without a film. `advanced.editorial.thin_model_layer: false` makes the model plan the whole film
+even when an account exists.
 
 ## The stages, and what each one costs
 

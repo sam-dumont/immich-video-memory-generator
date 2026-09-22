@@ -36,11 +36,12 @@ class EditorialConfig(BaseModel):
     preparation: EditorialPreparationConfig = Field(default_factory=EditorialPreparationConfig)
     reader: Literal["auto", "model", "rules"] = "auto"
     thin_model_layer: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Build the cut with the no-model reader and let the model polish it, instead of "
             "planning the whole film with the model. Needs a catalogued period; without one the "
-            "run falls back to the story-first planner"
+            "run plans the film with the story-first planner. False makes the model plan the "
+            "whole film even when an account exists"
         ),
     )
 
