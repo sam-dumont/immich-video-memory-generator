@@ -44,10 +44,12 @@ the host does not publish one.
 |---|---|---|
 | reader | `llm.base_url` | 800 px tiles of stills, the annotation lines beside them with the names of people and places, and the album names your library gives those pictures. No video frames: what a video shows reaches it as the captioner's banked sentence |
 | captioner | `editorial.preparation.caption_base_url` | 400 px tiles, a 960 × 320 strip of three keyframes per video, no metadata, and `caption_api_key` if set |
+| picture reader | `editorial.preparation.picture_facts.base_url` | one 800 px tile per still, nothing else: no caption, date, place, name or id. No key |
 
-Both default to this machine. Pointing either at another host (a box on your LAN, a container, a
-hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing
-asks a second time.
+All three default to this machine; the picture reader defaults to `127.0.0.1:8080` and a run where
+nothing answers there costs one log line. Pointing any of them at another host (a box on your LAN,
+a container, a hosted endpoint) is the consent step: those bytes go onto its disk and into its
+logs, and nothing asks a second time.
 
 Two features can reach a vision seat without being the editor, and both prefer text:
 
