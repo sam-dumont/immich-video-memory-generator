@@ -7,6 +7,7 @@ bursts, videos and stills, deduplicated — and the anchor row the memory-worthy
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -27,6 +28,7 @@ from immich_memories.analysis.editorial_person_period_facts import (
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_speech import banked_unit_regions, speech_buffer
 from immich_memories.analysis.editorial_structure_budget import (
+    MIN_CARRIER_SECONDS,
     MIN_MOTION_SECONDS,
     MOTION_CAP_SECONDS,
     NOMINAL_STILL_SECONDS,
@@ -44,8 +46,38 @@ from immich_memories.analysis.editorial_structure_lines import (
 from immich_memories.analysis.motion_rendering import motion_renderings
 from immich_memories.api.models import AssetType
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
+from immich_memories.speech.cuts import set_duration
 
 STILL_SECONDS = NOMINAL_STILL_SECONDS
+# The longest a still is ever held. Everything between it and MIN_CARRIER_SECONDS is a hold
+# the existing fit and shave can move, so a varied film still lands on its target.
+LONGEST_STILL_SECONDS = NOMINAL_STILL_SECONDS + 1.0
+STILL_KINDS = ("still", "live-still")
+
+
+def rules_still_seconds(*, favourite: bool, known_people: bool) -> float:
+    """How long the no-model reader holds one still.
+
+    Every still was held for exactly four seconds, so 82 % of a CPU-only film's shots were the
+    same length and the cut had no rhythm at all. A picture the owner starred, or one with
+    somebody Immich knows in it, keeps the nominal hold; an empty scene gives half a second
+    back. The long hold is the nominal one rather than a longer one on purpose: on a library
+    where seven pictures in eight are starred, lengthening the common case spends the film's
+    seconds on fewer days, and a day lost is worse than a beat gained.
+    """
+    return STILL_SECONDS if favourite or known_people else MIN_CARRIER_SECONDS
+
+
+def hold_the_ends(carriers: Sequence[dict]) -> None:
+    """Hold the film's first and last still half a second longer, in place.
+
+    An opening and a closing frame are read rather than glanced at. A clip keeps the length its
+    own material gave it. This runs once the film is settled, so the shave that follows can take
+    the half second back if the target leaves no room for it.
+    """
+    for carrier in {id(c): c for c in (list(carriers[:1]) + list(carriers[-1:]))}.values():
+        if carrier["kind"] in STILL_KINDS:
+            set_duration(carrier, min(carrier["seconds"] + 0.5, LONGEST_STILL_SECONDS))
 
 
 @dataclass
@@ -158,7 +190,7 @@ class UnitBuilder:
         self._threshold = source.config.photos.burst_hash_threshold
         self._never_auto = never_auto
         self._document_sources = document_sources
-        self._keep_moment_alternatives = ports.rules is not None
+        self._rules_reader = ports.rules is not None
         self._hashes: dict[str, str | None] = {}
         self.evidence_pictures: dict[str, int] = {}
         self.never_auto_excluded: dict[str, list] = {}
@@ -167,6 +199,16 @@ class UnitBuilder:
     def quality(self, asset_id: str) -> float:
         sharp, bright = self._pixel_facts.get(asset_id, (0.0, 118.0))
         return sharp * max(0.0, 1.0 - abs(bright - 118.0) / 92.0)
+
+    def _still_hold(self, asset_ids: Sequence[str]) -> float:
+        """A model film holds every still for the nominal four seconds; a rules film varies it."""
+        if not self._rules_reader:
+            return STILL_SECONDS
+        assets = [self._assets[a] for a in asset_ids if a in self._assets]
+        return rules_still_seconds(
+            favourite=any(a.is_favorite for a in assets),
+            known_people=any(a.people or a.faces for a in assets),
+        )
 
     def _thumb_hash(self, asset_id: str):
         if asset_id not in self._hashes:
@@ -205,7 +247,7 @@ class UnitBuilder:
             "live_material": r.material.as_dict(),
             "seconds": round(min(r.duration_seconds, MOTION_CAP_SECONDS), 2)
             if motion
-            else STILL_SECONDS,
+            else self._still_hold(members),
             "raw_seconds": round(r.duration_seconds, 2),
             "residual": residual,
         }
@@ -233,7 +275,7 @@ class UnitBuilder:
             "members": [asset_id],
             "video_ids": [],
             "trim_points": [],
-            "seconds": STILL_SECONDS,
+            "seconds": self._still_hold([asset_id]),
             "raw_seconds": None,
             "residual": None,
         }
@@ -278,7 +320,7 @@ class UnitBuilder:
         # The favourite wins its moment. A reader with no model behind it cannot come back
         # to a moment whose favourite is refused as a carrier, so it keeps the moment's
         # other frames: the capture-group order still puts the favourite in front of them.
-        if not self._keep_moment_alternatives:
+        if not self._rules_reader:
             starred_moments = {u["moment"] for u in units if u["favourite"]}
             units = [u for u in units if u["moment"] not in starred_moments or u["favourite"]]
         cands = [

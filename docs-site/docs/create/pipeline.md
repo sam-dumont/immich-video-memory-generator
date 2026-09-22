@@ -337,6 +337,7 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a sensitive-content hit, a blurry, dark or blown-out frame is weak. Otherwise: nobody, nothing happening and a private or utility interior (`bedroom`, `medical`, `private_facility`) does not stand on its own; people, an activity, or an outdoor or public place does; an unlabelled indoor scene is context. Every label named there is one the shipped head bundle can emit, which a test asserts against the bundle itself |
 | Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite" |
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing. Nothing clears a flag except you, on the pool page |
+| How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back; the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it |
 
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
 which reader spoke.

@@ -58,6 +58,7 @@ from immich_memories.analysis.editorial_structure_material import (
     Wall,
     anchor_line,
     build_material,
+    hold_the_ends,
     read_wall,
 )
 from immich_memories.analysis.editorial_structure_record import (
@@ -390,6 +391,10 @@ def _select(
         )
         record_story("owner-required", owner_record)
     trim_to_timing(run, source, record_story, protected=required)
+    if ports.rules is not None:
+        # The film is settled here, so its ends are known. The shave that follows takes
+        # the half second back when the target leaves no room for it.
+        hold_the_ends(run.carriers)
     chapters = _chapters_of(selection, run.carriers, wall.anchor_label)
     beats = [row["beat"] for row in chapters]
     _story_worthiness(selection, wall, tier, worth_reason)
