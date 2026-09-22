@@ -11,7 +11,7 @@ answer about a picture.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 TIERS = ("remarkable", "maybe", "background")
@@ -26,6 +26,7 @@ class ThinStory:
     purpose: str
     episodes: tuple[str, ...]
     tier: str
+    first_day: str
     asset_ids: tuple[str, ...]
 
 
@@ -42,6 +43,10 @@ class ThinCatalogue(Protocol):
     @property
     def hints(self) -> Mapping[str, Mapping[str, Any]]: ...
 
+    def notable_record_of(self, asset_id: str) -> str: ...
+
+    def records_in(self, story: ThinStory) -> int: ...
+
 
 @dataclass(frozen=True)
 class BankedCatalogue:
@@ -50,6 +55,15 @@ class BankedCatalogue:
     thesis: str
     stories: tuple[ThinStory, ...]
     hints: Mapping[str, Mapping[str, Any]]
+    records: Mapping[str, str] = field(default_factory=dict)
+
+    def notable_record_of(self, asset_id: str) -> str:
+        """What the catalogue records this picture is a record of, if anything."""
+        return self.records.get(asset_id, "")
+
+    def records_in(self, story: ThinStory) -> int:
+        """How many of a story's pictures the catalogue records something about."""
+        return sum(1 for asset in story.asset_ids if self.records.get(asset))
 
 
 def banked_catalogue(
@@ -58,6 +72,7 @@ def banked_catalogue(
     story_rows: Sequence[Mapping[str, Any]],
     hints: Mapping[str, Mapping[str, Any]],
     asset_ids_of: Mapping[str, Sequence[str]],
+    records: Mapping[str, str] | None = None,
 ) -> BankedCatalogue | None:
     """The catalogue of one period, or None when the library holds no account of it.
 
@@ -74,6 +89,7 @@ def banked_catalogue(
             purpose=str(row.get("purpose") or ""),
             episodes=tuple(str(key) for key in row.get("episodes") or ()),
             tier=_tier(row.get("gate")),
+            first_day=str(row.get("first_day") or ""),
             asset_ids=tuple(asset_ids_of.get(str(row["key"])) or ()),
         )
         for row in story_rows
@@ -81,7 +97,12 @@ def banked_catalogue(
     )
     if not stories:
         return None
-    return BankedCatalogue(thesis=account.strip(), stories=stories, hints=dict(hints))
+    return BankedCatalogue(
+        thesis=account.strip(),
+        stories=stories,
+        hints=dict(hints),
+        records=dict(records or {}),
+    )
 
 
 def _tier(value: object) -> str:

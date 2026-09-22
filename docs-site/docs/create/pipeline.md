@@ -402,6 +402,16 @@ shot both orders name leaves; a shot one order names is offered a replacement fr
 and keeps its place until one passes. A picture you starred keeps its place whatever the vote said;
 only a gate takes it out.
 
+Before the vote, every shot of the draft faces the gates a model install can ask: the standing
+gate, the family-viewing gate, the five-minute capture spacing and the cached-hash duplicate
+review. A refusal is a seat, not a hole. Seats are filled in one order (a story the library
+records something about that the cut never gave a voice, then a replacement for a shot the vote
+named, then one for a shot a gate took) and only as many as the film has room for at the minimum
+length a shot may run. Each page leads with the moment that moves, except inside a moment, where
+the frame you starred wins. Every replacement goes through the same gates and is voted on again in
+the company of the whole film; one the vote refuses is revoked, and the shot it would have replaced
+comes back.
+
 It needs a period the library holds an account of, which cataloguing writes. Without one the run
 plans the film with the story-first planner exactly as it always has, so the switch can never leave
 a library without a film. It is off by default.

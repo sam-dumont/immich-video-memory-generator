@@ -193,6 +193,12 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
 │   ├── editorial_final_hash_review.py # The final duplicate review a no-model cut runs, on cached preview hashes
+│   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film
+│   ├── editorial_thin_catalogue.py # What a polish may read of a catalogued period: account, stories, hints
+│   ├── editorial_thin_gates.py     # Every draft shot put to standing, audience, spacing and the hash review
+│   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks
+│   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
+│   ├── editorial_thin_refill.py    # Which seats open, and the transaction that fills one
 │   ├── editorial_home_radius.py    # Where home is, and whether captures sit inside its radius
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
@@ -458,6 +464,7 @@ src/immich_memories/
 │   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest
 │   ├── picture_facts.py        # The optional reader's raw probabilities per picture, keyed the same
 │                               # way; the producer string carries the question set's hash
+│   ├── library_overviews.py    # Read-only: the library's own account of a period, written by cataloguing
 │   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual and a
 │                               # clip's speech regions, keyed the same way (a missing row is
 │                               # "not measured", never "measured as nothing")

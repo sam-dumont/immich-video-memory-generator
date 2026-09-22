@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
@@ -389,10 +390,12 @@ def _select(
             source,
             ports,
             material,
+            wall,
             selection,
             pool,
             gate,
             run.carriers,
+            run,
             contract=contract,
             record=record_story,
         )
@@ -611,8 +614,68 @@ def _story_selection(
     )
 
 
+def _thin_candidates(selection, wall: Wall, pool, unit_by_asset):
+    """Every picture of a story as a carrier the film could actually hold.
+
+    The catalogue says which pictures a story is about. A seat is filled with a carrier row, not
+    a bare unit, so everything downstream of the cut reads a refilled shot exactly as it reads
+    one the draft chose.
+    """
+    moments_of = {episode.key: tuple(episode.moments) for episode in selection.story.episodes}
+    story_of = {row["key"]: row for row in selection.story.stories}
+    chapter_of = {row["episode"]: number for number, row in enumerate(selection.episodes, 1)}
+
+    def candidates_of(story_key: str) -> list[dict]:
+        story = story_of.get(story_key)
+        if story is None:
+            return []
+        assets = [
+            asset
+            for episode in story.get("episodes") or ()
+            for moment in moments_of.get(episode, ())
+            for asset in pool.moment_assets.get(moment, ())
+        ]
+        return [
+            _thin_carrier(unit_by_asset[asset], story, selection, chapter_of, wall)
+            for asset in dict.fromkeys(assets)
+            if asset in unit_by_asset
+        ]
+
+    return candidates_of
+
+
+def _thin_carrier(entry, story, selection, chapter_of, wall: Wall) -> dict:
+    family, unit = entry
+    asset = unit["asset_id"]
+    line = selection.lines.get(asset, "")
+    return unit | {
+        "event": family,
+        "anchor": wall.anchor_label.get(family, family),
+        "chapter": chapter_of.get(story["key"], 1),
+        "why": f"{story['title']}: {line[:80]}",
+        "event_intention": story.get("purpose") or "",
+        "line": line,
+        "story_episode": story["key"],
+        "story_role": WEIGHT_ROLE[story["weight"]],
+        "story_weight": story["weight"],
+        "depicted_moment": f"source:{asset}",
+        "moment_alternatives": [],
+    }
+
+
 def _thin_polish(
-    source, ports, material: Material, selection, pool, gate, carriers, *, contract, record
+    source,
+    ports,
+    material: Material,
+    wall: Wall,
+    selection,
+    pool,
+    gate,
+    carriers,
+    run,
+    *,
+    contract,
+    record,
 ):
     """The model's one read of the rules cut this run built.
 
@@ -653,6 +716,8 @@ def _thin_polish(
         contract=contract,
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         record=record,
+        candidates_of=_thin_candidates(selection, wall, pool, unit_by_asset),
+        content_cap=run.final_content_cap,
         protected=source.owner_required_asset_ids,
     )
 

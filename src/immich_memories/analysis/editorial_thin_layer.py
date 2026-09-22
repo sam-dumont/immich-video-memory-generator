@@ -16,6 +16,7 @@ import calendar
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from immich_memories.analysis.editorial_thin_catalogue import (
     banked_catalogue,
 )
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
+from immich_memories.analysis.editorial_thin_refill import ThinRefill, ThinSlot, plan_slots
 from immich_memories.analysis.editorial_thin_vote import classify_fit, vote_thesis_fit
 from immich_memories.security import write_secret_file
 
@@ -58,7 +60,10 @@ class ThinPolish:
     bank_dir: Path
 
     def catalogue_of(
-        self, story, moment_assets: Mapping[str, Sequence[str]]
+        self,
+        story,
+        moment_assets: Mapping[str, Sequence[str]],
+        records: Mapping[str, str] | None = None,
     ) -> BankedCatalogue | None:
         """The catalogued period behind this run's own story reading, or None for no account."""
         return banked_catalogue(
@@ -66,6 +71,7 @@ class ThinPolish:
             story_rows=story.stories,
             hints=story.audit.get("hints") or {},
             asset_ids_of=_story_asset_ids(story.episodes, story.stories, moment_assets),
+            records=records,
         )
 
     def polish(
@@ -78,22 +84,43 @@ class ThinPolish:
         contract: str,
         line_of: Callable[[str], str],
         record: Callable[[str, Mapping[str, Any]], None],
+        candidates_of: Callable[[str], Sequence[Mapping[str, Any]]] = lambda _key: (),
+        content_cap: float = 0.0,
         protected: Sequence[str] = (),
     ) -> list[dict[str, Any]]:
-        """The cut this period's gates and one closed vote leave standing.
+        """The cut this period's gates, one closed vote and one refill leave standing.
 
         A period the library has no account of is not polished at all: the film is the one the
         planner already built, which is the fallback this layer is switched on in front of.
         """
         if catalogue is None or not carriers:
-            record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": "no catalogue"})
+            reason = "no catalogued account of this period" if catalogue is None else "no draft"
+            record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": reason})
             return list(carriers)
-        admitted, refused = gates.admit(
-            carriers,
-            tier_of={story.key: story.tier for story in catalogue.stories},
-            protected=protected,
-        )
+        tier_of = {story.key: story.tier for story in catalogue.stories}
+        admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
         kept, verdicts, rounds = self._voted(admitted, judge, catalogue, contract, line_of)
+        slots = plan_slots(
+            kept,
+            catalogue=catalogue,
+            verdicts=verdicts,
+            refused=refused,
+            candidates_of=candidates_of,
+            seen={c["asset_id"] for c in carriers},
+            content_cap=content_cap,
+        )
+        refill = ThinRefill(
+            judge=judge,
+            gates=gates,
+            contract=contract,
+            line_of=line_of,
+            record=record,
+            tier_of=tier_of,
+            title_of={story.key: story.title for story in catalogue.stories},
+            content_cap=content_cap,
+        )
+        filled, outcomes = refill.fill(kept, slots)
+        final, revoked = self._checked(filled, kept, outcomes, judge, catalogue, contract, line_of)
         record(
             "thin-polish",
             {
@@ -111,9 +138,50 @@ class ThinPolish:
                 "held_by_the_owner": [
                     asset for asset, verdict in verdicts.items() if verdict["held_by"]
                 ],
+                "slots": [slot.row() for slot in outcomes],
+                "revoked_by_the_fit_check": sorted(revoked),
+                "shots": len(final),
+                "planned_seconds": round(sum(c["seconds"] for c in final), 3),
+                "content_cap": content_cap,
             },
         )
-        return kept
+        return final
+
+    def _checked(
+        self,
+        filled: list[dict[str, Any]],
+        before: Sequence[Mapping[str, Any]],
+        outcomes: Sequence[ThinSlot],
+        judge,
+        catalogue: ThinCatalogue,
+        contract: str,
+        line_of: Callable[[str], str],
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        """Every newcomer, judged again in the company of the whole cut it would join.
+
+        The check is unbanked, so a newcomer is never the only row in its block and its verdict
+        is cast against the film it would actually be part of. A revoked newcomer does not take
+        the shot it replaced with it: that shot comes back and the film is where it started.
+        """
+        held = {row["asset_id"] for row in before}
+        fresh = [row for row in filled if row["asset_id"] not in held]
+        if not fresh:
+            return filled, set()
+        votes, _rounds = self._ask(filled, judge, catalogue, contract, line_of, bank=None)
+        verdicts = classify_fit(fresh, votes)
+        revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
+        if not revoked:
+            return filled, set()
+        snapshot = {row["asset_id"]: dict(row) for row in before}
+        restored = [
+            snapshot[slot.replacing]
+            for slot in outcomes
+            if slot.filled_by in revoked
+            and slot.replacing
+            and slot.replacing not in {row["asset_id"] for row in filled}
+        ]
+        kept = [row for row in filled if row["asset_id"] not in revoked]
+        return sorted([*kept, *restored], key=itemgetter("taken", "asset_id")), revoked
 
     def _voted(
         self,
@@ -125,10 +193,17 @@ class ThinPolish:
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
         bank_path = self.bank_dir / "thesis-fit.private.json"
         bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+        votes, rounds = self._ask(carriers, judge, catalogue, contract, line_of, bank=bank)
+        verdicts = classify_fit(carriers, votes)
+        kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
+        return kept, verdicts, rounds
+
+    def _ask(self, carriers, judge, catalogue, contract, line_of, *, bank):
+        bank_path = self.bank_dir / "thesis-fit.private.json"
         story_of = {
             asset: story.key for story in catalogue.stories for asset in story.asset_ids
         }.get
-        votes, rounds = vote_thesis_fit(
+        return vote_thesis_fit(
             judge,
             pictures=[c["asset_id"] for c in carriers],
             line_of=line_of,
@@ -136,11 +211,10 @@ class ThinPolish:
             contract=contract,
             story_of=lambda asset: story_of(asset, "") or "",
             bank=bank,
-            save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+            save=None
+            if bank is None
+            else (lambda: write_secret_file(bank_path, json.dumps(bank, indent=1))),
         )
-        verdicts = classify_fit(carriers, votes)
-        kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
-        return kept, verdicts, rounds
 
 
 def _refusal_row(refusal: GateRefusal) -> dict[str, str]:
