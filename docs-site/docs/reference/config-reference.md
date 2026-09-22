@@ -457,6 +457,11 @@ editorial:
     venue: oi-v3
   preparation:
     tier: full                   # full | no_captions | metadata_only
+    picture_facts:               # optional local typed-decision picture reader, off by default
+      enabled: false
+      base_url: http://127.0.0.1:8080/v1
+      timeout_seconds: 120
+      concurrency: 1
     caption_base_url: http://localhost:8092/v1
     caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one

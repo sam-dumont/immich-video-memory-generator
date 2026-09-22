@@ -20,10 +20,45 @@ PreparationTier = Literal["full", "no_captions", "metadata_only"]
 """Which producers a deployment demands. Named, never inferred from what happens to fail."""
 
 
+def _endpoint(value: str, field: str) -> str:
+    value = value.rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
+        raise ValueError(f"{field} must be an HTTP(S) endpoint without credentials")
+    return value
+
+
+class PictureFactsConfig(BaseModel):
+    """An optional local typed-decision reader, asked once per picture at ingest.
+
+    Off unless a deployment turns it on, and it is told exactly one endpoint: nothing here
+    reaches anything the run was not already configured to contact.
+    """
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:8080/v1"
+    timeout_seconds: float = Field(default=120, gt=0)
+    concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=16,
+        description=(
+            "Picture reads in flight. The reader answers one tile at a time on one GPU; "
+            "raise it only for a server that batches across cards"
+        ),
+    )
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        return _endpoint(value, "picture_facts.base_url")
+
+
 class EditorialPreparationConfig(BaseModel):
     """Missing facts are acquired; complete facts never contact a provider."""
 
     tier: PreparationTier = "full"
+    picture_facts: PictureFactsConfig = Field(default_factory=PictureFactsConfig)
     caption_base_url: str = "http://localhost:8092/v1"
     caption_artifact_id: str = Field(
         default="",
@@ -89,11 +124,7 @@ class EditorialPreparationConfig(BaseModel):
     @field_validator("caption_base_url")
     @classmethod
     def validate_endpoint(cls, value: str) -> str:
-        value = value.rstrip("/")
-        parsed = urlparse(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
-            raise ValueError("caption_base_url must be an HTTP(S) endpoint without credentials")
-        return value
+        return _endpoint(value, "caption_base_url")
 
     @property
     def marqo_onnx_path(self) -> Path:
@@ -102,6 +133,11 @@ class EditorialPreparationConfig(BaseModel):
     @property
     def demands_captions(self) -> bool:
         return self.tier == "full"
+
+    @property
+    def demands_picture_facts(self) -> bool:
+        """Never implied by a tier: reading pixels twice is a deployment's own decision."""
+        return self.picture_facts.enabled
 
     @property
     def demands_models(self) -> bool:

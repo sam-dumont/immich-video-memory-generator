@@ -22,6 +22,7 @@ from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeRepl
 from immich_memories.analysis.editorial_orchestration import TextEditorialPlanner
 from immich_memories.analysis.editorial_people import adapt_editorial_people
 from immich_memories.analysis.editorial_planner import EditorialPlan
+from immich_memories.analysis.editorial_preparation_picture_facts import PICTURE_FACTS_PRODUCER
 from immich_memories.analysis.editorial_rule_episodes import (
     EpisodeReader,
     RuleEpisodeReader,
@@ -461,6 +462,9 @@ class _AnnotationReadings:
             description_model=editorial.description_model,
             head_versions=editorial.head_versions,
             pixel_producer_key=editorial.pixel_producer_key,
+            picture_facts_producer=(
+                PICTURE_FACTS_PRODUCER if editorial.preparation.demands_picture_facts else ""
+            ),
             people_context=self.people,
         )
 

@@ -62,6 +62,50 @@ Facts are banked per picture and per producer. Changing tiers erases nothing, an
 library can add captions later, a month at a time. The second cut over a prepared period pays
 only a preview check.
 
+### The optional picture reader
+
+Off by default, on any tier. It asks a local typed-decision reader a frozen set of eleven
+questions about each picture, once, at preparation time, and banks the raw probabilities. It is
+the only producer here that needs a GPU box of its own, and a run that does not turn it on never
+opens a socket to it.
+
+```yaml
+advanced:
+  editorial:
+    preparation:
+      picture_facts:
+        enabled: true
+        base_url: http://127.0.0.1:8080/v1
+        timeout_seconds: 120
+        concurrency: 1
+```
+
+What it sends: one 800 px JPEG tile per picture, to that address and nowhere else. No caption, no
+date, no place, no name, no asset id. What comes back is a probability per question, stored as
+numbers. The producer never writes a verdict, and it never clears anything: the sensitive-content
+head stays the floor, and these facts can only add a hold on top of it.
+
+What it improves, from a probe over 379 pictures on 21 September 2026, scored against pictures
+judged by eye:
+
+| | With the picture reader | Without it |
+|---|---|---|
+| A TV or a phone screen kept as scenery | caught 4 of 4 at 0.98 and up | the document head calls every one of them a photograph |
+| Telemetry or a map laid over real footage | caught 2 of 2, 4 more found by eye | the caption calls the footage "virtual" |
+| Judging whether a picture stands on its own | AUC 0.965 | AUC 0.68 from the text card |
+| A bath or a breastfeeding picture the caption words blandly | caught 41 of 41 on a February sample | 4 of the 8 misses had no body word on the card at all |
+
+What it costs, measured on an M5 Max with the weights on disk: 0.83 s a picture for the six
+coverage questions, 1.35 s for the full seventeen-question probe set, one picture per request.
+Eight pictures in one request took 3.0 s a picture, so batching is slower, not faster. A year of
+13,552 pictures is between 2.7 and 5.1 hours, paid once. The server holds 18.3 GB and takes 19 s
+to load.
+
+Limits worth knowing before you turn it on: the probe is one library, one model build, contended
+timing throughout, and cuts fixed at 0.5 rather than fitted. Repeated reads of the same picture
+spread up to 0.174 on a bar of 0.05, so treat a number near a threshold as a coin toss. A ceiling
+still reads as a place, and only the `what` choice names it.
+
 ### What each tier costs to prepare
 
 Cold, one cell each, over the year 2024: 13,544 pictures. The cells asked `prepare` for February,
@@ -368,6 +412,7 @@ jsDelivr fonts) are `network:` switches, all off, and
 |---|---|---|---|
 | rules + `metadata_only` | nothing | one question from the music stage after the render, if an `llm` endpoint is configured at all | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
 | rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
+| any mode, `picture_facts.enabled` | nothing extra | nothing extra | an 800 px tile of every picture in the period goes once to `picture_facts.base_url`, and to nothing else. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
 | `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
 | `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |

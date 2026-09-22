@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from immich_memories.config import EditorialConfig as PublicEditorialConfig
 from immich_memories.config_loader import Config, _apply_env_overrides
 from immich_memories.config_models_editorial import EditorialConfig
+from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 
 
 def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
@@ -188,3 +189,21 @@ def test_captions_are_asked_for_one_at_a_time_by_default() -> None:
     from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 
     assert EditorialPreparationConfig().caption_concurrency == 1
+
+
+def test_the_picture_facts_reader_is_off_until_a_deployment_asks_for_it():
+    default = EditorialPreparationConfig()
+
+    assert default.picture_facts.enabled is False
+    assert default.demands_picture_facts is False
+
+
+def test_an_enabled_picture_facts_reader_needs_an_endpoint_without_credentials():
+    from immich_memories.config_models_editorial_preparation import PictureFactsConfig
+
+    enabled = EditorialPreparationConfig(picture_facts=PictureFactsConfig(enabled=True))
+
+    assert enabled.demands_picture_facts is True
+    assert enabled.picture_facts.base_url == "http://127.0.0.1:8080/v1"
+    with pytest.raises(ValidationError):
+        PictureFactsConfig(base_url="http://user:secret@127.0.0.1:8080/v1")

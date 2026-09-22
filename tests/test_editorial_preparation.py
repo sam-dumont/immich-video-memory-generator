@@ -31,12 +31,19 @@ from immich_memories.analysis.editorial_preparation_detectors import (
     decide,
     docling_pixels,
 )
+from immich_memories.analysis.editorial_preparation_picture_facts import (
+    NOULS,
+    prepare_picture_facts,
+)
 from immich_memories.analysis.editorial_preparation_pixels import pixel_facts
 from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset, Person
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.config_models_editorial import EditorialConfig
-from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+from immich_memories.config_models_editorial_preparation import (
+    EditorialPreparationConfig,
+    PictureFactsConfig,
+)
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import PipelineCancelled, cancellation_scope
 from immich_memories.store.editorial_preparation import initialize, remember_assets
@@ -691,3 +698,64 @@ def test_a_run_without_a_face_reader_banks_nothing_and_leaves_the_rest_alone(tmp
     with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
         assert connection.execute("SELECT count(*) FROM face_boxes").fetchone()[0] == 0
         assert connection.execute("SELECT count(*) FROM face_reads").fetchone()[0] == 0
+
+
+def _picture_facts_config(**overrides):
+    return EditorialPreparationConfig(picture_facts=PictureFactsConfig(enabled=True, **overrides))
+
+
+def test_the_picture_reader_is_never_contacted_unless_a_deployment_enabled_it(tmp_path):
+    ports = replace(successful_ports([]), picture_facts=_refuse("picture_facts"))
+
+    result = run(tmp_path, ports=ports, fetch_preview=lambda _: preview())
+
+    assert result.complete
+
+
+def test_an_enabled_picture_reader_pays_once_and_reports_what_it_asked(tmp_path):
+    asked = []
+
+    def picture_facts(**kwargs):
+        asked.append(tuple(source.asset_id for source in kwargs["sources"]))
+        return prepare_picture_facts(**kwargs | {"ask": lambda _tile: _reader_reply()})
+
+    ports = replace(successful_ports([]), picture_facts=picture_facts)
+    config = _picture_facts_config()
+
+    first = run(
+        tmp_path,
+        ports=ports,
+        preparation_config=config,
+        fetch_preview=lambda _: preview(),
+    )
+    second = run(tmp_path, ports=ports, preparation_config=config)
+
+    assert asked == [("aa1", "bb2")]
+    assert first.transfer_by_stage["picture_facts"] == {"requests": 2}
+    assert first.complete and second.complete
+    assert "picture_facts" in first.stage_rates()
+
+
+def test_a_picture_reader_that_is_not_there_refuses_once_without_failing_the_cut(tmp_path):
+    def picture_facts(**_kwargs):
+        raise OSError("connection refused")
+
+    ports = replace(successful_ports([]), picture_facts=picture_facts)
+
+    result = run(
+        tmp_path,
+        ports=ports,
+        preparation_config=_picture_facts_config(),
+        fetch_preview=lambda _: preview(),
+    )
+
+    assert [reason for reason in result.producer_failures if "connection refused" in reason]
+    assert not result.missing_by_producer
+
+
+def _reader_reply():
+    answers = {name: {"noul": 0.02} for name in NOULS}
+    answers["what"] = {"choice": "people_moment", "probabilities": {"people_moment": 0.9}}
+    answers["adult_coverage"] = {"choice": "clothed", "probabilities": {"clothed": 0.9}}
+    answers["child_coverage"] = {"choice": "no_child", "probabilities": {"no_child": 0.9}}
+    return {"answers": answers}

@@ -17,7 +17,7 @@ LIVING = re.compile(
     re.IGNORECASE,
 )
 _FACT_PREFIX = re.compile(
-    r"^(20\d\d|LIVE|VIDEO|with |at |activity=|setting|resolution|exposure|duration|location=|children=|STARRED|SOFT|DARK)"
+    r"^(20\d\d|LIVE|VIDEO|with |at |activity=|setting|resolution|exposure|duration|location=|children=|picture: |STARRED|SOFT|DARK)"
 )
 
 

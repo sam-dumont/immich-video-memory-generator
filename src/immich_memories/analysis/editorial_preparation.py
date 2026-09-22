@@ -32,6 +32,10 @@ from immich_memories.analysis.editorial_preparation_motion import (
     prepare_motion_lines,
     seat_asker,
 )
+from immich_memories.analysis.editorial_preparation_picture_facts import (
+    acquire_picture_facts,
+    prepare_picture_facts,
+)
 from immich_memories.analysis.editorial_preparation_pixels import (
     PRODUCER_KEY,
     refresh_threshold,
@@ -134,6 +138,7 @@ class PreparationPorts:
     heads: Callable = prepare_heads
     detectors: Callable = prepare_detectors
     motion: Callable = prepare_motion_lines
+    picture_facts: Callable = prepare_picture_facts
 
 
 PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
@@ -523,6 +528,14 @@ def prepare_editorial_annotations(
             _acquire_captions(
                 stage, connection, pending(f"description:{description_model}"), description_model
             )
+        acquire_picture_facts(
+            stage,
+            connection,
+            source,
+            available,
+            config=preparation_config.picture_facts,
+            provider=stage.providers.picture_facts,
+        )
         motion = _MotionScope(
             source, store_path, read_playback, demanded=preparation_config.demands_captions
         )

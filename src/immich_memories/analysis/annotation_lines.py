@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
+from immich_memories.analysis.editorial_preparation_picture_facts import plain_picture_facts
 from immich_memories.analysis.subject_framing import framing_annotation, subject_framing
 from immich_memories.store.asset_annotations import (
     AssetAnnotationFactBatch,
@@ -155,6 +156,7 @@ class StoredAnnotationLineReader:
         description_model: str,
         head_versions: Mapping[str, str],
         pixel_producer_key: str,
+        picture_facts_producer: str = "",
         people_context: Mapping[str, _PersonContext] | None = None,
         fact_repository: AnnotationFactReader | None = None,
     ) -> None:
@@ -169,6 +171,7 @@ class StoredAnnotationLineReader:
             description_model=description_model,
             head_versions=head_versions,
             pixel_producer_key=pixel_producer_key,
+            picture_facts_producer=picture_facts_producer,
         )
         self._contract = AnnotationContract(
             renderer_version=ANNOTATION_LINE_RENDERER_VERSION,
@@ -180,6 +183,7 @@ class StoredAnnotationLineReader:
                 "people:immich-live+owner-context-v1",
                 f"pixel:{pixel_producer_key}",
                 "source:editorial-candidate-v1",
+                *((f"picture-facts:{picture_facts_producer}",) if picture_facts_producer else ()),
             ),
         )
 
@@ -281,6 +285,8 @@ def _render_line(
         parts.append(", ".join(head_bits))
     if candidate.favourite:
         parts.append("STARRED by the photographer")
+    if facts.picture_facts is not None and (segment := plain_picture_facts(facts.picture_facts)):
+        parts.append(segment)
     parts.extend(_flag_notes(facts))
     parts.extend(_pixel_warnings(facts))
     parts.extend(

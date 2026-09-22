@@ -189,6 +189,19 @@ holds both a still and a video of the same instant, the video takes the frame un
 claims it: a video carries no sharpness measurement, so on a tie of everything else it used to lose
 to any still in the group.
 
+**Optionally, the pixels answer for themselves, once.** The picture reader
+([running modes](../deploy/running-modes.md#the-optional-picture-reader)) is off by default. Turn
+it on and preparation asks a local typed-decision model eleven frozen questions about each
+picture's 800 px tile and banks the probabilities. Three gates read them, and only when the row
+exists: a picture the reader calls a screen at 0.9 or better stops being a scene carrier, which is
+what finally catches a TV frame the document head reports as a photograph; a readable personal
+record at 0.9 or better, and bare or uncovered coverage, bathing or breastfeeding, add an audience
+hold that nothing downstream can lift; and a picture that scores under 0.10 on "worth showing on
+its own" while the reader also calls it an empty room, an accidental frame, a lone object or a
+body-part close-up stands at zero in the no-model cut. A nappy is not a hold. The reader's own
+words never reach a prompt: these are numbers on the line, read by gates, stripped before any
+prose reader sees them.
+
 **A frame has to show the person it names.** Immich says which people it recognised in a
 picture, and until now that was the whole fact: present or not. A finish-line photo of a race
 named the runner it was taken for, and he was a speck against the right edge behind a dozen
