@@ -36,7 +36,6 @@ _HEAD_SILENCE = {
     "doc_docling": frozenset({"photograph"}),
     "nsfw_marqo": frozenset({"no"}),
     "venue": frozenset({"other"}),
-    "swim": frozenset({"no"}),
 }
 
 

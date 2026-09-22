@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
 from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
     _exposure_flag,
@@ -46,7 +47,7 @@ PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
 AUDIENCE_PROMPT_VERSION = "audience-evidence-v13-swimming-is-not-bathing"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
 _AUDIENCE_HEADS = frozenset(
-    {"nsfw_marqo", "people", "children", "doc_docling", "swim", "venue", "location"}
+    {"nsfw_marqo", "people", "children", "doc_docling", "venue", "location"}
 )
 
 
@@ -189,7 +190,7 @@ def evidence_for_unit(
 
 def _companion_evidence(
     uncaptioned: Sequence[str],
-    resolved: Mapping[str, tuple[str, tuple[Any, ...]]],
+    resolved: Mapping[str, tuple[str, tuple[Any, ...], Mapping[str, float | str]]],
     flags: Mapping[str, Sequence[FlagRow]],
     records: Mapping[str, Mapping[str, Any]],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, Any]]]:
@@ -206,10 +207,20 @@ def _companion_evidence(
     return detectors, rows, warnings
 
 
-def _member_annotation(annotation: Any, fallback_line: str) -> tuple[str, tuple[Any, ...]]:
+def _member_annotation(
+    annotation: Any, fallback_line: str
+) -> tuple[str, tuple[Any, ...], dict[str, float | str]]:
+    """The caption, the heads, and whatever the picture reader wrote on this member's line."""
+    line = str(getattr(annotation, "text", "") or "") or fallback_line
+    facts = picture_facts_on(line)
     if annotation is None:
-        return _fallback_audience_annotation(fallback_line)
-    return _clean(getattr(annotation, "description", None)), tuple(getattr(annotation, "heads", ()))
+        caption, heads = _fallback_audience_annotation(fallback_line)
+        return caption, heads, facts
+    return (
+        _clean(getattr(annotation, "description", None)),
+        tuple(getattr(annotation, "heads", ())),
+        facts,
+    )
 
 
 def _audience_detectors(heads: Sequence[Any]) -> dict[str, str]:
@@ -225,17 +236,20 @@ def _flag_records(rows: Sequence[FlagRow]) -> list[dict[str, str]]:
 
 def _member_evidence(
     index: int,
-    annotation: tuple[str, tuple[Any, ...]],
+    annotation: tuple[str, tuple[Any, ...], Mapping[str, float | str]],
     rows: Sequence[FlagRow],
     record: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    caption, heads = annotation
+    caption, heads, picture_facts = annotation
     member_evidence: dict[str, Any] = {
         "member": f"p{index}",
         "caption": caption,
         "detectors": _audience_detectors(heads),
         "flags": _flag_records(rows),
     }
+    # Absent on a line with no picture row, so evidence keys banked before the reader stay valid.
+    if picture_facts:
+        member_evidence["picture_facts"] = dict(sorted(picture_facts.items()))
     body_observation = _visual_body_observation(record)
     if body_observation is not None:
         member_evidence["body_observation"] = body_observation

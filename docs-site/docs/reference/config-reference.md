@@ -454,7 +454,6 @@ editorial:
     location: public-v1
     nsfw_marqo: det-v2
     people: public-v1
-    swim: oi-v3
     venue: oi-v3
   preparation:
     tier: full                   # full | no_captions | metadata_only
@@ -528,8 +527,15 @@ fallback: a producer the tier demands and cannot reach still stops the run.
 
 `no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the
 pipeline put together, and dropping it keeps every producer the audience gate reads
-(`nsfw_marqo`, `swim`, `children`, `exposure`, `doc_docling`), so the gate is unchanged.
+(`nsfw_marqo`, `children`, `exposure`, `doc_docling`), so the gate is unchanged.
 Reasons under each picture become facts rather than sentences.
+
+The `swim` head is retired, and a configuration that still names it loses the name with one
+log line. Measured against a typed picture reader over 3,564 photographs it answered `yes`
+on 551 where the reader saw swimwear on 22, and the one rule that read it, the
+child-in-swimwear hold, fired on 515 of those and was right about 5. That hold now comes
+from the picture reader's own coverage row, so a library prepared without the reader has no
+swimwear hold: on this tier every unit stays at family viewing regardless.
 
 `metadata_only` also drops the six heads and both detectors, so the gate loses its evidence.
 It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.

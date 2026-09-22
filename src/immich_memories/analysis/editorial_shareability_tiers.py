@@ -5,7 +5,7 @@ The gate may only ever tighten, so each tier answers with the evidence it actual
 * **full** keeps the model check. Captions exist, so the reader can be asked what a picture
   depicts and the exposure review can run.
 * **no_captions** keeps the same detector evidence -- ``nsfw_marqo``, the exposure-source
-  flags, ``swim`` with ``children`` -- and reads it with rules instead of sentences. Without
+  flags, the picture reader's own coverage row -- and reads it with rules instead of sentences. Without
   this the model check refuses every uncaptioned member as ``unavailable_evidence``, which
   holds a whole cut to the family for want of a producer the tier deliberately did not run.
   It matches the model check on what it refuses and, like the tier below, never clears:
@@ -30,7 +30,7 @@ AudienceCheck = Callable[[Any, Mapping[str, Any], str], dict[str, Any]]
 
 _HELD = {
     "exposure_evidence": "a detector or exposure flag marks this unit",
-    "children_in_swimwear": "a child and swimwear are labelled on the same picture",
+    "children_in_swimwear": "the picture reader saw a child in swimwear",
     "owner_review_flag": "the owner left a review flag on this unit",
 }
 
@@ -44,11 +44,16 @@ def _flag_rows(evidence: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def _hold(evidence: Mapping[str, Any]) -> str:
-    """The first deterministic reason to keep this unit in the family, or an empty string."""
+    """The first deterministic reason to keep this unit in the family, or an empty string.
+
+    A member with no picture-facts row cannot raise the swimwear hold, and that is the
+    intended answer: this tier never clears anything anyway, so an unread picture stays at
+    family viewing through the fallback finding below.
+    """
     if exposure_members(evidence):
         return "exposure_evidence"
-    detectors = [member.get("detectors", {}) for member in evidence.get("members", ())]
-    if any(head.get("swim") == head.get("children") == "yes" for head in detectors):
+    facts = [member.get("picture_facts", {}) for member in evidence.get("members", ())]
+    if any(row.get("child") == "swimwear" for row in facts):
         return "children_in_swimwear"
     if any(row.get("flag") == REVIEW for row in _flag_rows(evidence)):
         return "owner_review_flag"

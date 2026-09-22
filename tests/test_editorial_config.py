@@ -30,9 +30,17 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
         "location": "public-v1",
         "nsfw_marqo": "det-v2",
         "people": "public-v1",
-        "swim": "oi-v3",
         "venue": "oi-v3",
     }
+
+
+def test_a_config_that_still_names_a_retired_head_drops_it_and_keeps_the_rest(caplog) -> None:
+    """An old config file is not a broken one: the name goes, one line says so, the run stands."""
+    with caplog.at_level("INFO"):
+        config = EditorialConfig(head_versions={"swim": "oi-v3", "activity": "public-v1"})
+
+    assert config.head_versions == {"activity": "public-v1"}
+    assert "swim" in caplog.text
 
 
 def test_editorial_config_is_available_from_the_public_config_module() -> None:

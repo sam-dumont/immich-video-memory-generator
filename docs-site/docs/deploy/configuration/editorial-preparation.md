@@ -87,7 +87,8 @@ only then renames it into `triage.encoder`. The export is
 `478164cd290ee78e5ddb4fcc474136eec714b4b8253a3609cc7164b592e958af`, checked at every run: no other
 ONNX conversion passes. The wheel carries the head bundle `public-6heads-v3.npz` (four base heads
 on `public-v1`, venue and swim on `oi-v3`): public training coefficients, no library photographs,
-no owner-trained heads.
+no owner-trained heads. Nothing reads `swim` any more: measured against a typed picture reader
+over 3,564 photographs it answered `yes` on 551 where the reader saw swimwear on 22.
 
 ## Detectors
 

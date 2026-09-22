@@ -13,7 +13,6 @@ PUBLIC_HEAD_VERSIONS = {
     "children": "public-v1",
     "location": "public-v1",
     "people": "public-v1",
-    "swim": "oi-v3",
     "venue": "oi-v3",
 }
 
