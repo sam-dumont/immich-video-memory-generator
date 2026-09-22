@@ -211,6 +211,8 @@ src/immich_memories/
 │   ├── provider_failure.py     # What a 4xx/5xx means: refused, come back later, down, or a bad credential
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
 │   ├── editorial_structure_*.py    # The structure planner: wall, subject/trip admission + standing gates, audience, record
+│   │                               # _finishing.py holds PlanRun and the passes that run over a settled cut
+│   │                               # (motion/timing, attached material, audience gate, duplicate review, trim)
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
