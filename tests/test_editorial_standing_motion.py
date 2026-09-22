@@ -10,7 +10,7 @@ from immich_memories.analysis.editorial_block_votes import (
     STANDING_PROMPT_VERSION,
     standing_pass_version,
 )
-from immich_memories.analysis.editorial_story_carriers import StandingGate
+from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.config_models_llm import LLMConfig
 
 

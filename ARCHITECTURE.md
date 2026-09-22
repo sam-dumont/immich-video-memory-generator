@@ -191,6 +191,7 @@ src/immich_memories/
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
+│   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
 │   ├── editorial_home_radius.py    # Where home is, and whether captures sit inside its radius
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,

@@ -21,7 +21,6 @@ from immich_memories.analysis.editorial_person_period_facts import (
 )
 from immich_memories.analysis.editorial_story_carriers import (
     CarrierAdmission,
-    StandingGate,
     choice_is_starred,
     shortlist_by_partition,
 )
@@ -42,6 +41,7 @@ from immich_memories.analysis.editorial_story_shortlist import (
     _capture_group_moments,
 )
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_story_threads import fold_threads, thread_scope
 from immich_memories.analysis.editorial_story_trips import (
     FilmTrips,
