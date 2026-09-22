@@ -181,6 +181,24 @@ def _drop_app_written_wildcard_host(data: dict, path: Path) -> None:
     )
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """`override` wins key by key, at every depth.
+
+    A hand-edited `editorial: {preparation: {tier: ...}}` used to replace the whole
+    app-written `advanced.editorial.preparation` block and take `detector_python` with
+    it, so the next run died in the detector interpreter (#765).
+    """
+    merged = base.copy()
+    for key, value in override.items():
+        current = merged.get(key)
+        merged[key] = (
+            _deep_merge(current, value)
+            if isinstance(current, dict) and isinstance(value, dict)
+            else value
+        )
+    return merged
+
+
 def _load_yaml_data(path: Path) -> dict:
     """Load and flatten YAML config data (advanced: → top-level)."""
     if not path.exists():
@@ -192,9 +210,9 @@ def _load_yaml_data(path: Path) -> dict:
         for section, nested in advanced.items():
             flat = data.get(section)
             if isinstance(flat, dict) and isinstance(nested, dict):
-                # Merge setting by setting: one hand-edited flat key must not
-                # silently discard the rest of the app-written block (#765).
-                data[section] = {**nested, **flat}
+                # Merge setting by setting, at every depth: one hand-edited flat key
+                # must not silently discard the rest of the app-written block (#765).
+                data[section] = _deep_merge(nested, flat)
             elif section not in data:
                 data[section] = nested
     _drop_app_written_wildcard_host(data, path)

@@ -46,7 +46,10 @@ Everyday sections stay at the top level (`immich`, `defaults`, `output`, `audio`
 `title_llm`, `cache`, `upload`, `trips`, `network`, `photos`, `scheduler`). Tuning sections go under
 `advanced:` (`analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
 `notifications`, `triage`, `editorial`, `inference`). The app writes them that way; on read both
-placements work and merge setting by setting, and the top-level value wins a tie.
+placements work and merge setting by setting at every depth, and the top-level value wins a
+tie. Depth is the point: a hand-edited `editorial: {preparation: {tier: no_captions}}` used
+to replace the whole app-written `advanced.editorial.preparation` block and take
+`detector_python` out with it, so the next run died looking for the detector interpreter.
 
 Unknown keys inside a section are ignored, and the keys of the removed per-clip scorer
 (`content_analysis`, `audio_content`, `transcription`, `description_llm`,
