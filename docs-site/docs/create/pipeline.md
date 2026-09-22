@@ -196,9 +196,9 @@ picture's 800 px tile and banks the probabilities. Three gates read them, and on
 exists: a picture the reader calls a screen at 0.9 or better stops being a scene carrier, which is
 what finally catches a TV frame the document head reports as a photograph; a readable personal
 record at 0.9 or better, and bare or uncovered coverage, bathing or breastfeeding, add an audience
-hold that nothing downstream can lift; and a picture that scores under 0.10 on "worth showing on
-its own" while the reader also calls it an empty room, an accidental frame, a lone object or a
-body-part close-up stands at zero in the no-model cut. A nappy is not a hold. The reader's own
+hold that nothing downstream can lift; and a picture the reader calls an empty room, an
+accidental frame, a lone everyday object or a body-part close-up stands at zero in the no-model
+cut. A nappy is not a hold. The reader's own
 words never reach a prompt: these are numbers on the line, read by gates, stripped before any
 prose reader sees them.
 

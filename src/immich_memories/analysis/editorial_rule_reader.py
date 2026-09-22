@@ -320,10 +320,6 @@ class RuleStructureReader:
         return 1
 
 
-# Below this the reader is saying the picture carries nothing, and it has to agree with
-# itself: a low number alone refuses real moments, and the label alone refuses a ceiling
-# somebody meant to photograph.
-_NOT_WORTH = 0.10
 _NOTHING_KINDS = frozenset(
     {
         "empty_room_ceiling_or_floor",
@@ -335,7 +331,11 @@ _NOTHING_KINDS = frozenset(
 
 
 def nothing_to_show(line: str) -> bool:
-    """The optional picture reader says this frame carries nothing. Silent without its row."""
-    facts = picture_facts_on(line)
-    worth = facts.get("worth")
-    return isinstance(worth, float) and worth < _NOT_WORTH and facts.get("what") in _NOTHING_KINDS
+    """The optional picture reader says this frame carries nothing. Silent without its row.
+
+    The reader's `worth` number is not the discriminant and is deliberately not read here.
+    Over the 502 pictures of the four control months its median is 0.992, nothing at all
+    falls under 0.10, and the ceiling everybody agrees carries nothing scores 0.99. What
+    separates those pictures is the reader naming the kind of frame it is looking at.
+    """
+    return picture_facts_on(line).get("what") in _NOTHING_KINDS
