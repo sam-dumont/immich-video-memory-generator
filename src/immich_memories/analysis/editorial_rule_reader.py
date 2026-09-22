@@ -25,6 +25,12 @@ from immich_memories.analysis.editorial_story_weighing import (
     consecutive_runs,
 )
 
+# The place labels of the shipped head bundle the standing rule reads. A picture is in a
+# private or utility interior, or in a public place; every other venue label says nothing.
+PRIVATE_VENUES = frozenset({"bedroom", "medical", "private_facility"})
+PUBLIC_VENUES = frozenset({"water"})
+OUTDOOR_LOCATION = "outdoor"
+
 
 def _calendar_week(day: str) -> tuple[int, int] | tuple[()]:
     """The ISO (year, week) of a day episode; empty when the episode has no dated unit."""
@@ -288,19 +294,24 @@ class RuleStructureReader:
 
     @staticmethod
     def _visual_standing(heads: dict[str, str], *, known_people: bool) -> int:
+        """Nobody, nothing happening and a private or utility interior does not stand on its
+        own; people, an activity, or an outdoor or public place does.
+
+        Every label here is one the shipped head bundle can produce. The rule this replaces
+        asked for `venue == "home"` and four place labels no head has ever emitted, so two of
+        its branches were dead and it could not answer 0 from the heads at all.
+        """
         if heads.get("people") == "none":
-            if heads.get("activity") == "other" and heads.get("venue") == "home":
+            if heads.get("activity", "other") == "other" and heads.get("venue") in PRIVATE_VENUES:
                 return 0
             if heads.get("location") == "indoor":
                 return 1
         if known_people or heads.get("people", "undetermined") not in {"none", "undetermined"}:
             return 2
-        if heads.get("activity", "other") != "other" or heads.get("venue") in {
-            "nature",
-            "urban",
-            "event-venue",
-            "sports",
-            "water",
-        }:
+        if (
+            heads.get("activity", "other") != "other"
+            or heads.get("location") == OUTDOOR_LOCATION
+            or heads.get("venue") in PUBLIC_VENUES
+        ):
             return 2
         return 1
