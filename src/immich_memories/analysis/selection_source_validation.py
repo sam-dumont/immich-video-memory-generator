@@ -47,10 +47,11 @@ def _source_exclusion_reason(
     dependencies: EditorialDependencies,
     owner_exclusions: set[str],
     components: frozenset[str],
+    generated: frozenset[str],
 ) -> str | None:
     clip = source if isinstance(source, VideoClipInfo) else None
     asset = asset_of(source)
-    reason = _identity_exclusion_reason(asset, request, owner_exclusions, components)
+    reason = _identity_exclusion_reason(asset, request, owner_exclusions, components, generated)
     if reason is None:
         reason = _provenance_exclusion_reason(asset, clip, request.scope)
     if reason is None:
@@ -100,6 +101,7 @@ def _identity_exclusion_reason(
     request: EditorialSelectionRequest,
     owner_exclusions: set[str],
     components: frozenset[str],
+    generated: frozenset[str],
 ) -> str | None:
     """Facts about this asset alone: who asked for it, and who already refused it."""
     if request.scope.asset_ids is not None and asset.id not in request.scope.asset_ids:
@@ -112,6 +114,8 @@ def _identity_exclusion_reason(
         return request.evidence_exclusions[asset.id]
     if asset.id in components:
         return "Live Photo component"
+    if asset.id in generated:
+        return "a film this app generated"
     return None
 
 

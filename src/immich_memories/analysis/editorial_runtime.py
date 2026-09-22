@@ -40,6 +40,7 @@ from immich_memories.analysis.editorial_text_gateway import (
     SyncTextPromptRequester,
     semantic_text_model_identity,
 )
+from immich_memories.analysis.generated_source_provenance import generated_source_ids
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -639,6 +640,15 @@ def build_editorial_planner(
         max_source_video_seconds=config.analysis.max_source_video_seconds,
         accept_any_provenance=context.accept_any_provenance,
         include_off_timeline=False,
+        generated_asset_ids=tuple(
+            sorted(
+                generated_source_ids(
+                    # A client that cannot answer leaves the receipts answering alone.
+                    tagged=getattr(client, "generated_asset_ids", frozenset),
+                    cache_database=config.cache.database_path,
+                )
+            )
+        ),
     )
     selection_request = EditorialSelectionRequest(
         scope=scope,

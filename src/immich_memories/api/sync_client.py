@@ -155,6 +155,9 @@ class SyncImmichClient:
     def search_metadata(self, **kwargs) -> MetadataSearchResult:
         return self._run(self._async_client.search_metadata(**kwargs))
 
+    def generated_asset_ids(self) -> frozenset[str]:
+        return self._run(self._async_client.generated_asset_ids())
+
     def get_videos_for_person_and_year(
         self,
         person_id: str,

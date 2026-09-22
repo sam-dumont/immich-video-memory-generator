@@ -111,6 +111,10 @@ class SourceScope:
     # Scope, like the library boundary: where the ask says the memory happened.
     # None means the ask names no place, which admits everything.
     place: PlaceConstraint | None = None
+    # The films this app already made and uploaded. Identity, not quality: a finished
+    # memory is not footage of anything, and nothing else in acquisition can tell.
+    # Its duration sits under the source cap and its filename matches no pattern.
+    generated_asset_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.date_ranges and (self.start_at is not None or self.end_at is not None):
@@ -198,8 +202,14 @@ def prepare_editorial_source(
         )
     )
     components = live_photo_component_ids(asset_of(source) for source in sources)
+    generated = frozenset(request.scope.generated_asset_ids)
     source_decisions = tuple(
-        (source, _source_exclusion_reason(source, request, dependencies, excluded, components))
+        (
+            source,
+            _source_exclusion_reason(
+                source, request, dependencies, excluded, components, generated
+            ),
+        )
         for source in sources
     )
     eligible_sources = tuple(

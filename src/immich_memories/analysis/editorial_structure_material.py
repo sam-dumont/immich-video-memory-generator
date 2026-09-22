@@ -26,7 +26,12 @@ from immich_memories.analysis.editorial_person_period_facts import (
 )
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_speech import banked_unit_regions, speech_buffer
-from immich_memories.analysis.editorial_structure_budget import NOMINAL_STILL_SECONDS, RESIDUAL_MIN
+from immich_memories.analysis.editorial_structure_budget import (
+    MIN_MOTION_SECONDS,
+    MOTION_CAP_SECONDS,
+    NOMINAL_STILL_SECONDS,
+    RESIDUAL_MIN,
+)
 from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
     StructurePlanningInput,
@@ -40,7 +45,6 @@ from immich_memories.analysis.motion_rendering import motion_renderings
 from immich_memories.api.models import AssetType
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
 
-MOTION_CAP_SECONDS = 6.0
 STILL_SECONDS = NOMINAL_STILL_SECONDS
 
 
@@ -205,6 +209,34 @@ class UnitBuilder:
             "residual": residual,
         }
 
+    def _video_unit(self, asset_id: str, base: dict) -> dict | None:
+        """None for a clip too short to read as a shot rather than a stub."""
+        dur = float(self._assets[asset_id].duration_seconds or 0.0)
+        if dur < MIN_MOTION_SECONDS:
+            return None
+        return base | {
+            "kind": "video",
+            "asset_id": asset_id,
+            "members": [asset_id],
+            "video_ids": [asset_id],
+            "trim_points": [],
+            "seconds": round(min(dur, MOTION_CAP_SECONDS), 2),
+            "raw_seconds": round(dur, 2),
+            "residual": None,
+        }
+
+    def _still_unit(self, asset_id: str, base: dict) -> dict:
+        return base | {
+            "kind": "still",
+            "asset_id": asset_id,
+            "members": [asset_id],
+            "video_ids": [],
+            "trim_points": [],
+            "seconds": STILL_SECONDS,
+            "raw_seconds": None,
+            "residual": None,
+        }
+
     def _raw_units(self, ids: list[str]) -> list[dict]:
         seen_families: set = set()
         units: list[dict] = []
@@ -226,35 +258,14 @@ class UnitBuilder:
                     continue
                 seen_families.add(r.still_ids)
                 units.append(self._live_unit(a, base, ids))
-            elif asset.type.value.lower() == "video":
-                dur = float(asset.duration_seconds or 0.0)
-                units.append(
-                    base
-                    | {
-                        "kind": "video",
-                        "asset_id": a,
-                        "members": [a],
-                        "video_ids": [a],
-                        "trim_points": [],
-                        "seconds": round(min(dur, MOTION_CAP_SECONDS), 2),
-                        "raw_seconds": round(dur, 2),
-                        "residual": None,
-                    }
-                )
-            else:
-                units.append(
-                    base
-                    | {
-                        "kind": "still",
-                        "asset_id": a,
-                        "members": [a],
-                        "video_ids": [],
-                        "trim_points": [],
-                        "seconds": STILL_SECONDS,
-                        "raw_seconds": None,
-                        "residual": None,
-                    }
-                )
+                continue
+            unit = (
+                self._video_unit(a, base)
+                if asset.type.value.lower() == "video"
+                else self._still_unit(a, base)
+            )
+            if unit is not None:
+                units.append(unit)
         return [self._with_banked_speech(unit) for unit in units]
 
     def _with_banked_speech(self, unit: dict) -> dict:

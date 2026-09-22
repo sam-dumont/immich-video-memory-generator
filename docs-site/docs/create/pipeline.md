@@ -141,6 +141,12 @@ typed rather than one the model read off a banner.
 card: it does not render. An empty special-days catalogue produces instructions for building one,
 not an invented occasion.
 
+**A film this app made is not footage of anything.** A finished memory uploaded back into Immich looks exactly like a source video: its duration sits under the source cap and its filename matches no pattern, so it was being filmed again. Two independent records now refuse it at source admission, beside the Live Photo component rule: the `immich-memories/generated` tag Immich holds, and this install's own upload receipts in `cache.db`. Neither is complete alone, the tag because an older upload never got one and the receipts because an upload from another machine is not in them, and a server that refuses the tag query leaves the receipts answering rather than failing the run. On one real library three of a month's four "videos" were the app's own output.
+
+**A clip under two seconds is a stub, not a shot.** It is over before the eye settles and the film pays a transition for it either way, so no video shorter than that is admitted. At the other end, letting a carrier finish its sentence is a courtesy rather than a licence: the speech-safe end now stops at twice the six-second motion cap, because one utterance once carried a clip to the end of a seventeen-second source.
+
+**A screenshot was never a source.** A phone-screen pixel size already refused a picture as a carrier, and admitted it as a source, where it still counted toward day masses and moment structure. It is metadata rather than caption text, so it answers the same with and without a caption seat, and it now refuses at the source gate too.
+
 **Emergent, not queried.** Nothing searches your library for "beach" or "dog". The
 [special days catalogue](./cli/prepare.md#discover-days) is built by looking at what your days actually
 contain and asking whether anything happened, which is how it finds the day that mattered with 30

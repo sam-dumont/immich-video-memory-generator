@@ -337,6 +337,12 @@ class ImmichClient:
         except ImmichAPIError:
             raise
 
+    async def generated_asset_ids(self) -> frozenset[str]:
+        """The assets this library still holds under this app's provenance tag."""
+        from immich_memories.api.generated_asset_tags import generated_asset_ids
+
+        return await generated_asset_ids(self._request)
+
     # ---- Delegate to SearchService ----
 
     async def search_metadata(

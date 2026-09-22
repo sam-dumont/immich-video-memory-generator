@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from immich_memories.analysis.editorial_structure_budget import MOTION_CAP_SECONDS
 from immich_memories.processing.live_material import LiveRenderMaterial
 from immich_memories.speech.cuts import safe_end, set_duration
 from immich_memories.speech.facts import SpeechMeasurementUnavailable
@@ -105,7 +106,13 @@ def resolve_speech_cuts(
             if left < start < right:
                 start = left
         carrier["start_time"] = start
-        end = min(duration, safe_end(carrier, carrier["seconds"], expand=True))
+        # Finishing the sentence is a courtesy, not a licence: an uncapped expand
+        # followed one utterance to the end of a 17-second source.
+        end = min(
+            duration,
+            start + 2 * MOTION_CAP_SECONDS,
+            safe_end(carrier, carrier["seconds"], expand=True),
+        )
         set_duration(carrier, end - start)
         result.append(carrier)
     return result
