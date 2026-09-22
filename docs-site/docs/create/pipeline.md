@@ -60,7 +60,7 @@ holds more stories than the film has slots, a detected trip goes first among the
 weight; then the existing episode reading and number of distinct moments decide, then the order
 the reader listed its stories in, then the order things happened. Custom-subject and trip films
 use their admission reading instead. A well starred December cannot push
-January out of the year.
+January out of the year. A refused favourite loses its frame rather than its moment: without a model to come back and compare pictures, the no-model editor keeps the rest of a starred moment instead of discarding it, with the favourite still in front of them, so a star the standing gate or a source rule refuses no longer takes the whole moment out of the film. Every carrier's row names the other pictures of its own moment.
 
 **General films skip the preliminary importance ballot.** The model-backed editor reuses the
 monthly episode reading's assessment for year, month and other general films. A central occasion

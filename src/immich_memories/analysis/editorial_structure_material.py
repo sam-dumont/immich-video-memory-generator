@@ -158,6 +158,7 @@ class UnitBuilder:
         self._threshold = source.config.photos.burst_hash_threshold
         self._never_auto = never_auto
         self._document_sources = document_sources
+        self._keep_moment_alternatives = ports.rules is not None
         self._hashes: dict[str, str | None] = {}
         self.evidence_pictures: dict[str, int] = {}
         self.never_auto_excluded: dict[str, list] = {}
@@ -274,9 +275,12 @@ class UnitBuilder:
         return unit if regions is None else unit | {"speech_regions": regions}
 
     def _distinct(self, units: list[dict]) -> list[dict]:
-        # the favourite wins its moment
-        starred_moments = {u["moment"] for u in units if u["favourite"]}
-        units = [u for u in units if u["moment"] not in starred_moments or u["favourite"]]
+        # The favourite wins its moment. A reader with no model behind it cannot come back
+        # to a moment whose favourite is refused as a carrier, so it keeps the moment's
+        # other frames: the capture-group order still puts the favourite in front of them.
+        if not self._keep_moment_alternatives:
+            starred_moments = {u["moment"] for u in units if u["favourite"]}
+            units = [u for u in units if u["moment"] not in starred_moments or u["favourite"]]
         cands = [
             PhotoCandidate(
                 key=str(i),

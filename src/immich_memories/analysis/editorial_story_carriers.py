@@ -355,6 +355,9 @@ class CarrierAdmission:
             "story_role": WEIGHT_ROLE[s["weight"]],
             "story_weight": s["weight"],
             "depicted_moment": choice.key,
+            # The rest of this moment, so a later stage can swap the frame without
+            # losing it. Written by the reader that keeps a moment's siblings.
+            "moment_alternatives": [a for a in choice.members if a != asset],
             "standing": self.gate.scores.get(asset),
         }
 
