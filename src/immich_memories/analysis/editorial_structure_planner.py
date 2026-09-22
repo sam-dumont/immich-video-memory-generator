@@ -23,7 +23,10 @@ from immich_memories.analysis.editorial_owner_required import admit_owner_requir
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
-from immich_memories.analysis.editorial_story_lookalike import picture_pair_relation
+from immich_memories.analysis.editorial_story_lookalike import (
+    hash_pair_relation,
+    picture_pair_relation,
+)
 from immich_memories.analysis.editorial_story_planner import select_story_first
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
@@ -72,6 +75,21 @@ from immich_memories.security import write_secret_file
 SECONDS_PER_SLOT = NOMINAL_STILL_SECONDS
 STORY_RANK = {"central": 0, "supporting": 1}
 FLAGGED_LINE = re.compile(r"nsfw=yes|exposure=(partial|nude)")
+
+
+def _looks_alike_relation(ports, material, episode_relation, relation_records):
+    """The repetition question this reader can answer."""
+    if ports.rules is not None:
+        # The no-model reader asked nothing at all here; the preview hashes it already
+        # caches for the burst pass answer the same question without a model.
+        return hash_pair_relation(ports.thumbnail_hash)
+    return picture_pair_relation(
+        observe=material.picture_evidence.observe if ports.observe_picture else None,
+        episode_relation=episode_relation,
+        story_relation=sampled_source_relation(
+            ports.confirm_story_pairs, picture_records=relation_records
+        ),
+    )
 
 
 def _near_home_test(source: StructurePlanningInput, wall: Wall):
@@ -354,13 +372,7 @@ def _select(
         marker=marker,
         record=record_story,
         partition_limit=partition_limit,
-        looks_alike=picture_pair_relation(
-            observe=material.picture_evidence.observe if ports.observe_picture else None,
-            episode_relation=episode_relation,
-            story_relation=sampled_source_relation(
-                ports.confirm_story_pairs, picture_records=relation_records
-            ),
-        ),
+        looks_alike=_looks_alike_relation(ports, material, episode_relation, relation_records),
     )
     run.carriers = list(selection.carriers)
     required = frozenset(source.owner_required_asset_ids)

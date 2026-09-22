@@ -23,10 +23,16 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from immich_memories.analysis.duplicate_hashing import hamming_distance
 from immich_memories.analysis.editorial_final_sampled_duplicates import nearby_episode
 
 Relation = Callable[[str, str, int | None], Mapping[str, Any]]
 PairLooksAlike = Callable[[Mapping[str, Any], Mapping[str, Any]], bool | None]
+MOTION_KINDS = frozenset({"video", "live-motion"})
+# The distance at which two cached previews corroborate each other as one view. The
+# burst pass already reads the same 64-bit hash at 8 bits inside a five-minute window;
+# this is the looser threshold the final duplicate review works to.
+LOOK_ALIKE_HASH_DISTANCE = 10
 
 
 def picture_pair_relation(
@@ -44,6 +50,34 @@ def picture_pair_relation(
         observe(keeper["asset_id"])
         relation = episode_relation if nearby_episode(candidate, keeper) else story_relation
         return relation(candidate["asset_id"], keeper["asset_id"], None).get("same")
+
+    return looks_alike
+
+
+def hash_pair_relation(
+    thumbnail_hash: Callable[[str], str | None], *, distance: int = LOOK_ALIKE_HASH_DISTANCE
+) -> PairLooksAlike:
+    """Whether two carriers repeat each other, from the previews the pipeline already hashed.
+
+    The comparison is bounded to one story or one calendar day, which is where a
+    repetition lives: two frames of the same subject a season apart are the memory, not
+    an echo. A frame that plays is never a repeat of a still, because a video product
+    prefers motion, and a preview with no cached hash answers unknown rather than
+    distinct.
+    """
+
+    def looks_alike(candidate: Mapping[str, Any], keeper: Mapping[str, Any]) -> bool | None:
+        if (
+            candidate["story_episode"] != keeper["story_episode"]
+            and candidate["taken"][:10] != keeper["taken"][:10]
+        ):
+            return False
+        if candidate.get("kind") in MOTION_KINDS and keeper.get("kind") not in MOTION_KINDS:
+            return False
+        left, right = thumbnail_hash(candidate["asset_id"]), thumbnail_hash(keeper["asset_id"])
+        if not left or not right:
+            return None
+        return hamming_distance(left, right) <= distance
 
     return looks_alike
 

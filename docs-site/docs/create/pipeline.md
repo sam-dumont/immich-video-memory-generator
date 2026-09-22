@@ -291,6 +291,8 @@ question confirms it looks different from the kept frames of its moment and the 
 after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
 stays short.
 
+**Without a model, steps 3 and 4 ask the hashes.** Step 2 needs a reader, so the no-model editor reported `lookalike: unavailable` and asked nothing. It now builds the same question from the perceptual hashes the burst pass already caches, at the same corroboration distance of 10 bits, bounded to one story or one calendar day. A frame that plays is never a repeat of a still, a preview with no cached hash answers unknown rather than distinct, and a favourite is still never refused for looking like a picture you did not star. That matters for more than repetition: the depth pass refuses to run without a look-alike relation, so a no-model film could not deepen the moments it already showed. With one, a sparse year film went from 98 shots and 384 s of a 600 s target to 159 and 599.7 s, a single-day memory from 7 shots to 15, and a day that produced no film at all produced one.
+
 **4. The final film, over what actually shipped.** Only pictures selected from the same capture
 episode, within the 90-minute window, are compared. Matching hashes or similar captions from
 unrelated episodes do not buy a model call. Within an episode, a hash distance of at most 10 bits
