@@ -8,9 +8,10 @@ carrier takes the whole depicted moment out of the film and nothing is left to s
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from immich_memories.analysis.editorial_story_carriers import CarrierAdmission, StandingGate
+from immich_memories.analysis.editorial_story_carriers import CarrierAdmission
 from immich_memories.analysis.editorial_story_shortlist import DepictedChoice
 from immich_memories.analysis.editorial_story_slots import PartitionedSlots
+from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_material import UnitBuilder
 from immich_memories.config_loader import Config
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
+from datetime import datetime
 from operator import itemgetter
 from typing import Any
 
@@ -42,6 +44,13 @@ MAX_PASSES = 3
 
 def choice_is_starred(c: DepictedChoice, unit_by_asset: Mapping[str, Any]) -> bool:
     return any(unit_by_asset[a][1].get("favourite") for a in c.members if a in unit_by_asset)
+
+
+def _seconds_apart(taken: str, others: Sequence[str]) -> float:
+    when = datetime.fromisoformat(taken)
+    return min(
+        (abs((when - datetime.fromisoformat(o)).total_seconds()) for o in others), default=0.0
+    )
 
 
 def shortlist_by_partition(
@@ -554,6 +563,39 @@ class CarrierAdmission:
         while self._deepen_once(index, s):
             pass
 
+    def _offerable(self, s) -> list[DepictedChoice]:
+        """This story's moments, holding only the pictures that could carry a frame.
+
+        The model ranks a moment's members, so its ladder walks the top three by position.
+        Ranked by capture facts alone, position says little, and a picture that cannot carry
+        a frame at all must not spend one of the moment's three rungs: an eight-picture
+        moment was shipping two frames with five usable ones left behind. The spares that
+        remain are offered furthest first in capture time from the frames of the moment
+        already in the cut.
+        """
+        choices = self.choices_of[s["key"]]
+        if not self._mechanical_picks:
+            return choices
+        self.gate.ensure([a for c in choices for a in c.members if self.free(a)])
+        carried = {row["asset_id"] for row in self.carriers}
+        offerable = []
+        for c in choices:
+            good = [
+                a
+                for a in c.members
+                if a in carried or (self.free(a) and self.gate.stands(a, s["weight"], s["key"]))
+            ]
+            if not good:
+                continue
+            kept = [row["taken"] for row in self.carriers if row["depicted_moment"] == c.key]
+            spare = sorted(
+                (a for a in good if a not in carried),
+                key=lambda a: -_seconds_apart(self._unit_by_asset[a][1]["taken"], kept),
+            )
+            members = [*(a for a in good if a in carried), *spare]
+            offerable.append(replace(c, primary=members[0], alternatives=members[1:]))
+        return offerable
+
     def _deepen_once(self, index: int, s) -> bool:
         if (
             len(self.carriers) >= self.slots
@@ -563,7 +605,7 @@ class CarrierAdmission:
             return False
         ladder = list(
             depth_ladder(
-                self.choices_of[s["key"]],
+                self._offerable(s),
                 chosen=self.chosen_by_story[s["key"]],
                 used=self._used_choice_keys,
                 group_of=lambda asset: self._unit_by_asset[asset][1].get("moment"),
