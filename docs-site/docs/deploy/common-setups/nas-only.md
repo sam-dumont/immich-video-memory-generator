@@ -42,6 +42,9 @@ week and a three-week holiday arrives as three stories instead of one.
 | **`no_captions`**, the NAS tier | **about 4 h** |
 | `metadata_only` | minutes |
 
+`no_captions` is also what an install gets when it names no LLM model and no caption
+endpoint, so the config block above states the tier it wants rather than relying on that.
+
 Measured per picture on that box on 17 September 2026: 1.4813 s for every producer except the
 caption, of which the two detectors are 0.7180 s and the DINOv2 encoder with its six context heads
 0.5990 s, against 30.9 s for one caption. The whole cell, preparation through render, peaked at

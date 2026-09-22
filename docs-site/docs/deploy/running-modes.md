@@ -52,6 +52,12 @@ no endpoint at all asked nothing.
 | `no_captions` | The above plus the DINOv2 encoder with six context heads, the sensitive-content and document detectors | The same, plus a classifier line under every picture. The gate refuses what it would refuse on `full` and can never clear: eight findings (bathing, toileting, medical procedures, identifying records and the rest) are only named by a description, so a clean picture still comes back family-only |
 | `full` | All of the above plus one caption per picture from a 500M vision model | A sentence under each picture instead of the facts that funded it. Everything the gate can do |
 
+The default is `full`. An install that configures neither `advanced.llm.model` nor a caption
+endpoint gets `no_captions` instead, and says so once in the log: a blank `llm.model`
+already resolves the reader to `rules`, so `full` would spend every batch on a connection
+refused at the default caption address. Stating `tier`, `caption_base_url` or
+`caption_artifact_id`, or configuring a model, keeps the tier exactly as written.
+
 Facts are banked per picture and per producer. Changing tiers erases nothing, and a `no_captions`
 library can add captions later, a month at a time. The second cut over a prepared period pays
 only a preview check.

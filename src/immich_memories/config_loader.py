@@ -374,6 +374,30 @@ class Config(BaseSettings):
         apply_preset(self)
         return self
 
+    @model_validator(mode="after")
+    def _settle_preparation_tier(self) -> Config:
+        """Do not ask a blank install for captions nothing can produce.
+
+        The default tier is `full`, which demands a caption for every picture. A blank
+        `llm.model` already resolves the reader to `rules`, so with no reader and no
+        stated caption seat there is nothing to caption for, and the run spends every
+        batch on a connection refused at the default caption address. Stating the tier,
+        the caption endpoint or a model keeps the tier exactly as written.
+        """
+        preparation = self.editorial.preparation
+        stated = preparation.model_fields_set & {"tier", "caption_base_url", "caption_artifact_id"}
+        if preparation.tier != "full" or stated:
+            return self
+        if self.editorial.reader == "model" or self.llm.model.strip():
+            return self
+        preparation.tier = "no_captions"
+        logging.getLogger(__name__).info(
+            "No LLM model and no caption endpoint are configured, so preparation runs at "
+            "the no_captions tier (heads and detectors only). Set "
+            "advanced.editorial.preparation.tier to choose another."
+        )
+        return self
+
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
         """Load configuration from a YAML file.
