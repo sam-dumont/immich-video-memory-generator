@@ -26,6 +26,7 @@ from immich_memories.analysis.editorial_sampled_reference import sampled_source_
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_lookalike import (
     hash_pair_relation,
+    hash_then_model,
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
@@ -84,16 +85,18 @@ FLAGGED_LINE = re.compile(r"nsfw=yes|exposure=(partial|nude)")
 
 
 def _looks_alike_relation(ports, material, episode_relation, relation_records):
-    """The repetition question this reader can answer."""
+    """The repetition question: the preview hashes first, then whatever else this reader has."""
+    hashes = hash_pair_relation(ports.thumbnail_hash)
     if ports.rules is not None:
-        # The no-model reader asked nothing at all here; the preview hashes it already
-        # caches for the burst pass answer the same question without a model.
-        return hash_pair_relation(ports.thumbnail_hash)
-    return picture_pair_relation(
-        observe=material.picture_evidence.observe if ports.observe_picture else None,
-        episode_relation=episode_relation,
-        story_relation=sampled_source_relation(
-            ports.confirm_story_pairs, picture_records=relation_records
+        return hashes
+    return hash_then_model(
+        hashes,
+        picture_pair_relation(
+            observe=material.picture_evidence.observe if ports.observe_picture else None,
+            episode_relation=episode_relation,
+            story_relation=sampled_source_relation(
+                ports.confirm_story_pairs, picture_records=relation_records
+            ),
         ),
     )
 
@@ -413,10 +416,10 @@ def _select(
         )
         record_story("owner-required", owner_record)
     trim_to_timing(run, source, record_story, protected=required)
-    if ports.rules is not None:
-        # The film is settled here, so its ends are known. The shave that follows takes
-        # the half second back when the target leaves no room for it.
-        hold_the_ends(run.carriers)
+    # The film is settled here, so its ends are known. The shave that follows takes the half
+    # second back when the target leaves no room for it. An opening and a closing frame are
+    # read rather than glanced at whoever cut them, so this is not the no-model reader's.
+    hold_the_ends(run.carriers)
     chapters = _chapters_of(selection, run.carriers, wall.anchor_label)
     beats = [row["beat"] for row in chapters]
     _story_worthiness(selection, wall, tier, worth_reason)

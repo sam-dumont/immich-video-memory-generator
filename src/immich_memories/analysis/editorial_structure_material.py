@@ -414,11 +414,10 @@ def build_material(
     units = {f: builder.units_of(f) for f in wall.fam_ids}
     text = UnitLines(
         lines,
-        # The no-model reader has no sentence to read, so it is handed the people facts
-        # the line strips. A model reader keeps judging the caption it was given.
-        life_without_prose=metadata_life(source.assets, source.audience_annotations)
-        if ports.rules is not None
-        else None,
+        # Only a picture whose line carries no prose at all reaches this, so on a captioned
+        # tier it answers for the pictures the captioner could not describe and for nothing
+        # else. Reading "nobody is in it" off a blank line was never the right answer.
+        life_without_prose=metadata_life(source.assets, source.audience_annotations),
     )
     # The story reader reads what the pictures show, not the flag/people tail of the line.
     story_lines = dict(lines)

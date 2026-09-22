@@ -4,6 +4,7 @@ import json
 from collections import Counter
 from datetime import date, timedelta
 
+from immich_memories.analysis.editorial_story_lookalike import hash_pair_relation, hash_then_model
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.selection_same_picture import SamePicturePairDecision
@@ -138,3 +139,43 @@ def test_depth_takes_only_frames_that_look_different(tmp_path):
     refused = {row["asset_id"] for row in record["depth"]["refused"]}
     assert refused, "every further frame of the afternoon looked alike"
     assert not refused & {c["asset_id"] for c in plan["carriers"]}
+
+
+def _frame(asset_id):
+    return {
+        "asset_id": asset_id,
+        "taken": "2030-05-12T10:00:00+00:00",
+        "story_episode": "one-afternoon",
+        "kind": "still",
+    }
+
+
+class _Reader:
+    def __init__(self, answer):
+        self.answer = answer
+        self.asked = []
+
+    def __call__(self, candidate, keeper):
+        # WHY: stands in for the reader that would look at both pictures.
+        self.asked.append((candidate["asset_id"], keeper["asset_id"]))
+        return self.answer
+
+
+def test_a_pair_the_cached_previews_call_alike_costs_the_model_nothing():
+    reader = _Reader(False)
+    same = dict.fromkeys(("a", "b"), "0f0f0f0f0f0f0f0f")
+
+    relation = hash_then_model(hash_pair_relation(same.get), reader)
+
+    assert relation(_frame("a"), _frame("b")) is True
+    assert reader.asked == []
+
+
+def test_a_pair_the_cached_previews_do_not_settle_is_still_the_model_s_question():
+    reader = _Reader(True)
+    apart = {"a": "0000000000000000", "b": "ffffffffffffffff"}
+
+    relation = hash_then_model(hash_pair_relation(apart.get), reader)
+
+    assert relation(_frame("a"), _frame("b")) is True
+    assert reader.asked == [("a", "b")]

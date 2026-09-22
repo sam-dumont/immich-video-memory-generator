@@ -1,10 +1,10 @@
-"""The final look-alike review a CPU-only install can run, on previews it already hashed.
+"""The final look-alike review every film runs, on previews it already hashed.
 
-The production review nominates a pair from what its pictures were described as holding and
-confirms it against conserved pixels, which needs a model. Without one the review reported
-`unavailable` and a no-model film ended with no review at all, while the model film ended with
-one. The perceptual hashes the burst pass already caches answer the same question over the
-frames a cut actually holds, keeping the picture the product would keep.
+The sampled review nominates a pair from what its pictures were described as holding and
+confirms it against conserved pixels, which needs a model. This one needs nothing, so it runs
+first on every tier and a film with a model pays its sampled review only over the survivors.
+The perceptual hashes the burst pass already caches answer the same question over the frames a
+cut actually holds, keeping the picture the product would keep.
 
 Unlike the selection-time check, this reads every frame of one story or one day against every
 other, not a picture's neighbours: by the time the film is settled, two frames of the same

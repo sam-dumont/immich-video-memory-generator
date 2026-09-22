@@ -82,6 +82,28 @@ def hash_pair_relation(
     return looks_alike
 
 
+def hash_then_model(
+    hash_relation: PairLooksAlike, model_relation: PairLooksAlike | None
+) -> PairLooksAlike:
+    """Ask the cached previews first, and a model only about the pairs they do not settle.
+
+    The harness measured the model look-alike stage at 61 % of a film's recovery calls and 60 %
+    of its answers inconsistent between the two pair orders, while the hashes the burst pass
+    already caches answer the near-identical half of those pairs for nothing. So a `True` from
+    the hashes is the whole answer and costs no call; a `False` or an unknown is still the
+    model's question, asked exactly as it was before.
+    """
+    if model_relation is None:
+        return hash_relation
+
+    def looks_alike(candidate: Mapping[str, Any], keeper: Mapping[str, Any]) -> bool | None:
+        if hash_relation(candidate, keeper) is True:
+            return True
+        return model_relation(candidate, keeper)
+
+    return looks_alike
+
+
 class LookAlikeCheck:
     """The refusals of one selection, inside a fixed bound of pair questions (twice the slots)."""
 

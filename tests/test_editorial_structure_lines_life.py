@@ -1,8 +1,14 @@
 """Without a sentence, "shows life" is read from Immich's people and the people head."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 
+from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_lines import UnitLines, metadata_life
+from immich_memories.analysis.editorial_structure_material import build_material, read_wall
+from immich_memories.api.models import Person
+from tests.editorial_story_fixtures import ControlledStoryJudge
+from tests.test_editorial_duration_planner_integration import source
 
 STILL = {"asset_id": "a", "kind": "still", "favourite": False}
 # the two line shapes a bank actually holds, with and without the caption seat
@@ -46,7 +52,7 @@ def test_a_captionless_picture_of_nobody_still_shows_no_life():
 
 
 def test_without_the_reading_a_captionless_still_answers_as_it_always_did():
-    """The model reader is handed no fallback, so its judgement is unchanged."""
+    """A text-only reading with no facts beside it has nothing else to answer from."""
     assert UnitLines(BARE).shows_life(STILL) is False
     assert UnitLines(BARE).shows_life(STILL | {"favourite": True}) is True
     assert UnitLines(BARE).shows_life(STILL | {"kind": "video"}) is True
@@ -57,3 +63,28 @@ def test_a_video_or_a_favourite_still_shows_life_whatever_the_metadata_says():
     lines = UnitLines(BARE, life_without_prose=life)
     assert lines.shows_life(STILL | {"kind": "video"}) is True
     assert lines.shows_life(STILL | {"favourite": True}) is True
+
+
+def test_a_model_tier_picture_the_captioner_left_bare_still_shows_its_named_face(tmp_path):
+    """Nothing about reading the facts beside a blank line needs the no-model reader."""
+    captured = source(tmp_path, seconds=12, pictures=2)
+    named = {
+        asset_id: asset.model_copy(update={"people": [Person(id="p1", name="Someone")]})
+        for asset_id, asset in captured.assets.items()
+    }
+    bare = {
+        asset_id: f"{asset.file_created_at.isoformat()} | activity=other"
+        for asset_id, asset in named.items()
+    }
+    captured = replace(captured, assets=named, annotations=bare)
+    ports = StructurePlannerPorts(
+        judge=ControlledStoryJudge(),
+        thumbnail_hash=lambda _: None,
+        rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+        reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+    )
+
+    material = build_material(captured, ports, read_wall(captured))
+
+    assert ports.rules is None, "a model tier, with no rules reader anywhere"
+    assert all(material.text.shows_life(u) for units in material.units.values() for u in units)

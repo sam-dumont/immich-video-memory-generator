@@ -218,6 +218,21 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
         run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
 
 
+def _both_reviews(hash_record: dict, sampled: dict | None) -> dict:
+    """One record for a film that ran both passes: the sampled one, over the hashes' survivors.
+
+    Every removal either pass made is in ``removals``, so the film's bookkeeping reads one
+    list, and the free pass keeps its own record under ``hash_review``.
+    """
+    if sampled is None:
+        return hash_record
+    return sampled | {
+        "removals": [*hash_record["removals"], *sampled["removals"]],
+        "incomplete": bool(hash_record["incomplete"] or sampled["incomplete"]),
+        "hash_review": hash_record,
+    }
+
+
 def final_duplicate_review(
     run: PlanRun,
     ports: StructurePlannerPorts,
@@ -241,17 +256,19 @@ def final_duplicate_review(
         | set(owner_required)
     )
     before_duplicates = run.carriers.copy()
-    if ports.rules is not None:
-        # The sampled review needs a reader to confirm a nominated pair, so a no-model film
-        # ended with no review at all while a model film ended with one. The preview hashes
-        # the burst pass already cached ask the same question over the whole finished cut.
-        reviewed = review_cut_by_cached_hashes(
-            run.carriers,
-            thumbnail_hash=ports.thumbnail_hash,
-            protected_asset_ids=protected,
-            replacements_for=replacements_for,
-        )
-    else:
+    # The preview hashes the burst pass already cached ask the repetition question over the
+    # whole finished cut for nothing, so this pass runs whatever the reader is. A film with a
+    # model then pays its sampled review only over what the hashes could not settle.
+    run.carriers, hash_record = review_cut_by_cached_hashes(
+        run.carriers,
+        thumbnail_hash=ports.thumbnail_hash,
+        protected_asset_ids=protected,
+        replacements_for=replacements_for,
+    )
+    known = {carrier["asset_id"] for carrier in before_duplicates}
+    refilled = [c for c in run.carriers if c["asset_id"] not in known]
+    sampled = None
+    if ports.rules is None:
         reviewed = _sampled_duplicate_review(
             run,
             ports,
@@ -263,9 +280,9 @@ def final_duplicate_review(
             quality=quality,
             pixel_facts=pixel_facts,
         )
-    if reviewed is None:
-        return
-    run.carriers, run.final_duplicates = reviewed
+        if reviewed is not None:
+            run.carriers, sampled = reviewed
+    run.final_duplicates = _both_reviews(hash_record, sampled)
     run.final_duplicates["status"] = (
         "incomplete" if run.final_duplicates["incomplete"] else "complete"
     )
@@ -277,7 +294,7 @@ def final_duplicate_review(
             + removed[carrier["asset_id"]]["keeper"],
             "review_stage": "final-duplicates",
         }
-        for carrier in before_duplicates
+        for carrier in (*before_duplicates, *refilled)
         if carrier["asset_id"] in removed
     )
     _settle_replacements(

@@ -250,7 +250,9 @@ def test_actual_photo_planner_allocates_and_binds_finished_film_budget(tmp_path,
     assert timeline.content_budget == (49.5 if titles else 60)
     assert plan["content_cap_seconds"] == timeline.content_budget
     assert len(plan["carriers"]) == (12 if titles else 15)
-    assert sum(c["seconds"] for c in plan["carriers"]) == (48 if titles else 60)
+    # Nominal stills, with the film's two ends held half a second longer where the budget
+    # leaves room; the untitled film is already at its cap, so the shave takes it straight back.
+    assert sum(c["seconds"] for c in plan["carriers"]) == (49 if titles else 60)
 
 
 def test_actual_live_planner_freezes_timing_before_inspection_and_survives_cuts(tmp_path):

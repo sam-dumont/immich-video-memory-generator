@@ -10,6 +10,19 @@ from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
 from tests.test_editorial_visual_body_audience import picture_record
 
+# Cached previews no two of which are within the free pass's 6 bits, so the hash review that
+# now runs first on every tier removes nothing and the sampled review sees the whole cut.
+DISTINCT_PREVIEWS = (
+    "0000000000000000",
+    "00000000000000ff",
+    "000000000000ff00",
+    "0000000000ff0000",
+)
+
+
+def _distinct_preview(asset_id: str) -> str:
+    return DISTINCT_PREVIEWS[int(asset_id.rsplit("-", 1)[1])]
+
 
 @pytest.mark.parametrize("far_hash", [False, True])
 def test_final_actual_planner_removes_un_nominated_repetition_after_completion(tmp_path, far_hash):
@@ -61,7 +74,7 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
             captured,
             StructurePlannerPorts(
                 judge=judge,
-                thumbnail_hash=lambda _: None,
+                thumbnail_hash=_distinct_preview,
                 rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
                 reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
                 observe_picture=observe,
@@ -90,6 +103,8 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
         "picture-003",
     ]
     assert plan["content_seconds"] == sum(c["seconds"] for c in plan["carriers"])
+    # The film's opening and closing frames are read rather than glanced at, on this tier too.
+    assert [c["seconds"] for c in plan["carriers"]] == [4.5, 4.0, 4.5]
     assert plan["final_duplicate_review"]["status"] == "complete"
     assert plan["cut_carriers"][0]["asset_id"] == "picture-001"
     assert plan["cut_carriers"][0]["review_stage"] == "final-duplicates"
@@ -122,7 +137,7 @@ def test_a_nearby_episode_neighbour_is_cut_though_pixels_and_captions_differ(tmp
         captured,
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
-            thumbnail_hash=lambda _: None,
+            thumbnail_hash=_distinct_preview,
             rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
             reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             observe_picture=lambda asset_id: {
@@ -141,3 +156,47 @@ def test_a_nearby_episode_neighbour_is_cut_though_pixels_and_captions_differ(tmp
     assert plan["cut_carriers"][0]["asset_id"] == "picture-001"
     assert plan["cut_carriers"][0]["review_stage"] == "final-duplicates"
     assert plan["final_duplicate_review"]["status"] == "complete"
+
+
+def test_a_film_with_a_model_loses_its_hash_twin_free_and_still_gets_its_sampled_review(tmp_path):
+    captured = source(tmp_path, seconds=24, pictures=4)
+    previews = {
+        "picture-000": "0000000000000000",
+        "picture-001": "0000000000000000",
+        "picture-002": "000000000000ff00",
+        "picture-003": "0000000000ff0000",
+    }
+    compared = []
+
+    def confirm(pairs, _records, corroborating_distances=None):
+        # WHY: the image gateway a sampled review confirms its nominated pairs through.
+        compared.extend(pairs)
+        return (SamePicturePairDecision(*pairs[0], False),), {"scope": "controlled pixel relation"}
+
+    plan = plan_structure(
+        captured,
+        StructurePlannerPorts(
+            judge=ControlledStoryJudge(),
+            thumbnail_hash=previews.get,
+            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+            observe_picture=lambda _asset_id: picture_record(),
+            confirm_sampled_pairs=confirm,
+            sampled_preview_hashes=lambda ids, _records: {key: previews[key] for key in ids},
+        ),
+    ).plan
+
+    assert [c["asset_id"] for c in plan["carriers"]] == [
+        "picture-000",
+        "picture-002",
+        "picture-003",
+    ]
+    # The twin went on the cached hashes alone: nothing asked the model about it.
+    assert not any("picture-001" in pair for pair in compared)
+    # And the sampled review still ran, over what the free pass left.
+    assert compared
+    review = plan["final_duplicate_review"]
+    assert [row["asset_id"] for row in review["removals"]] == ["picture-001"]
+    assert [row["asset_id"] for row in review["hash_review"]["removals"]] == ["picture-001"]
+    assert review["policy"].startswith("final-displayed-sampled-duplicates")
+    assert plan["cut_carriers"][0]["asset_id"] == "picture-001"
