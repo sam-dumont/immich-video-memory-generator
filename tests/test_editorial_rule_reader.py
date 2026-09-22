@@ -2,6 +2,9 @@
 
 import pytest
 
+from immich_memories.analysis.editorial_final_hash_review import (
+    POLICY as FINAL_HASH_REVIEW_POLICY,
+)
 from immich_memories.config_models_editorial import EditorialConfig
 
 
@@ -125,6 +128,9 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
     assert all(row["kind"] != "live-motion" for row in plan["carriers"])
     assert not plan["picture_facts"]
     assert plan["reranker_metrics"]["calls"] == 0
+    # The cut ends with a duplicate review of its own rather than reporting it unavailable.
+    assert plan["final_duplicate_review"]["status"] in {"complete", "incomplete"}
+    assert plan["final_duplicate_review"]["policy"] == FINAL_HASH_REVIEW_POLICY
     import sqlite3
 
     with sqlite3.connect(

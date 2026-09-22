@@ -317,6 +317,17 @@ quality itself, capture time, then asset id. A favourited copy wins even at a lo
 flagged that one on purpose. Each removal writes which picture went, which kept its slot, the
 hamming distance, and which signal nominated the pair.
 
+Without a model the final review is the cached hashes again, and it is the one place the
+no-model pass is wider than the model pass: nothing nominates a pair from what its pictures
+were described as holding, so every pair of the finished film is compared rather than only
+the ones inside a 90-minute episode. The distance is the same 10 bits. Which picture
+survives, in order: a carrier you ticked, then the favourite, then the frame that moves,
+then the earlier one. A frame whose preview was never cached is kept and named, and the
+run's `final_duplicate_review` record then says `incomplete` rather than claiming a review
+it could not finish. The selection-time check compares a picture with its neighbours, which
+is why this one compares everything: two frames of the same subject four shots apart on a
+thin day are never asked about until here.
+
 There is no `duplicate_hash_threshold`. That key belonged to the retired clip scorer, and a config
 file naming it starts normally and logs one warning instead of keeping a setting that quietly does
 nothing.
