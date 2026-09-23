@@ -20,6 +20,7 @@ from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.editorial_block_votes import balanced_groups
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
     ThinCatalogue,
@@ -151,7 +152,10 @@ class ThinPolish:
             content_cap=content_cap,
         )
         filled, outcomes = refill.fill(kept, slots)
-        final, revoked = self._checked(filled, kept, outcomes, judge, catalogue, contract, line_of)
+        partition = balanced_groups([c["asset_id"] for c in admitted])
+        final, revoked = self._checked(
+            filled, kept, outcomes, partition, judge, catalogue, contract, line_of
+        )
         record(
             "thin-polish",
             {
@@ -183,23 +187,34 @@ class ThinPolish:
         filled: list[dict[str, Any]],
         before: Sequence[Mapping[str, Any]],
         outcomes: Sequence[ThinSlot],
+        partition: Sequence[Sequence[str]],
         judge,
         catalogue: ThinCatalogue,
         contract: str,
         line_of: Callable[[str], str],
     ) -> tuple[list[dict[str, Any]], set[str]]:
-        """Every newcomer, judged again in the company of the whole cut it would join.
+        """Every newcomer, judged again in the company of the block it joined.
 
-        Banked by the block, never by the row: the answer to this exact cut, asked in both
-        orders, replays whole on a second run, and a newcomer is still never the only row left
-        to ask. A revoked newcomer does not take the shot it replaced with it: that shot comes
-        back and the film is where it started.
+        The first vote's blocks are kept: a swap takes its shot's place and an appended newcomer
+        joins the block its capture time falls in, so a few newcomers re-ask a few blocks and
+        not the whole cut. Only the newcomers' verdicts are read. Banked by the block, never by
+        the row, so a second run replays it, and a newcomer is never the only row left to ask.
+        A revoked newcomer does not take the shot it replaced with it: that shot comes back and
+        the film is where it started.
         """
         held = {row["asset_id"] for row in before}
         fresh = [row for row in filled if row["asset_id"] not in held]
         if not fresh:
             return filled, set()
-        votes, _rounds = self._ask(filled, judge, catalogue, contract, line_of)
+        newcomers = {row["asset_id"] for row in fresh}
+        by_asset = {row["asset_id"]: row for row in filled}
+        votes: dict[str, tuple[int, str]] = {}
+        for group in rejoined_blocks(partition, filled, newcomers, outcomes):
+            block = [by_asset[asset] for asset in group]
+            block_votes, _rounds = self._ask(
+                block, judge, catalogue, contract, line_of, moving=newcomers
+            )
+            votes.update(block_votes)
         verdicts = classify_fit(fresh, votes)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
@@ -236,7 +251,8 @@ class ThinPolish:
     def _bank_path(self) -> Path:
         return self.bank_dir / "thesis-fit.private.json"
 
-    def _ask(self, carriers, judge, catalogue, contract, line_of):
+    def _ask(self, carriers, judge, catalogue, contract, line_of, moving=None):
+        """The vote over these shots; with `moving`, only those shots' answers are read."""
         bank = self._bank()
         story_of = {
             asset: story.key for story in catalogue.stories for asset in story.asset_ids
@@ -244,7 +260,11 @@ class ThinPolish:
         return vote_thesis_fit(
             judge,
             pictures=[c["asset_id"] for c in carriers],
-            protected=[c["asset_id"] for c in carriers if is_protected(c)],
+            protected=[
+                c["asset_id"]
+                for c in carriers
+                if is_protected(c) or (moving is not None and c["asset_id"] not in moving)
+            ],
             line_of=line_of,
             thesis=catalogue.thesis,
             contract=contract,
@@ -252,6 +272,44 @@ class ThinPolish:
             bank=bank,
             save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
+
+
+def rejoined_blocks(
+    partition: Sequence[Sequence[str]],
+    cut: Sequence[Mapping[str, Any]],
+    newcomers: set[str],
+    outcomes: Sequence[ThinSlot],
+) -> list[list[str]]:
+    """The first vote's blocks as the filled cut holds them, only the ones a newcomer joined.
+
+    A swap takes the place of the shot it replaced; an appended newcomer joins the first block
+    whose last shot was taken at or after it, or the last block. A block grown past twelve is
+    split evenly and only its parts holding a newcomer are returned.
+    """
+    taken = {row["asset_id"]: (str(row["taken"]), row["asset_id"]) for row in cut}
+    members = [[asset for asset in block if asset in taken] for block in partition] or [[]]
+    home = {asset: index for index, block in enumerate(partition) for asset in block}
+    home.update(
+        {slot.filled_by: home[slot.replacing] for slot in outcomes if slot.replacing in home}
+    )
+    ends = [taken[block[-1]] if block else None for block in members]
+    for asset in sorted(newcomers & set(taken), key=taken.__getitem__):
+        index = home.get(asset)
+        members[_time_block(ends, taken[asset]) if index is None else index].append(asset)
+    groups = (
+        group
+        for block in members
+        for group in balanced_groups(sorted(block, key=taken.__getitem__))
+    )
+    return [group for group in groups if newcomers & set(group)]
+
+
+def _time_block(ends: Sequence[tuple[str, str] | None], when: tuple[str, str]) -> int:
+    """The first block whose last shot was taken at or after `when`, or the last block."""
+    return next(
+        (index for index, end in enumerate(ends) if end is not None and end >= when),
+        len(ends) - 1,
+    )
 
 
 def _with_records(
