@@ -460,11 +460,6 @@ editorial:
     venue: oi-v3
   preparation:
     tier: full                   # full | no_captions | metadata_only
-    picture_facts:               # local typed-decision picture reader, on; see the note below
-      enabled: true
-      base_url: http://127.0.0.1:8080/v1
-      timeout_seconds: 120
-      concurrency: 1
     caption_base_url: http://localhost:8092/v1
     caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
@@ -480,14 +475,6 @@ editorial:
 ```
 
 Tier 2: lives under `advanced:` when the app writes the file.
-
-`picture_facts` is on. It asks the local typed-decision reader at `picture_facts.base_url` a
-frozen set of questions about each picture once, at preparation time, and contacts that address
-and nothing else. Nothing downstream demands its answers, so an install with no reader there
-costs one line in the preparation report and cuts its films exactly as before: one
-`picture_facts:reader` entry naming the address and how many pictures went unread, never one
-entry per picture. Those pictures stay owed and are read by a later run once something answers.
-Set `enabled: false` to stop asking.
 
 Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts
@@ -543,9 +530,8 @@ Reasons under each picture become facts rather than sentences.
 The `swim` head is retired, and a configuration that still names it loses the name with one
 log line. Measured against a typed picture reader over 3,564 photographs it answered `yes`
 on 551 where the reader saw swimwear on 22, and the one rule that read it, the
-child-in-swimwear hold, fired on 515 of those and was right about 5. That hold now comes
-from the picture reader's own coverage row, so a library prepared without the reader has no
-swimwear hold: on this tier every unit stays at family viewing regardless.
+child-in-swimwear hold, fired on 515 of those and was right about 5. Nothing raises a
+swimwear hold now: on this tier every unit stays at family viewing regardless.
 
 `metadata_only` also drops the eight heads and both detectors, so the gate loses its evidence.
 It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.

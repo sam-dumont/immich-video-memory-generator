@@ -57,9 +57,7 @@ Exit 0 means every producer a cut needs finished for every picture. Exit 1 means
 missing and the run says which producer and how many; a caption server that is not running is the
 usual cause, and one that is running but answers 401 or 403 says so and names
 `advanced.editorial.preparation.caption_api_key`. Rerunning is cheap, so "run it until it exits 0"
-is the intended loop. The picture reader is the exception: nothing downstream needs its rows, so an
-install with nothing at `picture_facts.base_url` sees one `picture_facts:reader` line among the
-failures above and still exits 0, with those pictures owed to a later run.
+is the intended loop.
 
 Preparation is the only stage that sends pixels anywhere, and it sends them only where you point it.
 Both endpoints default to `localhost` and nothing asks a second time once you point one elsewhere:

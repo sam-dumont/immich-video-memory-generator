@@ -203,10 +203,7 @@ src/immich_memories/
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
 │   │                               # motion lines (one caption-seat sentence per video, read by
-│   │                               # the pick and by the standing gate's moving rows), and the
-│   │                               # optional picture facts (a frozen typed-decision question set
-│   │                               # asked of a local reader once per 800 px tile; off by default,
-│   │                               # read by three gates, never by a prose reader)
+│   │                               # the pick and by the standing gate's moving rows)
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked)
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
@@ -462,8 +459,6 @@ src/immich_memories/
 ├── store/                      # The annotation store: every banked fact and reading
 │   ├── caption_provenance.py   # What served each caption (served /models row + control digest), grouped
 │   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest
-│   ├── picture_facts.py        # The optional reader's raw probabilities per picture, keyed the same
-│                               # way; the producer string carries the question set's hash
 │   ├── library_overviews.py    # Read-only: the library's own account of a period, written by cataloguing
 │   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual and a
 │                               # clip's speech regions, keyed the same way (a missing row is
