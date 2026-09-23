@@ -515,20 +515,40 @@ album, one event, a trip) survive it well; broad recaps are where the model earn
 
 On a model install the two readers run in series rather than making you choose. The rules reader builds the whole cut with no model call at all, and the model is then
 asked one closed question over the finished film: which of these shots adds nothing to it? Blocks
-of at most twelve, both orders, reject-only, the shape the standing gate is already asked in. A
-shot both orders name leaves; a shot one order names is offered a replacement from its own story
-and keeps its place until one passes. A picture you starred keeps its place whatever the vote said;
-only a gate takes it out.
+of at most twelve, reject-only. Each block is asked in its source order first, and in a second,
+hashed order only when the first named a shot the vote may move: the local 30B's reject-only
+answers flip with the order of the rows at about half the named set, so one order's doubt is never
+a verdict. A shot both orders name leaves; a shot one order names is offered a replacement from
+its own story and keeps its place until one passes. A picture you starred, or one the period's
+readings recorded as worth a record, keeps its place whatever the vote said; only a gate takes it
+out, and a block made only of such pictures is not asked at all.
 
 Before the vote, every shot of the draft faces the gates a model install can ask: the standing
 gate, the family-viewing gate, the five-minute capture spacing and the cached-hash duplicate
-review. A refusal is a seat, not a hole. Seats are filled in one order (a story the library
-records something about that the cut never gave a voice, then a replacement for a shot the vote
-named, then one for a shot a gate took) and only as many as the film has room for at the minimum
-length a shot may run. Each page leads with the moment that moves, except inside a moment, where
-the frame you starred wins. Every replacement goes through the same gates and is voted on again in
-the company of the whole film; one the vote refuses is revoked, and the shot it would have replaced
+review. Standing asks nothing about a picture no answer can move, such as a still with somebody in
+it inside a dominant or major story, and asks its second order only where the rule needs both
+approvals or the first order named the picture. A refusal is a seat, not a hole. Seats are filled
+in one order (a story the library records something about that the cut never gave a voice, then a
+replacement for a shot the vote named, then one for a shot a gate took) and only as many as the
+film has room for at the minimum length a shot may run. A seat's page is its story's own pictures
+in the film's order of preference: the refused shot's moment, then the moments the cut lacks, what
+the library records first, the moment that moves next, and inside a moment the frame you starred.
+The picker reads the first twelve rows of it, in one order. Only the rows it chose are then asked
+whether they stand, all together, and a seat whose pick fails picks once more from the same page.
+Every replacement goes through the same gates and is voted on again in the company of the block it
+joined, not the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
+
+The polish is held to a budget: three questions per twelve draft shots (standing, audience and fit)
+and four per seat it opens. `thin-polish.private.json` records what it asked against that budget,
+and the run warns when it goes over. The cold 2024 year used to spend 466 calls on the polish for 10
+new shots, most of them putting every picture of the seats' stories, up to a thousand at a time, to
+the standing gate before any seat had picked. The audience question stays on every shot that enters
+the cut: on that year it held back 19 private-activity shots the detectors missed.
+`advanced.editorial.thin_batched_audience` asks it of twelve shots per request, each with its own
+answer; a shot the reply skips is asked alone, and anything but "none" holds. It stays off until
+`scripts/probe_audience_batch.py`, which replays a run's single audience requests through the
+batched question against your reader, loses no hold.
 
 It needs a period the library holds an account of: what the month or year itself was about,
 read once and reused by every later cut of it. Nothing is read in advance. The draft is built from

@@ -229,12 +229,17 @@ src/immich_memories/
 │   ├── editorial_final_hash_review.py # The final duplicate review a no-model cut runs, on cached preview hashes
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
-│   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film
+│   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
+│   │                               # held to 3 calls per 12 draft shots + 4 per seat (thin_budget)
 │   ├── editorial_thin_catalogue.py # What a polish may read of a catalogued period: account, stories, hints
 │   ├── editorial_thin_gates.py     # Every draft shot put to standing, audience, spacing and the hash review
-│   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks
+│   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
+│   │                               # source order first, the hashed order only where it decides
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
-│   ├── editorial_thin_refill.py    # Which seats open, and the transaction that fills one
+│   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
+│   │                               # meet the gates, and a refused pick is picked once more
+│   ├── editorial_audience_batch.py # The audience question over 12 carriers per request, one answer each
+│   │                               # (advanced.editorial.thin_batched_audience, off by default)
 │   ├── library_catalogue.py    # The account of a month/year (or a multi-year window: one per year
 │   │                           # plus one over them), written over banked episode readings
 │   │                           # (plus the no-model facts of episodes a cut did not read), keyed by
