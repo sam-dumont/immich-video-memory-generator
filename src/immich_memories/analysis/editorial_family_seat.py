@@ -9,7 +9,6 @@ the rules' own standing, in the story holding most of their pictures. Nothing is
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -23,32 +22,12 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
+from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
-from immich_memories.people.relationships import is_close_family
 from immich_memories.speech.cuts import minimum_duration
 
 FAMILY_SEAT_VERSION = "family-seat-v1"
-
-_WITH = re.compile(r"\| with ([^|]+)")
-_PERSON = re.compile(r"([^;()]+?)\s*\(([^()]*)\)")
-
-
-def close_family_on(line: str) -> dict[str, str]:
-    """Each close family member an annotation line names, mapped to their relation.
-
-    The name only tells two people of the same relation apart inside this run; nothing
-    recorded from here carries it.
-    """
-    match = _WITH.search(line)
-    if not match:
-        return {}
-    people: dict[str, str] = {}
-    for name, detail in _PERSON.findall(match.group(1)):
-        relation = detail.split(";")[0].strip()
-        if is_close_family(relation):
-            people[name.strip(" ;")] = relation
-    return people
 
 
 @dataclass(frozen=True)

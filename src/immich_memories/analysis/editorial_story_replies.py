@@ -17,6 +17,7 @@ from immich_memories.analysis.editorial_structure_json import (
     json_scan,
 )
 from immich_memories.analysis.strict_json import model_text_rows
+from immich_memories.people.relationships import is_close_family
 
 STORY_VERSION = "period-story-v4-episodes"
 ROLES = {"central", "supporting", "texture", "incidental"}
@@ -49,6 +50,27 @@ def relations_on(line: str) -> list[str]:
         if rel and rel not in out and not rel.startswith("aged"):
             out.append(rel)
     return out
+
+
+_WITH_PEOPLE = re.compile(r"\| with ([^|]+)")
+_PERSON_NOTE = re.compile(r"([^;()]+?)\s*\(([^()]*)\)")
+
+
+def close_family_on(line: str) -> dict[str, str]:
+    """Each close family member an annotation line names, mapped to their relation.
+
+    The name only tells two people of the same relation apart inside this run; nothing
+    recorded from here carries it.
+    """
+    match = _WITH_PEOPLE.search(line)
+    if not match:
+        return {}
+    people: dict[str, str] = {}
+    for name, detail in _PERSON_NOTE.findall(match.group(1)):
+        relation = detail.split(";")[0].strip()
+        if is_close_family(relation):
+            people[name.strip(" ;")] = relation
+    return people
 
 
 def _text(value, name, *, empty=False):

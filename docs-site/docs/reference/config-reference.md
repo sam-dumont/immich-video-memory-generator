@@ -475,6 +475,8 @@ editorial:
   people:
     seat_min_pictures: 20        # a close family member on this many pictures with no shot gets one
     seat_min_share: 0.05         # ...or on this share of the period's pictures
+    big_story_density: 2.0       # a story is big only at this multiple of the median photographed day...
+    big_story_family_share: 0.3  # ...with at least this share of its pictures showing close family
 ```
 
 Tier 2: lives under `advanced:` when the app writes the file.
@@ -482,7 +484,11 @@ Tier 2: lives under `advanced:` when the app writes the file.
 `people` is how the people file's close family (partner, child, parent) reach the selection. A close
 family member on at least `seat_min_pictures` of the period's pictures, or `seat_min_share` of them,
 who is in none of the film's shots gets one seat: see
-[the family seat](../create/pipeline.md#the-family-seat).
+[the family seat](../create/pipeline.md#the-family-seat). A story without three favourites is floored
+to `major` only when it is both dense (`big_story_density` times the period's median photographed
+day, in pictures per day) and mostly close family (`big_story_family_share` of its pictures); both
+defaults were measured on real months, see
+[editing without a language model](../create/pipeline.md#editing-without-a-language-model).
 
 Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts

@@ -490,6 +490,14 @@ def _present_in_this_memory(story, favourites: int) -> bool:
     return family and story.get("gate") in ("remarkable", "maybe")
 
 
+def _floor_of(story, favourites: int, *, present: bool) -> str | None:
+    """Three favourites make a story major; so does a story the rules reader measured as both
+    unusually dense and mostly close family ("big"), never picture count on its own."""
+    if favourites >= 3 or story.get("big"):
+        return "major"
+    return "minor" if present else None
+
+
 def _floor_one(story, *, anyone_known: bool, journey: bool) -> list[str]:
     notes: list[str] = []
     if not story.get("weight"):
@@ -514,7 +522,7 @@ def _floor_one(story, *, anyone_known: bool, journey: bool) -> list[str]:
     ):
         story["weight"] = "glimpse"
         notes.append(f"{story['key']}:strangers")
-    floor = "major" if favourites >= 3 else "minor" if present else None
+    floor = _floor_of(story, favourites, present=present)
     if floor and WEIGHTS.index(story["weight"]) > WEIGHTS.index(floor):
         story["weight"] = floor
         notes.append(story["key"])

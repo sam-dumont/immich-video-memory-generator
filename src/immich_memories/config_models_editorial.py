@@ -53,6 +53,27 @@ class EditorialPeopleConfig(BaseModel):
         le=1,
         description="Or on at least this share of the period's pictures, however few that is",
     )
+    # Both "big story" numbers were measured with the rules reader on six real months
+    # (2026-09-23, every story of each month). Pictures per photographed day, against the
+    # month's median photographed day: ordinary stories, multi-day weeks included, all sat at
+    # or under 1.8; dense occasions at 2.1 to 10. The share of a story's pictures naming a
+    # partner, child or parent: dense stories of strangers (two city race days, a dense day
+    # among relatives who are not close family) sat at 0 to 6 %; dense close-family occasions
+    # at 39 to 73 %. Each default sits in its measured gap.
+    big_story_density: float = Field(
+        default=2.0,
+        gt=0,
+        description=(
+            "A story without three favourites is floored to major only when its pictures per "
+            "photographed day reach this multiple of the period's median photographed day..."
+        ),
+    )
+    big_story_family_share: float = Field(
+        default=0.3,
+        ge=0,
+        le=1,
+        description="...and at least this share of its pictures show a partner, child or parent",
+    )
 
 
 class EditorialConfig(BaseModel):

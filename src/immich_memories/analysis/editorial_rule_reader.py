@@ -20,7 +20,11 @@ from immich_memories.analysis.editorial_story_reading import (
     StoryEpisode,
     _same_episode_day,
 )
-from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE, relations_on
+from immich_memories.analysis.editorial_story_replies import (
+    WEIGHT_ROLE,
+    close_family_on,
+    relations_on,
+)
 from immich_memories.analysis.editorial_story_weighing import (
     _FAMILY_WORD,
     _floor_weights,
@@ -255,11 +259,63 @@ class RuleStructureReader:
             )
         return stories
 
+    def _big_stories(self, stories, episodes) -> list[dict[str, Any]]:
+        """Mark the stories that are unusually dense AND mostly close family.
+
+        Only those may be floored to major without three favourites: a dense day of strangers
+        (a race, a fair) has the pictures and not the people, and a quiet week with the family
+        has the people and not the pictures. Density is the story's pictures per photographed
+        day against the period's median photographed day; the share is how many of its
+        pictures name a partner, child or parent. Every story's two numbers are recorded.
+        """
+        policy = self.source.config.editorial.people
+        moments_of = {e.key: e.moments for e in episodes}
+        members_of = {
+            story["key"]: [
+                asset
+                for key in story["episodes"]
+                for moment in moments_of[key]
+                for asset in self.source.moment_asset_ids.get(moment, ())
+            ]
+            for story in stories
+        }
+        day_of = {
+            asset: self.source.assets[asset].file_created_at.date()
+            for members in members_of.values()
+            for asset in members
+        }
+        mass = Counter(day_of.values())
+        typical = median(mass.values()) if mass else 0
+        rows = []
+        for story in stories:
+            members = members_of[story["key"]]
+            days = {day_of[asset] for asset in members}
+            family = sum(
+                bool(close_family_on(self.source.annotations.get(asset, ""))) for asset in members
+            )
+            density = len(members) / len(days) / typical if days and typical else 0.0
+            share = family / len(members) if members else 0.0
+            story["big"] = (
+                density >= policy.big_story_density and share >= policy.big_story_family_share
+            )
+            rows.append(
+                {
+                    "story": story["key"],
+                    "pictures": len(members),
+                    "days": len(days),
+                    "density": round(density, 2),
+                    "family_share": round(share, 3),
+                    "big": story["big"],
+                }
+            )
+        return rows
+
     def read_story(self, _judge, *, evidence, enrich, record, **kwargs) -> PeriodStory:
         episodes = self._day_episodes(evidence)
         hints = enrich(episodes)
         stories = self._stories(episodes, hints)
         by_key = {e.key: e for e in episodes}
+        big = self._big_stories(stories, episodes)
         floors = _floor_weights(stories, journey=False)
         for story in stories:
             for key in story["episodes"]:
@@ -270,7 +326,7 @@ class RuleStructureReader:
             [],
             [],
             [],
-            {"producer": RULES_VERSION, "hints": hints, "floors": floors},
+            {"producer": RULES_VERSION, "hints": hints, "floors": floors, "big_stories": big},
             stories,
         )
         record(result.as_record())

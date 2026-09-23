@@ -9,9 +9,9 @@ from __future__ import annotations
 from immich_memories.analysis.editorial_family_seat import (
     FamilySeatInputs,
     FamilySeatPolicy,
-    close_family_on,
     seat_close_family,
 )
+from immich_memories.analysis.editorial_story_replies import close_family_on
 
 PARTNER = "Person A (partner; inner circle)"
 CHILD = "Person B (son; 3 months old; recurring circle)"
