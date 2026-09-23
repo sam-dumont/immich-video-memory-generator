@@ -41,7 +41,6 @@ _ALREADY_HELD = frozenset(
         "clip_exposure",
         "nudity_shirtless_or_underwear",
         "private_activity",
-        "children_in_swimwear",
         "owner_review_flag",
         "unresolved_exposure",
         "undecided_exposure",
@@ -95,7 +94,7 @@ def to_check(
         if probability is None or not GREY_LOW <= probability < GREY_HIGH:
             continue
         record = verdicts.get(asset_id, {})
-        if record.get("finding") in _ALREADY_HELD or record.get("picture_facts_hold"):
+        if record.get("finding") in _ALREADY_HELD:
             continue
         rows.append(
             {
