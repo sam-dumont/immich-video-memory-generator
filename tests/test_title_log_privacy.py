@@ -22,7 +22,10 @@ def test_a_birthday_title_logs_neither_the_name_nor_the_age(tmp_path: Path, capl
                 selection_type=SelectionType.BIRTHDAY_YEAR,
             )
 
-    logged = "\n".join(record.getMessage() for record in caplog.records)
+    # The output path is pytest's numbered temp dir, which can hold the digits of any age.
+    logged = "\n".join(record.getMessage() for record in caplog.records).replace(
+        str(tmp_path), "<out>"
+    )
     assert "TITLE SCREEN GENERATION" in logged
     assert "Zephyrine" not in logged
     assert "37" not in logged

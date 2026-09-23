@@ -284,3 +284,15 @@ def test_a_newer_reading_withdraws_a_reject_the_bank_was_holding(tmp_path: Path)
 
     assert [candidate.asset_id for candidate in disagreeing.survivors] == ["a-keeper"]
     assert [candidate.asset_id for candidate in after.survivors] == ["argued-over", "a-keeper"]
+
+
+def test_verdicts_are_recalled_for_a_lifetime_of_pictures(tmp_path: Path):
+    """A lifetime window admits 66k pictures, more than one SQLite statement may bind."""
+    from immich_memories.cache.editorial_verdicts import EditorialVerdicts
+
+    verdicts = EditorialVerdicts(tmp_path / "verdicts.sqlite")
+    verdicts.remember([("picture-39999", "screenshot")], pass_version=CULL_V2)
+
+    recalled = verdicts.recall([f"picture-{n}" for n in range(40_000)], pass_version=CULL_V2)
+
+    assert recalled == {"picture-39999": "screenshot"}
