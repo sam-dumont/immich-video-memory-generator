@@ -125,3 +125,33 @@ def relationship_label(kind: str) -> str:
         if choice.kind == kind:
             return choice.label
     return kind.replace("-", " ")
+
+
+# Partner, child and parent: the people a household film is about. The owner ruled this set
+# (2026-09-23); everything else in the vocabulary, grandparents and siblings included, is family
+# but not close family for the selection's people rules.
+CLOSE_FAMILY_KINDS = frozenset(
+    {
+        "partner-of",
+        "spouse-of",
+        "parent-of",
+        "mother-of",
+        "father-of",
+        "child-of",
+        "son-of",
+        "daughter-of",
+    }
+)
+_CLOSE_FAMILY_WORDS = frozenset(
+    {_OWNER_ROLE[kind] for kind in CLOSE_FAMILY_KINDS}
+    | {f"{relationship_label(kind)} library owner" for kind in CLOSE_FAMILY_KINDS}
+)
+
+
+def is_close_family(relation: str) -> bool:
+    """Whether a relation as an annotation line states it names a partner, child or parent.
+
+    A line carries either the role the owner confirmed ("partner", "son") or the relationship
+    derived to the owner ("mother of library owner"), both drawn from this vocabulary.
+    """
+    return relation.strip().casefold() in _CLOSE_FAMILY_WORDS

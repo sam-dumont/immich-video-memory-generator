@@ -472,9 +472,17 @@ editorial:
     marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx  # digest-pinned sensitive-content export
     marqo_onnx_url: https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v1/nsfw-marqo-384-924658f1.onnx
     allow_model_downloads: false
+  people:
+    seat_min_pictures: 20        # a close family member on this many pictures with no shot gets one
+    seat_min_share: 0.05         # ...or on this share of the period's pictures
 ```
 
 Tier 2: lives under `advanced:` when the app writes the file.
+
+`people` is how the people file's close family (partner, child, parent) reach the selection. A close
+family member on at least `seat_min_pictures` of the period's pictures, or `seat_min_share` of them,
+who is in none of the film's shots gets one seat: see
+[the family seat](../create/pipeline.md#the-family-seat).
 
 Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts

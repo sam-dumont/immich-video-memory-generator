@@ -36,6 +36,25 @@ def _default_head_versions() -> dict[str, str]:
     }
 
 
+class EditorialPeopleConfig(BaseModel):
+    """How the people file's close family (partner, child, parent) reach the selection."""
+
+    seat_min_pictures: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "A close family member on at least this many of the period's pictures, and in none "
+            "of its shots, gets one seat in the film"
+        ),
+    )
+    seat_min_share: float = Field(
+        default=0.05,
+        gt=0,
+        le=1,
+        description="Or on at least this share of the period's pictures, however few that is",
+    )
+
+
 class EditorialConfig(BaseModel):
     """Versioned evidence for the production story-first selector.
 
@@ -44,6 +63,7 @@ class EditorialConfig(BaseModel):
     """
 
     preparation: EditorialPreparationConfig = Field(default_factory=EditorialPreparationConfig)
+    people: EditorialPeopleConfig = Field(default_factory=EditorialPeopleConfig)
     reader: Literal["auto", "model", "rules"] = "auto"
     thin_model_layer: bool = Field(
         default=True,

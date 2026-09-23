@@ -19,6 +19,7 @@ from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
+from immich_memories.analysis.editorial_family_seat import FilmSeatSource, seat_in_film
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
@@ -34,13 +35,13 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
+from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_lookalike import (
     hash_pair_relation,
     hash_then_model,
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
-from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_standing import (
     StandingBankFile,
     StandingGate,
@@ -399,6 +400,11 @@ def _select(
     episode_relation = sampled_source_relation(
         ports.confirm_episode_pairs, picture_records=relation_records
     )
+    # A no-model draft asks nothing, so it reads the model's answers through `banked` alone.
+    unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
+    banked = _banked_facts(source, ports, unit_of)
+    if ports.rules is not None:
+        record_story("banked-facts", banked.record())
     selection = _story_selection(
         source,
         ports,
@@ -411,6 +417,7 @@ def _select(
         marker=marker,
         record=record_story,
         partition_limit=partition_limit,
+        banked=banked,
         looks_alike=_looks_alike_relation(ports, material, episode_relation, relation_records),
     )
     run.carriers = list(selection.carriers)
@@ -428,6 +435,14 @@ def _select(
             contract=contract,
             record=record_story,
         )
+    run.carriers = seat_in_film(
+        run.carriers,
+        FilmSeatSource(source, ports.rules, selection, material.units, banked),
+        candidates_of=story_candidates(selection, wall, pool, material.units),
+        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
+        excluded=material.document_sources,
+        record=record_story,
+    )
     required = frozenset(source.owner_required_asset_ids)
     if required:
         # After the read, never before it: the owner's ticks change no prompt.
@@ -574,14 +589,11 @@ def _story_selection(
     marker: str,
     record,
     partition_limit: int | None,
+    banked: BankedAnswers,
     looks_alike=None,
 ):
-    # A no-model draft asks nothing, so it reads the model's answers through `banked` alone.
     bank = StandingBankFile.open(source.bank_dir) if ports.rules is None else None
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
-    banked = _banked_facts(source, ports, unit_of)
-    if ports.rules is not None:
-        record("banked-facts", banked.record())
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
     pool_assets = {a for ids in pool.moment_assets.values() for a in ids if a in source.assets}
@@ -687,55 +699,6 @@ def _banked_facts(source, ports, unit_of) -> BankedAnswers:
     )
 
 
-def _thin_candidates(selection, wall: Wall, pool, unit_by_asset):
-    """Every picture of a story as a carrier the film could actually hold.
-
-    The catalogue says which pictures a story is about. A seat is filled with a carrier row, not
-    a bare unit, so everything downstream of the cut reads a refilled shot exactly as it reads
-    one the draft chose.
-    """
-    moments_of = {episode.key: tuple(episode.moments) for episode in selection.story.episodes}
-    story_of = {row["key"]: row for row in selection.story.stories}
-    chapter_of = {row["episode"]: number for number, row in enumerate(selection.episodes, 1)}
-
-    def candidates_of(story_key: str) -> list[dict]:
-        story = story_of.get(story_key)
-        if story is None:
-            return []
-        assets = [
-            asset
-            for episode in story.get("episodes") or ()
-            for moment in moments_of.get(episode, ())
-            for asset in pool.moment_assets.get(moment, ())
-        ]
-        return [
-            _thin_carrier(unit_by_asset[asset], story, selection, chapter_of, wall)
-            for asset in dict.fromkeys(assets)
-            if asset in unit_by_asset
-        ]
-
-    return candidates_of
-
-
-def _thin_carrier(entry, story, selection, chapter_of, wall: Wall) -> dict:
-    family, unit = entry
-    asset = unit["asset_id"]
-    line = selection.lines.get(asset, "")
-    return unit | {
-        "event": family,
-        "anchor": wall.anchor_label.get(family, family),
-        "chapter": chapter_of.get(story["key"], 1),
-        "why": f"{story['title']}: {line[:80]}",
-        "event_intention": story.get("purpose") or "",
-        "line": line,
-        "story_episode": story["key"],
-        "story_role": WEIGHT_ROLE[story["weight"]],
-        "story_weight": story["weight"],
-        "depicted_moment": f"source:{asset}",
-        "moment_alternatives": [],
-    }
-
-
 def _thin_polish(
     source,
     ports,
@@ -787,7 +750,7 @@ def _thin_polish(
         contract=contract,
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         record=record,
-        candidates_of=_thin_candidates(selection, wall, pool, unit_by_asset),
+        candidates_of=story_candidates(selection, wall, pool, material.units),
         content_cap=run.final_content_cap,
         protected=source.owner_required_asset_ids,
     )

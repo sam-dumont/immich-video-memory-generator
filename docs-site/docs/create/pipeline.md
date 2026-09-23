@@ -447,6 +447,25 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
 which reader spoke.
 
+### The family seat
+
+Grants follow favourites, so someone photographed all month and never starred could end up in no
+shot at all: on hundreds of a month's pictures, none starred, while every story holding them was
+funded for one favourite. So once the draft is cut, and after the model's
+polish on a tier that has one, every close family member (partner, child or parent, as the people
+file names them) who is on at least 20 of the period's pictures, or 5 % of them, and in none of its
+shots gets one seat. It is their best frame by the rules' own standing answer that clears the
+story's usual standing bar, in the story holding most of their pictures. The seat is appended when
+the film has a slot left and its timing budget allows one more carrier; otherwise it replaces that
+story's weakest shot that is neither a favourite nor another close family member's only shot. A
+favourite is never displaced. A frame any hold refuses (an earlier `do_not_show`, a banked
+refusal, a source rule, or an exposure hold on a film for outside the family) is never the seat,
+and the family-viewing gate still judges the cut afterwards. When no frame of theirs clears the bar,
+or their stories hold nothing but favourites and the film is full, nobody is seated and
+`derived-decisions/family-seat.private.json` says so, by relation only. Nothing is asked of a model
+on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
+`seat_min_share`.
+
 ### Reading what a model already answered
 
 On a fresh install the draft has nothing to read and cuts exactly the film it cut before. On an
