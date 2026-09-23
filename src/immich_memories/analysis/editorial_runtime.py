@@ -28,7 +28,7 @@ from immich_memories.analysis.editorial_rule_episodes import (
 )
 from immich_memories.analysis.editorial_runtime_backend import ProductionPostCardBackend
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
-from immich_memories.analysis.editorial_source import FullEditorialSource
+from immich_memories.analysis.editorial_source import FullEditorialSource, library_source_scope
 from immich_memories.analysis.editorial_source_route import (
     EditorialSourcePlan,
     metadata_demand,
@@ -40,7 +40,6 @@ from immich_memories.analysis.editorial_text_gateway import (
     SyncTextPromptRequester,
     semantic_text_model_identity,
 )
-from immich_memories.analysis.generated_source_provenance import generated_source_ids
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -633,24 +632,12 @@ def build_editorial_planner(
     people = adapt_editorial_people(context_by_id)
     episode_store = runtime_ports.episode_store_factory(store_path)
     model_id, episode_requester = _reading_requesters(config, runtime_ports, reader_mode)
-    scope = SourceScope(
-        date_ranges=context.date_ranges,
+    scope = library_source_scope(
+        client,
+        config,
+        context.date_ranges,
         asset_ids=context.event_asset_ids if context.special_event_id else None,
-        excluded_filename_patterns=tuple(config.analysis.exclude_filename_patterns),
-        stills_need_a_camera=config.analysis.exclude_stills_without_camera_exif,
-        min_source_short_side=config.analysis.min_source_short_side,
-        max_source_video_seconds=config.analysis.max_source_video_seconds,
         accept_any_provenance=context.accept_any_provenance,
-        include_off_timeline=False,
-        generated_asset_ids=tuple(
-            sorted(
-                generated_source_ids(
-                    # A client that cannot answer leaves the receipts answering alone.
-                    tagged=getattr(client, "generated_asset_ids", frozenset),
-                    cache_database=config.cache.database_path,
-                )
-            )
-        ),
     )
     selection_request = EditorialSelectionRequest(
         scope=scope,

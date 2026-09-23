@@ -36,21 +36,17 @@ def _windows(
 
 def _eligible_source(client, config: Config, windows: list[DateRange]):
     """The corpus a cut over these windows would prepare, decided by the source pass itself."""
-    from immich_memories.analysis.editorial_source import fetch_full_window_source
+    from immich_memories.analysis.editorial_source import (
+        fetch_full_window_source,
+        library_source_scope,
+    )
     from immich_memories.analysis.selection_source import (
         EditorialDependencies,
         EditorialSelectionRequest,
-        SourceScope,
         prepare_editorial_source,
     )
 
-    scope = SourceScope(
-        date_ranges=tuple(windows),
-        excluded_filename_patterns=tuple(config.analysis.exclude_filename_patterns),
-        stills_need_a_camera=config.analysis.exclude_stills_without_camera_exif,
-        min_source_short_side=config.analysis.min_source_short_side,
-        max_source_video_seconds=config.analysis.max_source_video_seconds,
-    )
+    scope = library_source_scope(client, config, windows)
     sources = fetch_full_window_source(client, scope)
     prepared = prepare_editorial_source(
         EditorialSelectionRequest(scope=scope),
