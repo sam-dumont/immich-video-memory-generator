@@ -203,8 +203,11 @@ def test_actual_planner_rejected_burst_stops_surviving_burst_is_complete_and_war
             )
         else:
             monkeypatch.setattr(PictureEvidenceOverlay, "enrich", original_enrich)
+        # The baseline is a separate library: sharing one, its banked audience answers
+        # would spare the candidate the very requests this comparison is about.
+        library = tmp_path / "baseline-library" / "banks" if baseline else captured.bank_dir
         plan = plan_structure(
-            replace(captured, audience=export),
+            replace(captured, audience=export, bank_dir=library),
             StructurePlannerPorts(
                 judge=judge,
                 thumbnail_hash=lambda _: None,

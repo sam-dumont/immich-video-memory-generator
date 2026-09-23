@@ -42,6 +42,8 @@ from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
 from immich_memories.analysis.editorial_story_standing import StandingGate, standing_row
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
+    AUDIENCE_BANK_NAME,
+    AudienceBank,
     AudienceGate,
 )
 from immich_memories.analysis.editorial_structure_budget import (
@@ -346,6 +348,15 @@ def _select(
             json.dumps(payload, ensure_ascii=False, indent=1, default=str),
         )
 
+    # A run that only polishes a rules draft still has the captions its tier produces;
+    # the reduced check belongs to a run with no model at all.
+    audience_tier = (
+        "no_captions"
+        if ports.rules is not None
+        and ports.thin is None
+        and source.config.editorial.preparation.demands_models
+        else source.config.editorial.preparation.tier
+    )
     gate = AudienceGate(
         ports.judge,
         audience=source.audience,
@@ -353,15 +364,11 @@ def _select(
         flag_rows=source.shareability_flags,
         lines=source.annotations,
         bank_path=audit_dir / "shareability.private.json",
-        check_audience=audience_check_for(
-            # A run that only polishes a rules draft still has the captions its tier produces;
-            # the reduced check belongs to a run with no model at all.
-            "no_captions"
-            if ports.rules is not None
-            and ports.thin is None
-            and source.config.editorial.preparation.demands_models
-            else source.config.editorial.preparation.tier
+        library=AudienceBank(
+            source.bank_dir.parent / AUDIENCE_BANK_NAME,
+            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}",
         ),
+        check_audience=audience_check_for(audience_tier),
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)

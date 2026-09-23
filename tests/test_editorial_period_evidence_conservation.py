@@ -10,6 +10,7 @@ from immich_memories.analysis.editorial_structure_contract import StructurePlann
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import (
+    asked_again,
     semantic_plan,
     source,
 )
@@ -53,9 +54,7 @@ def test_citations_survive_without_changing_requests_or_eligible_carriers(tmp_pa
     assert baseline.plan["period_evidence"] == []
     assert revised.plan["period_evidence"] == [asdict(row) for row in evidence]
     assert semantic_plan({**revised.plan, "period_evidence": []}) == semantic_plan(baseline.plan)
-    assert [(c["stage"], c["prompt"]) for c in warm_judge.calls] == [
-        (c["stage"], c["prompt"]) for c in cold_judge.calls
-    ]
+    assert [(c["stage"], c["prompt"]) for c in warm_judge.calls] == asked_again(cold_judge.calls)
     assert warm_judge.calls and all(c["cache_hit"] for c in warm_judge.calls)
     assert bool(revised.plan["carriers"]) is not private_only
     revised.write(tmp_path / "written")

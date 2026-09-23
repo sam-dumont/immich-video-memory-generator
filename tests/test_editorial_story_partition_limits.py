@@ -8,7 +8,12 @@ import pytest
 
 from immich_memories.analysis import editorial_structure_planner as planner
 from tests.editorial_story_fixtures import AnnualStoryJudge, ControlledStoryJudge
-from tests.test_editorial_duration_planner_integration import run, semantic_plan, source
+from tests.test_editorial_duration_planner_integration import (
+    asked_again,
+    run,
+    semantic_plan,
+    source,
+)
 from tests.test_editorial_on_this_day_year_limit import make_source
 
 
@@ -33,9 +38,9 @@ def test_unlimited_contract_ignores_partition_resolver_and_keeps_every_request(
     warm_judge = ControlledStoryJudge(cold_judge.bank, require_hits=True)
     warm = run(captured, warm_judge)
     assert semantic_plan(warm) == semantic_plan(cold)
-    assert [(row["stage"], row["prompt"]) for row in warm_judge.calls] == [
-        (row["stage"], row["prompt"]) for row in cold_judge.calls
-    ]
+    assert [(row["stage"], row["prompt"]) for row in warm_judge.calls] == asked_again(
+        cold_judge.calls
+    )
     assert all(row["cache_hit"] for row in warm_judge.calls)
 
 

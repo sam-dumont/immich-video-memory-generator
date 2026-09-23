@@ -260,6 +260,12 @@ def run(source, judge):
     ).plan
 
 
+def asked_again(calls):
+    """What a warm run over the same library asks: everything except the audience questions,
+    which the library's audience bank answers before any request is made."""
+    return [(c["stage"], c["prompt"]) for c in calls if not c["stage"].startswith("shareability-")]
+
+
 def semantic_plan(plan):
     story = plan.get("story")
     if isinstance(story, dict) and isinstance(story.get("calls"), dict):
@@ -275,6 +281,14 @@ def semantic_plan(plan):
                     if key != "story_pages_fresh"
                 },
             },
+        }
+    share = plan.get("shareability")
+    if isinstance(share, dict) and "judgment_requests" in share:
+        # How many audience questions a run paid for is bank state too: the library bank
+        # answers a warm replay's audience questions before any request is made.
+        plan = {
+            **plan,
+            "shareability": {k: v for k, v in share.items() if k != "judgment_requests"},
         }
     telemetry = {
         "calls",
