@@ -103,9 +103,10 @@ def demand_reader_factory(
 ) -> tuple[ReaderFactory, DemandEpisodeReadings | None]:
     """The episode reader a run's event pass is built with, and the demand behind it, if any.
 
-    A film of a whole calendar month or year on the model tier is the polish layer's route, and
-    the only one whose draft needs no reading at all: it is built from facts, and the episodes
-    its shots sit in are read afterwards. Every other span reads as it always has.
+    A film of a whole calendar month, a whole year or a window over several years on the model
+    tier is the polish layer's route, and the only one whose draft needs no reading at all: it
+    is built from facts, and the episodes its shots sit in are read afterwards. Every other
+    span reads as it always has.
     """
     if mode == "rules":
         return rules, None

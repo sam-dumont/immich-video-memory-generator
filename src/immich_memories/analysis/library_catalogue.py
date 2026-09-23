@@ -12,10 +12,11 @@ episode's ancestors and nothing else.
 
 from __future__ import annotations
 
+import calendar
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 from hashlib import sha256
 
 from immich_memories.operations.cancellation import check_cancelled
@@ -147,6 +148,68 @@ def build_catalogue(
     )
 
 
+def window_bounds(period: str) -> tuple[date, date] | None:
+    """The first and last day a window's period names, or None for a month or a year."""
+    first, sep, last = period.partition("..")
+    return (date.fromisoformat(first), date.fromisoformat(last)) if sep else None
+
+
+def bank_window_accounts(
+    events: Sequence[LibraryEpisode],
+    *,
+    store: CatalogueStore,
+    requester: Callable[[str], str],
+    producer: str,
+    period: str,
+    max_prompt_chars: int = 24_000,
+    unread_facts: Sequence[LibraryAccount] = (),
+) -> dict[str, LibraryAccount]:
+    """Bank one account per calendar year a window touches, and the window's over those years.
+
+    A film over twenty years asks one account a year, never one a month: a month the library
+    already holds an account of is read back instead of retold, and a whole year already
+    accounted for is taken as it is. A year the window only touches, the two weeks of a
+    birthday at its edge, is banked under its own dates, so a later film of that whole year
+    never reads an account of two weeks as its year. Returned by period, the window last.
+    """
+    bounds = window_bounds(period)
+    if bounds is None:
+        raise ValueError(f"{period!r} names no window of days")
+    leaves = _leaves(events, producer=producer, max_prompt_chars=max_prompt_chars)
+    years = sorted({e.period[:4] for e in leaves} | {f.period[:4] for f in unread_facts})
+    bank = _AccountBuilder(store, requester, producer, max_prompt_chars)
+    told = [_year_in_window(int(year), bounds, leaves, unread_facts, store) for year in years]
+    asked = bank.parents([request for request in told if not isinstance(request, LibraryAccount)])
+    nodes = [node if isinstance(node, LibraryAccount) else asked.pop(0) for node in told]
+    window = bank.parent("span", period, nodes)
+    return {node.period: node for node in nodes} | {period: window}
+
+
+def _year_in_window(year, bounds, leaves, facts, store):
+    """A year's banked account, or what to ask for it: its months' accounts or episodes."""
+    first, last = max(bounds[0], date(year, 1, 1)), min(bounds[1], date(year, 12, 31))
+    whole = (first, last) == (date(year, 1, 1), date(year, 12, 31))
+    if whole and (banked := store.fullest("year", f"{year:04d}")):
+        return banked
+    children, told = [], []
+    for month in sorted(
+        {e.period for e in leaves if e.taken_at.year == year}
+        | {f.period for f in facts if f.period[:4] == f"{year:04d}"}
+    ):
+        number = int(month[5:7])
+        inside = first <= date(year, number, 1) and last >= date(
+            year, number, calendar.monthrange(year, number)[1]
+        )
+        if inside and (banked := store.fullest("month", month)):
+            children.append(banked)
+            continue
+        children += [e.overview_leaf() for e in leaves if e.period == month]
+        told += [f for f in facts if f.period == month]
+    if whole:
+        return "year", f"{year:04d}", children, told
+    return "span", f"{first.isoformat()}..{last.isoformat()}", children, told
+
+
 def _leaves(
     events: Sequence[LibraryEpisode], *, producer: str, max_prompt_chars: int
 ) -> list[LibraryEpisode]:
@@ -166,17 +229,28 @@ class _AccountBuilder:
         self.max_prompt_chars = max_prompt_chars - 1000
 
     def parent(self, kind, period, children, facts=()):
-        members = tuple(node.key for node in children)
-        rows = [{"key": n.key, "account": n.account, "period": n.period} for n in children]
-        rows += [{"key": f.key, "facts": f.account, "period": f.period} for f in facts]
-        # Parts are transport nodes, not admission decisions. Every child survives.
-        while len(_encode(rows)) + len(_OVERVIEW_INSTRUCTIONS) + 250 > self.max_prompt_chars:
-            rows = self._parts(kind, period, rows)
-        spec = self.spec(kind, period, rows, members)
-        if len(rows) == 1:
-            lone = rows[0].get("account") or rows[0]["facts"]
-            return self._copied(spec[0]["key"], kind, period, lone, members)
-        return self.read_many([spec])[0]
+        return self.parents([(kind, period, children, facts)])[0]
+
+    def parents(self, requests):
+        """Several parents at once, so their requests share pages."""
+        nodes, specs = {}, []
+        for index, (kind, period, children, facts) in enumerate(requests):
+            members = tuple(node.key for node in children)
+            rows = [{"key": n.key, "account": n.account, "period": n.period} for n in children]
+            rows += [{"key": f.key, "facts": f.account, "period": f.period} for f in facts]
+            # Parts are transport nodes, not admission decisions. Every child survives.
+            while len(_encode(rows)) + len(_OVERVIEW_INSTRUCTIONS) + 250 > self.max_prompt_chars:
+                rows = self._parts(kind, period, rows)
+            spec = self.spec(kind, period, rows, members)
+            if len(rows) == 1:
+                lone = rows[0].get("account") or rows[0]["facts"]
+                nodes[index] = self._copied(spec[0]["key"], kind, period, lone, members)
+            else:
+                specs.append((index, spec))
+        nodes |= dict(
+            zip((i for i, _ in specs), self.read_many([s for _, s in specs]), strict=True)
+        )
+        return [nodes[index] for index in range(len(requests))]
 
     def _parts(self, kind, period, rows):
         pages = bounded_pages(

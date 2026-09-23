@@ -37,19 +37,27 @@ def catalogued_period(ranges: Sequence[Any]) -> str:
     """The library node a film of these dates could hold an account of, or nothing.
 
     Cataloguing writes its account per calendar month and per year. A film whose dates are one
-    of those asks for it by name; a film over any other span has no catalogued period and plans
+    of those asks for it by name. A window over more than one calendar year, such as a person
+    film from a birth date to today, is its own node ("2005-12-03..2026-09-23"), told from one
+    account per year it touches. A film over any other span has no catalogued period and plans
     the way it always has.
     """
     if len(ranges) != 1:
         return ""
     first, last = ranges[0].start, ranges[0].end
+    if first.year != last.year:
+        return f"{_day(first)}..{_day(last)}"
     if first.day != 1 or last.day != calendar.monthrange(last.year, last.month)[1]:
         return ""
-    if (first.year, first.month) == (last.year, last.month):
+    if first.month == last.month:
         return f"{first.year:04d}-{first.month:02d}"
-    if first.year == last.year and (first.month, last.month) == (1, 12):
+    if (first.month, last.month) == (1, 12):
         return f"{first.year:04d}"
     return ""
+
+
+def _day(when: Any) -> str:
+    return f"{when.year:04d}-{when.month:02d}-{when.day:02d}"
 
 
 @dataclass(frozen=True)

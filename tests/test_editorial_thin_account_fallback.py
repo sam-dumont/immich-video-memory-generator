@@ -197,3 +197,52 @@ def test_the_episodes_nobody_read_reach_the_account_as_their_facts(tmp_path):
     assert account
     assert len(reader.prompts) == 1
     assert "walking at the park" in reader.prompts[0]
+
+
+def test_a_person_film_over_twenty_years_is_polished_over_one_account_a_year(tmp_path):
+    """A birth-date-to-today window reads on demand and asks no account per month."""
+    import sqlite3
+
+    from immich_memories.analysis.editorial_structure_contract import EpisodeReadingCard
+    from immich_memories.analysis.editorial_thin_layer import catalogued_period
+    from tests.conftest import make_asset
+
+    bank = tmp_path / "annotations.sqlite"
+    month = whole_month(source(tmp_path, seconds=60, pictures=3), bank)
+    lifetime = DateRange(
+        start=datetime(2005, 12, 3, tzinfo=UTC), end=datetime(2026, 9, 23, 23, 59, tzinfo=UTC)
+    )
+    assets, cards = dict(month.assets), dict(month.episode_readings)
+    years = range(2006, 2026)
+    for year in years:
+        for season in (3, 9):
+            asset = make_asset(
+                f"quiet-{year}-{season}", file_created_at=datetime(year, season, 1, tzinfo=UTC)
+            )
+            assets[asset.id] = asset
+            cards[f"Q{year}{season}"] = EpisodeReadingCard(
+                episode_id=f"quiet-{year}-{season}",
+                evidence_key="facts",
+                what_happened=f"an ordinary day in {year}",
+                representative_asset_ids=(asset.id,),
+                cache_hit=False,
+            )
+    captured = replace(
+        month,
+        case=replace(month.case, ranges=(lifetime,)),
+        assets=assets,
+        episode_readings=cards,
+    )
+    model_reader(captured.config)
+    reader, demand = Reader(), BankedDemand(bank, IDENTITY)
+
+    period = catalogued_period(captured.case.ranges)
+    polish = backend_for(captured, reader, demand)._thin_polish(captured)
+    account, _records = polish["thin"].read_period({"S1": tuple(month.assets)})
+
+    assert demand.asked == [tuple(month.assets)]
+    assert account and account == library_period_account(bank, period)
+    assert len(reader.prompts) <= len(years) + 1
+    with closing(sqlite3.connect(bank)) as connection:
+        kinds = {kind for (kind,) in connection.execute("SELECT kind FROM library_overviews")}
+    assert not kinds & {"month", "month-part"}

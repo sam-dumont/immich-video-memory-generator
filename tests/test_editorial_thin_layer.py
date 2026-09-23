@@ -187,3 +187,19 @@ def test_only_a_whole_month_or_a_whole_year_names_a_catalogued_period():
     assert catalogued_period(span((2024, 2, 3), (2024, 2, 29, 23, 59, 59))) == ""
     assert catalogued_period(span((2024, 2, 1), (2024, 3, 15, 23, 59, 59))) == ""
     assert catalogued_period(()) == ""
+
+
+def test_a_window_over_several_years_is_a_catalogued_period_of_its_own():
+    """A person film runs from a birth date to today; it still has an account to read."""
+
+    def span(first, last):
+        return (DateRange(datetime(*first, tzinfo=UTC), datetime(*last, tzinfo=UTC)),)
+
+    lifetime = span((1989, 12, 3), (2026, 9, 23, 23, 59, 59))
+    assert catalogued_period(lifetime) == "1989-12-03..2026-09-23"
+    assert catalogued_period(span((2023, 1, 1), (2025, 12, 31, 23, 59, 59))) == (
+        "2023-01-01..2025-12-31"
+    )
+    assert catalogued_period(span((2023, 12, 20), (2024, 1, 5, 23, 59, 59))) == (
+        "2023-12-20..2024-01-05"
+    )

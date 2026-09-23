@@ -516,15 +516,19 @@ facts alone, with no model call at all. Then only the episodes the draft's shots
 so a film pays for what it shows: a month cut of 17 shots reads at most 17 episodes, not every
 episode of every story it touched. The account is written from those readings plus what the
 no-model reader already says about every other episode of the period, one request per month (and
-one more over the months, for a film of a whole year). `immich-memories prepare --year 2024 --month
+one more over the months, for a film of a whole year). A film over several years, such as a person
+film from a birth date to today, gets one account per year it touches and one over those years,
+never one per month, and up to eight years share one request. A
+month or a whole year the library already holds an account of is read back, not written again.
+A year the window only clips at its edge is banked under its own dates, so it never stands in for
+that whole year later. `immich-memories prepare --year 2024 --month
 6 --overviews` reads the whole period ahead of time instead; its account sits over every episode,
 so a film prefers it to one a cut wrote. Either way each reading and each account is paid for
 once: both are keyed by exactly what they summarise and by the model that wrote them, so a second
 cut of the same draft asks nothing. The no-model reader writes no account at all, because there is
 no thesis without a reader.
 
-A span that is not a whole calendar month or year has no account: a film over a fortnight, a trip,
-a person. Those plan the film with the story-first planner exactly as they always have, so a
+Any other span inside one calendar year has no account: a film over a fortnight, a trip. Those plan the film with the story-first planner exactly as they always have, so a
 library is never left without a film.
 `advanced.editorial.thin_model_layer: false` makes the model plan the whole film even when an
 account exists.

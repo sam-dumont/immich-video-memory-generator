@@ -25,7 +25,9 @@ from immich_memories.analysis.library_catalogue import (
     LibraryCatalogue,
     LibraryEpisode,
     bank_month_accounts,
+    bank_window_accounts,
     build_catalogue,
+    window_bounds,
 )
 from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.store.episode_readings import (
@@ -91,14 +93,15 @@ def catalogue_banked_episodes(
     config: Config,
     requester: Callable[[str], str] | None = None,
     unread_facts: Sequence[LibraryAccount] = (),
-    with_years: bool = False,
+    period: str = "",
 ) -> dict[str, LibraryAccount]:
-    """Bank the month accounts of readings a run has already paid for, by period.
+    """Bank the accounts a film of `period` reads, from readings a run has already paid for.
 
-    Nothing is re-read here: the only request is the account itself, one per month the
-    readings or the `unread_facts` span. `with_years` also banks each year over those months, for a film of a
-    whole year; a month's film leaves the year alone, so one month's reading never stands
-    in for its year.
+    Nothing is re-read here: the only requests are the accounts themselves. A month's film
+    banks one per month the readings or the `unread_facts` span, and leaves the year alone, so
+    one month's reading never stands in for its year. A year's film ("2024") also banks the
+    year over those months. A window over several years ("2005-12-03..2026-09-23") banks one
+    account per year it touches and one for the window, never one per month.
     """
     with closing(EpisodeReadingStore(store_path)) as bank:
         readings = bank.readings_for(tuple(identities))
@@ -115,7 +118,9 @@ def catalogue_banked_episodes(
         "unread_facts": unread_facts,
     }
     with closing(CatalogueStore(store_path)) as store:
-        if not with_years:
+        if window_bounds(period) is not None:
+            return bank_window_accounts(episodes, store=store, period=period, **options)
+        if len(period) != 4:
             return bank_month_accounts(episodes, store=store, **options)
         catalogue = build_catalogue(episodes, store=store, **options)
     return {**catalogue.months, **catalogue.years}

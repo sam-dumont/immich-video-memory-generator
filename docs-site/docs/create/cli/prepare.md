@@ -88,8 +88,8 @@ that scope reads its episodes once more.
 ✓ Banked 37 episode readings, 1 month and 1 year account(s).
 ```
 
-You do not have to run it. A cut of a whole calendar month or year that finds no account writes its
-own, from the readings its own event pass has just paid for. `--overviews` is worth running when
+You do not have to run it. A cut of a whole calendar month, a whole year or several years that
+finds no account writes its own, from the readings its own event pass has just paid for. `--overviews` is worth running when
 you would rather pay for a year of months overnight than during the first cut of each one.
 
 It needs a model reader: `--overviews` with `advanced.editorial.reader: rules` is refused by name,

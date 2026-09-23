@@ -14,7 +14,7 @@ from pathlib import Path
 
 from immich_memories.cache.sqlite_conn import ThreadOwnedConnections
 
-_KINDS = frozenset({"month", "year", "month-part", "year-part"})
+_KINDS = frozenset({"month", "year", "span", "month-part", "year-part", "span-part"})
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS library_overviews (
     node_key TEXT PRIMARY KEY,
@@ -60,6 +60,27 @@ class CatalogueStore:
                         key, kind, period, account, tuple(json.loads(children))
                     )
         return found
+
+    def fullest(self, kind: str, period: str) -> LibraryAccount | None:
+        """The banked account of this period built over the most children, or None.
+
+        The same choice the film's own read makes, so a window reuses the account a month or
+        a year film would have read.
+        """
+        with self._connections.connection() as connection:
+            rows = connection.execute(
+                "SELECT node_key,kind,period,account,children FROM library_overviews "
+                "WHERE kind = ? AND period = ?",
+                (kind, period),
+            ).fetchall()
+        accounts = [
+            LibraryAccount(key, found, when, account, tuple(json.loads(children)))
+            for key, found, when, account, children in rows
+            if str(account or "").strip()
+        ]
+        return max(
+            accounts, key=lambda row: (len(row.children), len(row.account), row.key), default=None
+        )
 
     def remember(self, accounts: Sequence[LibraryAccount]) -> None:
         """Keep the first validated account of each exact evidence revision."""

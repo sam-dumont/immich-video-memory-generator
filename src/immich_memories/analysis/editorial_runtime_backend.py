@@ -343,7 +343,7 @@ class ProductionPostCardBackend:
                 config=self._config,
                 requester=self._ports.catalogue_requester_factory(self._config),
                 unread_facts=facts,
-                with_years=len(period) == 4,
+                period=period,
             )
             account = library_period_account(source.store_path, period)
         return account, banked_notable_records(identities, store_path=source.store_path)

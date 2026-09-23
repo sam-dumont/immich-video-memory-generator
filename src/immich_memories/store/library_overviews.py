@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 
 _QUERY = (
     "SELECT node_key, kind, account, children FROM library_overviews "
-    "WHERE period = ? AND kind IN ('month', 'month-part', 'year', 'year-part')"
+    "WHERE period = ? AND kind IN ('month', 'month-part', 'year', 'year-part', 'span', 'span-part')"
 )
 
-# A month's key is "2024-02" and a year's "2024", so one period never holds both kinds.
-_WHOLE = frozenset({"month", "year"})
+# A month's key is "2024-02", a year's "2024" and a window's "2005-12-03..2026-09-23", so one
+# period never holds two kinds.
+_WHOLE = frozenset({"month", "year", "span"})
 
 
 def library_period_account(db_path: Path, period: str) -> str:
