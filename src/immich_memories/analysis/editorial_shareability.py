@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
     _exposure_flag,
@@ -151,6 +152,7 @@ def evidence_for_unit(
     fallback_lines: Mapping[str, str],
     *,
     picture_records: Mapping[str, Mapping[str, Any]] | None = None,
+    chains: Mapping[str, ChainHold] | None = None,
 ) -> dict[str, Any]:
     """Conserve each rendered member's observations and detector provenance separately.
 
@@ -185,7 +187,20 @@ def evidence_for_unit(
     # only warnings that a material still's body observation cannot resolve for its video.
     if warnings:
         evidence["companion_body_warnings"] = warnings
+    chain = _chain_evidence(ordered, chains or {})
+    if chain is not None:
+        evidence["exposure_chain"] = chain
     return evidence
+
+
+def _chain_evidence(
+    asset_ids: Sequence[str], chains: Mapping[str, ChainHold]
+) -> dict[str, Any] | None:
+    """The densest flagged capture run any member of this unit sits in, without naming ids."""
+    holds = [chains[asset_id] for asset_id in asset_ids if asset_id in chains]
+    if not holds:
+        return None
+    return max(holds, key=lambda hold: (hold.flagged, hold.size)).as_evidence()
 
 
 def _companion_evidence(
@@ -431,6 +446,27 @@ def _observed_body(
 
 def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
     """Private activities have final authority; exposure review can only tighten a share."""
+    return _chain_tightened(evidence, _read_audience(judge, evidence, stage))
+
+
+def _chain_tightened(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """A flagged capture run holds the clean captures inside it, whatever the reader cleared.
+
+    The reader sees one unit's captions and cannot see that the three minutes around it
+    are a nappy change. This only ever takes a unit further from `share`.
+    """
+    chain = evidence.get("exposure_chain")
+    if not chain or result["verdict"] != "share":
+        return result
+    return result | {
+        "verdict": "family_only",
+        "finding": "exposure_chain",
+        "why": "most of this capture run is flagged for exposure",
+        "exposure_chain": chain,
+    }
+
+
+def _read_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
     members = evidence.get("members", ())
     missing = sorted(member["member"] for member in members if not member["caption"])
     result: dict[str, Any] = {

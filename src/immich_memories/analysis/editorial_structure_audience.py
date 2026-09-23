@@ -9,11 +9,13 @@ replacement path as any refusal. Attached sampled material can only tighten a ve
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
+from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_final_attached import sample_audience_evidence
 from immich_memories.security import write_secret_file
 
@@ -175,6 +177,7 @@ class AudienceGate:
         bank_path: Path,
         library: AudienceBank,
         check_audience=_share.check_audience,
+        chains: Mapping[str, ChainHold] | None = None,
     ) -> None:
         self._judge = judge
         self.audience = audience
@@ -182,6 +185,7 @@ class AudienceGate:
         self._pictures = picture_evidence
         self._flag_rows = flag_rows
         self._lines = lines
+        self._chains = chains or {}
         self._bank_path = bank_path
         self._library = library
         self.bank: dict[str, dict[str, Any]] = {}
@@ -243,6 +247,7 @@ class AudienceGate:
                 self._flag_rows,
                 self._lines,
                 picture_records=self._pictures.records,
+                chains=self._chains,
             )
         )
         key, record = self.check(evidence, terminal)

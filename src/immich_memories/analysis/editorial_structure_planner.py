@@ -18,6 +18,7 @@ from typing import Any
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
+from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
@@ -369,6 +370,9 @@ def _select(
             answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}",
         ),
         check_audience=audience_check_for(audience_tier),
+        chains=chain_holds_for(
+            {**source.assets, **source.companion_assets}, source.audience_annotations
+        ),
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)

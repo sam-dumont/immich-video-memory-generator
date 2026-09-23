@@ -176,3 +176,57 @@ def test_a_cut_without_captions_keeps_the_verdicts_the_gate_still_has_evidence_f
     assert {row["policy"] for row in verdicts.values()} == {
         "audience-rules-v1-detector-heads-and-flags"
     }
+
+
+def _chain_evidence(heads=(("nsfw_marqo", "no"),), description="", size=4, flagged=2):
+    from immich_memories.analysis.editorial_exposure_chains import ChainHold
+
+    return share.evidence_for_unit(
+        {"asset_id": "solo", "members": ["solo"]},
+        {"solo": Annotation(description, heads)},
+        {},
+        {"solo": ""},
+        chains={"solo": ChainHold(size=size, flagged=flagged, swept_in=True)},
+    )
+
+
+class ClearingJudge:
+    """A reader that finds nothing, so only a floor under it can hold the unit."""
+
+    calls: list[str] = []
+
+    def ask(self, _stage, _prompt, max_tokens):
+        return '{"finding":"none","why":"a family kitchen"}'
+
+
+def test_a_capture_swept_in_by_its_run_is_held_with_the_run_in_its_evidence():
+    evidence = _chain_evidence()
+
+    result = rule_audience(RefusingJudge(), evidence, "unit-1")
+
+    assert result["verdict"] == "family_only"
+    assert result["finding"] == "exposure_chain"
+    assert result["exposure_chain"]["chain_size"] == 4
+    assert result["exposure_chain"]["chain_flagged"] == 2
+
+
+def test_the_reader_cannot_clear_a_capture_its_run_holds():
+    """The reader sees one unit's captions; it cannot see the three minutes around it."""
+    evidence = _chain_evidence(description="A family kitchen at breakfast.")
+
+    result = share.check_audience(ClearingJudge(), evidence, "unit-1")
+
+    assert result["verdict"] == "family_only"
+    assert result["finding"] == "exposure_chain"
+
+
+def test_a_unit_in_no_run_reads_exactly_as_it_did_before_there_were_runs():
+    evidence = share.evidence_for_unit(
+        {"asset_id": "solo", "members": ["solo"]},
+        {"solo": Annotation("A family kitchen at breakfast.", (("nsfw_marqo", "no"),))},
+        {},
+        {"solo": ""},
+    )
+
+    assert "exposure_chain" not in evidence
+    assert share.check_audience(ClearingJudge(), evidence, "unit-1")["verdict"] == "share"
