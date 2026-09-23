@@ -49,7 +49,12 @@ The family-viewing gate has two floors under the reader's answer and a list besi
 head `nsfw_marqo` decides a still on its preview and a video on up to eight frames
 across its length (`editorial_preparation_detector_frames.py`, through the motion line's byte-range
 keyframe reader), keeping the strongest frame: that is `det-v3`, so an existing bank re-reads that
-head for every source, and videos stay out of an inference-service offload for it.
+head for every source, and videos stay out of an inference-service offload for it. A Live Photo's
+clip is read the same way: it is no candidate, so `acquire_clip_companions`
+(`editorial_preparation_model_facts.py`) reads it for the exposure head alone and banks it under the
+clip's own id, and `load_detector_heads` puts those rows in the gate's `companion_detectors`, which
+had been empty for every Live Photo. A flagged clip holds its still unless something observed that
+clip itself.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
 flagged with at least three flagged captures in it, under the reason `exposure_chain`. Neither the reduced
 tier's `_hold()` nor the model check can clear it. `editorial_review_list.py` writes

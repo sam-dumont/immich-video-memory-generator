@@ -321,7 +321,13 @@ def test_companion_warning_uses_still_evidence_and_changes_key(warning_channel):
         == "family_only"
     )
     resolved = Judge(activity(), exposure({"p1": [["family", "clothing"]]}))
-    assert share.check_audience(resolved, item, "test")["verdict"] == "share"
+    result = share.check_audience(resolved, item, "test")
+    if warning_channel == "head":
+        # The detector looked at the clip. The captions describe the still, and a still is
+        # not evidence about the seconds of motion hanging off it.
+        assert result["verdict"] == "family_only" and result["finding"] == "clip_exposure"
+    else:
+        assert result["verdict"] == "share"
 
 
 def test_venue_only_review_flags_do_not_trigger_exposure_review():

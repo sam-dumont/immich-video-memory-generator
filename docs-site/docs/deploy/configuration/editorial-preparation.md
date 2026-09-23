@@ -120,6 +120,10 @@ banked row does not record which kind of source it came from, an existing store 
 for every source. Videos also stay out of an inference-service offload for this head: the service
 takes one picture per source and cannot take eight.
 
+A Live Photo's attached clip is read by this head too, under its own asset id, and by nothing else:
+no caption, no context head, no pixel fact. It is not a candidate, so it is not in the preparation
+counts and a clip Immich will not serve cannot block a cut.
+
 ## Captions
 
 The endpoint at `caption_base_url` must advertise `smolvlm2-500m-base-public` at `/models` and

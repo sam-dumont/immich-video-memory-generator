@@ -1,16 +1,18 @@
 """Which model producer still owes a fact, and who is allowed to answer for it.
 
-Three decisions live here, in this order: what the inference service may be asked for,
-which pictures the packaged public heads still owe, and which sources the detector
-worker must read. A head nothing packages is named rather than silently skipped.
+Four decisions live here, in this order: what the inference service may be asked for,
+which pictures the packaged public heads still owe, which sources the detector worker
+must read, and which attached clips owe the exposure head a row of their own. A head
+nothing packages is named rather than silently skipped.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from immich_memories.analysis.editorial_preparation_detector_frames import (
     DetectorFrames,
@@ -23,6 +25,7 @@ from immich_memories.analysis.editorial_preparation_detectors import (
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS
 from immich_memories.analysis.remote_facts import offloaded_versions
 from immich_memories.config_models_inference import InferenceConfig
+from immich_memories.store.editorial_preparation import heads_missing_for
 
 
 class ModelFactStage(Protocol):
@@ -52,6 +55,60 @@ class ModelFactStage(Protocol):
     ) -> None: ...
 
     def remote_facts(self, pending: Mapping[str, Mapping[str, str]]) -> bool: ...
+
+    def previews(
+        self, ids: Sequence[str], cache_path: Path, fetch_preview: Any
+    ) -> tuple[dict[str, Path], list[str]]: ...
+
+    @property
+    def unservable(self) -> dict[str, str]: ...
+
+
+CLIP_COMPANION = "clip_companion"
+
+
+def acquire_clip_companions(
+    stage: ModelFactStage,
+    connection: sqlite3.Connection,
+    frames: DetectorFrames,
+    cache_path: Path,
+    fetch_preview: Any,
+    head_versions: Mapping[str, str],
+) -> None:
+    """Read a Live Photo's clip the way any clip is read; its still never stood for it.
+
+    Bounded on purpose: the exposure head only, over the attached clips of the Live Photos
+    in scope. No caption, no context head, no pixel fact -- a clip is not a candidate, it
+    is material a unit can play, and the audience gate is the only pass that asks about it.
+    Nothing here can block a cut either: a clip Immich will not serve leaves its still in
+    the film and one named failure behind, because a missing clip row is exactly the
+    evidence every Live Photo had before this existed.
+    """
+    version = head_versions.get(MARQO_HEAD, "")
+    if not frames.companion_ids or DETECTOR_VERSIONS.get(MARQO_HEAD) != version:
+        return
+    owed = heads_missing_for(connection, sorted(frames.companion_ids), MARQO_HEAD, version)
+    # The worker is another process writing this same file: staging the question must not
+    # leave a transaction open across it, or it meets a locked database.
+    connection.commit()
+    if not owed:
+        return
+    refused = set(stage.unservable)
+    paths, _unusable = stage.previews(owed, cache_path, fetch_preview)
+    for asset_id in set(stage.unservable) - refused:
+        # A clip Immich will not preview is not a source leaving the film: its still stays.
+        stage.failures[f"{CLIP_COMPANION}:{asset_id}"] = stage.unservable.pop(asset_id)
+    readable = tuple(asset_id for asset_id in owed if asset_id in paths)
+    if not readable:
+        return
+    with frames.sampled(
+        readable,
+        check=stage.check,
+        report=stage.report,
+        failures=stage.failures,
+        timed=stage.timed,
+    ) as sampled:
+        stage.detectors({MARQO_HEAD: readable}, paths, sampled)
 
 
 def acquire_model_facts(

@@ -11,6 +11,11 @@ The frames come from the byte-range keyframe reader the motion line already uses
 (``processing/playback_keyframes.py``): the MP4 index and a few keyframes rather than
 the whole rendition, and no FFmpeg path of its own. Sampling happens here, in the
 process that can reach Immich; the detector worker is handed file paths.
+
+A Live Photo's clip is a clip like any other. It is not a candidate -- nothing selects
+it, it plays inside its still's unit -- so nothing ever prepared it, and the audience
+gate's companion evidence was empty for every Live Photo in the library. Its id is on
+its still (``live_photo_video_id``), which is all this needs to read it.
 """
 
 from __future__ import annotations
@@ -50,11 +55,28 @@ class DetectorFrames:
         read_playback: Callable[[str, int, int], tuple[bytes, int]] | None,
     ) -> None:
         self._read = read_playback
+        prepared = {asset.id for asset in assets}
         self.video_ids = (
             frozenset(asset.id for asset in assets if asset.is_video)
             if read_playback is not None
             else frozenset()
         )
+        # Every Live Photo in scope, not only the ones a past cut measured as moving: a
+        # clip nobody has measured yet is a clip nobody has looked at either.
+        self.companion_ids = (
+            frozenset(
+                str(asset.live_photo_video_id)
+                for asset in assets
+                if asset.live_photo_video_id and str(asset.live_photo_video_id) not in prepared
+            )
+            if read_playback is not None
+            else frozenset()
+        )
+
+    @property
+    def clip_ids(self) -> frozenset[str]:
+        """Every source this pass may read on frames: prepared videos and attached clips."""
+        return self.video_ids | self.companion_ids
 
     @contextmanager
     def sampled(
@@ -66,12 +88,12 @@ class DetectorFrames:
         failures: dict[str, str],
         timed: Callable[[str, int], AbstractContextManager[None]],
     ) -> Iterator[dict[str, list[Path]]]:
-        """Frames on disk for each video among ``asset_ids``, for as long as the block runs.
+        """Frames on disk for each clip among ``asset_ids``, for as long as the block runs.
 
         A clip that cannot be read leaves no entry and is named in ``failures``: its
         source falls back to the one preview rather than being banked as unread.
         """
-        wanted = [asset_id for asset_id in asset_ids if asset_id in self.video_ids]
+        wanted = [asset_id for asset_id in asset_ids if asset_id in self.clip_ids]
         if not wanted:
             yield {}
             return

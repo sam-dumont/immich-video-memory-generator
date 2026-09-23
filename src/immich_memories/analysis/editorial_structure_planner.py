@@ -393,6 +393,7 @@ def _select(
         chains=chain_holds_for(
             {**source.assets, **source.companion_assets}, source.audience_annotations
         ),
+        companion_heads=source.companion_detectors,
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)

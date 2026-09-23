@@ -269,6 +269,23 @@ def _terminal_caption_failures(
     return unavailable, damaged
 
 
+def heads_missing_for(
+    connection: sqlite3.Connection, asset_ids: Sequence[str], head: str, version: str
+) -> tuple[str, ...]:
+    """Which of these sources one head has not decided yet, in the caller's order.
+
+    Separate from :func:`missing_facts` because it asks about one producer over sources
+    that are not candidates: an attached clip owes the exposure head a row and owes no
+    caption, no context head and no pixel fact.
+    """
+    wanted = tuple(dict.fromkeys(asset_ids))
+    if not wanted:
+        return ()
+    stage_wanted(connection, wanted)
+    decided = _decided_heads(connection, head, version)
+    return tuple(asset_id for asset_id in wanted if asset_id not in decided)
+
+
 def _decided_heads(connection: sqlite3.Connection, head: str, version: str) -> set[str]:
     return {
         asset_id

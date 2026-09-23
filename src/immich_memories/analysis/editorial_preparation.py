@@ -20,7 +20,11 @@ from immich_memories.analysis.editorial_preparation_captions import prepare_capt
 from immich_memories.analysis.editorial_preparation_detector_frames import DetectorFrames
 from immich_memories.analysis.editorial_preparation_detectors import prepare_detectors
 from immich_memories.analysis.editorial_preparation_heads import prepare_heads
-from immich_memories.analysis.editorial_preparation_model_facts import acquire_model_facts
+from immich_memories.analysis.editorial_preparation_model_facts import (
+    CLIP_COMPANION,
+    acquire_clip_companions,
+    acquire_model_facts,
+)
 from immich_memories.analysis.editorial_preparation_motion import (
     MOTION_PRODUCER,
     MotionSource,
@@ -91,10 +95,11 @@ class PreparationResult:
 
         A clip whose frames could not be sampled is not part of that: the exposure head
         read its preview instead, which is what every source was read on before there were
-        frames, and the failure is named rather than blocking the cut.
+        frames, and the failure is named rather than blocking the cut. Nor is an attached
+        clip Immich would not serve, which leaves its still in the film either way.
         """
         return not self.missing_by_producer and all(
-            key.startswith("detector_frames:") for key in self.failures
+            key.startswith(("detector_frames:", f"{CLIP_COMPANION}:")) for key in self.failures
         )
 
     @property
@@ -108,7 +113,9 @@ class PreparationResult:
         return tuple(
             reason
             for key, reason in sorted(self.failures.items())
-            if not key.startswith(("preview:", "pixel:", "caption:", "motion:", "detector_frames:"))
+            if not key.startswith(
+                ("preview:", "pixel:", "caption:", "motion:", "detector_frames:", CLIP_COMPANION)
+            )
         )
 
     def stage_rates(self) -> dict[str, float]:
@@ -527,15 +534,12 @@ def prepare_editorial_annotations(
         )
         stage.faces(connection, source, fetch_faces)
         if preparation_config.demands_models:
+            frames = DetectorFrames(source, read_playback)
             acquire_model_facts(
-                stage,
-                before,
-                ids,
-                available,
-                pending,
-                head_versions,
-                preview_paths,
-                DetectorFrames(source, read_playback),
+                stage, before, ids, available, pending, head_versions, preview_paths, frames
+            )
+            acquire_clip_companions(
+                stage, connection, frames, cache_path, fetch_preview, head_versions
             )
         if preparation_config.demands_captions:
             _acquire_captions(

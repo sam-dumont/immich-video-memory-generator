@@ -80,3 +80,110 @@ def test_without_a_playback_reader_no_source_is_owed_frames(tmp_path):
     from tests.test_editorial_preparation_motion import prepared_video
 
     assert DetectorFrames([prepared_video("vv1")], None).video_ids == frozenset()
+
+
+def _live_photo(asset_id, clip_id):
+    """A still with a clip hanging off it, the way Immich reports a Live Photo."""
+    from tests.test_editorial_preparation import asset
+
+    return asset(asset_id).model_copy(update={"live_photo_video_id": clip_id})
+
+
+@requires_ffmpeg
+def test_a_live_photos_clip_is_read_on_frames_and_banked_under_its_own_id(tmp_path):
+    """The clip is not a candidate, so nothing prepared it and nothing had ever read it."""
+    import sqlite3
+
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+    from tests.test_playback_keyframes import encode
+
+    data = encode(tmp_path / "clip.mp4", gop=30)
+    calls = []
+    ports = successful_ports(calls)
+
+    result = run(
+        tmp_path,
+        assets=[asset("aa1"), _live_photo("bb2", "cc3")],
+        ports=ports,
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+        fetch_preview=lambda _: preview(),
+        # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+        read_playback=lambda _id, start, length: (data[start : start + length], len(data)),
+    )
+
+    assert result.complete
+    detector_calls = [tuple(sorted(pending)) for name, pending in calls if name == "detectors"]
+    # The clip's pass asks for the exposure head alone: no caption, no context head.
+    assert detector_calls[-1] == ("nsfw_marqo",)
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        banked = {
+            row[0]
+            for row in connection.execute("SELECT asset_id FROM head_facts WHERE head='nsfw_marqo'")
+        }
+    assert "cc3" in banked
+    # The clip is not a candidate: nothing else is owed for it.
+    assert not connection.execute(
+        "SELECT 1 FROM head_facts WHERE asset_id='cc3' AND head!='nsfw_marqo'"
+    ).fetchone()
+    assert result.pictures_by_stage["detector_frames"] == 1
+
+
+@requires_ffmpeg
+def test_a_warm_pass_does_not_read_the_same_clip_twice(tmp_path):
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+    from tests.test_playback_keyframes import encode
+
+    data = encode(tmp_path / "clip.mp4", gop=30)
+
+    def once(**kwargs):
+        calls = []
+        return run(
+            tmp_path,
+            assets=[asset("aa1"), _live_photo("bb2", "cc3")],
+            ports=successful_ports(calls),
+            preparation_config=EditorialPreparationConfig(tier="no_captions"),
+            fetch_preview=lambda _: preview(),
+            # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+            read_playback=lambda _id, start, length: (data[start : start + length], len(data)),
+            **kwargs,
+        ), calls
+
+    cold, _ = once()
+    warm, warm_calls = once()
+
+    assert cold.pictures_by_stage["detector_frames"] == 1
+    assert "detector_frames" not in warm.pictures_by_stage
+    assert warm.complete and warm_calls == []
+
+
+def test_a_clip_immich_will_not_serve_leaves_its_still_in_the_film(tmp_path):
+    import httpx
+
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+
+    def fetch_preview(asset_id):
+        if asset_id == "cc3":
+            # WHY: Immich's settled answer for a source it holds no preview for.
+            raise httpx.HTTPStatusError(
+                "404",
+                request=httpx.Request("GET", "http://immich.test"),
+                response=httpx.Response(404),
+            )
+        return preview()
+
+    result = run(
+        tmp_path,
+        assets=[asset("aa1"), _live_photo("bb2", "cc3")],
+        ports=successful_ports([]),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+        fetch_preview=fetch_preview,
+        read_playback=lambda *_: (b"", 0),
+    )
+
+    assert result.complete
+    assert result.failures["clip_companion:cc3"] == "preview unavailable at Immich (HTTP 404)"
+    # The still stays: a clip nobody could read is what every Live Photo had before.
+    assert result.unservable_sources == {}

@@ -230,3 +230,78 @@ def test_a_unit_in_no_run_reads_exactly_as_it_did_before_there_were_runs():
 
     assert "exposure_chain" not in evidence
     assert share.check_audience(ClearingJudge(), evidence, "unit-1")["verdict"] == "share"
+
+
+def _with_clip(clip_heads):
+    """A clean, clothed still whose attached clip carries only what the detectors banked."""
+    return share.evidence_for_unit(
+        {"asset_id": "still", "members": ["still"], "video_ids": ["clip"]},
+        {"still": Annotation("A fully clothed family waves.", (("nsfw_marqo", "no"),))},
+        {},
+        {},
+        companion_heads={"clip": clip_heads},
+    )
+
+
+class ClearingReader(ClearingJudge):
+    """Finds nothing in the captions and reads every person in them as clothed."""
+
+    def ask(self, stage, prompt, max_tokens):
+        if "exposure" in stage:
+            return '{"observations":{"p1":[["a family","clothing"]]}}'
+        return super().ask(stage, prompt, max_tokens)
+
+
+def test_a_clean_still_is_held_by_its_flagged_clip_on_every_tier():
+    """A clip has no caption and nothing selects it; its detector row is all there is."""
+    evidence = _with_clip({"nsfw_marqo": "yes"})
+
+    assert evidence["companion_detectors"] == [{"nsfw_marqo": "yes"}]
+    rules = rule_audience(RefusingJudge(), evidence, "unit-1")
+    assert rules["verdict"] == "family_only" and rules["finding"] == "exposure_evidence"
+    # The reader clears every person the captions describe -- and the captions describe
+    # the still, so the clip is still unaccounted for.
+    model = share.check_audience(ClearingReader(), evidence, "unit-1")
+    assert model["verdict"] == "family_only" and model["finding"] == "clip_exposure"
+
+
+def test_a_clean_clip_leaves_its_still_exactly_where_it_was():
+    evidence = _with_clip({"nsfw_marqo": "no"})
+
+    assert share.check_audience(ClearingJudge(), evidence, "unit-1")["verdict"] == "share"
+
+
+def test_a_clip_nothing_has_read_reads_as_it_always_did():
+    """An empty bank for the clip is the evidence every Live Photo carried before."""
+    evidence = _with_clip({})
+
+    assert evidence["companion_detectors"] == []
+    assert share.check_audience(ClearingJudge(), evidence, "unit-1")["verdict"] == "share"
+
+
+def test_a_clips_detector_rows_are_read_at_the_version_this_run_reads(tmp_path):
+    import sqlite3
+
+    store = tmp_path / "annotations.sqlite"
+    with sqlite3.connect(store) as connection:
+        connection.execute(
+            "CREATE TABLE head_facts (asset_id TEXT, head TEXT, version TEXT, label TEXT, "
+            "confidence REAL, encoder_key TEXT, decided_at TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO head_facts VALUES (?, ?, ?, ?, 0.9, 'k', 't')",
+            [
+                ("clip", "nsfw_marqo", "det-v3", "yes"),
+                # A row from the one-preview read no longer answers for the clip.
+                ("other", "nsfw_marqo", "det-v2", "yes"),
+                # Not an audience head: the gate never asks it.
+                ("clip", "aesthetic", "det-v3", "high"),
+            ],
+        )
+    connection.close()
+
+    heads = share.load_detector_heads(
+        store, ["clip", "other", "unread"], {"nsfw_marqo": "det-v3", "aesthetic": "det-v3"}
+    )
+
+    assert heads == {"clip": {"nsfw_marqo": "yes"}}

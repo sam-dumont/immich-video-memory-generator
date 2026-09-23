@@ -178,6 +178,7 @@ class AudienceGate:
         library: AudienceBank,
         check_audience=_share.check_audience,
         chains: Mapping[str, ChainHold] | None = None,
+        companion_heads: Mapping[str, Mapping[str, str]] | None = None,
     ) -> None:
         self._judge = judge
         self.audience = audience
@@ -186,6 +187,7 @@ class AudienceGate:
         self._flag_rows = flag_rows
         self._lines = lines
         self._chains = chains or {}
+        self._companion_heads = companion_heads or {}
         self._bank_path = bank_path
         self._library = library
         self.bank: dict[str, dict[str, Any]] = {}
@@ -248,6 +250,7 @@ class AudienceGate:
                 self._lines,
                 picture_records=self._pictures.records,
                 chains=self._chains,
+                companion_heads=self._companion_heads,
             )
         )
         key, record = self.check(evidence, terminal)

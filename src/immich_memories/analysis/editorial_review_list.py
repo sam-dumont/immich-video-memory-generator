@@ -38,6 +38,7 @@ _ALREADY_HELD = frozenset(
     {
         "exposure_evidence",
         "exposure_chain",
+        "clip_exposure",
         "nudity_shirtless_or_underwear",
         "private_activity",
         "children_in_swimwear",
