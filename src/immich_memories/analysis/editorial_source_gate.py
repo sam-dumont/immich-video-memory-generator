@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 
 from immich_memories.analysis.annotation_lines import AnnotationLineBatch
-from immich_memories.analysis.editorial_carrier_eligibility import screenshot_by_resolution
+from immich_memories.analysis.editorial_carrier_eligibility import (
+    screen_flagged,
+    screenshot_by_resolution,
+)
 
 SCREEN_DOCUMENT_GATE_VERSION = "screen-document-source-gate-v1"
 
@@ -41,9 +44,12 @@ def screen_document_rejections(batch: AnnotationLineBatch) -> dict[str, str]:
     """Return the established hard source exclusions in stable input order."""
     rejected: dict[str, str] = {}
     for line in batch.lines:
-        label = dict(line.heads).get("doc_docling")
+        heads = dict(line.heads)
+        label = heads.get("doc_docling")
         if label in SCREEN_DOCUMENT_HEAD_LABELS:
             rejected[line.asset_id] = f"screen-docling:{label}"
+        elif screen_flagged(heads):
+            rejected[line.asset_id] = "screen-head"
         elif line.description and SCREEN_DOCUMENT_TEXT.search(line.description):
             rejected[line.asset_id] = "screen-text"
         elif screenshot_by_resolution(line.text):

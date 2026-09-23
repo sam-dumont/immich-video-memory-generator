@@ -32,6 +32,25 @@ SCREEN_DOCUMENT_LABELS = frozenset(
     }
 )
 _DOCUMENT_FIELD = re.compile(r"(?:^|[|,])\s*document=([a-z_]+)(?=\s*(?:[,|]|$))")
+SCREEN_HEAD_YES = "yes"
+_SCREEN_HEAD_FIELD = re.compile(rf"(?:^|[|,])\s*screen={SCREEN_HEAD_YES}(?=\s*(?:[,|]|$))")
+
+
+def screen_flagged(heads: Mapping[str, str]) -> bool:
+    """The distilled screen head says this frame is one. It only adds to the document head.
+
+    It ships at a band strict enough that over 3,564 photographs it answered yes on 37 and
+    every one of them was a screen, so reading it beside `doc_docling` buys nine more
+    screens for no extra false refusal. A bank with no `screen` row reads as it always did.
+    """
+    return heads.get("screen") == SCREEN_HEAD_YES
+
+
+def screen_flagged_on_line(line: str) -> bool:
+    """The same head, read off a rendered line instead of a head mapping."""
+    return bool(_SCREEN_HEAD_FIELD.search(line))
+
+
 _SCREEN_TEXT = re.compile(
     r"\b(screenshot|screen (displaying|showing)|phone screen|computer screen|"
     r"monitor displaying|app interface|tv screen|laptop screen|projector screen)\b",
@@ -137,6 +156,8 @@ def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
             excluded[asset_id] = "picture-facts:screen"
         elif document and document.group(1) in SCREEN_DOCUMENT_LABELS:
             excluded[asset_id] = f"document-head:{document.group(1)}"
+        elif screen_flagged_on_line(line):
+            excluded[asset_id] = "screen-head"
         elif _SCREEN_TEXT.search(line):
             excluded[asset_id] = "screen-description"
         elif screenshot_by_resolution(line):

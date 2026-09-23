@@ -32,6 +32,7 @@ from immich_memories.analysis.editorial_shareability_audience import (
     _parse_exposure_verdict,
     audience_check_prompt,
     audience_exposure_prompt,
+    exposure_flagged,
     exposure_members,
     parse_audience_verdict,
 )
@@ -268,7 +269,7 @@ def _companion_body_warning(
         return None
     detectors = _audience_detectors(heads)
     warnings = [record for record in _flag_records(flags) if _exposure_flag(record)]
-    if detectors.get("nsfw_marqo") != "yes" and not warnings:
+    if not exposure_flagged(detectors) and not warnings:
         return None
     return {
         "member": f"v{index}",

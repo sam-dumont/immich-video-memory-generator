@@ -33,15 +33,27 @@ def _exposure_flag(row: Mapping[str, Any]) -> bool:
     )
 
 
+def exposure_flagged(heads: Mapping[str, str]) -> bool:
+    """Either exposure detector says a person is uncovered here.
+
+    `nsfw_marqo` is the floor and stays it: it catches more. The distilled
+    `uncovered_person` head is a second opinion that is quieter and more often right about
+    why, and on the by-eye set it fired on none of the 26 pictures the judge called a wrong
+    refusal, against the shipped detector's two. Neither ever clears the other, and a bank
+    with no `uncovered_person` row reads exactly as it did before there was one.
+    """
+    return "yes" in (heads.get("nsfw_marqo"), heads.get("uncovered_person"))
+
+
 def exposure_members(evidence: Mapping[str, Any]) -> set[str]:
     if any(_exposure_flag(row) for row in evidence.get("companion_flags", ())) or any(
-        heads.get("nsfw_marqo") == "yes" for heads in evidence.get("companion_detectors", ())
+        exposure_flagged(heads) for heads in evidence.get("companion_detectors", ())
     ):
         return {member["member"] for member in evidence.get("members", ())}
     return {
         member["member"]
         for member in evidence.get("members", ())
-        if member.get("detectors", {}).get("nsfw_marqo") == "yes"
+        if exposure_flagged(member.get("detectors", {}))
         or any(_exposure_flag(row) for row in member.get("flags", ()))
     }
 
