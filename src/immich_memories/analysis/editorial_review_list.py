@@ -22,7 +22,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from contextlib import closing, suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from immich_memories.analysis.editorial_preparation_detectors import MARQO_HEAD
 from immich_memories.security import write_secret_file
@@ -125,20 +125,31 @@ def write_review_list(directory: Path, rows: Sequence[Mapping[str, Any]]) -> int
     return len(rows)
 
 
+class CutSource(Protocol):
+    """Where a finished cut's list is written and which bank it reads."""
+
+    @property
+    def store_path(self) -> Path | None: ...
+
+    @property
+    def artifact_dir(self) -> Path: ...
+
+    @property
+    def config(self) -> Any: ...
+
+
 def write_for_cut(
-    store_path: Path | str | None,
-    directory: Path,
-    head_versions: Mapping[str, str],
+    source: CutSource,
     carriers: Sequence[Mapping[str, Any]],
     verdicts: Mapping[str, Mapping[str, Any]],
 ) -> int:
     """Name the finished cut's shots in the exposure head's grey zone. It changes no shot."""
     probabilities = exposure_probabilities(
-        store_path,
+        source.store_path,
         [str(carrier.get("asset_id")) for carrier in carriers],
-        head_versions.get(MARQO_HEAD, ""),
+        source.config.editorial.head_versions.get(MARQO_HEAD, ""),
     )
-    return write_review_list(directory, to_check(carriers, verdicts, probabilities))
+    return write_review_list(source.artifact_dir, to_check(carriers, verdicts, probabilities))
 
 
 def _pictures(attempt_dir: Path | None) -> list[dict[str, Any]]:

@@ -292,13 +292,7 @@ def plan_structure(
     outcome.shaved = run.shaved
     outcome.content_cap = run.final_content_cap
     outcome.timing_binding = _timing_binding(source, run)
-    write_for_cut(
-        source.store_path,
-        source.artifact_dir,
-        source.config.editorial.head_versions,
-        run.carriers,
-        outcome.share_log.get("verdicts", {}),
-    )
+    write_for_cut(source, run.carriers, outcome.share_log.get("verdicts", {}))
     facts = PlanFacts(
         label=source.case.label,
         target_seconds=source.case.target_seconds,

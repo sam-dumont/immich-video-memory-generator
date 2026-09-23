@@ -112,10 +112,15 @@ def test_a_finished_cut_writes_its_grey_zone_shots_at_the_version_the_run_reads(
             ],
         )
 
+    from types import SimpleNamespace
+
+    source = SimpleNamespace(
+        store_path=store,
+        artifact_dir=tmp_path,
+        config=SimpleNamespace(editorial=SimpleNamespace(head_versions={"nsfw_marqo": "det-v3"})),
+    )
     written = write_for_cut(
-        store,
-        tmp_path,
-        {"nsfw_marqo": "det-v3"},
+        source,
         _carriers("a1", "b2"),
         {"b2": {"finding": "exposure_chain"}},
     )
