@@ -6,7 +6,7 @@ none of that belongs in a test file.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from immich_memories.cli._date_resolution import (
     default_duration_for_type,
@@ -52,6 +52,52 @@ class TestBuildSpecialDay:
 
         assert scope.end.date() == date(2020, 1, 1)
         assert (scope.start, scope.end) == window
+
+
+class TestBuildSpecialDayRun:
+    """The occasion is the run of photographs, which the calendar can cut in half."""
+
+    def test_a_run_crossing_midnight_scopes_past_the_date_it_began_on(self) -> None:
+        run = (
+            datetime(2016, 6, 12, 0, 57, tzinfo=UTC),
+            datetime(2016, 6, 13, 19, 29, tzinfo=UTC),
+        )
+
+        scope = build_special_day(date(2016, 6, 12), None, run)
+
+        assert (scope.start, scope.end) == run
+
+    def test_a_run_inside_one_date_is_still_the_run_and_not_the_whole_date(self) -> None:
+        run = (
+            datetime(2016, 6, 12, 9, 15, tzinfo=UTC),
+            datetime(2016, 6, 12, 18, 40, tzinfo=UTC),
+        )
+
+        scope = build_special_day(date(2016, 6, 12), None, run)
+
+        assert (scope.start, scope.end) == run
+
+    def test_a_window_still_trims_inside_the_run(self) -> None:
+        # Shrink, don't pad: a window the catalogue kept is narrower than the
+        # run and stays the scope. The run never widens it back.
+        run = (
+            datetime(2016, 6, 12, 0, 57, tzinfo=UTC),
+            datetime(2016, 6, 13, 19, 29, tzinfo=UTC),
+        )
+        window = (
+            datetime(2016, 6, 12, 13, 0, tzinfo=UTC),
+            datetime(2016, 6, 12, 18, 0, tzinfo=UTC),
+        )
+
+        scope = build_special_day(date(2016, 6, 12), window, run)
+
+        assert (scope.start, scope.end) == window
+
+    def test_no_run_recorded_still_covers_the_calendar_day(self) -> None:
+        scope = build_special_day(date(2016, 6, 12), None, None)
+
+        assert scope.start == datetime(2016, 6, 12, 0, 0, 0)
+        assert scope.end == datetime(2016, 6, 12, 23, 59, 59)
 
 
 class TestSpecialDayPreset:

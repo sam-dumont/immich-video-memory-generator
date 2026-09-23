@@ -121,14 +121,22 @@ def candidate_days(
     away_days are excluded: a holiday is full of days that clear every bar
     here, and a trip memory already tells that story end to end. What is left
     is the day that stands out from an ordinary run of them.
+
+    Excluded date by date rather than run by run. A run is the occasion and can
+    end on another date, so a night that began at home and ran into the morning
+    a trip departed on used to carry the trip's first hours with it — and since
+    the run's extent is what a memory of the day is scoped to, the film would
+    have been cut across both. The trip owns its dates; what is left of the run
+    is still this day's, and has to clear the bars on its own.
     """
-    return {
-        day: items
-        for day, items in _runs_of_activity(assets).items()
-        if day not in away_days
-        and len(items) >= MIN_PHOTOS
-        and active_hours(items) >= MIN_ACTIVE_HOURS
-    }
+    kept: dict[date, list] = {}
+    for day, items in _runs_of_activity(assets).items():
+        if day in away_days:
+            continue
+        ours = [a for a in items if a.file_created_at.date() not in away_days]
+        if len(ours) >= MIN_PHOTOS and active_hours(ours) >= MIN_ACTIVE_HOURS:
+            kept[day] = ours
+    return kept
 
 
 def active_hours(items: Iterable) -> int:

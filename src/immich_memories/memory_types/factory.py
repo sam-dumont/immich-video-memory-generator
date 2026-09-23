@@ -411,6 +411,7 @@ def _holiday(
 def _special_day(
     day: date | None = None,
     window: tuple[datetime, datetime] | None = None,
+    run: tuple[datetime, datetime] | None = None,
     title: str | None = None,
     subtitle: str | None = None,
     what: str | None = None,
@@ -439,7 +440,7 @@ def _special_day(
         memory_type=MemoryType.SPECIAL_DAY,
         name=name,
         description=(subtitle or "").strip() or name,
-        date_ranges=[build_special_day(day, window)],
+        date_ranges=[build_special_day(day, window, run)],
         # Not person-filtered on purpose: the memory is the occasion, and real
         # names would reach durable run history through it.
         person_filter=PersonFilter(),
