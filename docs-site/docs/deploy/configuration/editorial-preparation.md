@@ -93,8 +93,9 @@ over 3,564 photographs it answered `yes` on 551 where the reader saw swimwear on
 ## Detectors
 
 Two ONNX graphs on the same provider as the encoder. The worker reads previews locally and commits
-each batch; nothing is uploaded to Hugging Face. Both produce `det-v2`; saved `det-v1` facts
-migrate on load and are recomputed on the next run.
+each batch; nothing is uploaded to Hugging Face. `doc_docling` produces `det-v2`, `nsfw_marqo`
+produces `det-v3`; saved `det-v1` facts, and saved `det-v2` exposure facts, migrate on load and are
+recomputed on the next run.
 
 | Producer | Artifact | Pinned by |
 |---|---|---|
@@ -110,6 +111,19 @@ command that fixes it.
 For Docling, `det-v2` names the extended-optimization graph, because the default ONNX layout
 optimizer produced wrong labels on a Celeron J4125. A separate `detector_python` needs
 `onnxruntime`, `huggingface-hub`, `numpy` and `Pillow`, and no part of the torch family.
+
+For `nsfw_marqo`, `det-v3` names the version that reads a video on up to eight frames across its
+length instead of on the single preview frame Immich serves for it, keeping the strongest answer.
+The frames arrive as files from the process that can reach Immich, so the detector worker still
+needs nothing but the four packages above. A still is read exactly as `det-v2` read it. Because the
+banked row does not record which kind of source it came from, an existing store recomputes this head
+for every source. Videos also stay out of an inference-service offload for this head: the service
+takes one picture per source and cannot take eight.
+
+A Live Photo's attached clip is read by this head too, under its own asset id, and by nothing else:
+no caption, no context head, no pixel fact. A clip with no preview is read on its frames alone. It
+is not a candidate, so it is not in the preparation counts and a clip Immich will not serve cannot
+block a cut.
 
 ## Captions
 
@@ -170,6 +184,11 @@ and nothing else is. Two invalid answers, a playback Immich answers 404 for, or 
 cannot read are banked as settled; timeouts and transport failures stay missing and stop the run
 like a missing caption. `caption_concurrency` bounds the requests in flight; keyframe reads run
 four at a time.
+
+Each row also records what produced it: a digest of the question asked, the keyframe times it
+read, and what made the source owe a line (`video`, or the Live Photo's residual and the
+measurement that produced it). Rows banked before this existed have no record and still answer;
+the cut counts how many of those it read as `unrecorded` in its motion metrics.
 
 `no_captions` and `metadata_only` ask for no motion line. The pick then reads the video's plain
 facts instead: its length, and the measured motion of a Live Photo that has one.

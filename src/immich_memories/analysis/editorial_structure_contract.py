@@ -176,6 +176,10 @@ class StructurePlanningInput:
     episode_readings: Mapping[str, EpisodeReadingCard] = field(default_factory=dict)
     # Attached evidence is separate from selectable primaries and canonical context.
     companion_assets: Mapping[str, Asset] = field(default_factory=dict)
+    # What the detectors banked about each attached clip. A clip has no annotation line --
+    # nothing describes it and nothing selects it -- so the audience gate reads its heads
+    # from the bank instead. Empty is what every clip carried before one was ever read.
+    companion_detectors: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     attached_outcome_replay: AttachedOutcomeReplay | None = None
     # Owner ticks after a cut: admitted after the read, so no prompt or digest input changes.
     owner_required_asset_ids: tuple[str, ...] = ()

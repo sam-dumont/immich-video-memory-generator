@@ -12,6 +12,8 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from immich_memories.analysis.editorial_story_pick_contract import measured_motion
+
 LIVING = re.compile(
     r"\b(man|woman|person|people|child|children|kid|girl|boy|baby|couple|family|friend|friends|group|crowd|cyclist|cyclists|rider|runner|hiker|hikers|walker|player|someone|he|she|they|cat|dog|kitten|kittens|puppy|horse|bird|animal|selfie|portrait|face)\b",
     re.IGNORECASE,
@@ -76,7 +78,8 @@ class UnitLines:
     def shows_life(self, u) -> bool:
         prose = self.description(u)
         shown = bool(LIVING.search(prose)) if prose else self._life_without_prose(u["asset_id"])
-        return shown or u["kind"] in ("live-motion", "video") or bool(u.get("favourite"))
+        # Media kind is not a subject: an unmeasured Live Photo is the photograph it holds.
+        return shown or measured_motion(u) or bool(u.get("favourite"))
 
     def lone_object(self, u) -> bool:
         return not self.shows_life(u)

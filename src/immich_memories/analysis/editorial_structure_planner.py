@@ -18,9 +18,11 @@ from typing import Any
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
+from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
+from immich_memories.analysis.editorial_review_list import write_for_cut
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     BankedAnswers,
@@ -290,6 +292,7 @@ def plan_structure(
     outcome.shaved = run.shaved
     outcome.content_cap = run.final_content_cap
     outcome.timing_binding = _timing_binding(source, run)
+    write_for_cut(source, run.carriers, outcome.share_log.get("verdicts", {}))
     facts = PlanFacts(
         label=source.case.label,
         target_seconds=source.case.target_seconds,
@@ -369,6 +372,10 @@ def _select(
             answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}",
         ),
         check_audience=audience_check_for(audience_tier),
+        chains=chain_holds_for(
+            source.assets, source.audience_annotations, source.companion_detectors
+        ),
+        companion_heads=source.companion_detectors,
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)

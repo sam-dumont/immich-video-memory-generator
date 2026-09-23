@@ -125,6 +125,63 @@ all eight out of the cut regardless of what the model was told. The gate judges 
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 
+**A detector's hold is never lifted by a later reading.** When the exposure detector flags a
+still, any frame of a video, or a Live Photo's clip, that shot stays family-only on every tier.
+A model reading can add a hold but never remove one: not a caption that describes everyone as
+clothed, and not a direct look at the picture that reports nobody uncovered. A false positive
+costs a shot; a false negative puts the wrong picture in front of the wrong people. Only you can
+clear it, on the pool page.
+
+**A video is read across its length, not at its start.** Immich's preview for a video is a single
+frame near its beginning, and the exposure detector used to decide the whole clip on it. It now
+reads up to eight frames spread over the clip (the keyframes nearest eight evenly spaced moments,
+fetched by byte range from the same playback index the motion line reads, so a clip costs a few
+hundred kilobytes rather than the whole rendition), plus that preview, and keeps the strongest
+answer: a hold anywhere in a clip holds the clip, and a clip only the preview holds stays held. Measured on four test clips, the preview alone held two of them (0.30,
+0.28); eight frames held all four (0.93-0.95). This is a new producer version (`nsfw_marqo` moves
+from `det-v2` to `det-v3`), so an existing annotation store re-reads that head for **every** source,
+pictures included: the banked row does not record which kind of source it came from. Nothing else
+changes. Docling still reads the one preview, and the public heads are untouched. A clip whose
+playback cannot be read falls back to its preview, and `preparation.private.json` names it. When the
+inference service is answering for your heads, videos keep this head in process, because the service
+is handed one picture per source and cannot be handed eight.
+
+**A Live Photo's clip is read too, and a held clip holds its still.** The clip is not a candidate:
+nothing selects it, it plays inside its still's shot, so nothing ever prepared it and the gate's
+companion evidence was empty for every Live Photo in the library. Now every Live Photo in scope has
+its clip read the same way any clip is read, and the answer is banked under the clip's own asset id.
+That pass is deliberately narrow: the exposure detector only, no caption, no context head, no pixel
+fact, so it costs the same 0.3 to 0.4 s per clip as any other. A shot whose clip is flagged is held
+to family viewing whatever its own captions say, because the captions describe the still and a still
+is not evidence about the seconds of motion hanging off it. Immich keeps no preview for many of these clips (120 of 193 in one month) but plays all
+of them, so a clip with no preview is read on its frames alone. A clip Immich will neither preview
+nor play leaves its still in the film and one named failure behind, which is exactly the evidence
+every Live Photo carried before.
+
+**A run of flagged captures holds the clean captures inside it.** The detector decides one picture at
+a time, and a nappy change or a bath is not one picture: it is three minutes of them, of which the
+detector catches some and misses the rest. A capture joins the run of the one before it when it was
+taken within five minutes of it, the same five-minute capture spacing the selector already uses.
+A Live Photo is one capture, not two: its clip is not a clean capture of its own in the run, and a
+flagged clip counts as a flagged capture.
+A run is held to family viewing as a whole when at least **half** of it is flagged and at least
+**three** of its captures are. Both bounds are needed: half keeps a mostly ordinary run from being
+swept by a corner of it, and three is what stops one breastfeeding picture, or two, from holding the
+minutes of family pictures around it. The three numbers are measured constants in
+`analysis/editorial_exposure_chains.py`, not configuration. Measured on the owner's library: normal
+months moved from 2.6 % to 2.8 % held, baby months from 18.5 % to 21.0 %, and 319 clean captures out
+of 66,597 were swept in; a fifteen-minute window added nothing. A carrier swept in this way gets the
+reason `exposure_chain`, with the run's length and how many of it were flagged.
+
+**Between 0.2 and 0.5, the run writes you a list.** The exposure detector holds at 0.5 and stays
+there (dropping the cut to 0.1 holds 51 % of a baby month, which is not a film), but underwear in
+particular sits in the band below it, neither caught nor clearly fine. Every run writes
+`review-before-sharing.private.json` into its attempt directory: the shots of the finished cut whose
+detector probability is between 0.2 and 0.5 and that no other hold already keeps to the family, with
+the probability. The run's summary prints how many there are, and `runs why <asset id>` says so for
+one picture. Nothing in the cut changes. It is a list for you, and it matters most before a
+`sendable` export, where the rules tier's blanket `family_only` is not what is being asked.
+
 **A day's title claims only what the evidence shows.** A special day's title is checked against the
 evidence lines it was written from, and an unsupported claim is dropped rather than printed. Trip
 titles are a different path, written from dates and place names, with no such check.
@@ -223,6 +280,13 @@ reopen a settled standing judgment: speech presence alone says nothing about wha
 A video or moving Live Photo needs at least one standing approval. Two weak votes exclude the
 clip even from an important story or an occasion fallback. Approved scenery and action remain
 eligible; a clip does not need to show people to earn its place.
+
+A motion sentence counts only where the motion is measured. A 500M captioner reading three small
+keyframes can describe somebody dancing in an empty room. A Live Photo's sentence therefore reaches
+the gate and the pick only once its companion measured at least 1.5. Until then the Live Photo is
+judged as the photograph it is: its media kind is not evidence that anyone is in it. A Live Photo
+whose action differs from its still keeps its sentence once the measurement backs it. A true video
+always plays and keeps its sentence, because no residual is measured for videos.
 
 Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
@@ -361,7 +425,7 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | Which pictures show a moment? | A capture group is a moment. Which picture carries it is one readable order over facts a CPU-only install already has: the owner's favourite, then a frame that moves (a video, or a Live Photo whose measured motion clears the threshold), then Immich's named people (more of them first), then the frame that shows the named person over the frame he is a speck in, then the absence of a `SOFT`/`DARK`/`BLOWN OUT` pixel warning, then whether the people head saw anybody, then the middle of the burst rather than its ends, and only then the clock. The episode card names the same picture. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
 | Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a screen, a sensitive-content hit or a second-opinion exposure hit, a frame the `frame_kind` head calls an empty room, a lone everyday object or a body-part close-up, and a blurry, dark or blown-out frame are all weak. Otherwise: nobody, nothing happening and a private or utility interior (`bedroom`, `medical`, `private_facility`) does not stand on its own; people, an activity, or an outdoor or public place does; an unlabelled indoor scene is context. Every label named there is one the shipped head bundle can emit, which a test asserts against the bundle itself |
 | Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite". This one is not the rules reader's: a line with no prose on it is read this way whatever the reader, because a blank line is not evidence that nobody is in the picture, and on a captioned tier it only ever answers for the pictures the captioner could not describe |
-| Who may see it? | Any flag from the detectors keeps a picture at family-only viewing, and the distilled `uncovered_person` head is a second opinion that can add one. A `no` from it lifts nothing: nothing clears a flag except you, on the pool page |
+| Who may see it? | Any flag from the detectors keeps a picture at family-only viewing, and the distilled `uncovered_person` head is a second opinion that can add one. A picture in a five-minute capture run that is at least half flagged, with at least three flagged captures in it, is held with the run (`exposure_chain`), and a Live Photo whose attached clip the detector flags is held with its clip (`clip_exposure`). A `no` from any of it lifts nothing: nothing clears a flag except you, on the pool page |
 | How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it. The ends are not the rules reader's: on every tier the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back when the target leaves no room |
 
 | Has anything already been answered about this picture? | On a library a model has read before, yes, and the draft reads it. A picture an earlier cut of any scope refused for this same audience is not offered, unless the refusal was a caption reading under an older audience prompt; a picture a banked episode reading culled is not offered; a picture a model gave no standing to does not carry its moment while anything else in its group could; a picture a banked reading named for its episode leads that episode's order. Nothing is asked to find this out, and nothing is written |
@@ -596,7 +660,9 @@ it and the exact evidence it read, prompt version included, so the next cut over
 asks no audience question it already answered (15 questions to 0 on a repeated test cut), and a new
 reader or a new prompt asks again. A refusal is also kept per picture, and what happens to it
 depends on what cast it. One cast by the nsfw head, a direct body observation or a rule is
-permanent: not a new prompt, not a different reader, not a caption that changed lifts it. One cast
+permanent: not a new prompt, not a different reader, not a caption that changed lifts it. That
+includes the nsfw head's hold on a video's frames and on a Live Photo's clip, and an answer banked
+before a hold existed is never served past it. One cast
 by the model reading a caption (a bath, an identifying record) is stamped with the audience prompt
 version it was given under. Under that version no later read lifts it either; after a release
 changes the prompt, the picture is asked once more and the new answer replaces the old hold, clear

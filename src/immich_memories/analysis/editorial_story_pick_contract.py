@@ -4,6 +4,8 @@ import math
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
+from immich_memories.analysis.editorial_numbers import exact_number
+from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
 from immich_memories.analysis.strict_json import final_json_object, model_text_rows
 
 MOVING_KINDS = frozenset({"video", "live-motion"})
@@ -12,6 +14,17 @@ MOVING_KINDS = frozenset({"video", "live-motion"})
 def carries_motion(unit: Mapping[str, Any]) -> bool:
     """Does this unit play? A true video always does; a Live Photo only above the discriminant."""
     return str(unit.get("kind") or "") in MOVING_KINDS
+
+
+def measured_motion(unit: Mapping[str, Any]) -> bool:
+    """Is this unit's motion a measured fact rather than a hope? A true video plays by what it
+    is. A Live Photo counts only once its companion measured at or above the discriminant: a
+    Live Photo nobody measured yet plans as motion, but nothing says anything happens in it."""
+    kind = str(unit.get("kind") or "")
+    if kind == "video":
+        return True
+    residual = exact_number(unit.get("residual"))
+    return kind == "live-motion" and residual is not None and residual >= RESIDUAL_MIN
 
 
 def source_kind_marker(unit: Mapping[str, Any]) -> str:

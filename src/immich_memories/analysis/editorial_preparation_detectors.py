@@ -40,6 +40,7 @@ _ACCELERATORS = {"cuda": "CUDAExecutionProvider", "coreml": "CoreMLExecutionProv
 # Which producers have already said what they are running on.
 _ANNOUNCED: set[str] = set()
 
+MARQO_HEAD = "nsfw_marqo"
 MARQO_REPO = "Marqo/nsfw-image-detection-384"
 MARQO_REVISION = "0c26ec22111b83f106d72a55f611ec35962bcb65"
 # The ONNX export of that checkpoint, written by scripts/export_marqo_onnx.py.
@@ -50,7 +51,11 @@ MARQO_ONNX_SHA256 = "924658f1ac638d96e9126ecb29de047dc8d31c9c9defcab77a26a5c96ed
 MARQO_ONNX_ID = f"{MARQO_REPO}@{MARQO_REVISION[:8]}/onnx-384"
 MARQO_CLASSES = ("NSFW", "SFW")
 MARQO_SIDE = 384
-MARQO_VERSION = "det-v2"
+# det-v3: a video is decided on eight frames spread across its length and keeps the
+# strongest answer; a still is decided on its preview, exactly as det-v2 decided it. A
+# banked row does not say which kind of source it came from, so a store written by an
+# older version re-reads every `nsfw_marqo` row, pictures included.
+MARQO_VERSION = "det-v3"
 DOCLING_REPO = "docling-project/DocumentFigureClassifier-v2.0"
 DOCLING_REVISION = "2a12e02668b98ca40216eab41cdf19530577cba4"
 DOCLING_FILE = "model.onnx"
@@ -105,7 +110,7 @@ class DetectorModelUnavailable(RuntimeError):
 
 
 class Marqo:
-    head = "nsfw_marqo"
+    head = MARQO_HEAD
     version = MARQO_VERSION
     encoder_key = MARQO_ONNX_ID
     classes = MARQO_CLASSES
@@ -306,7 +311,7 @@ def docling_pixels(images: Sequence[Image.Image]) -> np.ndarray:
 
 
 def decide(head: str, scores: Mapping[str, float]) -> tuple[str, float]:
-    if head == "nsfw_marqo":
+    if head == MARQO_HEAD:
         probability = scores["NSFW"]
         return ("yes" if probability >= 0.5 else "no"), round(probability, 5)
     if head == "doc_docling":
@@ -365,6 +370,26 @@ def _open_previews(
     return images, keep
 
 
+def _open_frames(
+    paths: Sequence[str], asset_id: str, head: str, failures: dict[str, str]
+) -> list[Image.Image]:
+    """One clip's sampled frames, or none at all: a partial read is not eight frames."""
+    images: list[Image.Image] = []
+    for path in paths:
+        try:
+            with Image.open(path) as image:
+                images.append(image.convert("RGB"))
+        except (OSError, ValueError) as exc:
+            failures[f"{head}:{asset_id}"] = str(exc)
+            return []
+    return images
+
+
+def _strictest(probabilities) -> Any:
+    """The frame that holds hardest; the classes are ordered with the held one first."""
+    return max(probabilities, key=lambda values: float(values[0]))
+
+
 def _decided_rows(detector: Marqo | Docling, keep: Sequence[str], probabilities) -> list:
     rows = []
     for asset_id, values in zip(keep, probabilities, strict=True):
@@ -389,9 +414,15 @@ def _decided_rows(detector: Marqo | Docling, keep: Sequence[str], probabilities)
 def _open_detector(head: str, job: dict) -> Marqo | Docling:
     # Resolved through the module rather than a table built at import, so an
     # installed-dependency stub can replace either producer.
-    if head == "nsfw_marqo":
+    if head == MARQO_HEAD:
         return Marqo(model_path=Path(job["marqo_onnx"]).expanduser())
     return Docling(allow_downloads=job["allow_downloads"], cache_dir=job["cache_dir"])
+
+
+def _bank(connection: sqlite3.Connection, progress: _WorkerProgress, rows: Sequence[Any]) -> None:
+    connection.executemany(_INSERT_FACT, rows)
+    connection.commit()
+    progress.record(len(rows))
 
 
 def _run_head(
@@ -402,16 +433,27 @@ def _run_head(
     failures: dict[str, str],
     progress: _WorkerProgress,
 ) -> None:
-    for start in range(0, len(asset_ids), job["batch_size"]):
+    frames = job.get("frames") or {}
+    sampled = [a for a in asset_ids if a in frames] if detector.head == MARQO_HEAD else []
+    held = set(sampled)
+    plain = [a for a in asset_ids if a not in held]
+    for start in range(0, len(plain), job["batch_size"]):
         images, keep = _open_previews(
-            job["previews"], asset_ids[start : start + job["batch_size"]], detector.head, failures
+            job["previews"], plain[start : start + job["batch_size"]], detector.head, failures
         )
-        if not images:
-            continue
-        rows = _decided_rows(detector, keep, detector.batch(images))
-        connection.executemany(_INSERT_FACT, rows)
-        connection.commit()
-        progress.record(len(rows))
+        if images:
+            _bank(connection, progress, _decided_rows(detector, keep, detector.batch(images)))
+    for asset_id in sampled:
+        # One clip at a time: nine pictures already fill a batch, and a clip whose frames
+        # cannot be opened must not take the rest of a chunk down with it. The preview is
+        # one of them: Immich renders it rather than serving a keyframe, so it is a
+        # picture the sampler never sees, and measured over 152 clips it was the only
+        # read that held two of them. A version that reads more must never hold less.
+        paths = [*frames[asset_id], *([p] if (p := job["previews"].get(asset_id)) else [])]
+        images = _open_frames(paths, asset_id, detector.head, failures)
+        if images:
+            decided = _strictest(detector.batch(images))
+            _bank(connection, progress, _decided_rows(detector, [asset_id], [decided]))
 
 
 def _failure_text(head: str, exc: Exception) -> str:
@@ -461,7 +503,13 @@ def prepare_detectors(
     batch_size: int,
     check_cancelled: Callable[[], None],
     progress: Callable[[str, int, int], None],
+    frame_paths: Mapping[str, Sequence[Path]] | None = None,
 ) -> dict[str, str]:
+    """Bank each requested head's answer per source; ``frame_paths`` names a clip's frames.
+
+    A source with frames is decided on all of them at once and keeps the strongest
+    answer, which only the exposure head asks for. Everything else reads one preview.
+    """
     if not pending:
         return {}
     check_cancelled()
@@ -475,6 +523,11 @@ def prepare_detectors(
                     "pending": pending,
                     "store_path": str(store_path.resolve()),
                     "previews": {key: str(path.resolve()) for key, path in preview_paths.items()},
+                    "frames": {
+                        key: [str(Path(frame).resolve()) for frame in frames]
+                        for key, frames in (frame_paths or {}).items()
+                        if frames
+                    },
                     "cache_dir": str(Path(cache_dir).expanduser()) if cache_dir else None,
                     "marqo_onnx": str(Path(marqo_onnx).expanduser()),
                     "allow_downloads": allow_downloads,

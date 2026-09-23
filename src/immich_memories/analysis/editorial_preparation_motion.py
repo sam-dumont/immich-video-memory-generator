@@ -9,6 +9,7 @@ banked sentence. A miss, or a tier without a caption seat, gives the pick the pl
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import sqlite3
@@ -38,6 +39,7 @@ from immich_memories.analysis.editorial_preparation_captions import (
     REFUSED_CODES,
     bearer_headers,
 )
+from immich_memories.analysis.editorial_story_pick_contract import measured_motion
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
 from immich_memories.analysis.llm_preparation_usage import record_preparation_attempt
 from immich_memories.api.models import Asset
@@ -73,15 +75,21 @@ SCHEMA: dict[str, Any] = {
     "required": ["description"],
     "additionalProperties": False,
 }
+# The question a row answered, recorded beside it: a reworded prompt is told apart on its rows
+# without retiring every line the old wording produced.
+_QUESTION = PROMPT + json.dumps(SCHEMA, sort_keys=True)
+PROMPT_DIGEST = hashlib.sha256(_QUESTION.encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True, slots=True)
 class MotionSource:
-    """The picture a line belongs to, the video sampled for it, and the picture's metadata."""
+    """The picture a line belongs to, the video sampled for it, the picture's metadata, and
+    for a Live Photo the measured residual that made its companion owe a line."""
 
     asset_id: str
     playback_id: str
     digest: str
+    residual: float | None = None
 
 
 def motion_sources(
@@ -93,13 +101,14 @@ def motion_sources(
     """
     sources = []
     for asset in assets:
+        residual = None
         if asset.is_video:
             playback = asset.id
-        elif asset.live_photo_video_id and (residual_of(asset) or 0.0) >= RESIDUAL_MIN:
+        elif asset.live_photo_video_id and (residual := residual_of(asset) or 0.0) >= RESIDUAL_MIN:
             playback = asset.live_photo_video_id
         else:
             continue
-        sources.append(MotionSource(asset.id, playback, source_metadata_digest(asset)))
+        sources.append(MotionSource(asset.id, playback, source_metadata_digest(asset), residual))
     return tuple(sources)
 
 
@@ -264,6 +273,7 @@ class _Outcome:
     requests: int = 0
     seat_calls: int = 0
     failure: str = ""
+    seconds: tuple[float, ...] = ()
 
 
 def _refusal(exc: BaseException) -> bool:
@@ -293,7 +303,9 @@ def _describe(source: MotionSource, sample, ask, seat: threading.Semaphore) -> _
         except ValueError as exc:
             errors.append(str(exc))
             continue
-        return _Outcome(line, sampled.bytes_read, sampled.requests, attempt + 1)
+        return _Outcome(
+            line, sampled.bytes_read, sampled.requests, attempt + 1, seconds=sampled.seconds
+        )
     reason = "two invalid completions: " + "; ".join(errors)
     return _Outcome(MotionLine(UNAVAILABLE, reason, 0), sampled.bytes_read, sampled.requests, 2)
 
@@ -349,11 +361,26 @@ def _settle(
         source_digest=source.digest,
         line=result.line,
         bytes_read=result.bytes_read,
+        provenance=_provenance(source, result),
     )
     if result.line.status == DESCRIBED:
         outcome.described += 1
     else:
         outcome.unavailable += 1
+
+
+def _provenance(source: MotionSource, result: _Outcome) -> dict[str, Any]:
+    """What the row was produced from, so a later reader can weigh an old line against a new one."""
+    admitted_on: dict[str, Any] = (
+        {"kind": "video"}
+        if source.residual is None
+        else {"residual": source.residual, "producer": RESIDUAL_PRODUCER}
+    )
+    return {
+        "prompt": PROMPT_DIGEST,
+        "keyframes_at": list(result.seconds),
+        "admitted_on": admitted_on,
+    }
 
 
 def plain_motion_facts(unit: Mapping[str, Any]) -> str:
@@ -377,16 +404,32 @@ class BankedMotionLines:
         self._store_path = store_path
         self._assets = assets
         self._described = described
-        self._counts = {"requested": 0, "banked": 0, "plain_facts": 0}
+        self._counts = {
+            "requested": 0,
+            "banked": 0,
+            "plain_facts": 0,
+            "unsupported": 0,
+            # Lines banked before rows recorded what produced them (#1118).
+            "unrecorded": 0,
+        }
 
     def observe(self, unit: Mapping[str, Any]) -> str:
+        """The banked sentence, only where the unit's motion is measured to exist (#1118).
+
+        A sentence about a Live companion nobody has measured, or one measured still, is a claim
+        nothing supports: the reader gets the plain facts instead.
+        """
         self._counts["requested"] += 1
         members = [unit["asset_id"], *unit.get("members", ())]
         line = self._banked([a for a in dict.fromkeys(members) if a in self._assets])
+        if line is not None and not measured_motion(unit):
+            self._counts["unsupported"] += 1
+            line = None
         if line is None:
             self._counts["plain_facts"] += 1
             return plain_motion_facts(unit)
         self._counts["banked"] += 1
+        self._counts["unrecorded"] += not line.recorded
         return f"{line.text} ({line.frames} frames across the clip)"
 
     def _banked(self, asset_ids: list[str]) -> MotionLine | None:

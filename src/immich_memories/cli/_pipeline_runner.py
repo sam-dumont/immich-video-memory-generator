@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
+from immich_memories.analysis.editorial_review_list import review_count
 from immich_memories.analysis.llm_usage_record import write_llm_usage
 from immich_memories.cli._editorial_context import (
     build_editorial_context,
@@ -666,6 +667,7 @@ def run_pipeline_and_generate(
             preparation_tier=config.editorial.preparation.tier,
             storyboard=read_storyboard(attempt_dir) if attempt_dir else None,
             run_id=run_id_for_attempt(attempt_dir) if attempt_dir else None,
+            review_before_sharing=review_count(attempt_dir),
         ),
         highlight=False,
         soft_wrap=True,
