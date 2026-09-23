@@ -30,6 +30,7 @@ AudienceCheck = Callable[[Any, Mapping[str, Any], str], dict[str, Any]]
 
 _HELD = {
     "exposure_evidence": "a detector or exposure flag marks this unit",
+    "exposure_chain": "most of this capture run is flagged for exposure",
     "owner_review_flag": "the owner left a review flag on this unit",
 }
 
@@ -46,6 +47,8 @@ def _hold(evidence: Mapping[str, Any]) -> str:
     """The first deterministic reason to keep this unit in the family, or an empty string."""
     if exposure_members(evidence):
         return "exposure_evidence"
+    if evidence.get("exposure_chain"):
+        return "exposure_chain"
     if any(row.get("flag") == REVIEW for row in _flag_rows(evidence)):
         return "owner_review_flag"
     return ""
@@ -75,7 +78,12 @@ def rule_audience(_judge: Any, evidence: Mapping[str, Any], _stage: str) -> dict
         return result | {"finding": "unavailable_evidence", "why": "no rendered member to read"}
     held = _hold(evidence)
     if held:
-        return result | {"finding": held, "why": _HELD[held]}
+        chain = evidence.get("exposure_chain")
+        return (
+            result
+            | {"finding": held, "why": _HELD[held]}
+            | ({"exposure_chain": chain} if chain else {})
+        )
     return result | {
         "finding": "unread_private_activity",
         "why": "no detector head objected, but no description was read to clear it",

@@ -28,7 +28,7 @@ def _default_head_versions() -> dict[str, str]:
         "doc_docling": "det-v2",
         "frame_kind": "public-v1",
         "location": "public-v1",
-        "nsfw_marqo": "det-v2",
+        "nsfw_marqo": "det-v3",
         "people": "public-v1",
         "screen": "public-v1-strict",
         "uncovered_person": "public-v1",
@@ -109,6 +109,10 @@ class EditorialConfig(BaseModel):
         for head in ("doc_docling", "nsfw_marqo"):
             if value.get(head) == "det-v1":
                 value = value | {head: "det-v2"}
+        # The exposure head now reads a video on eight frames, so a det-v2 bank owes it
+        # a fresh answer for every source. Docling still reads the one preview.
+        if value.get("nsfw_marqo") == "det-v2":
+            value = value | {"nsfw_marqo": "det-v3"}
         retired = sorted(RETIRED_HEADS & set(value))
         if retired:
             logger.info("ignoring retired head versions: %s", ", ".join(retired))

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import click
 
+from immich_memories.analysis.editorial_review_list import review_note
 from immich_memories.analysis.selection_trace import ClipStory
 from immich_memories.cli._helpers import console, print_error
 from immich_memories.operations.candidate_fates import read_trace
@@ -172,6 +173,9 @@ def register_reading_commands(runs: click.Group) -> None:
         origin = caption_origin_note(attempt, asset_id)
         if origin:
             console.print(origin, highlight=False, markup=False)
+        check = review_note(attempt, asset_id)
+        if check:
+            console.print(check, highlight=False, markup=False)
         note = music_mood_note(attempt)
         if note:
             console.print(note, highlight=False)

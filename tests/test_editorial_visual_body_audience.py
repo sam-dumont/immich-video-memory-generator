@@ -40,13 +40,14 @@ def item(states=("no",), *, caption="A person wears a top and shorts.", nsfw="no
     )
 
 
-def test_complete_visual_no_resolves_body_warning_without_a_second_model_call():
+def test_complete_visual_no_answers_without_a_second_call_and_lifts_no_detector_hold():
     evidence = item(
         nsfw="yes", caption="A clothed person is described with a generic exposed torso phrase."
     )
     judge = Judge(activity())
     result = share.check_audience(judge, evidence, "test")
-    assert result["verdict"] == "share" and len(judge.calls) == 1
+    assert result["verdict"] == "family_only" and len(judge.calls) == 1
+    assert result["finding"] == "exposure_evidence"
     assert "nudity_shirtless_or_underwear" not in judge.calls[0]["prompt"]
     assert result["exposure"]["basis"] == "direct_visual_body_observations"
     assert result["exposure"]["unresolved_members"] == []
@@ -341,7 +342,7 @@ def test_actual_provider_record_reaches_body_evidence_and_exact_warm_without_new
     evidence = item(nsfw="yes", records={"private-0": record})
     judge = Judge(activity())
     expected = share.check_audience(judge, evidence, "test")
-    assert expected["verdict"] == "share" and len(calls) == len(judge.calls) == 1
+    assert expected["verdict"] == "family_only" and len(calls) == len(judge.calls) == 1
 
     async def forbidden(*_args, **_kwargs):
         raise AssertionError("warm picture facts must not infer again")
