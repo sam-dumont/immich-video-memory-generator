@@ -116,12 +116,21 @@ class ThinGates:
         )
         return _repeat_refusal(candidate, keeper)
 
+    def settle(self, shots: Sequence[Mapping[str, Any]]) -> None:
+        """Put these shots to the standing gate together, so their answers share blocks."""
+        self.standing.ensure([shot["asset_id"] for shot in shots])
+
+    def stands_alone(self, shot: Mapping[str, Any], tier_of: Mapping[str, str]) -> bool:
+        """The standing gate's answer for this shot as its story's weight reads it."""
+        story = str(shot.get("story_episode") or "")
+        stands = self.standing.stands(shot["asset_id"], _weight(story, tier_of), story)
+        return stands or _owner_and_record(shot)
+
     def _refusal(self, shot, kept, tier_of) -> GateRefusal | None:
         story = str(shot.get("story_episode") or "")
         moment = str(shot.get("moment") or "")
-        weight = WEIGHT_OF_TIER.get(tier_of.get(story, "background"), "glimpse")
-        stands = self.standing.stands(shot["asset_id"], weight, story)
-        if not stands and not _owner_and_record(shot):
+        if not self.stands_alone(shot, tier_of):
+            weight = _weight(story, tier_of)
             return GateRefusal(
                 shot["asset_id"], story, "standing", f"as a {weight} story's shot", moment
             )
@@ -133,6 +142,10 @@ class ThinGates:
                 shot["asset_id"], story, "capture spacing", "inside five minutes", moment
             )
         return None
+
+
+def _weight(story: str, tier_of: Mapping[str, str]) -> str:
+    return WEIGHT_OF_TIER.get(tier_of.get(story, "background"), "glimpse")
 
 
 def _repeat_refusal(shot: Mapping[str, Any], keeper: str) -> GateRefusal:

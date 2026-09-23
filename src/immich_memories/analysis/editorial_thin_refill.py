@@ -34,6 +34,11 @@ NOTABLE = "notable"
 VOTE_BAD = "vote-bad"
 VOTE_WEAK = "vote-weak"
 GATE_REFUSED = "gate-refused"
+# The picker reads the first twelve rows of a page, in the page's own order: the refused shot's
+# moment, the moments the cut lacks, motion first. A thousand-picture story is not a longer ask.
+PAGE_ROWS = 12
+# A seat's first choice, and one more when the standing gate refuses it.
+PICK_ROUNDS = 2
 
 
 @dataclass(frozen=True)
@@ -209,38 +214,67 @@ class ThinRefill:
     ) -> tuple[list[dict[str, Any]], list[ThinSlot]]:
         """The cut these seats leave, and what happened in each one.
 
-        Every candidate of every page is put to the standing gate once, together, before any
-        seat is filled: asked one at a time each would cost a block of its own, and the gate
-        answers a block of twelve for the price of two requests.
+        Every seat picks first, and the gates are asked about the chosen rows only: a page is a
+        whole story, and on the measured year putting every page to the standing gate cost 174
+        requests for 24 picks. A seat whose choice the standing gate refuses picks once more
+        from the same page.
         """
         current = [dict(row) for row in cut]
-        self.gates.standing.ensure(
-            list(dict.fromkeys(unit["asset_id"] for slot in slots for unit in slot.page))
-        )
-        taken = {row["asset_id"] for row in current}
+        chosen, failed = self._picks(slots, taken={row["asset_id"] for row in current})
         outcomes = []
-        for slot in slots:
-            page = [unit for unit in slot.page if unit["asset_id"] not in taken]
-            chosen = self._choose(slot, page)
-            if chosen is None:
-                outcomes.append(replace(slot, outcome="none available"))
+        for index, slot in enumerate(slots):
+            candidate = chosen.get(index)
+            if candidate is None:
+                outcomes.append(replace(slot, outcome=failed.get(index, "none available")))
                 continue
-            taken.add(chosen["asset_id"])
-            refusal = self.gates.admits(chosen, cut=current, tier_of=self.tier_of)
+            refusal = self.gates.admits(candidate, cut=current, tier_of=self.tier_of)
             if refusal is not None:
                 outcomes.append(replace(slot, outcome=f"refused by {refusal.rule}"))
                 continue
             current, changed = seat(
-                current, chosen, replacing=slot.replacing, content_cap=self.content_cap
+                current, candidate, replacing=slot.replacing, content_cap=self.content_cap
             )
             outcomes.append(
                 replace(
                     slot,
-                    filled_by=chosen["asset_id"] if changed else "",
+                    filled_by=candidate["asset_id"] if changed else "",
                     outcome="" if changed else "no room for a whole carrier",
                 )
             )
         return current, outcomes
+
+    def _picks(
+        self, slots: Sequence[ThinSlot], *, taken: set[str]
+    ) -> tuple[dict[int, Mapping[str, Any]], dict[int, str]]:
+        """Each seat's choice that stands, by seat, and why a seat that has none has none."""
+        chosen: dict[int, Mapping[str, Any]] = {}
+        failed: dict[int, str] = {}
+        pending = list(range(len(slots)))
+        for _round in range(PICK_ROUNDS):
+            picks = self._pick_round(slots, pending, taken)
+            self.gates.settle(list(picks.values()))
+            pending = []
+            for index, pick in picks.items():
+                if self.gates.stands_alone(pick, self.tier_of):
+                    chosen[index] = pick
+                    failed.pop(index, None)
+                else:
+                    failed[index] = "refused by standing"
+                    pending.append(index)
+        return chosen, failed
+
+    def _pick_round(
+        self, slots: Sequence[ThinSlot], pending: Sequence[int], taken: set[str]
+    ) -> dict[int, Mapping[str, Any]]:
+        """One pick per pending seat, from the first rows of its page nobody has taken."""
+        picks = {}
+        for index in pending:
+            page = [unit for unit in slots[index].page if unit["asset_id"] not in taken]
+            pick = self._choose(slots[index], page[:PAGE_ROWS])
+            if pick is not None:
+                taken.add(pick["asset_id"])
+                picks[index] = pick
+        return picks
 
     def _choose(self, slot: ThinSlot, page: Sequence[Mapping[str, Any]]):
         if not page:
