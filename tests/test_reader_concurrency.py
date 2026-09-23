@@ -50,8 +50,6 @@ def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_p
             judge,
             pictures=pictures,
             line_of=lambda a: f"People outdoors {a}",
-            contract="A month",
-            period_label="Spring",
         )
 
     with llm_metrics.collecting() as counters:
@@ -103,8 +101,6 @@ def test_cancellation_reaches_workers_before_they_send_a_request(tmp_path, monke
             judge,
             pictures=[str(i) for i in range(36)],
             line_of=lambda a: a,
-            contract="month",
-            period_label="spring",
         )
     assert sent == []
     assert judge.calls == []

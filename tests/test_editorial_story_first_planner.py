@@ -422,9 +422,7 @@ def test_standing_gate_is_reject_only_and_scores_by_how_often_a_picture_is_named
         "b": "2030-05-02 | a parked bicycle",
         "c": "2030-05-03 | a hat",
     }
-    scores = judge_standing(
-        Judge(), pictures=["a", "b", "c"], line_of=lines.get, contract="c", period_label="p"
-    )
+    scores = judge_standing(Judge(), pictures=["a", "b", "c"], line_of=lines.get)
     assert {k: n for k, (n, _why) in scores.items()} == {"a": 2, "b": 0, "c": 1}
 
 

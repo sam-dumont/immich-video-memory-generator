@@ -87,8 +87,6 @@ def _standing_prompts() -> tuple[str, str]:
         judge,
         pictures=[f"a{i}" for i in range(24)],
         line_of=lambda a: f"2024-02-01 a picture of {a}",
-        contract=CONTRACT,
-        period_label="February 2024",
     )
     return judge.calls[0], judge.calls[2]
 

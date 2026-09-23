@@ -11,9 +11,10 @@ exactly the draft it drew before.
 Keying. A bank answer is only an answer to the question it was asked, so each read is named the
 way the writing side named it:
 
-* Standing votes live per row under `picture-stands.private.json`, named by the criterion, the
-  contract, the period, the motion seat behind a moving row, the replying model and the row's
-  own text (`editorial_block_votes.standing_row_name`). The model identity is part of that name,
+* Standing votes live per picture in the library's `picture-stands.private.json`, named by the
+  criterion, the motion seat behind a moving row, the replying model, the picture and the row's
+  own text (`editorial_block_votes.standing_row_name`). No film scope is in the name, so a month's
+  answers serve the year around it. The model identity is part of that name,
   so a bank written by another reader simply does not answer here — it cannot be mistaken for
   one that does.
 * Episode readings live in the annotation store under (group, producer, evidence). The producer
@@ -46,6 +47,7 @@ from typing import Any, Protocol
 
 from immich_memories.analysis.editorial_block_votes import standing_row_name
 from immich_memories.analysis.editorial_shareability import allowed
+from immich_memories.analysis.editorial_story_standing import standing_bank_path
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
     library_refusals,
@@ -53,7 +55,6 @@ from immich_memories.analysis.editorial_structure_audience import (
 
 logger = logging.getLogger(__name__)
 
-STANDING_BANK_NAME = "picture-stands.private.json"
 CUT_RECORD_NAME = "plan.private.json"
 
 
@@ -149,8 +150,7 @@ def open_banked_facts(
     store_path: Path | None,
     audience: str,
     model_identity: str,
-    contract: str,
-    period_label: str,
+    subject: str,
     motion_identity: str,
     rows_of: Mapping[str, str],
     episode_cards: Mapping[str, Any],
@@ -167,11 +167,10 @@ def open_banked_facts(
     """
     standing = (
         _banked_standing(
-            bank_dir / STANDING_BANK_NAME,
+            standing_bank_path(bank_dir),
             rows_of=rows_of,
             model_identity=model_identity,
-            contract=contract,
-            period_label=period_label,
+            subject=subject,
             motion_identity=motion_identity,
         )
         if model_identity
@@ -200,8 +199,7 @@ def _banked_standing(
     *,
     rows_of: Mapping[str, str],
     model_identity: str,
-    contract: str,
-    period_label: str,
+    subject: str,
     motion_identity: str,
 ) -> dict[str, int]:
     """Each picture's banked standing score, named exactly as the asking side named it."""
@@ -213,9 +211,9 @@ def _banked_standing(
         if not row:
             continue
         name = standing_row_name(
+            asset_id,
             row,
-            contract=contract,
-            period_label=period_label,
+            subject=subject,
             identity=model_identity,
             motion_identity=motion_identity,
         )

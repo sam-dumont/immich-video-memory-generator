@@ -450,9 +450,9 @@ outranks it, exactly as it outranks the rules reader's own verdict. Only refusal
 clearances: one cut's `share` never stands in for a check this cut did not make, and a banked
 standing vote can only lower the rules reader's own answer, because its zero covers a document, a
 photographed screen, a flag and an empty frame, which are eligibility rather than an opinion. And an answer is
-read only under the name the asking side wrote it under: the criterion, the contract, the period,
-and for a standing vote the model that replied, so a bank written by another reader is not mistaken
-for one written by yours. Episode readings are the exception, on purpose: they are matched on the
+read only under the name the asking side wrote it under: the criterion, the picture and the line it
+was asked about, and for a standing vote the model that replied, so a bank written by another reader
+is not mistaken for one written by yours. Episode readings are the exception, on purpose: they are matched on the
 episode and on the exact pictures that were read, whoever read them, because a cull is a refusal and
 a representative is a nomination the rules order still has to rank. Neither can let in a picture the
 rules would refuse.
@@ -658,6 +658,16 @@ piling them on the new ones. A picture the reading never looked at, because its 
 read, is remembered as neither. When a standing verdict removes a picture the current reading would
 have kept, the trace says so by name, and the newer answer replaces the old one for the next cut.
 A star still outranks anything in the bank, and [`runs why`](./cli/runs.md) prints the reason.
+
+Standing votes follow a picture across every cut of the library, in
+`structure-banks/picture-stands.private.json`. The question "does this picture stand by itself" names
+no period and no film, so a year cut reads the answers a month cut of the same pictures already paid
+for and asks nothing about them. A memory bound to a subject (a custom topic, a person) asks with that
+subject in the question, so its answers are kept apart. The vote is named by the picture, its line,
+the reader that answered and the seat that wrote a moving picture's motion sentence: a new caption, a
+new reader or a new motion seat asks again. Releases up to 0.103.0 kept these votes per film under
+`structure-banks/<film>/picture-stands.private.json` and asked them with the film's brief and period;
+those answers are not read any more, and each picture is asked once more under the new question.
 
 Audience verdicts follow a picture across every cut of the library too, in
 `structure-banks/audience-verdicts.private.json`. A model's answer is kept under the reader that gave

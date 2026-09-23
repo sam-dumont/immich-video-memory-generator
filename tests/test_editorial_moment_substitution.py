@@ -96,8 +96,6 @@ def _admission(*, standing, excluded=()):
     }
     gate = StandingGate(
         None,
-        contract="",
-        period_label="",
         line_of=lambda a: f"line for {a}",
         life=lambda _a: False,
         unit_by_asset=unit_by_asset,

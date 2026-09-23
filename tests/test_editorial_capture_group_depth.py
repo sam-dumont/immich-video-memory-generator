@@ -50,8 +50,6 @@ def _admission(*, mechanical, slots=8):
     judge = type("Judge", (), {"calls": [], "ask": staticmethod(never)})()
     gate = StandingGate(
         judge,
-        contract="",
-        period_label="",
         line_of=lambda a: f"line for {a}",
         life=lambda _a: False,
         unit_by_asset=unit_by_asset,

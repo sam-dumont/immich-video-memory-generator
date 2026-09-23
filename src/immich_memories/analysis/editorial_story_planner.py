@@ -479,7 +479,7 @@ def select_story_first(
     full_lines: Mapping[str, str] | None = None,
     life: Callable[[str], bool] = lambda _asset: True,
     family_tier: Mapping[str, int] | None = None,
-    period_label: str = "",
+    standing_subject: str = "",
     standing_bank: dict | None = None,
     standing_save: Callable[[], None] | None = None,
     excluded: Mapping[str, str] | None = None,
@@ -625,8 +625,7 @@ def select_story_first(
     #    itself. The audience gate judges the cut afterwards, not every candidate.
     gate = StandingGate(
         judge,
-        contract=contract,
-        period_label=period_label,
+        subject=standing_subject,
         line_of=line_of,
         life=life,
         unit_by_asset=unit_by_asset,

@@ -8,7 +8,9 @@ neither of them.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
@@ -16,8 +18,58 @@ from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     moving_picture_row,
 )
+from immich_memories.security import write_secret_file
 
 WEIGHED_STORY_WEIGHTS = ("dominant", "major", "minor")
+STANDING_BANK_NAME = "picture-stands.private.json"
+
+
+def standing_bank_path(case_bank_dir: Path) -> Path:
+    """The library's standing bank, beside every film's own banks rather than inside one.
+
+    The question names no film, so neither does the file: a month and the year around it read
+    and write the same answers.
+    """
+    return case_bank_dir.parent / STANDING_BANK_NAME
+
+
+class StandingBankFile:
+    """The library's standing answers as one film's gate reads and extends them.
+
+    Several films may be cut at once over the same library. A save therefore folds this film's
+    answers into whatever is on disk by then instead of replacing it: an answer is keyed by its
+    whole question, so two films can only ever add different names or the same answer twice.
+    """
+
+    def __init__(self, path: Path, entries: dict) -> None:
+        self.path = path
+        self.entries = entries
+
+    @classmethod
+    def open(cls, case_bank_dir: Path) -> StandingBankFile:
+        path = standing_bank_path(case_bank_dir)
+        return cls(path, _read_entries(path))
+
+    def save(self) -> None:
+        merged = _read_entries(self.path)
+        rows = _rows(merged) | _rows(self.entries)
+        merged.update(self.entries)
+        merged["rows"] = rows
+        self.path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        write_secret_file(self.path, json.dumps(merged, indent=1))
+
+
+def _rows(entries: dict) -> dict:
+    rows = entries.get("rows")
+    return rows if isinstance(rows, dict) else {}
+
+
+def _read_entries(path: Path) -> dict:
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return entries if isinstance(entries, dict) else {}
 
 
 def standing_row(
@@ -45,8 +97,6 @@ class StandingGate:
         self,
         judge,
         *,
-        contract: str,
-        period_label: str,
         line_of: Callable[[str], str],
         life: Callable[[str], bool],
         unit_by_asset: Mapping[str, Any],
@@ -57,11 +107,11 @@ class StandingGate:
         score_of: Callable[[str], int] | None = None,
         motion_line: Callable[[Mapping[str, Any]], str] | None = None,
         motion_identity: str = "",
+        subject: str = "",
     ) -> None:
         self._judge = judge
         self._score_of = score_of
-        self._contract = contract
-        self._period_label = period_label
+        self._subject = subject
         self._line_of = line_of
         self._life = life
         self._unit_by_asset = unit_by_asset
@@ -93,8 +143,7 @@ class StandingGate:
             self._judge,
             pictures=unknown,
             line_of=self.row_of,
-            contract=self._contract,
-            period_label=self._period_label,
+            subject=self._subject,
             bank=self._bank,
             save=self._save,
             motion_identity=self._motion_identity,

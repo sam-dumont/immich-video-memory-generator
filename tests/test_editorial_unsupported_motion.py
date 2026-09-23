@@ -79,8 +79,6 @@ def admission(unit, text: UnitLines, lines: BankedMotionLines, *, pictures: int)
     asset = unit["asset_id"]
     return StandingGate(
         PersuadedJudge(),
-        contract="Show the weekend at home",
-        period_label="a year",
         line_of=lambda _asset: text.line(unit),
         life=lambda _asset: text.shows_life(unit),
         unit_by_asset={asset: ("E1", unit)},

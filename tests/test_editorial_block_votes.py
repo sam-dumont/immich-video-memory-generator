@@ -29,13 +29,12 @@ class VoteJudge:
         return json.dumps({"worthy": dict.fromkeys(labels, "an occasion")})
 
 
-def standing(judge, bank, *, pictures=("a",), contract="contract", period="period"):
+def standing(judge, bank, *, pictures=("a",), subject=""):
     return judge_standing(
         judge,
         pictures=pictures,
         line_of=lambda asset: "weak object" if asset == "a" else f"people at {asset}",
-        contract=contract,
-        period_label=period,
+        subject=subject,
         bank=bank,
     )
 
@@ -54,17 +53,13 @@ def test_standing_keeps_a_pictures_rejection_when_its_company_changes():
     assert all("weak object" not in prompt for _stage, prompt in judge.calls[2:])
 
 
-@pytest.mark.parametrize(
-    "change", ["contract", "period", "model", "endpoint", "provider", "dialect"]
-)
+@pytest.mark.parametrize("change", ["subject", "model", "endpoint", "provider", "dialect"])
 def test_standing_bank_includes_the_full_question_and_model_settings(change):
     judge, bank = VoteJudge(), {}
-    contract, period = "same opening " * 8 + "old instructions", "period"
-    standing(judge, bank, contract=contract, period=period)
-    if change == "contract":
-        contract = "same opening " * 8 + "new instructions"
-    elif change == "period":
-        period = "another period"
+    subject = ""
+    standing(judge, bank, subject=subject)
+    if change == "subject":
+        subject = "the garden we built"
     else:
         settings = {
             "model": {"model": "model-b"},
@@ -73,7 +68,7 @@ def test_standing_bank_includes_the_full_question_and_model_settings(change):
             "dialect": {"extra_params": {"top_k": 20}},
         }[change]
         judge.config.llm = judge.config.llm.model_copy(update=settings)
-    standing(judge, bank, contract=contract, period=period)
+    standing(judge, bank, subject=subject)
     assert len(judge.calls) == 4
 
 
@@ -92,8 +87,6 @@ def test_an_adapter_can_supply_its_model_identity_explicitly():
     kwargs = {
         "pictures": ["a"],
         "line_of": lambda _: "weak object",
-        "contract": "contract",
-        "period_label": "period",
         "bank": bank,
         "model_identity": "adapter/model-a/settings-v1",
     }
@@ -110,7 +103,7 @@ def test_legacy_bank_is_ignored_without_changing_the_established_hashed_order():
     pictures = ("a", "b", "c")
     lines = {"a": "weak object", "b": "people at b", "c": "people at c"}
     seed = hashlib.sha256(
-        (STANDING_PROMPT_VERSION + "|contract|" + "|".join(lines[a] for a in pictures)).encode()
+        (STANDING_PROMPT_VERSION + "||" + "|".join(lines[a] for a in pictures)).encode()
     ).hexdigest()
     bank = {seed: {"source": {}, "hashed": {}}}
     assert standing(judge, bank, pictures=pictures)["a"][0] == 0

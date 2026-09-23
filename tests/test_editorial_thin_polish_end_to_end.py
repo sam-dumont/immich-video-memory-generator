@@ -141,8 +141,6 @@ def polish_once(tmp_path, judge):
     unit_by_asset = {row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows}
     standing = StandingGate(
         judge,
-        contract="contract",
-        period_label="February 2024",
         line_of=LINES.get,
         life=lambda _asset: True,
         unit_by_asset=unit_by_asset,

@@ -43,7 +43,9 @@ WORTH_SUBJECT_CRITERION = (
     "words what it shows of the subject.\nSubject: {subject}"
 )
 
-STANDING_PROMPT_VERSION = "picture-stands-v5-own-label-example"
+# v6: the question no longer names the film's contract or period, so a picture's answer is the
+# library's and every cut that reaches the picture reads it (#1151). Every v5 row expires once.
+STANDING_PROMPT_VERSION = "picture-stands-v6-scope-free"
 STANDING_CRITERION = (
     "Name the pictures that do NOT stand by themselves: pictures nobody would show on their own because they show "
     "nothing worth showing. A close-up of a body part or an ailment, a screen, a document, a lone everyday object "
@@ -527,32 +529,54 @@ def weak_example(listing: str) -> str:
     return json.dumps({"weak": dict.fromkeys(labels, "why")}, separators=(",", ":"))
 
 
-def standing_prompt(contract: str, period_label: str, listing: str) -> str:
-    """The whole standing question over one listing of rows."""
+def standing_prompt(listing: str, subject: str = "") -> str:
+    """The whole standing question over one listing of rows.
+
+    Whether a picture stands by itself does not depend on which film offers it: a mug on a table
+    is as weak in May as in the year around it. The question therefore names no period and no
+    film contract, so one answer serves every cut that reaches the picture. The one exception is
+    a memory bound to a subject (a custom memory's topic, a person): there a picture of the
+    subject is the point, so the subject is part of the question and of its bank name.
+    """
+    about = (
+        f"This memory is about: {subject}. A picture that shows it, or a stage of it, is worth "
+        "showing.\n\n"
+        if subject
+        else ""
+    )
     # Pictures last: see judge_worthiness.prompt_of (#981).
     return (
-        f"{contract}\n\nBelow are single pictures from one period ({period_label}), one line each: when it "
-        f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n"
+        f"{about}Below are single pictures, one line each: when it was taken and what it shows. "
+        f"Text only.\n\n{STANDING_CRITERION}\n\n"
         f"Answer with one JSON object only, on one line: {weak_example(listing)}"
         f"\n\nPICTURES\n{listing}"
     )
 
 
+def _standing_row_key(asset_id: str, row: str, *, subject: str, version: str) -> str:
+    # One picture's own question: the whole prompt except the company it was offered in, the
+    # picture it was asked about, and the row that described it (a new caption is a new row).
+    question = version + "|" + standing_prompt("", subject) + "|"
+    return hashlib.sha256(f"{asset_id}\x00{question}{row}".encode()).hexdigest()
+
+
 def standing_row_name(
-    row: str, *, contract: str, period_label: str, identity: str, motion_identity: str = ""
+    asset_id: str, row: str, *, identity: str, subject: str = "", motion_identity: str = ""
 ) -> str:
-    """The name one picture's standing answer lives under in the bank's per-row store.
+    """The name one picture's standing answer lives under in the library's per-row store.
 
     A reader that wants to know what was already answered about a picture has to name that
-    answer exactly as the asking side named it: the criterion, the contract, the period, the
-    motion seat behind a moving row, the model that replied, and the row's own text. Both
-    sides derive the name here, so neither can drift away from the other.
+    answer exactly as the asking side named it: the criterion, the motion seat behind a moving
+    row, the model that replied, the picture and the row's own text. Both sides derive the name
+    here, so neither can drift away from the other. No film scope is part of it.
     """
     version = standing_pass_version(motion_identity)
-    question = version + "|" + standing_prompt(contract, period_label, "") + "|"
-    row_key = hashlib.sha256((question + row).encode()).hexdigest()
     return _vote_cache_key(
-        {"row": row_key}, identity, STANDING_MAX_TOKENS, "weak", rows_version=version
+        {"row": _standing_row_key(asset_id, row, subject=subject, version=version)},
+        identity,
+        STANDING_MAX_TOKENS,
+        "weak",
+        rows_version=version,
     )
 
 
@@ -561,8 +585,7 @@ def judge_standing(
     *,
     pictures: Sequence[str],
     line_of: Callable[[str], str],
-    contract: str,
-    period_label: str,
+    subject: str = "",
     bank: MutableMapping[str, dict] | None = None,
     save: Callable[[], None] | None = None,
     model_identity: str | None = None,
@@ -575,18 +598,15 @@ def judge_standing(
     version = standing_pass_version(motion_identity)
 
     def prompt_of(listing: str) -> str:
-        return standing_prompt(contract, period_label, listing)
+        return standing_prompt(listing, subject)
 
     def bank_key(block: Sequence[str]) -> str:
         return hashlib.sha256(
-            (version + "|" + contract[:64] + "|" + "|".join(line_of(a) for a in block)).encode()
+            (version + "|" + subject + "|" + "|".join(line_of(a) for a in block)).encode()
         ).hexdigest()
 
-    # One picture's own question: the whole prompt except the company it was offered in.
-    question = version + "|" + prompt_of("") + "|"
-
     def row_key(asset: str) -> str:
-        return hashlib.sha256((question + line_of(asset)).encode()).hexdigest()
+        return _standing_row_key(asset, line_of(asset), subject=subject, version=version)
 
     rejections, _rounds = vote_blocks(
         judge,

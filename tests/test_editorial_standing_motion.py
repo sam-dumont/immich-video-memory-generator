@@ -39,8 +39,6 @@ STILL = {"asset_id": "still", "kind": "still", "members": ["still"]}
 def gate(judge, *, bank=None, motion_identity="", motion_line=None, clip=None):
     return StandingGate(
         judge,
-        contract="contract",
-        period_label="a period",
         line_of=lambda asset: f"10:00 | a scene at {asset}",
         life=lambda _asset: True,
         unit_by_asset={"clip": ("E1", CLIP if clip is None else clip), "still": ("E1", STILL)},
@@ -136,8 +134,6 @@ def test_motion_rejected_in_both_orders_cannot_bypass_standing_in_a_major_story(
     lines = UnitLines({"clip": "2022-01-01 | An empty room with tiled floors."})
     admission = StandingGate(
         VoteJudge(),
-        contract="Show the family visit",
-        period_label="a year",
         line_of=lambda _asset: lines.line(unit),
         life=lambda _asset: lines.shows_life(unit),
         unit_by_asset={"clip": ("E1", unit)},
@@ -163,8 +159,6 @@ def test_approved_motion_can_stand_when_its_still_has_no_people(kind, pictures):
     judge = VoteJudge()
     admission = StandingGate(
         judge,
-        contract="Show the visit",
-        period_label="a year",
         line_of=lambda _asset: lines.line(unit),
         life=lambda _asset: lines.shows_life(unit),
         unit_by_asset={"clip": ("E1", unit)},

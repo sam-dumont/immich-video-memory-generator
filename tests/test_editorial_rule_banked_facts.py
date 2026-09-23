@@ -26,8 +26,6 @@ from immich_memories.analysis.editorial_rule_quality import rule_representative_
 from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
 from immich_memories.analysis.editorial_structure_audience import AUDIENCE_BANK_NAME, AudienceBank
 
-CONTRACT = "the editorial contract"
-PERIOD = "June 2023"
 IDENTITY = "reader-a"
 
 
@@ -193,9 +191,10 @@ def test_a_banked_vote_cannot_clear_a_picture_the_rules_refuse():
 
 def _write_standing_bank(path: Path, rows: dict[str, int], *, identity=IDENTITY, motion=""):
     names = {
-        standing_row_name(
-            row, contract=CONTRACT, period_label=PERIOD, identity=identity, motion_identity=motion
-        ): {"votes": votes, "why": ""}
+        standing_row_name("pic", row, identity=identity, motion_identity=motion): {
+            "votes": votes,
+            "why": "",
+        }
         for row, votes in rows.items()
     }
     path.write_text(json.dumps({"rows": names}))
@@ -204,13 +203,12 @@ def _write_standing_bank(path: Path, rows: dict[str, int], *, identity=IDENTITY,
 def _open(tmp_path, **overrides):
     return open_banked_facts(
         **{
-            "bank_dir": tmp_path,
+            "bank_dir": tmp_path / "this-case",
             "attempts_dir": None,
             "store_path": None,
             "audience": "family",
             "model_identity": IDENTITY,
-            "contract": CONTRACT,
-            "period_label": PERIOD,
+            "subject": "",
             "motion_identity": "",
             "rows_of": {},
             "episode_cards": {},

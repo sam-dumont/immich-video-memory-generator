@@ -50,8 +50,6 @@ def test_malformed_vote_cannot_become_a_banked_rejection():
             judge,
             pictures=["photo"],
             line_of=lambda _: "a screen",
-            contract="contract",
-            period_label="one month",
             bank=bank,
         )
     assert not bank.get("rows")
@@ -75,8 +73,6 @@ def test_invalid_labels_are_reasked_and_only_valid_votes_are_reused():
     kwargs = {
         "pictures": ["photo"],
         "line_of": lambda _: "a screen",
-        "contract": "contract",
-        "period_label": "one month",
         "bank": bank,
     }
     assert judge_standing(judge, **kwargs)["photo"][0] == 0
@@ -248,8 +244,6 @@ def test_the_standing_sibling_reads_a_flat_rejection_list_too(reply):
         judge,
         pictures=list(pictures),
         line_of=lambda asset: f"a picture of {asset}",
-        contract="contract",
-        period_label="February 2024",
     )
     assert votes["second"][0] == 0, "named by both orders is a firm rejection"
     assert {votes[a][0] for a in ("first", "third")} == {2}
@@ -273,8 +267,6 @@ def test_the_repair_request_names_the_label_the_block_never_offered():
         judge,
         pictures=["photo"],
         line_of=lambda _: "a screen",
-        contract="contract",
-        period_label="one month",
         bank={},
     )
     repair = judge.prompts[2].removeprefix(judge.prompts[0])

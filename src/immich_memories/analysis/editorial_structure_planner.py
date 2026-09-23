@@ -41,7 +41,11 @@ from immich_memories.analysis.editorial_story_lookalike import (
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
-from immich_memories.analysis.editorial_story_standing import StandingGate, standing_row
+from immich_memories.analysis.editorial_story_standing import (
+    StandingBankFile,
+    StandingGate,
+    standing_row,
+)
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
@@ -572,10 +576,10 @@ def _story_selection(
     partition_limit: int | None,
     looks_alike=None,
 ):
-    bank_path = source.bank_dir / "picture-stands.private.json"
-    bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
+    # A no-model draft asks nothing, so it reads the model's answers through `banked` alone.
+    bank = StandingBankFile.open(source.bank_dir) if ports.rules is None else None
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
-    banked = _banked_facts(source, ports, unit_of, contract=contract)
+    banked = _banked_facts(source, ports, unit_of)
     if ports.rules is not None:
         record("banked-facts", banked.record())
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
@@ -632,9 +636,9 @@ def _story_selection(
         seconds_per_slot=seconds_per_slot,
         record=record,
         family_tier=tier,
-        period_label=source.case.label,
-        standing_bank=bank,
-        standing_save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+        standing_subject=source.intent.subject or "",
+        standing_bank=bank.entries if bank is not None else None,
+        standing_save=bank.save if bank is not None else None,
         excluded=material.document_sources,
         allow_story_gaps=bool(marker),  # a subject memory's stages span weeks with gaps
         journey=source.case.product == "trip",
@@ -652,7 +656,7 @@ def _story_selection(
     )
 
 
-def _banked_facts(source, ports, unit_of, *, contract: str) -> BankedAnswers:
+def _banked_facts(source, ports, unit_of) -> BankedAnswers:
     """What earlier model answers about this library say, for the draft that asks nothing.
 
     Only the no-model draft reads them. A model run asks its own questions about every
@@ -667,10 +671,7 @@ def _banked_facts(source, ports, unit_of, *, contract: str) -> BankedAnswers:
         store_path=source.store_path,
         audience=source.audience,
         model_identity=configured_text_identity(source.config.llm),
-        # The thin layer's own standing gate asks on the bare contract, so that is the name
-        # its answers are banked under; the story block belongs to the draft's own questions.
-        contract=contract,
-        period_label=source.case.label,
+        subject=source.intent.subject or "",
         motion_identity=ports.story_motion_identity,
         rows_of={
             asset_id: standing_row(
@@ -759,18 +760,16 @@ def _thin_polish(
         return carriers
     unit_by_asset = {u["asset_id"]: (f, u) for f, units in material.units.items() for u in units}
     unit_of = {asset: unit for asset, (_family, unit) in unit_by_asset.items()}
-    bank_path = source.bank_dir / "picture-stands.private.json"
-    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    bank = StandingBankFile.open(source.bank_dir)
     standing = StandingGate(
         ports.judge,
-        contract=contract,
-        period_label=source.case.label,
+        subject=source.intent.subject or "",
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         life=lambda asset_id: _shows_life(material, unit_of, asset_id),
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in selection.story.stories},
-        bank=bank,
-        save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+        bank=bank.entries,
+        save=bank.save,
         calls=selection.calls,
         motion_line=ports.observe_story_motion,
         motion_identity=ports.story_motion_identity,
