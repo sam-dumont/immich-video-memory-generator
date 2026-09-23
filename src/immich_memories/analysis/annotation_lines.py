@@ -118,11 +118,10 @@ class AnnotationLineBatch:
             self.missing_asset_ids
         ):
             raise ValueError("annotation batch outcomes must be unique")
-        if tuple(asset_id for asset_id in requested if asset_id in set(line_ids)) != line_ids:
+        answered = set(line_ids)
+        if tuple(asset_id for asset_id in requested if asset_id in answered) != line_ids:
             raise ValueError("annotation lines must preserve requested order")
-        expected_missing = tuple(
-            asset_id for asset_id in requested if asset_id not in set(line_ids)
-        )
+        expected_missing = tuple(asset_id for asset_id in requested if asset_id not in answered)
         if self.missing_asset_ids != expected_missing:
             raise ValueError("annotation batch missing IDs must be the exact complement")
 

@@ -405,9 +405,8 @@ def _check_conservation(pass_trace: PassTrace) -> ConservationCheck:
     input_ids = _unique_ids(pass_trace.input_ids)
     missing_ids = tuple(asset_id for asset_id in input_ids if asset_id not in fate_counts)
     duplicate_ids = tuple(asset_id for asset_id in input_ids if fate_counts.get(asset_id, 0) > 1)
-    unexpected_ids = tuple(
-        asset_id for asset_id in _unique_ids(fates) if asset_id not in set(input_ids)
-    )
+    inputs = set(input_ids)
+    unexpected_ids = tuple(asset_id for asset_id in _unique_ids(fates) if asset_id not in inputs)
     return ConservationCheck(
         valid=not missing_ids and not duplicate_ids and not unexpected_ids,
         missing_ids=missing_ids,
