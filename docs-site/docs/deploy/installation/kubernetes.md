@@ -75,6 +75,24 @@ Once auth is on (basic-auth keys in the Secret, or [OIDC](../configuration/authe
 copy `base/ingress.yaml.example` to `base/ingress.yaml`, set the host and add it to the
 kustomization.
 
+## Another namespace
+
+Every manifest says `immich-memories`, but the namespace is yours to pick. To deploy under another
+name, set it in each kustomization root you apply, before the first apply:
+
+```bash
+cd deploy/kubernetes
+for d in base overlays/inference overlays/captioner overlays/inference-lan; do
+  (cd "$d" && kustomize edit set namespace photos-memories)
+done
+```
+
+That renames the Namespace object `base/` creates too. `overlays/gpu`, `overlays/inference-cuda`
+and `overlays/captioner-cuda` build on those roots and follow them. Three things do not: the
+`-n immich-memories` in every command on these pages, `base/job.yaml` applied with
+`kubectl apply -f` (that skips kustomize), and the cross-namespace addresses, which become
+`captioner.photos-memories.svc.cluster.local` and so on.
+
 ## How the pod is wired
 
 The image runs as `immich`, UID/GID 1000, `HOME=/home/immich`. The manifests set `runAsUser` and
@@ -108,20 +126,21 @@ three are there, so a restart costs nothing and a nightly CronJob never goes bac
 
 ## Set the preparation tier
 
-:::caution No manifest here pins a tier
-Nothing here pins one, so a pod takes the code default, `full`, which wants a caption server.
-Without one the first cut stops at prepare naming `caption_base_url`. Pick a tier before you apply,
-on the Deployment and on the Job and CronJobs if you use them:
+:::caution The manifests pin `no_captions`
+The Deployment, the Job and both CronJobs set `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER` to
+`no_captions`, so a first cut needs no caption server. An env var beats `config.yaml`, so a tier
+saved from the UI or written in the file changes nothing on these pods. For `full`, apply
+`overlays/captioner` and change the env on every pod you run:
 
 ```yaml
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
-              value: "no_captions"       # full | no_captions | metadata_only
-            # On full, with overlays/captioner applied:
-            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
-            #   value: "full"
-            # - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
-            #   value: "http://captioner:8092/v1"
+              value: "full"               # full | no_captions | metadata_only
+            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL
+              value: "http://captioner:8092/v1"
 ```
+
+On a running Deployment, `kubectl -n immich-memories set env deployment/immich-memories` with the
+same two pairs does it.
 
 What each tier runs and gives up is on [Running modes](../running-modes.md).
 :::

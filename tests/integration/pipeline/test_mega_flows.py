@@ -181,7 +181,7 @@ def test_twelve_day_auto_trip_deeply_analyzes_the_manageable_pool(tmp_path: Path
     assert len(eligible_clips) == 61
     assert len(eligible_photos) == 48
     assert duration is not None
-    assert duration.total_seconds == 150.0
+    assert duration.seconds == 150.0
 
     thumbnail_cache = ThumbnailCache(tmp_path / "thumbnails")
     ok, encoded = cv2.imencode(".jpg", np.full((64, 64, 3), 96, dtype=np.uint8))

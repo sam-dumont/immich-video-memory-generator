@@ -105,3 +105,21 @@ def test_a_favourite_is_never_moved_by_the_vote_whatever_the_orders_said():
     assert verdicts["star"]["named_by"] == 2
     assert verdicts["star-once"]["named_by"] == 1
     assert verdicts["fine"]["named_by"] == 0 and not verdicts["fine"]["held_by"]
+
+
+def test_a_thesis_fit_block_shows_an_example_made_of_its_own_labels():
+    """Thirteen shots vote in blocks of seven and six: P07 is not a label the second offers."""
+    judge = FitJudge()
+    vote_thesis_fit(
+        judge,
+        pictures=[f"shot-{n}" for n in range(13)],
+        line_of=lambda _asset: "the whole afternoon",
+        thesis="the month a family moved",
+        contract="contract",
+    )
+
+    for _stage, prompt in judge.calls:
+        offered = set(re.findall(r"^(P\d+): ", prompt, re.MULTILINE))
+        shown = re.search(r'on one line: (\{"weak":\{.*\}\})$', prompt, re.MULTILINE).group(1)
+        example = set(json.loads(shown)["weak"])
+        assert example and example <= offered

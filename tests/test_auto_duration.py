@@ -13,7 +13,7 @@ from immich_memories.config_loader import Config
 from immich_memories.planning.auto_duration import (
     DURATION_FROM_DURATION_FLAG,
     DURATION_FROM_MATERIAL,
-    resolve_trip_auto_duration,
+    decide_memory_duration,
 )
 from immich_memories.timeperiod import DateRange
 
@@ -66,9 +66,13 @@ def _decide_trip(
 
 
 def _resolve(clips: list[VideoClipInfo], photos: list[Asset]):
-    return resolve_trip_auto_duration(
+    return decide_memory_duration(
         clips,
         photos,
+        requested_seconds=None,
+        requested_source=DURATION_FROM_MATERIAL,
+        preset_seconds=None,
+        memory_type="trip",
         avg_clip_duration=5.0,
         photo_duration=4.0,
         title_duration=3.5,
@@ -89,8 +93,8 @@ def test_dense_trip_auto_duration_uses_a_bounded_active_day_curve(
 
     result = _resolve(clips, photos)
 
-    assert result.total_seconds == expected_seconds
-    assert result.active_days == active_days
+    assert result.seconds == expected_seconds
+    assert result.photographed_days == active_days
 
 
 def test_auto_duration_shrinks_when_twelve_days_have_sparse_media() -> None:
@@ -100,10 +104,10 @@ def test_auto_duration_shrinks_when_twelve_days_have_sparse_media() -> None:
 
     result = _resolve([], photos)
 
-    assert result.active_days == 12
+    assert result.photographed_days == 12
     assert result.editorial_seconds == 150.0
-    assert result.diverse_capacity_seconds == 55.5
-    assert result.total_seconds == 55.0
+    assert result.capacity_seconds == 55.5
+    assert result.seconds == 55.0
 
 
 def test_one_photo_burst_cannot_manufacture_a_long_memory() -> None:
@@ -113,9 +117,9 @@ def test_one_photo_burst_cannot_manufacture_a_long_memory() -> None:
 
     result = _resolve([], photos)
 
-    assert result.active_days == 1
-    assert result.diverse_capacity_seconds == 23.5
-    assert result.total_seconds == 20.0
+    assert result.photographed_days == 1
+    assert result.capacity_seconds == 23.5
+    assert result.seconds == 20.0
 
 
 def test_full_source_duration_does_not_inflate_auto_capacity() -> None:
@@ -124,15 +128,15 @@ def test_full_source_duration_does_not_inflate_auto_capacity() -> None:
 
     result = _resolve([_clip("long", when, duration=300.0)], [])
 
-    assert result.diverse_capacity_seconds == 12.5
-    assert result.total_seconds == 10.0
+    assert result.capacity_seconds == 12.5
+    assert result.seconds == 10.0
 
 
 def test_empty_trip_has_zero_auto_duration() -> None:
     result = _resolve([], [])
 
-    assert result.total_seconds == 0.0
-    assert result.active_days == 0
+    assert result.seconds == 0.0
+    assert result.photographed_days == 0
 
 
 def test_cli_auto_trip_resolves_after_media_discovery() -> None:

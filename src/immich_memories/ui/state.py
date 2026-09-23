@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
     from immich_memories.memory_types.presets import MemoryPreset
+    from immich_memories.planning.auto_duration import DurationDecision
     from immich_memories.processing.timeline_budget import TimelinePlan
 
 
@@ -117,6 +118,11 @@ class AppState:
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
     target_duration: float = 10.0  # minutes; fractional values preserve exact seconds
+    # What Auto settled on once a cut had its pool, and the ask it was fitted from.
+    # target_duration stays the ask, so a later cut over a fuller pool can grow back
+    # to it instead of starting from the last shortened answer.
+    duration_decision: DurationDecision | None = None
+    duration_decided_from: float | None = None
     hdr_only: bool = False
     include_live_photos: bool = False
     include_photos: bool = False
@@ -276,6 +282,7 @@ class AppState:
         else:
             self.clear_person_expression()
         self.date_ranges = preset.date_ranges.copy()
+        self.duration_decision = None
         if preset.default_duration_seconds:
             self.target_duration = preset.default_duration_seconds / 60
             self.duration_mode = "auto"
@@ -384,10 +391,21 @@ class AppState:
         ]
         return [*planned, *manual]
 
+    def auto_duration_decision(self) -> DurationDecision | None:
+        """The length Auto fitted to the pool, while it still answers the current ask.
+
+        None in Manual mode, before any cut, and once the ask has moved (another
+        card, another range), so a stale fit never outlives the brief it was for.
+        """
+        if self.duration_mode != "auto" or self.duration_decided_from != self.target_duration:
+            return None
+        return self.duration_decision
+
     @property
     def target_duration_seconds(self) -> float:
         """Return the exact total runtime requested by Auto or Manual mode."""
-        return self.target_duration * 60.0
+        decision = self.auto_duration_decision()
+        return decision.seconds if decision is not None else self.target_duration * 60.0
 
 
 def apply_api_key_entry(state: AppState) -> None:

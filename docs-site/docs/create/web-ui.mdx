@@ -27,6 +27,13 @@ succeeds.
 number comes from, and turning the switch off lets you type an exact target. The target is the
 complete video, titles and transition overlap included.
 
+When you start a cut, Auto fits that answer to the pool you kept, with the same rule `generate`
+applies when you pass no `--duration`: a film never runs longer than the varied footage its days
+can fill. A month with three photographed days gets about 20 s, not the card's minute. After the
+cut the line says what set the length, for example "Duration 20s, set by the material: 3
+photographed days". A manual target is never fitted, same as `--duration`. The rule is in
+[How long a film runs](./memory-types.mdx#how-long-a-film-runs).
+
 ### Memory types and their parameters
 
 | Type | Parameters shown | Default target |
@@ -37,7 +44,7 @@ complete video, titles and transition overlap included.
 | Multi-Person | Year, People (select 2+), Together / Any of these people | 10 min |
 | Monthly Highlights | Year, Month, Only with | 1 min |
 | On This Day | Only with (otherwise today's date across previous years) | 45 s |
-| Album | "Album" from your Immich albums | auto: 4 s per item, bounded 30 s to 10 min |
+| Album | "Album" from your Immich albums | auto: 30 s + 10 s per active day, bounded 60 to 300 s |
 | Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60 to 300 s |
 | Holiday | Holiday, Most recent year, Years to span (2-10), Only with | 1 min |
 | Surprise me | "Pick a day" from the days [`discover-days`](./cli/prepare.md#discover-days) found | auto: 30 s + 6 s per active hour, bounded 60 to 180 s |
