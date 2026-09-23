@@ -11,6 +11,13 @@ from pathlib import Path
 
 from immich_memories.analysis.subject_framing import FaceBox
 
+_FACES_FROM = (
+    " FROM face_boxes b JOIN _annotation_wanted w ON w.asset_id = b.asset_id "
+    "ORDER BY b.asset_id, b.x1, b.y1, b.x2, b.y2"
+)
+_FACES_WITH_PERSON = "SELECT b.asset_id, b.named, b.x1, b.y1, b.x2, b.y2, b.person_id" + _FACES_FROM
+_FACES_WITHOUT_PERSON = "SELECT b.asset_id, b.named, b.x1, b.y1, b.x2, b.y2, NULL" + _FACES_FROM
+
 
 @dataclass(frozen=True)
 class StoredPersonFact:
@@ -179,16 +186,22 @@ class AssetAnnotationFactRepository:
     def _read_faces(
         self, connection: sqlite3.Connection, records: dict[str, _MutableAssetFacts]
     ) -> None:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(face_boxes)")}
+        # A store no preparation has opened since identities were banked has no
+        # person column; its boxes read as named by nobody in particular.
         try:
             rows = connection.execute(
-                "SELECT b.asset_id, b.named, b.x1, b.y1, b.x2, b.y2 FROM face_boxes b "
-                "JOIN _annotation_wanted w ON w.asset_id = b.asset_id "
-                "ORDER BY b.asset_id, b.x1, b.y1, b.x2, b.y2"
+                _FACES_WITH_PERSON if "person_id" in columns else _FACES_WITHOUT_PERSON
             )
-            for asset_id, named, x1, y1, x2, y2 in rows:
+            for asset_id, named, x1, y1, x2, y2, person_id in rows:
                 records[str(asset_id)].faces.append(
                     FaceBox(
-                        x1=float(x1), y1=float(y1), x2=float(x2), y2=float(y2), named=bool(named)
+                        x1=float(x1),
+                        y1=float(y1),
+                        x2=float(x2),
+                        y2=float(y2),
+                        named=bool(named),
+                        person_id=_clean(person_id) or None,
                     )
                 )
         except sqlite3.OperationalError as exc:

@@ -452,6 +452,7 @@ class _AnnotationReadings:
     store_path: Path
     config: Config
     people: Mapping[str, PersonPromptContext]
+    subjects: tuple[str, ...] = ()
 
     def reader(self, prepared: Any) -> StoredAnnotationLineReader:
         editorial = self.config.editorial
@@ -462,6 +463,7 @@ class _AnnotationReadings:
             head_versions=editorial.head_versions,
             pixel_producer_key=editorial.pixel_producer_key,
             people_context=self.people,
+            subjects=self.subjects,
         )
 
 
@@ -679,7 +681,9 @@ def build_editorial_planner(
         )
         return source_snapshot
 
-    readings = _AnnotationReadings(store_path=store_path, config=config, people=context_by_id)
+    readings = _AnnotationReadings(
+        store_path=store_path, config=config, people=context_by_id, subjects=context.people
+    )
 
     album_names = RunAlbumNames(
         client,

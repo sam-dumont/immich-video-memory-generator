@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
     _exposure_flag,
@@ -86,6 +87,38 @@ def load_flags(store_path: Path | str, asset_ids: Iterable[str]) -> dict[str, tu
     finally:
         con.close()
     return {k: tuple(v) for k, v in out.items()}
+
+
+def load_detector_heads(
+    store_path: Path | str, asset_ids: Iterable[str], head_versions: Mapping[str, str]
+) -> dict[str, dict[str, str]]:
+    """The audience heads banked for these sources, at the versions this run reads.
+
+    An attached clip has no annotation line -- nothing describes it, nothing selects it --
+    so its detector rows are read from the bank directly. A source with no row is absent,
+    which is what every clip looked like before anything read one.
+    """
+    ids = list(dict.fromkeys(asset_ids))
+    wanted = {head: version for head, version in head_versions.items() if head in _AUDIENCE_HEADS}
+    out: dict[str, dict[str, str]] = {}
+    if not ids or not wanted:
+        return out
+    con = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    try:
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = con.execute(
+                f"select asset_id, head, version, label from head_facts where asset_id in ({marks}) "  # noqa: S608
+                "order by asset_id, head, version",
+                chunk,
+            )
+            for asset_id, head, version, label in rows:
+                if wanted.get(str(head)) == str(version) and _clean(label):
+                    out.setdefault(str(asset_id), {})[str(head)] = _clean(label)
+    finally:
+        con.close()
+    return out
 
 
 def never_auto_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
@@ -151,12 +184,15 @@ def evidence_for_unit(
     fallback_lines: Mapping[str, str],
     *,
     picture_records: Mapping[str, Mapping[str, Any]] | None = None,
+    chains: Mapping[str, ChainHold] | None = None,
+    companion_heads: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Conserve each rendered member's observations and detector provenance separately.
 
-    IDs determine stable member aliases but never enter the returned model evidence. A Live
-    Photo's uncaptioned video companion is covered by its documented still association; an
-    uncaptioned primary asset or still member remains an explicit evidence gap.
+    IDs determine stable member aliases but never enter the returned model evidence. An
+    uncaptioned primary asset or still member remains an explicit evidence gap. A Live
+    Photo's clip has no annotation line at all -- nothing describes it -- so ``companion_heads``
+    carries what the detectors banked about it, read straight from the store.
     """
     material = {str(i) for i in (unit.get("asset_id"), *unit.get("members", ())) if i}
     companion_ids = {str(i) for i in unit.get("video_ids", ()) if i} - material
@@ -170,7 +206,7 @@ def evidence_for_unit(
     uncaptioned = [i for i in ordered if i in companion_ids and not resolved[i][0]]
     skipped = set(uncaptioned)
     detectors, companion_flags, warnings = _companion_evidence(
-        uncaptioned, resolved, flags, records
+        uncaptioned, resolved, flags, records, companion_heads or {}
     )
     evidence: dict[str, Any] = {
         "version": AUDIENCE_CHECK_POLICY_VERSION,
@@ -185,7 +221,20 @@ def evidence_for_unit(
     # only warnings that a material still's body observation cannot resolve for its video.
     if warnings:
         evidence["companion_body_warnings"] = warnings
+    chain = _chain_evidence(ordered, chains or {})
+    if chain is not None:
+        evidence["exposure_chain"] = chain
     return evidence
+
+
+def _chain_evidence(
+    asset_ids: Sequence[str], chains: Mapping[str, ChainHold]
+) -> dict[str, Any] | None:
+    """The densest flagged capture run any member of this unit sits in, without naming ids."""
+    holds = [chains[asset_id] for asset_id in asset_ids if asset_id in chains]
+    if not holds:
+        return None
+    return max(holds, key=lambda hold: (hold.flagged, hold.size)).as_evidence()
 
 
 def _companion_evidence(
@@ -193,18 +242,27 @@ def _companion_evidence(
     resolved: Mapping[str, tuple[str, tuple[Any, ...]]],
     flags: Mapping[str, Sequence[FlagRow]],
     records: Mapping[str, Mapping[str, Any]],
+    banked: Mapping[str, Mapping[str, str]],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, Any]]]:
-    """Detectors, flags and body warnings that an uncaptioned companion still contributes."""
-    detectors = [_audience_detectors(resolved[i][1]) for i in uncaptioned if resolved[i][1]]
+    """Detectors, flags and body warnings that an uncaptioned companion contributes."""
+    heads = {i: _companion_heads(resolved[i][1], banked.get(i, {})) for i in uncaptioned}
+    detectors = [heads[i] for i in uncaptioned if heads[i]]
     rows = _flag_records([row for i in uncaptioned for row in flags.get(i, ())])
     warnings: list[dict[str, Any]] = []
     for asset_id in uncaptioned:
         warning = _companion_body_warning(
-            asset_id, resolved[asset_id][1], flags.get(asset_id, ()), records, len(warnings) + 1
+            asset_id, heads[asset_id], flags.get(asset_id, ()), records, len(warnings) + 1
         )
         if warning is not None:
             warnings.append(warning)
     return detectors, rows, warnings
+
+
+def _companion_heads(line_heads: Sequence[Any], banked: Mapping[str, str]) -> dict[str, str]:
+    """The clip's own detector answers; a banked row is added, never overwritten."""
+    return _audience_detectors(line_heads) | {
+        head: _clean(label) for head, label in sorted(banked.items()) if head in _AUDIENCE_HEADS
+    }
 
 
 def _member_annotation(annotation: Any, fallback_line: str) -> tuple[str, tuple[Any, ...]]:
@@ -249,7 +307,7 @@ def _member_evidence(
 
 def _companion_body_warning(
     asset_id: str,
-    heads: Sequence[tuple[str, str]],
+    detectors: Mapping[str, str],
     flags: Sequence[FlagRow],
     picture_records: Mapping[str, Mapping[str, Any]],
     index: int,
@@ -257,13 +315,12 @@ def _companion_body_warning(
     """A clearance is local to the warned companion, never inherited from its still."""
     if any(row.source == OWNER_SOURCE and row.flag == OWNER_CLEARED for row in flags):
         return None
-    detectors = _audience_detectors(heads)
     warnings = [record for record in _flag_records(flags) if _exposure_flag(record)]
     if not exposure_flagged(detectors) and not warnings:
         return None
     return {
         "member": f"v{index}",
-        "detectors": detectors,
+        "detectors": dict(detectors),
         "flags": warnings,
         "body_observation": _visual_body_observation(picture_records.get(asset_id)),
         "scope": "uncaptioned video companion; material still observation is not its clearance",
@@ -431,6 +488,62 @@ def _observed_body(
 
 def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
     """Private activities have final authority; exposure review can only tighten a share."""
+    return floors_under(evidence, _read_audience(judge, evidence, stage))
+
+
+def floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Holds no reading can lift: a model reading only ever adds holds.
+
+    A detector that flagged a still, a video's frames or a Live Photo's clip keeps the unit
+    in the family whatever the captions or a body observation say afterwards: the owner
+    prefers a false positive to a miss. Nor can the reader see the three minutes around a
+    capture. All of these only ever take a unit further from `share`.
+    """
+    if result["verdict"] != "share":
+        return result
+    if finding := _head_hold(evidence):
+        return result | {"verdict": "family_only", "finding": finding, "why": _HEAD_WHY[finding]}
+    chain = evidence.get("exposure_chain")
+    if not chain:
+        return result
+    return result | {
+        "verdict": "family_only",
+        "finding": "exposure_chain",
+        "why": "most of this capture run is flagged for exposure",
+        "exposure_chain": chain,
+    }
+
+
+_HEAD_WHY = {
+    "exposure_evidence": "an exposure detector flagged this picture",
+    "clip_exposure": "the attached clip is flagged for exposure",
+}
+
+
+def _head_hold(evidence: Mapping[str, Any]) -> str:
+    """Which detector hold stands; only the owner's own clearance on the pool page lifts one."""
+    if any(
+        exposure_flagged(member.get("detectors", {})) and not _owner_cleared(member)
+        for member in evidence.get("members", ())
+    ):
+        return "exposure_evidence"
+    # A companion warning is only written for a clip the owner has not cleared.
+    if any(
+        exposure_flagged(warning.get("detectors", {}))
+        for warning in evidence.get("companion_body_warnings", ())
+    ):
+        return "clip_exposure"
+    return ""
+
+
+def _owner_cleared(member: Mapping[str, Any]) -> bool:
+    return any(
+        row.get("source") == OWNER_SOURCE and row.get("flag") == OWNER_CLEARED
+        for row in member.get("flags", ())
+    )
+
+
+def _read_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
     members = evidence.get("members", ())
     missing = sorted(member["member"] for member in members if not member["caption"])
     result: dict[str, Any] = {

@@ -339,3 +339,24 @@ def test_a_line_for_a_picture_with_no_banked_face_is_the_line_it_always_was(
     [line] = reader(store_path, candidate(asset)).lines_for((asset,)).lines
 
     assert "subject-framing" not in line.text
+
+
+def test_a_box_banked_before_identities_is_nobody_in_particular_to_a_memory_about_someone(
+    tmp_path: Path,
+) -> None:
+    """The box knows a name was matched, not whose; a memory about Robin must not guess."""
+    asset = "asset-private-004"
+    store_path = store_with(
+        tmp_path,
+        asset_people=((asset, "Robin", "person-private-004", None),),
+        face_boxes=((asset, 1, 0.40, 0.40, 0.46, 0.48),),
+    )
+    people = [Person(id="person-private-004", name="Robin")]
+
+    [line] = (
+        reader(store_path, candidate(asset, people=people), subjects=("Robin",))
+        .lines_for((asset,))
+        .lines
+    )
+
+    assert "subject-framing" not in line.text

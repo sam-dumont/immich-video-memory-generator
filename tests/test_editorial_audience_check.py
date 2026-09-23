@@ -163,13 +163,14 @@ def flagged_evidence():
     )
 
 
-def test_a_positive_exposure_signal_explained_by_the_caption_survives_as_share():
+def test_a_caption_that_explains_a_positive_exposure_signal_does_not_lift_the_hold():
+    """A model reading only adds holds: the owner prefers a false positive to a miss."""
     judge = Judge([finding("none"), coverage({"p1": [["a person", "clothing"]]})])
 
     result = share.check_audience(judge, flagged_evidence(), "unit-1")
 
-    assert result["verdict"] == "share"
-    assert result["finding"] == "none"
+    assert result["verdict"] == "family_only"
+    assert result["finding"] == "exposure_evidence"
     assert result["exposure"]["clearances"] == [{"member": "p1", "basis": "clothed_or_covered"}]
     assert judge.stages == ["unit-1-activity", "unit-1-exposure-1"]
 
@@ -222,7 +223,8 @@ def test_direct_body_observations_answer_the_coverage_question_without_a_second_
 
     result = share.check_audience(judge, evidence, "unit-1")
 
-    assert result["verdict"] == "share"
+    # The observation answers the coverage question, but it cannot lift the detector's hold.
+    assert result["verdict"] == "family_only" and result["finding"] == "exposure_evidence"
     assert result["exposure"]["basis"] == "direct_visual_body_observations"
     assert judge.stages == ["unit-1-activity"]
 

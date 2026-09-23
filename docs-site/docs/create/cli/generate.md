@@ -136,6 +136,9 @@ Memory generated in 42s
   measured this run
     selection                   11s   6 planned from 6 candidates
     generation                  31s
+
+  CHECK 2 pictures to check before sharing · immich-memories runs why <asset id> --run 20260913_083421_9dcb
+
   the cut, in order (6 shots, 0:24)
   June 2024
    0:00  2024-06-08  video     4 s  Lunch in the garden: the table and chairs still out on the lawn
@@ -147,6 +150,12 @@ Memory generated in 42s
 The two timings are wall-clock around the calls as they happen. [`runs`](./runs.md) reads all of it
 back later. The reasons are written for every run; `--trace-selection` only adds a copy of the
 funnel at a path you choose.
+
+The CHECK line counts the shots in the finished cut that the sensitive-content detector read between
+0.2 and 0.5 and that nothing else already holds to family viewing. It is a list, not a gate: no shot
+was removed or changed for it. The shots themselves are in `review-before-sharing.private.json` in
+the run attempt directory, and `runs why` names one when you ask about it. A run with none prints
+`CHECK 0 pictures to check before sharing`, which says the run looked.
 
 ## Output
 

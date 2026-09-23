@@ -157,7 +157,8 @@ def test_motion_rejected_in_both_orders_cannot_bypass_standing_in_a_major_story(
 def test_approved_motion_can_stand_when_its_still_has_no_people(kind, pictures):
     from immich_memories.analysis.editorial_structure_lines import UnitLines
 
-    unit = CLIP | {"kind": kind}
+    # A Live Photo carries a motion sentence only once its companion measured as moving.
+    unit = CLIP | {"kind": kind, "residual": 2.4 if kind == "live-motion" else None}
     lines = UnitLines({"clip": "2022-01-01 | An empty diving board above a pool."})
     judge = VoteJudge()
     admission = StandingGate(
