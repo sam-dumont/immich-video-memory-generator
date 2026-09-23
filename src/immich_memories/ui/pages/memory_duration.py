@@ -11,14 +11,16 @@ from immich_memories.memory_types.registry import MemoryType
 if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
-# What Auto resolves to for the types that do not simply take a preset default.
+# What Auto resolves to before a cut has a pool. Once it has one, every type is fitted
+# to it the way the CLI fits its discovery, and the line says what set the length.
+_TRIP_NOTE = "30 s plus 10 s per active day, from the media once it is loaded"
 _AUTO_NOTES: dict[str, str] = {
-    MemoryType.TRIP.value: "30 s plus 10 s per active day, from the media once it is loaded",
-    MemoryType.ALBUM.value: "4 s per item in the album, from the media once it is loaded",
+    MemoryType.TRIP.value: _TRIP_NOTE,
+    MemoryType.ALBUM.value: _TRIP_NOTE,
     MemoryType.SPECIAL_DAY.value: "30 s plus 6 s per active hour of the day",
-    "custom": "about 10 minutes per year of range",
+    "custom": "about 10 minutes per year of range, shorter if the media cannot fill it",
 }
-_DEFAULT_NOTE = "the type's default length"
+_DEFAULT_NOTE = "the type's default length, shorter if the media cannot fill it"
 
 
 def duration_label(state: AppState) -> str:
@@ -33,15 +35,30 @@ def auto_duration_note(memory_type: str | None) -> str:
     return _AUTO_NOTES.get(memory_type or "", _DEFAULT_NOTE)
 
 
+def auto_duration_explanation(state: AppState) -> str:
+    """What set the Auto length: the last cut's fit, or where the next one will come from."""
+    decision = state.auto_duration_decision()
+    if decision is not None:
+        return decision.sentence()
+    return auto_duration_note(state.memory_type)
+
+
 def set_manual_minutes(state: AppState, minutes: float) -> None:
     """An exact override; fractional minutes keep their seconds."""
     state.target_duration = minutes
     state.duration_mode = "manual"
 
 
+def switch_to_manual(state: AppState) -> None:
+    """An override starts from the length Auto was showing, not from the card's ask."""
+    set_manual_minutes(state, state.target_duration_seconds / 60.0)
+
+
 def set_auto(state: AppState) -> None:
-    """Back to the type's own answer, keeping its last resolved value until the next one."""
+    """Back to the type's own answer: the card's ask, fitted to the last cut's pool if any."""
     state.duration_mode = "auto"
+    if state.duration_decision is not None and state.duration_decided_from is not None:
+        state.target_duration = state.duration_decided_from
 
 
 def render_duration_line(state: AppState) -> None:
@@ -63,7 +80,7 @@ def render_duration_line(state: AppState) -> None:
                     ui.label().classes("text-base font-semibold").bind_text_from(
                         state, "target_duration", backward=lambda _value: duration_label(state)
                     )
-                    ui.label(auto_duration_note(state.memory_type)).classes("text-xs").style(
+                    ui.label(auto_duration_explanation(state)).classes("text-xs").style(
                         "color: var(--im-text-secondary)"
                     )
                 else:
@@ -80,7 +97,7 @@ def render_duration_line(state: AppState) -> None:
             if e.value:
                 set_auto(state)
             else:
-                set_manual_minutes(state, state.target_duration)
+                switch_to_manual(state)
             paint()
 
         switch.on_value_change(on_switch)

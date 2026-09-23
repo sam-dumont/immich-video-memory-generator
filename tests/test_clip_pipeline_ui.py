@@ -85,7 +85,7 @@ def test_trip_auto_duration_is_resolved_from_reviewed_media_only() -> None:
     result = _resolve_auto_duration_for_selection(state, [selected_clip], [selected_photo])
 
     assert result is not None
-    assert result.total_seconds == 15.0
+    assert result.seconds == 15.0
     assert state.target_duration_seconds == 15.0
 
 

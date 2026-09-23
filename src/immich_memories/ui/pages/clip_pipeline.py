@@ -13,8 +13,10 @@ from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.operations.cancellation import PipelineCancelled
 from immich_memories.planning.auto_duration import (
-    AutoDurationResult,
-    resolve_trip_auto_duration,
+    DURATION_FROM_DURATION_FLAG,
+    DURATION_FROM_MATERIAL,
+    DurationDecision,
+    decide_memory_duration,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,9 +145,15 @@ def _resolve_auto_duration_for_selection(
     state: Any,
     clips: list[VideoClipInfo],
     photos: list[Asset],
-) -> AutoDurationResult | None:
-    """Resolve trip Auto duration from the reviewed eligible media."""
-    if state.memory_type != "trip" or state.duration_mode != "auto":
+) -> DurationDecision | None:
+    """Fit Auto duration to the reviewed pool, with the decision the CLI makes.
+
+    Every memory type goes through ``decide_memory_duration``, the call
+    ``run_pipeline_and_generate`` makes after discovery, so the same pool gets
+    the same length from either surface (#1094). The card's length is the ask
+    and the floor; a Manual target is left alone, as ``--duration`` is.
+    """
+    if state.duration_mode != "auto":
         return None
 
     config = state.config
@@ -154,18 +162,22 @@ def _resolve_auto_duration_for_selection(
 
         config = get_config()
     title_config = config.title_screens
-    title_duration = title_config.title_duration if title_config.enabled else 0.0
-    ending_duration = title_config.ending_duration if title_config.enabled else 0.0
-    result = resolve_trip_auto_duration(
+    decision = decide_memory_duration(
         clips,
         photos,
-        avg_clip_duration=_EXPECTED_CLIP_SECONDS,
+        requested_seconds=None,
+        requested_source=DURATION_FROM_MATERIAL,
+        preset_seconds=state.target_duration * 60.0,
+        memory_type=state.memory_type,
+        avg_clip_duration=config.analysis.optimal_clip_duration,
         photo_duration=state.photo_duration,
-        title_duration=title_duration,
-        ending_duration=ending_duration,
+        title_duration=title_config.title_duration if title_config.enabled else 0.0,
+        ending_duration=title_config.ending_duration if title_config.enabled else 0.0,
     )
-    state.target_duration = result.total_seconds / 60.0
-    return result
+    state.duration_decision = decision
+    state.duration_decided_from = state.target_duration
+    logger.info("%s memory. %s", state.memory_type or "Custom", decision.sentence())
+    return decision
 
 
 def _configure_timeline_for_selection(
@@ -336,6 +348,12 @@ def ui_cut_key(state: Any) -> str:
     )
 
 
+def _ui_duration_source(state: Any) -> str:
+    """What set the target, in the words the CLI's run record uses."""
+    decision = state.auto_duration_decision()
+    return decision.source if decision is not None else DURATION_FROM_DURATION_FLAG
+
+
 def _build_ui_editorial_context(
     state: Any,
     app_config: Any,
@@ -374,6 +392,7 @@ def _build_ui_editorial_context(
         product=product,
         date_ranges=date_ranges,
         target_seconds=state.target_duration_seconds,
+        duration_source=_ui_duration_source(state),
         hemisphere=state.memory_preset_params.get("hemisphere", "north"),
         render_timing=_ui_timing_policy(state, app_config),
         artifact_dir=app_config.cache.cache_path / "editorial-runs" / key,

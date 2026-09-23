@@ -189,3 +189,34 @@ def test_a_banked_picture_is_answered_without_asking_it_in_new_company():
     assert all("people at d" in prompt for prompt in asked)
     assert all("people at c" not in prompt for prompt in asked)
     assert second["c"] == first["c"]
+
+
+EXAMPLE = re.compile(r'on one line: (\{"weak":\{.*\}\})$', re.MULTILINE)
+
+
+def offered_and_example(prompt):
+    offered = set(re.findall(r"^(P\d+): ", prompt, re.MULTILINE))
+    example = set(json.loads(EXAMPLE.search(prompt).group(1))["weak"])
+    return offered, example
+
+
+def test_a_standing_block_far_from_the_first_labels_shows_an_example_of_its_own_labels():
+    """A year's ninth block offered P97-P108 and was shown P03/P07; the reader copied them."""
+    judge = VoteJudge()
+    standing(judge, {}, pictures=tuple(f"asset-{n}" for n in range(30)))
+
+    late = [prompt for _stage, prompt in judge.calls if "P25: " in prompt]
+    assert late
+    for prompt in late:
+        offered, example = offered_and_example(prompt)
+        assert example and example <= offered
+
+
+def test_a_standing_example_never_names_a_label_its_block_did_not_offer():
+    judge = VoteJudge()
+    standing(judge, {}, pictures=tuple(f"asset-{n}" for n in range(30)))
+    standing(VoteJudge(), {}, pictures=("lonely",))
+
+    for _stage, prompt in judge.calls:
+        offered, example = offered_and_example(prompt)
+        assert example <= offered

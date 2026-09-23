@@ -4,6 +4,10 @@
     duration and fetch calls, regardless of entrypoint, unless explicitly
     documented otherwise.
 
+The target durations compared here are the pre-discovery asks; the length each
+surface fits to the discovered pool is compared in
+``test_surface_parity_after_discovery.py``.
+
 Every memory type is resolved twice from a single spec -- once the way
 ``cli/generate.py`` resolves it, once the way ``ui/pages/step1_presets.py``
 does -- and the two answers are compared. A type with no entry in ``SPECS`` is
@@ -202,13 +206,11 @@ DOCUMENTED_DURATION_SPLIT: dict[MemoryType, DocumentedDifference] = {
 # the manual path, not a memory type. Nothing to reconcile: the surfaces differ
 # because one has an affordance the other spells out.
 #
-# Each memory type computes its length its own way -- the span curve, the trip
-# and special-day editorial curves, a flat preset constant. That is three
-# formulas but not a surface divergence: what this file owns is that both
-# surfaces get the *same* answer per type, which TestTargetDurationParity
-# asserts, and DOCUMENTED_DURATION_SPLIT pins where the project chose otherwise.
-# Whether one curve should serve every type is a selection question, not a
-# parity one.
+# The lengths compared here are the asks each surface starts from, before it has
+# seen a picture. The length a film runs is decided after discovery, by
+# planning.auto_duration.decide_memory_duration on both surfaces, and that
+# post-discovery contract is asserted with real pools in
+# tests/test_surface_parity_after_discovery.py (#1094).
 #
 # A trip is not narrowed to a person on either surface. handle_trip_generation
 # fetches the trip's window with no person ids, and the wizard's Trip card is
@@ -371,7 +373,7 @@ class TestDateWindowParity:
 
 
 class TestTargetDurationParity:
-    """Same spec, same default length -- or the split #630 wrote down."""
+    """Same spec, same pre-discovery ask -- or the split #630 wrote down."""
 
     @pytest.mark.parametrize("memory_type", _every_type_with_a_spec())
     def test_duration_matches_or_matches_the_record(self, memory_type: MemoryType) -> None:
