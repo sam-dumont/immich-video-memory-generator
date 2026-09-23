@@ -486,9 +486,25 @@ def _observed_body(
     return True, hold, fields
 
 
-def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
-    """Private activities have final authority; exposure review can only tighten a share."""
-    return floors_under(evidence, _read_audience(judge, evidence, stage))
+def check_audience(
+    judge: Any, evidence: Mapping[str, Any], stage: str, *, activity_answer: str | None = None
+) -> dict[str, Any]:
+    """Private activities have final authority; exposure review can only tighten a share.
+
+    `activity_answer` is this carrier's answer to the activity question when it was already
+    asked in a batch; it is read exactly as the reply to a single question would be.
+    """
+    return floors_under(evidence, _read_audience(judge, evidence, stage, activity_answer))
+
+
+def activity_question(evidence: Mapping[str, Any]) -> bool | None:
+    """Whether the check asks the activity question of this evidence at all (None when it does
+    not: a member has no caption), and if so whether the nudity finding may be answered."""
+    members = evidence.get("members", ())
+    if not members or any(not member["caption"] for member in members):
+        return None
+    precise_body, _hold, _fields = _observed_body(evidence, members)
+    return not precise_body
 
 
 def floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -543,7 +559,9 @@ def _owner_cleared(member: Mapping[str, Any]) -> bool:
     )
 
 
-def _read_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
+def _read_audience(
+    judge: Any, evidence: Mapping[str, Any], stage: str, activity_answer: str | None = None
+) -> dict[str, Any]:
     members = evidence.get("members", ())
     missing = sorted(member["member"] for member in members if not member["caption"])
     result: dict[str, Any] = {
@@ -562,11 +580,17 @@ def _read_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[
     precise_body, body_hold, body_fields = _observed_body(evidence, members)
     result.update(body_fields)
     activity_stage = f"{stage}-activity"
+    if activity_answer is not None:
+        result["activity_asked_in_batch"] = True
     try:
-        raw = judge.ask(
-            activity_stage,
-            audience_check_prompt(evidence, allow_nudity=not precise_body),
-            max_tokens=120,
+        raw = (
+            activity_answer
+            if activity_answer is not None
+            else judge.ask(
+                activity_stage,
+                audience_check_prompt(evidence, allow_nudity=not precise_body),
+                max_tokens=120,
+            )
         )
     except TextCompletionFailure as exc:
         # The gateway has exhausted its bounded recovery; this carrier stays undecided.

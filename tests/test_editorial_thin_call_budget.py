@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
-
 from tests.editorial_thin_fixtures import (
     DOUBTFUL,
     JUNK,
@@ -25,11 +23,6 @@ from tests.editorial_thin_fixtures import (
 )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="refill standing reads whole stories; audience asks one carrier per call",
-)
 def test_three_seats_in_stories_of_a_thousand_pictures_stay_inside_the_budget(tmp_path):
     film = Film()
     draft_of(film, 160, flagged={10: JUNK, 80: UNSTEADY, 150: PRIVATE})
@@ -43,11 +36,6 @@ def test_three_seats_in_stories_of_a_thousand_pictures_stay_inside_the_budget(tm
     assert len(judge.calls) <= thin_budget(160, 3)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="refill standing reads whole stories; audience asks one carrier per call",
-)
 def test_a_draft_nothing_is_wrong_with_costs_one_look(tmp_path):
     film = Film()
     draft_of(film, 160, flagged={})
@@ -90,11 +78,6 @@ def year_shaped(film: Film) -> None:
     film.draft.sort(key=lambda row: (row["taken"], row["asset_id"]))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="refill standing reads whole stories; audience asks one carrier per call",
-)
 def test_a_year_shaped_draft_spends_calls_on_its_seats_not_its_size(tmp_path):
     film = Film()
     year_shaped(film)

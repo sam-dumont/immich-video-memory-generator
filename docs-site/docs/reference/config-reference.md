@@ -444,6 +444,7 @@ triage hook: they load, they validate, they do nothing.
 editorial:
   reader: auto                  # auto | model | rules
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
+  thin_batched_audience: false   # ask the thin layer's audience question of 12 carriers per request
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
@@ -528,6 +529,11 @@ year that finds none writes its own from the readings it has just paid for. Any 
 whole calendar month or year has no account, and plans the film with the story-first planner
 exactly as it always has, so a library is never left without a film. `false` makes the model plan
 the whole film even when an account exists.
+
+`thin_batched_audience` asks the thin layer's audience question (does this shot show a private
+activity?) of twelve shots per request instead of one. Each shot still gets its own answer, a shot
+the reply skips is asked alone, and anything but "none" is a hold. It is off until a probe against
+the local reader shows the batched question keeps every hold the single one finds.
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

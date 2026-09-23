@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
+from immich_memories.analysis.editorial_audience_batch import ask_activity_batches
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_final_attached import sample_audience_evidence
@@ -194,6 +195,8 @@ class AudienceGate:
         self.verdicts: dict[str, dict[str, Any]] = {}
         self.rejected_members: set[str] = set()
         self.requests = 0
+        # Activity answers a batch already paid for, by evidence key, until `check` reads them.
+        self._answered: dict[str, str] = {}
 
     def check(self, evidence, terminal=None) -> tuple[str, dict[str, Any]]:
         """The banked decision for this evidence, asking the judge only for a new key."""
@@ -203,6 +206,9 @@ class AudienceGate:
             if banked is not None:
                 # An answer banked before a floor existed must not reach past it.
                 banked = _share.floors_under(evidence, banked)
+            answered = self._answered.pop(key, None)
+            if terminal is not None or banked is not None:
+                answered = None
             first_call = len(self._judge.calls)
             self.bank[key] = (
                 terminal
@@ -210,12 +216,15 @@ class AudienceGate:
                 else banked
                 if banked is not None
                 else self._check_audience(
-                    self._judge, evidence, f"shareability-{len(self.bank) + 1:02d}"
+                    self._judge,
+                    evidence,
+                    f"shareability-{len(self.bank) + 1:02d}",
+                    **({} if answered is None else {"activity_answer": answered}),
                 )
             )
             asked = len(self._judge.calls) - first_call
             self.requests += asked
-            if asked:
+            if asked or answered is not None:
                 self._library.keep(key, self.bank[key])
             write_secret_file(self._bank_path, json.dumps(self.bank, indent=1))
         return key, self.bank[key]
@@ -225,10 +234,7 @@ class AudienceGate:
         self._library.hold(asset_id, record)
 
     def verdict_of(self, u) -> str:
-        witness = self._pictures.enrich(u, stop_on_body_yes=self.audience == "sendable")
-        observed_reason = excluded_carrier_sources({u["asset_id"]: self._pictures.line(u)}).get(
-            u["asset_id"]
-        )
+        observed_reason, terminal, evidence = self._evidence(u)
         if observed_reason:
             self.verdicts[u["asset_id"]] = {
                 "verdict": "do_not_show",
@@ -238,6 +244,60 @@ class AudienceGate:
             }
             self.keep_hold(u["asset_id"], self.verdicts[u["asset_id"]])
             return "do_not_show"
+        standing = None if terminal is not None else self._held_already(evidence)
+        if standing is not None:
+            record = {
+                "verdict": standing["verdict"],
+                "finding": standing.get("finding"),
+                "source": "held-before-asking",
+                "evidence_key": "",
+            }
+            self.keep_hold(u["asset_id"], record)
+            self.verdicts[u["asset_id"]] = record
+            return record["verdict"]
+        key, record = self.check(evidence, terminal)
+        held = self._library.held(u["asset_id"])
+        if (
+            held is not None
+            and _share.tighten(record["verdict"], held["verdict"]) != record["verdict"]
+        ):
+            record = record | {"verdict": held["verdict"], "banked_hold": held}
+        self.keep_hold(u["asset_id"], record)
+        self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
+        return record["verdict"]
+
+    def prefetch(self, units, *, batch: int) -> None:
+        """Ask the activity question of every carrier here that still needs one, `batch` a request.
+
+        A carrier a rule, a body observation, a detector's floor or a banked answer already
+        decides is not sent. The answers wait in the gate, and `verdict_of` reads each carrier exactly
+        as before, asking alone any carrier the batch left unanswered. Only the full check has
+        an activity question to batch; any other check is left as it is.
+        """
+        if batch < 2 or self._check_audience is not _share.check_audience:
+            return
+        pending: dict[str, tuple[dict[str, Any], bool]] = {}
+        for u in units:
+            observed_reason, terminal, evidence = self._evidence(u)
+            if observed_reason or terminal is not None or self._held_already(evidence):
+                continue
+            key = _share.audience_check_key(evidence)
+            if key in self.bank or key in self._answered or self._library.answer(key):
+                continue
+            allow_nudity = _share.activity_question(evidence)
+            if allow_nudity is not None:
+                pending[key] = (evidence, allow_nudity)
+        first_call = len(self._judge.calls)
+        self._answered.update(ask_activity_batches(self._judge, pending, size=batch))
+        self.requests += len(self._judge.calls) - first_call
+
+    def _evidence(self, u) -> tuple[str | None, dict[str, Any] | None, dict[str, Any]]:
+        """The carrier rule's refusal if one applies, a body observation's terminal hold, and
+        the evidence the audience question is asked on."""
+        witness = self._pictures.enrich(u, stop_on_body_yes=self.audience == "sendable")
+        observed_reason = excluded_carrier_sources({u["asset_id"]: self._pictures.line(u)}).get(
+            u["asset_id"]
+        )
         terminal = (
             _share.terminal_body_hold(u, self._pictures.records, witness)
             if witness is not None
@@ -256,16 +316,17 @@ class AudienceGate:
                 companion_heads=self._companion_heads,
             )
         )
-        key, record = self.check(evidence, terminal)
-        held = self._library.held(u["asset_id"])
-        if (
-            held is not None
-            and _share.tighten(record["verdict"], held["verdict"]) != record["verdict"]
-        ):
-            record = record | {"verdict": held["verdict"], "banked_hold": held}
-        self.keep_hold(u["asset_id"], record)
-        self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
-        return record["verdict"]
+        return observed_reason, terminal, evidence
+
+    def _held_already(self, evidence) -> dict[str, Any] | None:
+        """A detector's floor that already refuses this carrier for this audience.
+
+        The floor is read off the evidence itself, and an answer could only ever tighten it, so
+        asking changes nothing about this cut. A family film, which a detector floor does not
+        refuse, still asks: a private activity is refused there too.
+        """
+        floor = _share.floors_under(evidence, {"verdict": "share"})
+        return None if _share.allowed(str(floor["verdict"]), self.audience) else floor
 
     def exclude_refused_members(self, candidates) -> None:
         """Exclude the whole refused carrier, including alternate members, from later offers."""

@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import calendar
 import json
+import logging
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
-from immich_memories.analysis.editorial_block_votes import balanced_groups
+from immich_memories.analysis.editorial_block_votes import BLOCK_SIZE, balanced_groups
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
     ThinCatalogue,
@@ -34,6 +36,8 @@ from immich_memories.analysis.editorial_thin_vote import (
     vote_thesis_fit,
 )
 from immich_memories.security import write_secret_file
+
+logger = logging.getLogger(__name__)
 
 THIN_VERSION = "thin-polish-v1"
 
@@ -129,6 +133,7 @@ class ThinPolish:
             record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": reason})
             return list(carriers)
         carriers = _with_records(carriers, catalogue)
+        first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
         kept, verdicts, rounds = self._voted(admitted, judge, catalogue, contract, line_of)
@@ -178,6 +183,7 @@ class ThinPolish:
                 "shots": len(final),
                 "planned_seconds": round(sum(c["seconds"] for c in final), 3),
                 "content_cap": content_cap,
+                "calls": _spent(len(judge.calls) - first_call, len(carriers), len(outcomes)),
             },
         )
         return final
@@ -272,6 +278,25 @@ class ThinPolish:
             bank=bank,
             save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
+
+
+def thin_budget(draft: int, seats: int) -> int:
+    """The calls a polish may spend: three questions per twelve draft shots (standing, audience
+    and fit, one look at the draft) and four per seat it opens. Owner's budget, 09-23."""
+    return 3 * math.ceil(draft / BLOCK_SIZE) + 4 * seats
+
+
+def _spent(asked: int, draft: int, seats: int) -> dict[str, int]:
+    budget = thin_budget(draft, seats)
+    if asked > budget:
+        logger.warning(
+            "The thin layer asked %d questions for %d shots and %d seats (budget %d)",
+            asked,
+            draft,
+            seats,
+            budget,
+        )
+    return {"asked": asked, "budget": budget}
 
 
 def rejoined_blocks(

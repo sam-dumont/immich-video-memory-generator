@@ -28,6 +28,11 @@ class PolishJudge(FilmJudge):
         if stage.startswith("story-pick-"):
             labels = re.findall(r"^(M\d{2}) \|", prompt, re.MULTILINE)
             return json.dumps({"keep": labels[:1]})
+        if stage.startswith("shareability-batch-"):
+            labels = re.findall(r"^(G\d{2}): ", prompt, re.MULTILINE)
+            return json.dumps(
+                {label: {"finding": "none", "why": "a family day"} for label in labels}
+            )
         return super().answer(stage, prompt)
 
 
@@ -96,3 +101,15 @@ def test_the_polish_takes_out_what_the_vote_named_and_leaves_the_rest_standing(t
     assert not named & {c["asset_id"] for c in plan["carriers"]}
     # the rest of the draft is untouched: the polish removes, it does not re-plan
     assert named < {c["asset_id"] for c in fallback["carriers"]}
+
+
+def test_a_batched_audience_asks_the_cut_in_batches_and_the_audit_counts_every_call(tmp_path):
+    source = film(tmp_path)
+    source.config.editorial.thin_batched_audience = True
+    judge = PolishJudge()
+    run(source, judge, account=ACCOUNT)
+
+    stages = [call["stage"] for call in judge.calls]
+    assert any(stage.startswith("shareability-batch-") for stage in stages)
+    audit = audit_of(source)
+    assert 0 < audit["calls"]["asked"] <= audit["calls"]["budget"]

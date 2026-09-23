@@ -35,6 +35,10 @@ class CountingJudge:
         self.config = SimpleNamespace(llm=LLMConfig(model="model-a"))
         self.calls: list[str] = []
         self.prompts: list[tuple[str, str]] = []
+        self.failures: list[str] = []
+
+    def record_failure(self, stage, _record) -> None:
+        self.failures.append(stage)
 
     def ask(self, stage, prompt, max_tokens=260, **_options):
         self.calls.append(stage)
@@ -147,7 +151,7 @@ class Film:
         )
 
 
-def polish(tmp_path, film: Film):
+def polish(tmp_path, film: Film, *, audience_batch: int = 12):
     judge = CountingJudge()
     recorded: dict = {}
     standing = StandingGate(
@@ -173,7 +177,12 @@ def polish(tmp_path, film: Film):
     cut = ThinPolish(bank_dir=tmp_path).polish(
         film.draft,
         judge=judge,
-        gates=ThinGates(standing=standing, audience=audience, thumbnail_hash=lambda _a: None),
+        gates=ThinGates(
+            standing=standing,
+            audience=audience,
+            thumbnail_hash=lambda _a: None,
+            audience_batch=audience_batch,
+        ),
         catalogue=film.catalogue(),
         contract="contract",
         line_of=film.lines.get,

@@ -16,6 +16,7 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis import llm_metrics
+from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
@@ -745,6 +746,9 @@ def _thin_polish(
             audience=gate,
             thumbnail_hash=ports.thumbnail_hash,
             audience_name=source.audience,
+            audience_batch=AUDIENCE_BATCH_SIZE
+            if source.config.editorial.thin_batched_audience
+            else 0,
         ),
         catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets, drafted=carriers),
         contract=contract,

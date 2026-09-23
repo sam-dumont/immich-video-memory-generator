@@ -39,6 +39,8 @@ class ShowsToTheAudience(Protocol):
 
     def verdict_of(self, unit: Mapping[str, Any]) -> str: ...
 
+    def prefetch(self, units: Sequence[Mapping[str, Any]], *, batch: int) -> None: ...
+
 
 @dataclass(frozen=True)
 class GateRefusal:
@@ -59,6 +61,8 @@ class ThinGates:
     audience: ShowsToTheAudience
     thumbnail_hash: Callable[[str], str | None]
     audience_name: str = "family"
+    # Carriers asked the audience question per request; below two, one at a time.
+    audience_batch: int = 0
 
     def admit(
         self,
@@ -70,6 +74,7 @@ class ThinGates:
         """The shots the gates keep, and the ones they refuse with the gate that refused them."""
         shots = sorted(carriers, key=itemgetter("taken", "asset_id"))
         self.settle(shots, tier_of)
+        self.prefetch_audience([shot for shot in shots if self.stands_alone(shot, tier_of)])
         kept: list[dict[str, Any]] = []
         refused: list[GateRefusal] = []
         for shot in shots:
@@ -133,6 +138,11 @@ class ThinGates:
                 else self.standing.needs(shot["asset_id"], _weight(story, tier_of), story)
             )
         self.standing.ensure(list(needs), needs)
+
+    def prefetch_audience(self, shots: Sequence[Mapping[str, Any]]) -> None:
+        """Put these shots to the audience gate together, when it is asked in batches."""
+        if self.audience_batch > 1 and shots:
+            self.audience.prefetch(shots, batch=self.audience_batch)
 
     def stands_alone(self, shot: Mapping[str, Any], tier_of: Mapping[str, str]) -> bool:
         """The standing gate's answer for this shot as its story's weight reads it."""

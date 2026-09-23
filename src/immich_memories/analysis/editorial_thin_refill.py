@@ -221,10 +221,11 @@ class ThinRefill:
         Every seat picks first, and the gates are asked about the chosen rows only: a page is a
         whole story, and on the measured year putting every page to the standing gate cost 174
         requests for 24 picks. A seat whose choice the standing gate refuses picks once more
-        from the same page.
+        from the same page. The chosen rows that stand are then put to the audience gate together.
         """
         current = [dict(row) for row in cut]
         chosen, failed = self._picks(slots, taken={row["asset_id"] for row in current})
+        self.gates.prefetch_audience(list(chosen.values()))
         outcomes = []
         for index, slot in enumerate(slots):
             candidate = chosen.get(index)
