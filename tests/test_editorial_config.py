@@ -29,7 +29,7 @@ def test_editorial_store_defaults_without_a_selection_switch(tmp_path) -> None:
         "doc_docling": "det-v2",
         "frame_kind": "public-v1",
         "location": "public-v1",
-        "nsfw_marqo": "det-v2",
+        "nsfw_marqo": "det-v3",
         "people": "public-v1",
         "screen": "public-v1-strict",
         "uncovered_person": "public-v1",
@@ -53,8 +53,14 @@ def test_editorial_config_is_available_from_the_public_config_module() -> None:
 def test_saved_marqo_version_moves_to_the_current_onnx_producer() -> None:
     saved = {"nsfw_marqo": "det-v1", "activity": "public-v1"}
     config = EditorialConfig(head_versions=saved)
-    assert config.head_versions == {"nsfw_marqo": "det-v2", "activity": "public-v1"}
+    assert config.head_versions == {"nsfw_marqo": "det-v3", "activity": "public-v1"}
     assert saved["nsfw_marqo"] == "det-v1"
+
+
+def test_a_saved_single_frame_exposure_version_moves_to_the_frame_reading_one() -> None:
+    """A det-v2 bank answered a video on one preview frame; it owes every source a re-read."""
+    config = EditorialConfig(head_versions={"nsfw_marqo": "det-v2", "doc_docling": "det-v2"})
+    assert config.head_versions == {"nsfw_marqo": "det-v3", "doc_docling": "det-v2"}
 
 
 def test_obsolete_route_flags_cannot_choose_another_selector() -> None:
@@ -131,7 +137,7 @@ def test_saved_legacy_detector_versions_upgrade_without_changing_custom_heads(tm
 
     assert yaml.safe_load(saved.read_text())["advanced"]["editorial"]["head_versions"] == {
         "doc_docling": "det-v2",
-        "nsfw_marqo": "det-v2",
+        "nsfw_marqo": "det-v3",
         "activity": "custom-v3",
     }
 

@@ -125,6 +125,20 @@ all eight out of the cut regardless of what the model was told. The gate judges 
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 
+**A video is read across its length, not at its start.** Immich's preview for a video is a single
+frame near its beginning, and the exposure detector used to decide the whole clip on it. It now
+reads up to eight frames spread over the clip (the keyframes nearest eight evenly spaced moments,
+fetched by byte range from the same playback index the motion line reads, so a clip costs a few
+hundred kilobytes rather than the whole rendition) and keeps the strongest answer: a hold anywhere
+in a clip holds the clip. Measured on four test clips, the preview alone held two of them (0.30,
+0.28); eight frames held all four (0.93-0.95). This is a new producer version (`nsfw_marqo` moves
+from `det-v2` to `det-v3`), so an existing annotation store re-reads that head for **every** source,
+pictures included: the banked row does not record which kind of source it came from. Nothing else
+changes. Docling still reads the one preview, and the public heads are untouched. A clip whose
+playback cannot be read falls back to its preview, and `preparation.private.json` names it. When the
+inference service is answering for your heads, videos keep this head in process, because the service
+is handed one picture per source and cannot be handed eight.
+
 **A day's title claims only what the evidence shows.** A special day's title is checked against the
 evidence lines it was written from, and an unsupported claim is dropped rather than printed. Trip
 titles are a different path, written from dates and place names, with no such check.

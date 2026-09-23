@@ -360,6 +360,11 @@ def prepared_video(asset_id):
     return asset(asset_id).model_copy(update={"type": AssetType.VIDEO})
 
 
+def _refuse_playback(*_args):
+    """The detector frame sampler reads playback too; only the motion seam is stubbed here."""
+    raise OSError("no playback in this test")
+
+
 def prepare(tmp_path, motion, **kwargs):
     from dataclasses import replace
 
@@ -371,7 +376,7 @@ def prepare(tmp_path, motion, **kwargs):
         assets=[asset("aa1"), prepared_video("vv1")],
         ports=replace(successful_ports(calls), motion=motion),
         fetch_preview=lambda _: preview(),
-        read_playback=lambda *_: pytest.fail("the seam reads playback, not the pass"),
+        read_playback=_refuse_playback,
         **kwargs,
     )
 
@@ -396,7 +401,7 @@ def test_an_unfinished_motion_line_blocks_the_cut_like_a_caption(tmp_path):
     result = prepare(tmp_path, banking_motion([], fail=True))
 
     assert result.missing_by_producer == {f"motion:{MOTION_PRODUCER}": ("vv1",)}
-    assert result.failures == {"motion:vv1": "OSError: reset"}
+    assert result.failures["motion:vv1"] == "OSError: reset"
 
 
 @pytest.mark.parametrize("tier", ["no_captions", "metadata_only"])

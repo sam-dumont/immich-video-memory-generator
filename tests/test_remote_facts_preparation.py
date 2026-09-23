@@ -370,3 +370,43 @@ def test_a_stop_mid_pass_keeps_what_was_banked_and_asks_for_nothing_more(tmp_pat
     assert tuple(banked) == ids[:2]
     # The window already in the air is paid for; the ones behind it never left.
     assert len(asked) <= 4
+
+
+def test_a_video_keeps_its_exposure_head_in_process_because_the_service_reads_one_frame(
+    monkeypatch, tmp_path
+):
+    """The service is handed one picture per source; det-v3 promises a video eight."""
+    from dataclasses import replace
+
+    from tests.test_editorial_preparation import asset
+    from tests.test_editorial_preparation_motion import prepared_video
+
+    asked = []
+
+    def handle(request):
+        payload = json.loads(request.content)
+        asked.append(tuple(payload["producers"]))
+        return httpx.Response(200, json=answer(payload["producers"]))
+
+    transport(monkeypatch, handle)
+    ports, local_calls = refusing_ports("captions")
+    handed = {}
+
+    def detectors(**kwargs):
+        handed.update({head: tuple(ids) for head, ids in kwargs["pending"].items()})
+        return ports.detectors(**kwargs)
+
+    result = remote_run(
+        tmp_path,
+        assets=[asset("aa1"), prepared_video("vv1")],
+        ports=replace(ports, detectors=detectors),
+        # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+        read_playback=lambda *_: (_ for _ in ()).throw(OSError("no playback in this test")),
+    )
+
+    assert result.complete
+    assert sorted(map(sorted, asked)) == [
+        ["doc_docling", "heads"],
+        ["doc_docling", "heads", "nsfw_marqo"],
+    ]
+    assert handed == {"nsfw_marqo": ("vv1",)}

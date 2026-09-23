@@ -352,3 +352,61 @@ def test_the_in_process_worker_takes_the_card_where_there_is_one(monkeypatch, tm
     detectors._open_detector("doc_docling", job)
 
     assert opened == [["CUDAExecutionProvider", "CPUExecutionProvider"]]
+
+
+class FakeMarqo:
+    """Answers per image so a clip's frames can disagree the way real ones do."""
+
+    head = detectors.MARQO_HEAD
+    version = detectors.MARQO_VERSION
+    encoder_key = detectors.MARQO_ONNX_ID
+    classes = detectors.MARQO_CLASSES
+
+    def __init__(self, scores, **_):
+        self._scores = scores
+
+    def batch(self, images):
+        return np.array(
+            [[self._scores[image.size[0]], 1 - self._scores[image.size[0]]] for image in images]
+        )
+
+
+def _frames(tmp_path, widths):
+    """One JPEG per frame, each a different width so the fake head can tell them apart."""
+    paths = []
+    for width in widths:
+        path = tmp_path / f"frame-{width}.jpg"
+        Image.new("RGB", (width, 60), "white").save(path)
+        paths.append(str(path))
+    return paths
+
+
+def test_a_clip_is_held_when_any_one_of_its_eight_frames_is(monkeypatch, tmp_path):
+    """A hold anywhere in a clip holds the clip: the head keeps the strongest frame."""
+    database, job = _job(tmp_path, {detectors.MARQO_HEAD: ["a"]})
+    widths = [80 + step for step in range(8)]
+    job["frames"] = {"a": _frames(tmp_path, widths)}
+    scores = dict.fromkeys(widths, 0.02)
+    scores[widths[6]] = 0.93
+    # WHY: the real seat loads a 384px ONNX export from a digest-pinned file on disk.
+    monkeypatch.setattr(detectors, "Marqo", lambda **_: FakeMarqo(scores))
+
+    assert detectors._worker(job) == {}
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT label,confidence FROM head_facts").fetchall() == [
+            ("yes", 0.93)
+        ]
+
+
+def test_a_still_keeps_its_one_preview_read(monkeypatch, tmp_path):
+    database, job = _job(tmp_path, {detectors.MARQO_HEAD: ["a"]})
+    # WHY: the real seat loads a 384px ONNX export from a digest-pinned file on disk.
+    monkeypatch.setattr(detectors, "Marqo", lambda **_: FakeMarqo({80: 0.04}))
+
+    assert detectors._worker(job) == {}
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT label,confidence FROM head_facts").fetchall() == [
+            ("no", 0.04)
+        ]

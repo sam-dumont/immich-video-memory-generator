@@ -45,6 +45,11 @@ A scope of one place is never bounded. The synthesis card also carries `arrivals
 `editorial_person_period_facts.py` projection of who the library first holds in that episode's own
 month, so the thesis and the weighing can read an arrival that the relation counts flatten away.
 
+The exposure head `nsfw_marqo` decides a still on its preview and a video on up to eight frames
+across its length (`editorial_preparation_detector_frames.py`, through the motion line's byte-range
+keyframe reader), keeping the strongest frame: that is `det-v3`, so an existing bank re-reads that
+head for every source, and videos stay out of an inference-service offload for it.
+
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
 candidates, and keeps join-compatible stories together. Both orders of every page must validate
@@ -218,7 +223,10 @@ src/immich_memories/
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
 │   │                               # motion lines (one caption-seat sentence per video, read by
-│   │                               # the pick and by the standing gate's moving rows)
+│   │                               # the pick and by the standing gate's moving rows).
+│   │                               # _model_facts.py plans who answers each model producer;
+│   │                               # _detector_frames.py samples a video's eight frames for the
+│   │                               # exposure head, through the motion line's keyframe reader
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked)
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
