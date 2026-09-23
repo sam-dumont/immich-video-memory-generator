@@ -6,15 +6,15 @@ Those missed ones sit between two holds and are the same scene.
 
 The window is the capture spacing the selector already uses -- an asset joins the run of
 the one before it when it was taken within five minutes of it
-(``MIN_GAP_IN_CAPTURE_GROUP_SECONDS``). A run is swept only when it is at least three
-captures long and at least half of them are flagged; the owner's bound is that one
-breastfeeding picture must not hold minutes of family pictures, and one picture among
-three or more never reaches half. A lone hit therefore holds only itself, which is what
-``exposure_evidence`` already did.
+(``MIN_GAP_IN_CAPTURE_GROUP_SECONDS``). A run is swept only when at least half of it is
+flagged and at least three of its captures are. Both bounds are the owner's: half keeps a
+run that is mostly ordinary from being swept by a corner of it, and three is what stops one
+breastfeeding picture -- or two -- from holding minutes of family pictures around it. One
+or two hits therefore hold only themselves, which is what ``exposure_evidence`` already did.
 
-Measured on the owner's library at 5 minutes / 50 % / 3: normal months moved from 2.6 %
-to 2.8 % held, baby months from 18.5 % to 21.0 %, and 319 clean captures out of 66,597
-were swept in. A fifteen-minute window added nothing.
+Measured on the owner's library at 5 minutes / 50 % / 3 flagged: normal months moved from
+2.6 % to 2.8 % held, baby months from 18.5 % to 21.0 %, and 319 clean captures out of
+66,597 were swept in. A fifteen-minute window added nothing.
 
 The rules tier holds every carrier to the family anyway, so what this changes is the
 model tier's verdicts and what a ``sendable`` export may carry.
@@ -33,10 +33,13 @@ from immich_memories.analysis.editorial_story_shortlist import MIN_GAP_IN_CAPTUR
 from immich_memories.api.models import Asset
 
 WINDOW_SECONDS = MIN_GAP_IN_CAPTURE_GROUP_SECONDS
-# Two of a chain of three is the smallest sweep there is; one of two is not a scene.
-MIN_CHAIN = 3
 MIN_FLAGGED_SHARE = 0.5
-POLICY = f"exposure-chain-v1-{WINDOW_SECONDS}s-{int(MIN_FLAGGED_SHARE * 100)}pc-{MIN_CHAIN}min"
+# One breastfeeding picture must not hold the minutes of family pictures around it, and
+# neither must two. Three flagged captures in one five-minute run is a scene, not a corner.
+MIN_FLAGGED = 3
+POLICY = (
+    f"exposure-chain-v1-{WINDOW_SECONDS}s-{int(MIN_FLAGGED_SHARE * 100)}pc-{MIN_FLAGGED}flagged"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +70,7 @@ def held_chains(rows: Iterable[tuple[str, datetime, bool]]) -> dict[str, ChainHo
     held: dict[str, ChainHold] = {}
     for chain in _chains(ordered):
         flagged = sum(1 for row in chain if row[2])
-        if len(chain) < MIN_CHAIN or flagged < len(chain) * MIN_FLAGGED_SHARE:
+        if flagged < MIN_FLAGGED or flagged < len(chain) * MIN_FLAGGED_SHARE:
             continue
         for asset_id, _taken, was_flagged in chain:
             held[asset_id] = ChainHold(len(chain), flagged, swept_in=not was_flagged)

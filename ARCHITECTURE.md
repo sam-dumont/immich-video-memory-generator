@@ -50,8 +50,8 @@ head `nsfw_marqo` decides a still on its preview and a video on up to eight fram
 across its length (`editorial_preparation_detector_frames.py`, through the motion line's byte-range
 keyframe reader), keeping the strongest frame: that is `det-v3`, so an existing bank re-reads that
 head for every source, and videos stay out of an inference-service offload for it.
-`editorial_exposure_chains.py` then holds a whole five-minute capture run that is three or more
-captures long and at least half flagged, with the reason `exposure_chain`. Neither the reduced
+`editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
+flagged with at least three flagged captures in it, under the reason `exposure_chain`. Neither the reduced
 tier's `_hold()` nor the model check can clear it. `editorial_review_list.py` writes
 `review-before-sharing.private.json`: the finished cut's shots between 0.2 and 0.5 that nothing
 else already holds, counted in the run summary and named by `runs why`. It changes no shot.
@@ -229,7 +229,7 @@ src/immich_memories/
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_review_list.py    # The finished cut's shots in the detector's 0.2-0.5 grey zone that
 │   │                               # nothing else holds; a list for the owner, never a gate
-│   ├── editorial_exposure_chains.py # A five-minute capture run that is 3+ long and half flagged
+│   ├── editorial_exposure_chains.py # A five-minute capture run half flagged, with 3+ flagged in it,
 │   │                                # is held whole: the hold the detector's per-picture answer misses
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
 │   │                               # motion lines (one caption-seat sentence per video, read by

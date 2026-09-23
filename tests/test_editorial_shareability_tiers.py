@@ -178,7 +178,7 @@ def test_a_cut_without_captions_keeps_the_verdicts_the_gate_still_has_evidence_f
     }
 
 
-def _chain_evidence(heads=(("nsfw_marqo", "no"),), description="", size=4, flagged=2):
+def _chain_evidence(heads=(("nsfw_marqo", "no"),), description="", size=6, flagged=3):
     from immich_memories.analysis.editorial_exposure_chains import ChainHold
 
     return share.evidence_for_unit(
@@ -206,8 +206,8 @@ def test_a_capture_swept_in_by_its_run_is_held_with_the_run_in_its_evidence():
 
     assert result["verdict"] == "family_only"
     assert result["finding"] == "exposure_chain"
-    assert result["exposure_chain"]["chain_size"] == 4
-    assert result["exposure_chain"]["chain_flagged"] == 2
+    assert result["exposure_chain"]["chain_size"] == 6
+    assert result["exposure_chain"]["chain_flagged"] == 3
 
 
 def test_the_reader_cannot_clear_a_capture_its_run_holds():
