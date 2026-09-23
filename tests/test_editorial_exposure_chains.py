@@ -79,3 +79,43 @@ def test_the_rows_need_no_order():
     dense = _rows((0, True), (2, True), (4, True), (6, False))
 
     assert held_chains(dense) == held_chains(list(reversed(dense)))
+
+
+def _captures(count, *, clip_flagged):
+    """Live Photos two minutes apart, each still clean and each clip as given."""
+    from types import SimpleNamespace
+
+    from tests.test_editorial_preparation import asset
+
+    start = datetime(2024, 2, 3, 9, 0, tzinfo=UTC)
+    stills, lines, heads = {}, {}, {}
+    for index in range(count):
+        taken = start + timedelta(minutes=2 * index)
+        still = asset(f"s{index}").model_copy(
+            update={"file_created_at": taken, "live_photo_video_id": f"c{index}"}
+        )
+        stills[still.id] = still
+        lines[still.id] = SimpleNamespace(heads=(("nsfw_marqo", "no"),))
+        heads[f"c{index}"] = {"nsfw_marqo": "yes" if index < clip_flagged else "no"}
+    return stills, lines, heads
+
+
+def test_a_live_photo_is_one_capture_and_its_flagged_clip_flags_it():
+    """A clip is the same capture as its still: it neither dilutes the run nor goes unseen."""
+    from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
+
+    stills, lines, heads = _captures(4, clip_flagged=3)
+
+    held = chain_holds_for(stills, lines, heads)
+
+    assert set(held) == set(stills)
+    assert held["s0"].size == 4 and held["s0"].flagged == 3
+    assert held["s3"].swept_in and not held["s0"].swept_in
+
+
+def test_clean_clips_leave_a_run_of_clean_stills_alone():
+    from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
+
+    stills, lines, heads = _captures(4, clip_flagged=0)
+
+    assert chain_holds_for(stills, lines, heads) == {}

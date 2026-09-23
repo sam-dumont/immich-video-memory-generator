@@ -154,6 +154,8 @@ which is exactly the evidence every Live Photo carried before.
 a time, and a nappy change or a bath is not one picture: it is three minutes of them, of which the
 detector catches some and misses the rest. A capture joins the run of the one before it when it was
 taken within five minutes of it, the same five-minute capture spacing the selector already uses.
+A Live Photo is one capture, not two: its clip is not a clean capture of its own in the run, and a
+flagged clip counts as a flagged capture.
 A run is held to family viewing as a whole when at least **half** of it is flagged and at least
 **three** of its captures are. Both bounds are needed: half keeps a mostly ordinary run from being
 swept by a corner of it, and three is what stops one breastfeeding picture, or two, from holding the

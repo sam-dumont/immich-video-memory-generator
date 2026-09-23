@@ -90,15 +90,24 @@ def _chains(
 
 
 def chain_holds_for(
-    assets: Mapping[str, Asset], annotations: Mapping[str, Any]
+    assets: Mapping[str, Asset],
+    annotations: Mapping[str, Any],
+    clip_heads: Mapping[str, Mapping[str, str]],
 ) -> dict[str, ChainHold]:
     """The same answer from the film's own sources and their annotation lines.
 
     The clock is the one the selector orders carriers by, and the flag is the one
-    ``exposure_flagged`` already reads: no second opinion about either.
+    ``exposure_flagged`` already reads: no second opinion about either. A Live Photo is one
+    capture: its clip is not a run member of its own (it has no line, so it would only
+    dilute the run as a clean capture), and a flagged clip flags its still.
     """
     return held_chains(
-        (asset_id, asset.file_created_at, _flagged(annotations.get(asset_id)))
+        (
+            asset_id,
+            asset.file_created_at,
+            _flagged(annotations.get(asset_id))
+            or exposure_flagged(dict(clip_heads.get(str(asset.live_photo_video_id or ""), {}))),
+        )
         for asset_id, asset in assets.items()
     )
 

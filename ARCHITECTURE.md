@@ -56,7 +56,8 @@ clip's own id, and `load_detector_heads` puts those rows in the gate's `companio
 had been empty for every Live Photo. A flagged clip holds its still unless something observed that
 clip itself.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
-flagged with at least three flagged captures in it, under the reason `exposure_chain`. Neither the reduced
+flagged with at least three flagged captures in it, under the reason `exposure_chain`; a Live
+Photo is one capture there, flagged when its still or its banked clip is. Neither the reduced
 tier's `_hold()` nor the model check can clear it. `editorial_review_list.py` writes
 `review-before-sharing.private.json`: the finished cut's shots between 0.2 and 0.5 that nothing
 else already holds, counted in the run summary and named by `runs why`. It changes no shot.

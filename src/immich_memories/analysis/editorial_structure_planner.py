@@ -391,7 +391,7 @@ def _select(
         ),
         check_audience=audience_check_for(audience_tier),
         chains=chain_holds_for(
-            {**source.assets, **source.companion_assets}, source.audience_annotations
+            source.assets, source.audience_annotations, source.companion_detectors
         ),
         companion_heads=source.companion_detectors,
     )
