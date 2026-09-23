@@ -8,6 +8,7 @@ from immich_memories.titles.text_builder import (
     TITLE_PATTERNS,
     SelectionType,
     TitleInfo,
+    _generate_date_range_title,
     get_month_name,
     get_season_name,
 )
@@ -42,8 +43,22 @@ def generate_person_spotlight_title(
     year: int | None,
     person_name: str | None,
     locale: str,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> TitleInfo:
-    """Generate title for a person spotlight memory."""
+    """Title a person spotlight: a year with the person, or the person over several years.
+
+    A film over several years opens on the person's name alone. Its span usually starts at a
+    birth date and ends today, and a date over a whole life so far says nothing the name does
+    not. With no name to show, the span's own dates title it.
+    """
+    if year is None and start_date is not None and end_date is not None:
+        if not person_name:
+            return _generate_date_range_title(start_date, end_date, None, locale)
+        return TitleInfo(
+            main_title=person_name, subtitle=None, selection_type=SelectionType.PERSON_SPOTLIGHT
+        )
     if year is None:
         raise ValueError("Year required for person spotlight selection")
     patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])

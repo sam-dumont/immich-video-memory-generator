@@ -206,7 +206,13 @@ def _title_season(**kwargs) -> TitleInfo:
 def _title_person_spotlight(**kwargs) -> TitleInfo:
     from immich_memories.titles._text_memory_types import generate_person_spotlight_title
 
-    return generate_person_spotlight_title(kwargs["year"], kwargs["person_name"], kwargs["locale"])
+    return generate_person_spotlight_title(
+        kwargs["year"],
+        kwargs["person_name"],
+        kwargs["locale"],
+        start_date=kwargs["start_date"],
+        end_date=kwargs["end_date"],
+    )
 
 
 def _title_multi_person(**kwargs) -> TitleInfo:
@@ -397,6 +403,9 @@ def infer_selection_type(
         return SelectionType.ON_THIS_DAY
 
     if start_date is not None and end_date is not None:
+        # Over several years a person film is about the person, not the dates it spans.
+        if memory_type == "person_spotlight" and start_date.year != end_date.year:
+            return SelectionType.PERSON_SPOTLIGHT
         return SelectionType.DATE_RANGE
 
     if month is not None and year is not None:
