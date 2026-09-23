@@ -23,6 +23,7 @@ from immich_memories.analysis.editorial_owner_required import admit_owner_requir
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
+    BankedAnswers,
     banked_leaders,
     banked_weak,
     configured_text_identity,
@@ -561,6 +562,8 @@ def _story_selection(
     bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     banked = _banked_facts(source, ports, unit_of, contract=contract)
+    if ports.rules is not None:
+        record("banked-facts", banked.record())
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
     pool_assets = {a for ids in pool.moment_assets.values() for a in ids if a in source.assets}
@@ -635,7 +638,7 @@ def _story_selection(
     )
 
 
-def _banked_facts(source, ports, unit_of, *, contract: str):
+def _banked_facts(source, ports, unit_of, *, contract: str) -> BankedAnswers:
     """What earlier model answers about this library say, for the draft that asks nothing.
 
     Only the no-model draft reads them. A model run asks its own questions about every

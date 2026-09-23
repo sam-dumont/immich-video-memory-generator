@@ -65,28 +65,6 @@ class BankedFacts(Protocol):
     def record_owning(self, episode_key: str) -> tuple[str, ...]: ...
 
 
-class NoBankedFacts:
-    """A library nothing has read yet. Every question comes back unanswered."""
-
-    def standing_of(self, asset_id: str) -> int | None:
-        return None
-
-    def refused_for_audience(self, asset_id: str) -> bool:
-        return False
-
-    def episode_representatives(self, episode_key: str) -> tuple[str, ...]:
-        return ()
-
-    def culled(self, asset_id: str) -> bool:
-        return False
-
-    def record_owning(self, episode_key: str) -> tuple[str, ...]:
-        return ()
-
-
-NO_BANKED_FACTS: BankedFacts = NoBankedFacts()
-
-
 @dataclass(frozen=True)
 class BankedAnswers:
     """Answers already banked for this film, resolved once when the banks are opened."""
@@ -117,6 +95,26 @@ class BankedAnswers:
         with them the way it already leads with a reading's representatives.
         """
         return ()
+
+    def record(self) -> dict[str, Any]:
+        """What the banks answered, so a draft that read nothing says so out loud.
+
+        A silent no-op and a bank that was never opened look identical in a cut. These counts
+        are the difference, and they are the first thing to grep when a warm library draws the
+        cold film.
+        """
+        return {
+            "standing_answers": len(self.standing),
+            "standing_refused": sum(1 for score in self.standing.values() if score == 0),
+            "audience_refusals": len(self.refused),
+            "episodes_read": len(self.representatives),
+            "banked_representatives": len(set(chain.from_iterable(self.representatives.values()))),
+            "culled": len(self.culls),
+        }
+
+
+NO_BANKED_FACTS = BankedAnswers({}, frozenset(), {}, frozenset())
+"""A library nothing has read yet: every question comes back unanswered."""
 
 
 def configured_text_identity(llm_config: Any) -> str:
@@ -151,7 +149,7 @@ def open_banked_facts(
     rows_of: Mapping[str, str],
     episode_cards: Mapping[str, Any],
     own_producers: frozenset[str] = frozenset(),
-) -> BankedFacts:
+) -> BankedAnswers:
     """Open this film's banks read-only and resolve what they already say.
 
     `rows_of` is each picture's standing row as the gate renders it; `episode_cards` maps a
@@ -342,17 +340,24 @@ def _asset_ids(payload: object) -> tuple[str, ...]:
 def standing_with_bank(
     rule_standing: Callable[[str], int], banked: BankedFacts, *, favourite: Callable[[str], bool]
 ) -> Callable[[str], int]:
-    """The rules' own standing answer, replaced by a banked one where a model gave it.
+    """The rules' own standing answer, tightened by a banked one where a model gave it.
 
-    A favourite keeps the rules answer: the owner's choice is the one judgment nothing banked
-    overrules, so a banked zero on a starred picture leaves it standing.
+    Tightened, never loosened. The rules answer zero for a document, a photographed screen, a
+    sensitive-content or exposure flag and a frame the head calls empty: those are eligibility,
+    not an opinion about whether the picture stands, and a model's vote on the same row cannot
+    clear one. The direction that is allowed is the useful one anyway: the model saying a
+    picture the rules liked does not in fact stand.
+
+    A favourite keeps the rules answer whole: the owner's choice is the one judgment nothing
+    banked overrules, so a banked zero on a starred picture leaves it standing.
     """
 
     def standing(asset_id: str) -> int:
+        own = rule_standing(asset_id)
         if favourite(asset_id):
-            return rule_standing(asset_id)
+            return own
         answer = banked.standing_of(asset_id)
-        return rule_standing(asset_id) if answer is None else answer
+        return own if answer is None else min(own, answer)
 
     return standing
 

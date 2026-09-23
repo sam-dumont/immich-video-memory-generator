@@ -75,9 +75,10 @@ def _draft(assets, *, banked, favourites=()):
     return [choices[0].primary, *choices[0].alternatives]
 
 
+# WHY: replaces the banks on disk (the standing JSON, the earlier cuts' records and the
+# annotation store) for the tests that are about what the draft does with an answer rather than
+# about how the answer is found. The tests below `_write_standing_bank` use the real files.
 class _Banked:
-    """A bank stub standing in for banks this test does not need to build on disk."""
-
     def __init__(self, *, standing=(), refused=(), representatives=(), culled=()):
         self._standing = dict(standing)
         self._refused = frozenset(refused)
@@ -177,6 +178,15 @@ def test_the_rules_standing_answer_stands_where_nothing_was_banked():
     )
 
     assert (standing("answered"), standing("unanswered")) == (0, 1)
+
+
+def test_a_banked_vote_cannot_clear_a_picture_the_rules_refuse():
+    """The rules answer zero for a document, a screen or an exposure flag. That is a gate."""
+    standing = standing_with_bank(
+        lambda _asset: 0, _Banked(standing={"flagged": 2}), favourite=lambda _a: False
+    )
+
+    assert standing("flagged") == 0
 
 
 def _write_standing_bank(path: Path, rows: dict[str, int], *, identity=IDENTITY, motion=""):

@@ -373,7 +373,9 @@ out short of its target. The draft now opens those banks read only. It still ask
 
 Three rules bound it. A picture you starred is never withheld by a banked answer: your choice
 outranks it, exactly as it outranks the rules reader's own verdict. Only refusals carry over, never
-clearances, so one cut's `share` never stands in for a check this cut did not make. And an answer is
+clearances: one cut's `share` never stands in for a check this cut did not make, and a banked
+standing vote can only lower the rules reader's own answer, because its zero covers a document, a
+photographed screen, a flag and an empty frame, which are eligibility rather than an opinion. And an answer is
 read only under the name the asking side wrote it under: the criterion, the contract, the period,
 and for a standing vote the model that replied, so a bank written by another reader is not mistaken
 for one written by yours. Episode readings are the exception, on purpose: they are matched on the
@@ -383,6 +385,10 @@ rules would refuse.
 
 A moment whose every picture is withheld keeps them all. There is nothing left to offer in its
 place, and the gates decide its fate the way they always did.
+
+Every rules run writes `banked-facts.private.json` beside its other derived decisions, with the
+count of each kind of answer it found. A run that read nothing says so there, which is how you tell
+a bank that had nothing to say from one that was never opened.
 
 What you lose: the thesis (the page hides the quote rather than showing a templated one), an
 editor's sentence under each picture (you get `<story>: <n> pictures at <place>` instead), moments

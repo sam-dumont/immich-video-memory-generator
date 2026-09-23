@@ -67,9 +67,12 @@ and culls of any banked episode reading of the same pictures. A withheld picture
 its moment, unless it is the owner's favourite or the moment has nothing else; a named
 representative leads its episode's order. Every read is named the way the writing side named it, so
 a standing vote cast by another reader does not answer here; episode readings are matched on the
-episode and the exact pictures read, whatever produced them, because a cull is a refusal and a
-representative still has to win the rules order. A library nothing has read answers None, False or
-() everywhere, and the draft is the one it always cut.
+episode and the exact pictures read, minus this run's own producer, because a cull is a refusal and
+a representative still has to win the rules order. A banked standing can only tighten the rules
+answer, never clear it: the rules zero covers documents, screens, flags and empty frames, which are
+eligibility. A library nothing has read answers None, False or () everywhere, and the draft is the
+one it always cut. Every rules run records what it found in `banked-facts.private.json`, so a draft
+that read nothing says so.
 
 ## Two Trees
 
