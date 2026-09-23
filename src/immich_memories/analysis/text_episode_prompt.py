@@ -41,10 +41,46 @@ Return JSON only:
 
 {episodes}"""
 
+_LEAN_PROMPT_NAME = "episode-prompt-v3-lean"
+
+# What a film's on-demand reading asks: the account's sentence and the records, with the one
+# representative a reading needs to be bankable. The full prompt's other asks (up to three
+# representatives with reasons, every Cull reject) were 62 % of the reader's output on the
+# measured cold year, and nothing a film reads on demand uses them.
+_LEAN_PROMPT = """Read these episodes from one family's photo library. Every asset line contains
+all banked annotations for that asset. Use only those lines; do not invent names, places,
+relationships, or events.
+
+Text read off a banner, a shirt, a sign, a screen or a poster names the thing it is written
+on. It never names the day, the place or the event. Name an event, a venue or an organisation
+only when a fact line of that episode names it.
+
+For every episode return what happened in at most 25 words, and the one representative that
+best shows it, with a reason of at most six words. Prefer a starred action frame, video, or
+qualifying Live Photo when it earns the place.
+
+Also return notable_moments, separately from the account and its representative: the moments
+of this episode a family would remember on their own, and that a 25-word summary of the episode
+would lose. A discovery, a milestone, a change, a once-only record. Name the asset and the
+observable reason it is one. A small object or a quiet detail can carry one. Do not infer a
+first, a relationship, a diagnosis or a feeling from the order things happened in. Return []
+when nothing in the lines supports one; most episodes have none.
+
+Return JSON only:
+{{"schema_version":"episode-reading-text-v1","episodes":[{{"episode":1,
+"what_happened":"plain factual sentence","representatives":[{{"asset":1,
+"reason":"short reason"}}],
+"notable_moments":[{{"asset":1,"reason":"what this is a record of"}}]}}]}}
+
+{episodes}"""
+
 # A banked answer is ground truth for the question that was asked. Hashing the prompt into the
 # producer expires every reading the moment its wording changes, whether or not the name above
 # was bumped with it.
 TEXT_EPISODE_PROMPT_VERSION = f"{_PROMPT_NAME}/{sha256(_PROMPT.encode()).hexdigest()[:16]}"
+TEXT_EPISODE_LEAN_PROMPT_VERSION = (
+    f"{_LEAN_PROMPT_NAME}/{sha256(_LEAN_PROMPT.encode()).hexdigest()[:16]}"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +89,8 @@ class EpisodePromptFacts:
 
     lines: Mapping[str, str]
     album_names: AlbumNames | None = None
+    # The film's on-demand question: no Cull, one representative.
+    lean: bool = False
 
     def albums_line(self, asset_ids: Sequence[str]) -> str:
         """The `Albums:` fact line, or nothing when no album holds these assets."""
@@ -77,4 +115,5 @@ def episode_prompt(
         # The album holds the whole episode, not just this page of it.
         albums = facts.albums_line(scope.full_asset_ids)
         blocks.append(f"episode {episode_alias}\n{albums}{page}{asset_lines}")
-    return _PROMPT.format(episodes="\n\n".join(blocks))
+    template = _LEAN_PROMPT if facts.lean else _PROMPT
+    return template.format(episodes="\n\n".join(blocks))

@@ -99,20 +99,26 @@ ReaderFactory = Callable[["PreparedEditorialSource"], "EpisodeReader"]
 
 
 def demand_reader_factory(
-    rules: ReaderFactory, text: ReaderFactory, *, mode: str, on_demand: bool
+    rules: ReaderFactory,
+    text: ReaderFactory,
+    *,
+    mode: str,
+    on_demand: bool,
+    lean: ReaderFactory | None = None,
 ) -> tuple[ReaderFactory, DemandEpisodeReadings | None]:
     """The episode reader a run's event pass is built with, and the demand behind it, if any.
 
     A film of a whole calendar month, a whole year or a window over several years on the model
     tier is the polish layer's route, and the only one whose draft needs no reading at all: it
     is built from facts, and the episodes its shots sit in are read afterwards. Every other
-    span reads as it always has.
+    span reads as it always has. `lean` is the reader the demand asks through, when the film
+    needs less of an episode than the full reading gives.
     """
     if mode == "rules":
         return rules, None
     if not on_demand:
         return text, None
-    demand = DemandEpisodeReadings(rules, text)
+    demand = DemandEpisodeReadings(rules, lean or text)
 
     def remembered(prepared: PreparedEditorialSource) -> EpisodeReader:
         demand.remember(prepared)

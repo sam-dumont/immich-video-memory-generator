@@ -57,7 +57,10 @@ from immich_memories.analysis.special_event_scope import (
     validate_special_event_scope,
 )
 from immich_memories.analysis.text_episode_answers import TEXT_EPISODE_SCHEMA_VERSION
-from immich_memories.analysis.text_episode_prompt import TEXT_EPISODE_PROMPT_VERSION
+from immich_memories.analysis.text_episode_prompt import (
+    TEXT_EPISODE_LEAN_PROMPT_VERSION,
+    TEXT_EPISODE_PROMPT_VERSION,
+)
 from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -528,26 +531,32 @@ def build_editorial_planner(
     def rule_episode_reader(prepared: Any) -> EpisodeReader:
         return RuleEpisodeReader(readings.reader(prepared), by_quality=True)
 
-    def text_episode_reader(prepared: Any) -> EpisodeReader:
+    def text_episode_reader(prepared: Any, *, lean: bool = False) -> EpisodeReader:
         annotations = readings.reader(prepared)
         assert episode_requester is not None
         contract = annotations.contract
-        producer = EpisodeReadingProducer(
-            model_id=model_id,
-            prompt_version=TEXT_EPISODE_PROMPT_VERSION,
-            schema_version=TEXT_EPISODE_SCHEMA_VERSION,
-            annotation_renderer_version=contract.renderer_version,
-            annotation_versions=contract.producer_versions,
-        )
+
+        def producer(prompt_version: str) -> EpisodeReadingProducer:
+            return EpisodeReadingProducer(
+                model_id=model_id,
+                prompt_version=prompt_version,
+                schema_version=TEXT_EPISODE_SCHEMA_VERSION,
+                annotation_renderer_version=contract.renderer_version,
+                annotation_versions=contract.producer_versions,
+            )
+
+        full = producer(TEXT_EPISODE_PROMPT_VERSION)
         return CachedTextEpisodeReader(
             store=episode_store,
-            producer=producer,
+            producer=producer(TEXT_EPISODE_LEAN_PROMPT_VERSION) if lean else full,
             annotations=annotations,
             requester=episode_requester,
             record_evidence=lambda episodes: evidence_provenance.capture(
                 episodes, directory=backend._context.artifact_dir
             ),
             albums=album_names,
+            lean=lean,
+            served_by=full if lean else None,
         )
 
     episode_reader_factory, demand = demand_reader_factory(
@@ -556,6 +565,7 @@ def build_editorial_planner(
         mode=reader_mode,
         on_demand=config.editorial.thin_model_layer
         and bool(catalogued_period(context.date_ranges)),
+        lean=lambda prepared: text_episode_reader(prepared, lean=True),
     )
 
     backend = ProductionPostCardBackend(

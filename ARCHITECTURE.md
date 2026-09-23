@@ -269,6 +269,7 @@ src/immich_memories/
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); the same reading names
 │   │                           # each episode's notable moments, which the polish layer seats and protects
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
+│   │                           # (a film's on-demand reading asks the lean form: no Cull, one representative)
 │   ├── text_episode_paging.py  # Its request limits: an episode cut into pages, pages packed into prompts
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner

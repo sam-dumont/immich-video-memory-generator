@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Protocol, TypeVar
 
@@ -211,7 +211,13 @@ class CachedTextEpisodeReader:
         strict_persistence_readback: bool = False,
         record_evidence: EpisodeEvidenceRecorder | None = None,
         albums: AlbumNames | None = None,
+        lean: bool = False,
+        served_by: EpisodeReadingProducer | None = None,
     ) -> None:
+        """`lean` asks the film's on-demand question (no Cull, one representative); a reading
+        banked under `served_by`, a question that asks for more, answers it for free."""
+        self._lean = lean
+        self._served_by = served_by
         self._store = store
         self._producer = producer
         self._annotations = annotations
@@ -244,12 +250,13 @@ class CachedTextEpisodeReader:
         )
         _validate_annotation_contract(annotation_batch, self._producer)
         lines = annotation_batch.as_mapping()
-        facts = EpisodePromptFacts(lines=lines, album_names=self._albums)
+        facts = EpisodePromptFacts(lines=lines, album_names=self._albums, lean=self._lean)
         identities_by_group, unavailable_by_group = self._identities(projections, lines)
         if self._record_evidence is not None:
             self._record_evidence(_evidence_lines(projections, identities_by_group, lines))
+        banked = self._store.readings_for(tuple(identities_by_group.values()))
+        banked |= self._served_elsewhere(identities_by_group, banked)
         identities = tuple(identities_by_group.values())
-        banked = self._store.readings_for(identities)
         cache_hits = frozenset(banked)
         # An episode this exact question already failed to read is not asked again: the answer
         # would be the same until the prompt, the evidence or the reader changes, and all three
@@ -334,6 +341,27 @@ class CachedTextEpisodeReader:
             ),
             diagnostics=TextEpisodeReadDiagnostics(tuple(response_diagnostics)),
         )
+
+    def _served_elsewhere(
+        self,
+        identities_by_group: dict[str, EpisodeReadingIdentity],
+        banked: Mapping[str, BankedEpisodeReading],
+    ) -> dict[str, BankedEpisodeReading]:
+        """Readings a wider question already banked for the episodes this one has not.
+
+        The identity of each episode it answers becomes that reading's own, so the evidence
+        and everything read back later name the reading that was actually used.
+        """
+        if self._served_by is None:
+            return {}
+        wider = {
+            group: replace(identity, producer_key=self._served_by.key())
+            for group, identity in identities_by_group.items()
+            if group not in banked
+        }
+        found = self._store.readings_for(tuple(wider.values())) if wider else {}
+        identities_by_group.update({group: wider[group] for group in found})
+        return found
 
     def _identities(
         self,

@@ -579,7 +579,11 @@ It needs a period the library holds an account of: what the month or year itself
 read once and reused by every later cut of it. Nothing is read in advance. The draft is built from
 facts alone, with no model call at all. Then only the episodes the draft's shots sit in are read,
 so a film pays for what it shows: a month cut of 17 shots reads at most 17 episodes, not every
-episode of every story it touched. The account is written from those readings plus what the
+episode of every story it touched. Those readings ask only what the film reads back: what
+happened, one representative and the moments worth a record. They leave out the Cull rejects
+and the extra representatives the full reading asks for, which were 62 % of the reader's output on
+a measured cold year. A full reading already in the library, from `prepare --overviews` or an
+earlier film, answers them for free. The account is written from those readings plus what the
 no-model reader already says about every other episode of the period, one request per month (and
 one more over the months, for a film of a whole year). A film over several years, such as a person
 film from a birth date to today, gets one account per year it touches and one over those years,
