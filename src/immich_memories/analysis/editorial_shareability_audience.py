@@ -69,7 +69,7 @@ ACTIVITY_CONTENT_PROMPT = """Read the image captions and classify the depicted c
 - sexual_content: sexual activity, sexting, or explicitly sexual posing, including underwear presented sexually.
 - adult_changing: an adult undressing or changing clothes with their private body exposed. Ordinary shirtless adults, an adult helping a child dress, and changing a baby's diaper do not match this category.
 
-Classify the depicted content, not the importance or personal sensitivity of the life event. There is no category for a private health result or an intimate family moment. A pregnancy result or birth announcement alone is not an identifying record. Clothed hospital visits, treatment, recovery, and holding a newborn are not intimate hygiene. A medical venue, bedroom, parenthood, or close physical contact alone does not establish a listed activity. A cover does not cancel a described breastfeeding, bathing, toileting or hygiene activity. An empty bathroom/toilet, ordinary holding/play, haircuts and bottle feeding do not match these categories by themselves. Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby in the water and a baby's swimming lesson, does not match these categories.
+Classify the depicted content, not the importance or personal sensitivity of the life event. There is no category for a private health result or an intimate family moment. A pregnancy result or birth announcement alone is not an identifying record, and neither is legible text on its own: a logo, a race bib or shirt number, a sign, a label or a screen title does not identify anyone. Clothed hospital visits, treatment, recovery, and holding a newborn are not intimate hygiene. A medical venue, bedroom, parenthood, or close physical contact alone does not establish a listed activity. A cover does not cancel a described breastfeeding, bathing, toileting or hygiene activity. An empty bathroom/toilet, ordinary holding/play, haircuts and bottle feeding do not match these categories by themselves. Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby in the water and a baby's swimming lesson, does not match these categories.
 
 Graphic medical content means the procedure or open wound itself is depicted. Ordinary clothed treatment, preparation for surgery, recovery afterward, a healed scar, or staff standing in an operating room do not establish a graphic medical procedure. Pregnancy results and birth announcements are not delivery in progress.
 
@@ -150,8 +150,11 @@ def parse_audience_verdict(
     ):
         return None
     finding = obj["finding"]
+    supported = _finding_supported(finding, evidence)
     verdict = (
-        "do_not_show"
+        _UNSUPPORTED_VERDICT[finding]
+        if not supported
+        else "do_not_show"
         if finding in DO_NOT_SHOW_FINDINGS
         else "share"
         if finding == "none"
@@ -163,7 +166,57 @@ def parse_audience_verdict(
         "finding": finding,
         "verdict": verdict,
         "why": _clean(obj["why"]),
-    }
+    } | ({} if supported else {"supported": False})
+
+
+# What a category the reader names stands on. The 30B read any legible text -- a bib, a logo,
+# a sign -- as an identifying record (0 of 23 right, 09-21), and a shirtless adult holding a
+# child as adult changing; the reader's own `why` is not evidence. A category with nothing
+# under it falls back to what the evidence does show: an unsupported record holds nothing, an
+# unsupported undressing is still an uncovered adult and stays in the family. Detector, body
+# and chain holds are applied after this and are untouched by it.
+_UNSUPPORTED_VERDICT = {"identifying_record": "share", "adult_changing": "family_only"}
+_NOT_A_RECORD_LABELS = frozenset({"photograph", "logo", "icon"})
+_RECORD_TEXT = re.compile(
+    r"\b(?:id(?:entity)? cards?|passports?|driver'?s? licen[cs]es?|"
+    r"(?:hospital|patient|name) (?:wristbands?|bracelets?|labels?)|wristbands? with|"
+    r"patient (?:identifiers?|details|records?|names?)|medical records?|prescriptions?|"
+    r"boarding pass(?:es)?|(?:bank|credit|debit|insurance) (?:cards?|statements?)|"
+    r"personal (?:details|information|data)|contact details|phone numbers?|"
+    r"(?:home|postal|street) address(?:es)?|addressed envelopes?)\b",
+    re.IGNORECASE,
+)
+_UNDRESSING_TEXT = re.compile(
+    r"\b(?:undress\w*|naked|nude|nudity|genitals?|private (?:body )?parts|"
+    r"strip(?:s|ped|ping)?|underwear|(?:chang\w*|(?:takes?|taking|took) off) (?:\w+ )?"
+    r"(?:clothes|clothing|underwear|pants|trousers|bra|dress|swimsuit|swimwear))\b",
+    re.IGNORECASE,
+)
+_NEGATION = re.compile(r"\b(?:no|not|none|without|nor|never)\b", re.IGNORECASE)
+
+
+def _finding_supported(finding: str, evidence: Mapping[str, Any]) -> bool:
+    members = evidence.get("members", ())
+    if finding == "identifying_record":
+        return any(_document_label(member) or _states(_RECORD_TEXT, member) for member in members)
+    if finding == "adult_changing":
+        return any(_states(_UNDRESSING_TEXT, member) for member in members)
+    return True
+
+
+def _document_label(member: Mapping[str, Any]) -> bool:
+    label = member.get("detectors", {}).get("doc_docling")
+    return bool(label) and label not in _NOT_A_RECORD_LABELS
+
+
+def _states(pattern: re.Pattern[str], member: Mapping[str, Any]) -> bool:
+    """The caption names the fact, and the few words before it do not deny it."""
+    caption = str(member.get("caption", ""))
+    for match in pattern.finditer(caption):
+        clause = re.split(r"[.;:,]", caption[: match.start()])[-1]
+        if not _NEGATION.search(" ".join(clause.split()[-4:])):
+            return True
+    return False
 
 
 PERSON_COVERAGE_PROMPT = """Extract the humans mentioned in each caption and record the clothing or body covering described for each human separately. Use one row per person or plural group. A person referred to through a hand or arm is still a human mention.

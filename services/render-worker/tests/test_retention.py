@@ -158,6 +158,28 @@ def test_a_job_id_cannot_name_a_directory_outside_the_worker_workspace(tmp_path)
         service.close()
 
 
+def test_a_sibling_sharing_the_workspace_name_as_a_prefix_is_outside_it(tmp_path):
+    service = _service(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="outside"):
+            service.directory(f"../{service.root.name}-neighbour")
+    finally:
+        service.close()
+
+
+def test_a_job_directory_symlinked_out_of_the_workspace_is_refused(tmp_path):
+    service = _service(tmp_path)
+    job_id = uuid4()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (service.root / str(job_id)).symlink_to(elsewhere)
+    try:
+        with pytest.raises(ValueError, match="outside"):
+            service.directory(job_id)
+    finally:
+        service.close()
+
+
 def test_boot_sweeps_a_session_a_hard_kill_left_behind(tmp_path):
     scratch = tmp_path / "render-jobs"
     scratch.mkdir(parents=True)

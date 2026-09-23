@@ -65,15 +65,11 @@ docker compose exec immich-memories immich-memories models fetch   # the pinned 
 docker compose exec immich-memories immich-memories preflight      # Immich, the reader, the digests
 ```
 
-Set this on the service first:
-
-```yaml
-      IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"
-```
-
-Two of the three artifacts land on the config volume on their own. The third, the document
-classifier's snapshot, otherwise goes to the container's writable layer, which a `pull && up -d`
-throws away.
+All three artifacts land on the config volume. Two go there on their own; the third, the document
+classifier's snapshot, goes there because the compose file sets
+`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR` to a path on it. Keep that line if you
+write your own service block: without it the snapshot sits in the container's writable layer, which
+a `pull && up -d` throws away.
 
 The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, the richest
 tier the app serves on its own, and that tier is why `models fetch` is part of the first run.
@@ -81,8 +77,25 @@ tier the app serves on its own, and that tier is why `models fetch` is part of t
 `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` pointing at it. What each tier costs is
 on [Running modes](../running-modes.md).
 
+### Reaching a model server
+
 Model endpoints must be reachable from inside the container, and `localhost` there is the
-container: give them real hostnames.
+container: give them real hostnames. For a reader or caption server on the Docker host itself, that
+name is `host.docker.internal`:
+
+```yaml
+      IMMICH_MEMORIES_LLM__BASE_URL: "http://host.docker.internal:8000/v1"
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://host.docker.internal:8092/v1"
+```
+
+Docker Desktop (Mac, Windows) resolves it with no setup. On Linux, add this to the
+`immich-memories` service, and have the server on the host listen on `0.0.0.0` rather than
+`127.0.0.1`, since the container arrives over the bridge, not the loopback:
+
+```yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
 
 ## Resources
 
@@ -112,6 +125,7 @@ see [Immich API compatibility](../configuration/config-file.md#immich-api-compat
 | `IMMICH_MEMORIES_PRESET` | `fast`: 1080p H.264, fast encoder preset, static titles. Explicit settings win. |
 | `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER` | `full`, `no_captions` or `metadata_only`. The compose file pins `no_captions`; the code default is `full`. |
 | `IMMICH_MEMORIES_LLM__BASE_URL`, `IMMICH_MEMORIES_LLM__MODEL` | The reader. The model string must match what the server reports at `/v1/models`, and it must take images. |
+| `IMMICH_MEMORIES_LLM__API_KEY` | The reader's bearer token, for a server that answers `401` without one. |
 | `IMMICH_MEMORIES_AUTH_USERNAME`, `IMMICH_MEMORIES_AUTH_PASSWORD` | Set both to turn on basic auth. |
 | `IMMICH_MEMORIES_LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`. |
 

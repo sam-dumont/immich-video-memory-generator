@@ -87,18 +87,34 @@ def test_each_variant_installs_only_its_device_extra() -> None:
     build = " ".join(stage("builder"))
     assert "INFERENCE_EXTRA=editorial" in cpu
     assert "INFERENCE_EXTRA=editorial-cuda" in cuda
-    assert '".[${INFERENCE_EXTRA}]"' in build
     # The lock export is scoped to exactly the selected extra (never --all-extras,
     # which would let the CPU and CUDA onnxruntime wheels meet), and its deps are
-    # installed hash-pinned; the project itself rides along with --no-deps because
-    # a local path has no hash to check.
+    # installed hash-pinned.
     assert '--extra "${INFERENCE_EXTRA}"' in build
     assert "--all-extras" not in build
     assert "--require-hashes -r /deps-hashes.txt" in build
-    assert "--no-deps" in build
     assert "pip check" in build
     assert "torch" not in build
     assert "pip uninstall" not in build
+
+
+def test_every_pip_install_in_the_builder_is_pinned() -> None:
+    # Scorecard's PinnedDependencies accepts two shapes of `pip install`: one
+    # checked by --require-hashes, or one naming only local wheel files. A local
+    # source tree (`pip install ".[extra]"`) is neither, so the project is built
+    # to a wheel first and that wheel installed with --no-deps.
+    commands = [
+        command.strip()
+        for line in stage("builder")
+        for command in line.removeprefix("RUN ").split("&&")
+    ]
+    installs = [command for command in commands if "pip install" in command]
+    assert installs
+    for install in installs:
+        arguments = [word for word in install.split()[2:] if not word.startswith("-")]
+        hashed = "--require-hashes" in install
+        wheels_only = "--no-deps" in install and all(a.endswith(".whl") for a in arguments)
+        assert hashed or wheels_only, install
 
 
 def test_the_cuda_variant_is_built_on_a_cuda_runtime_with_cudnn() -> None:

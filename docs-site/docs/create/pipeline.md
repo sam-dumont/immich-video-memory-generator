@@ -121,7 +121,12 @@ findings are not, at any audience, and a carrier that draws one is replaced rath
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
 is ordinary family content, which keeps it from filing a bath as something worse, and the code holds
-all eight out of the cut regardless of what the model was told. The gate judges the finished cut
+all eight out of the cut regardless of what the model was told. Two of them need a fact under
+them, because the model's say-so has been wrong: an identifying record needs the document detector
+to call the picture a document, or the description to name one (an ID card, a passport, a patient
+wristband). Readable text alone, a race bib, a logo or a sign, holds nothing. Adult changing needs
+the description to say someone is undressing or exposed; without that, the picture stays
+family-only instead of being cut. The gate judges the finished cut
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 

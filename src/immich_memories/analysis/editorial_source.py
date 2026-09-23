@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from itertools import chain
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from immich_memories.analysis.generated_source_provenance import generated_source_ids
 from immich_memories.analysis.selection_source import SourceScope
 from immich_memories.analysis.special_event_scope import select_source_members
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -16,6 +18,9 @@ from immich_memories.api.person_scope import (
     videos_in_window,
 )
 from immich_memories.timeperiod import DateRange
+
+if TYPE_CHECKING:
+    from immich_memories.config_loader import Config
 
 
 class FullEditorialSource(VideoSource, PhotoSource, Protocol):
@@ -31,6 +36,41 @@ def fetch_full_window_source(
     for window in _exact_windows(scope, "full"):
         _collect(by_id, videos_in_window(client, [], window), photos_in_window(client, [], window))
     return _scoped_members(by_id, scope)
+
+
+def library_source_scope(
+    client: object,
+    config: Config,
+    date_ranges: Sequence[DateRange],
+    *,
+    asset_ids: tuple[str, ...] | None = None,
+    accept_any_provenance: bool = False,
+) -> SourceScope:
+    """The pictures a scope holds, for a cut and for `prepare` alike.
+
+    One definition, so a scope `prepare` banked is the scope a film reads. The two
+    once built it separately and drifted: `prepare` paid for the films this app had
+    uploaded, which no film reads (#1152).
+    """
+    return SourceScope(
+        date_ranges=tuple(date_ranges),
+        asset_ids=asset_ids,
+        excluded_filename_patterns=tuple(config.analysis.exclude_filename_patterns),
+        stills_need_a_camera=config.analysis.exclude_stills_without_camera_exif,
+        min_source_short_side=config.analysis.min_source_short_side,
+        max_source_video_seconds=config.analysis.max_source_video_seconds,
+        accept_any_provenance=accept_any_provenance,
+        include_off_timeline=False,
+        generated_asset_ids=tuple(
+            sorted(
+                generated_source_ids(
+                    # A client that cannot answer leaves the receipts answering alone.
+                    tagged=getattr(client, "generated_asset_ids", frozenset),
+                    cache_database=config.cache.database_path,
+                )
+            )
+        ),
+    )
 
 
 def _exact_windows(scope: SourceScope, kind: str) -> tuple[DateRange, ...]:

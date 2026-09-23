@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.api.models import Asset, TimeBucket
+from immich_memories.security import credential_fingerprint
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
@@ -32,15 +33,10 @@ def source_fingerprint(
 ) -> str:
     """Identify the credential scope and library snapshot without storing secrets."""
     server_digest = hashlib.sha256(server_url.rstrip("/").encode()).hexdigest()
-    # WHY: the key is hashed to scope the cache without persisting the secret;
-    # nothing here verifies a password, so stretch cost buys nothing.
-    credential_digest = (
-        hashlib.sha256(api_key.encode()).hexdigest()  # codeql[py/weak-sensitive-data-hashing]
-    )
     identity = {
         "schema_version": _SCHEMA_VERSION,
         "server": server_digest,
-        "credential": credential_digest,
+        "credential": credential_fingerprint(api_key),
         "buckets": sorted((bucket.time_bucket, bucket.count) for bucket in buckets),
     }
     encoded = json.dumps(identity, separators=(",", ":"), sort_keys=True).encode()

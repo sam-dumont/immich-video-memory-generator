@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import os
 import re
@@ -20,6 +21,18 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 CREDENTIAL_FIELD_NAMES = frozenset(
     {"api_key", "caption_api_key", "password", "client_secret", "trigger_token", "worker_token"}
 )
+# Fixed on purpose: a fingerprint must map one key to one value across runs.
+_FINGERPRINT_SALT = b"immich-memories/credential-fingerprint/v1"
+
+
+def credential_fingerprint(secret: str) -> str:
+    """A stable identity for a credential that can be stored or compared without the secret.
+
+    Cache keys and job records hold this, never the key. scrypt, not a bare SHA-256:
+    a leaked record must not be a cheap guessing oracle for a short or reused key.
+    About 40 ms per call, paid once per run or job submission.
+    """
+    return hashlib.scrypt(secret.encode(), salt=_FINGERPRINT_SALT, n=2**14, r=8, p=1).hex()
 
 
 def write_secret_file(path: Path, text: str) -> None:
