@@ -15,6 +15,7 @@ from typing import Any
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis import editorial_wall_rows as wall_rows
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
+from immich_memories.analysis.editorial_clip_frames import clips_miss_subject
 from immich_memories.analysis.editorial_episode_documents import (
     anchor_observations,
     episode_candidates_any_order,
@@ -183,6 +184,7 @@ class UnitBuilder:
     ) -> None:
         self._assets = source.assets
         self._residuals = source.motion_residuals
+        self._clip_frames = source.clip_frames
         self._speech = source.speech_regions
         self._speech_buffer = speech_buffer(source.config)
         self._pixel_facts = source.pixel_facts
@@ -238,7 +240,10 @@ class UnitBuilder:
             raise ValueError("Live rendering lacks canonical source material")
         members = [s for s in r.still_ids if s in ids] or [asset_id]
         residual = self._family_residual(members)
-        motion = r.may_play and (
+        # Motion is used only when the clip is interesting: measured motion with the subject
+        # in frame. A clip of wall keeps the picture, as its still.
+        may_play = r.may_play and not clips_miss_subject(self._clip_frames, r.video_ids)
+        motion = may_play and (
             (residual is not None and residual >= RESIDUAL_MIN)
             or (residual is None and self._resolve_motion is not None)
         )
@@ -246,7 +251,7 @@ class UnitBuilder:
         return base | {
             "favourite": bool(stars),
             "kind": "live-motion" if motion else "live-still",
-            "motion_candidate": r.may_play,
+            "motion_candidate": may_play,
             "motion_assessed": residual is not None,
             "asset_id": max(stars or members, key=self.quality),
             "members": members,

@@ -15,7 +15,9 @@ moment in fewer than three frames of four does not stand on its own, whatever it
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import sqlite3
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 
 from immich_memories.analysis.editorial_carrier_eligibility import CARRYING_KINDS
 from immich_memories.triage.heads import HeadFact
@@ -51,3 +53,36 @@ _ON_THE_LINE = f"{LINE_NAME}={SUBJECT_OFTEN_MISSING}"
 def subject_often_missing(line: str) -> bool:
     """Whether a picture's line says its clip's frames often miss the subject."""
     return _ON_THE_LINE in line
+
+
+def load_clip_frames(store_path: Path | str | None, clip_ids: Iterable[str]) -> dict[str, str]:
+    """The banked `clip_frames` label of each of these clips; a clip never read is absent."""
+    ids = sorted(set(clip_ids))
+    if store_path is None or not ids or not Path(store_path).exists():
+        return {}
+    con = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    out: dict[str, str] = {}
+    try:
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = con.execute(
+                f"select asset_id, label from head_facts where asset_id in ({marks}) "  # noqa: S608
+                "and head = ? and version = ?",
+                [*chunk, CLIP_FRAMES_HEAD, CLIP_FRAMES_VERSION],
+            )
+            out.update({str(asset_id): str(label) for asset_id, label in rows})
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        con.close()
+    return out
+
+
+def clips_miss_subject(clip_frames: Mapping[str, str], clip_ids: Iterable[str]) -> bool:
+    """Whether any of a Live Photo's clips was read as often missing its subject.
+
+    A Live Photo is its still: such a clip costs it its motion, never its place. A clip
+    nobody read keeps what it had before, motion decided by its residual alone.
+    """
+    return any(clip_frames.get(clip) == SUBJECT_OFTEN_MISSING for clip in clip_ids)

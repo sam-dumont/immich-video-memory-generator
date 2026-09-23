@@ -180,6 +180,9 @@ class StructurePlanningInput:
     # nothing describes it and nothing selects it -- so the audience gate reads its heads
     # from the bank instead. Empty is what every clip carried before one was ever read.
     companion_detectors: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # The frame head's reading of each Live Photo clip (`clip_frames`): a clip that often
+    # misses its subject plays as its still. Empty is what every clip carried before.
+    clip_frames: Mapping[str, str] = field(default_factory=dict)
     attached_outcome_replay: AttachedOutcomeReplay | None = None
     # Owner ticks after a cut: admitted after the read, so no prompt or digest input changes.
     owner_required_asset_ids: tuple[str, ...] = ()

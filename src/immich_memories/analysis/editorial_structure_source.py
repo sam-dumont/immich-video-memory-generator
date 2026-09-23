@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_case import Case, _adapt_production_cards
+from immich_memories.analysis.editorial_clip_frames import load_clip_frames
 from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_moment_wall import ProductionMomentWallRenderer
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
@@ -150,6 +151,10 @@ def capture_structure_input(
         shareability_flags=load_flags(store_path, {*assets, *companions}),
         companion_detectors=load_detector_heads(
             store_path, companions, config.editorial.head_versions
+        ),
+        clip_frames=load_clip_frames(
+            store_path,
+            [str(a.live_photo_video_id) for a in assets.values() if a.live_photo_video_id],
         ),
         motion_residuals=read_motion_residuals(store_path, assets.values()),
         speech_regions=read_speech_regions(

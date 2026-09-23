@@ -158,9 +158,11 @@ its frames that show a people moment, a place, a record or a screen. A clip that
 in fewer than three frames of four, like a clip that is mostly wall with the subject at the edge,
 reads `frames=subject_often_missing` on its line and does not stand on its own: the no-model cut
 scores it 0, and a model cut refuses it on standing whatever the text vote says, where it used to
-depend on which film asked. A favourite is the exception on both: a favourite showing a wall means
-something happened there, so the fact still shows on its line but never removes it. Measured on 33 real clips: the two a
-reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
+depend on which film asked. A favourite video is the exception on both: a favourite showing a
+wall means something happened there, so the fact still shows on its line but never removes it. A
+Live Photo is never refused for its clip either, since its favourite is on the still: a clip that
+misses its subject plays as its still, and a Live Photo plays as motion only when its clip moves
+(residual at or above 1.5) and shows its subject. Measured on 33 real clips: the two a reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
 or more. The frames are sampled once for this and the exposure head together; a clip already
 prepared is sampled again once. A clip whose frames cannot be read, or an install without the
 encoder, keeps its preview's reading and is named in `preparation.private.json`; it never blocks a

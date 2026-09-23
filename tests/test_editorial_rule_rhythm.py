@@ -90,6 +90,7 @@ def _holds(*, rules):
     source = SimpleNamespace(
         assets={a.id: a for a in assets},
         motion_residuals={},
+        clip_frames={},
         speech_regions={},
         config=Config(),
         pixel_facts={a.id: (900.0, 118.0) for a in assets},

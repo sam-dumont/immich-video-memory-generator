@@ -1,5 +1,7 @@
 """A clip stands on what its sampled frames show, not on the one frame Immich previews."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from immich_memories.analysis.editorial_clip_frames import (
@@ -37,8 +39,7 @@ def test_a_clip_with_no_readable_frame_decides_nothing():
     assert clip_frames_fact([]) is None
 
 
-def _standing(line_of, *, favourite=False):
-    from types import SimpleNamespace
+def _standing(line_of, *, favourite=False, kind="video"):
 
     from immich_memories.analysis.editorial_story_standing import StandingGate
     from immich_memories.config_models_llm import LLMConfig
@@ -57,7 +58,7 @@ def _standing(line_of, *, favourite=False):
 
     clip = {
         "asset_id": "clip",
-        "kind": "video",
+        "kind": kind,
         "raw_seconds": 12.0,
         "members": ["clip"],
         "favourite": favourite,
@@ -109,7 +110,6 @@ def test_a_clip_that_shows_its_moment_still_stands_on_approving_votes():
 
 
 def _rules(*, favourite=False, **heads):
-    from types import SimpleNamespace
 
     from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
@@ -195,3 +195,98 @@ def test_the_producer_banks_each_clips_reading_of_its_own_frames(tmp_path):
         ("clip", CLIP_FRAMES_HEAD, "frame_kind-public-v1/8-frames", SUBJECT_OFTEN_MISSING, 0.0)
     ]
     assert set(failures) == {"unreadable"}
+
+
+def _live_unit(*, rules, favourite, clip_frames, residual=9.0):
+    """One Live Photo through the unit builder both tiers plan on."""
+    from datetime import UTC, datetime
+
+    from immich_memories.analysis.editorial_structure_material import UnitBuilder
+    from immich_memories.analysis.motion_rendering import motion_renderings
+    from immich_memories.api.models import AssetType
+    from immich_memories.config_loader import Config
+    from tests.conftest import make_asset
+
+    still = make_asset("still", is_favorite=favourite, duration=None)
+    still.type = AssetType.IMAGE
+    still.file_created_at = datetime(2024, 2, 7, 10, tzinfo=UTC)
+    still.live_photo_video_id = "clip-of-still"
+    companions = {"clip-of-still": make_asset("clip-of-still", duration=3.0)}
+    config = Config()
+    source = SimpleNamespace(
+        assets={"still": still},
+        motion_residuals={"still": {"residual": residual}},
+        speech_regions={},
+        config=config,
+        pixel_facts={"still": (900.0, 118.0)},
+        clip_frames=clip_frames,
+    )
+    wall = SimpleNamespace(event_assets={"F01": ["still"]}, moment_of_asset={"still": "M01"})
+    ports = SimpleNamespace(
+        resolve_motion=None,
+        thumbnail_hash=lambda _asset_id: None,
+        rules=object() if rules else None,
+    )
+    renderings = motion_renderings([still], config, companion_assets=companions)
+    builder = UnitBuilder(
+        source, ports, wall, renderings=renderings, never_auto=set(), document_sources={}
+    )
+    (unit,) = builder.units_of("F01")
+    return unit
+
+
+@pytest.mark.parametrize("rules", [True, False])
+@pytest.mark.parametrize("favourite", [True, False])
+def test_a_live_photo_whose_clip_misses_its_subject_plays_as_its_still(rules, favourite):
+    # The owner's ruling: a Live Photo's favourite is on the still. A clip of wall costs the
+    # picture its motion, never the picture.
+    unit = _live_unit(
+        rules=rules, favourite=favourite, clip_frames={"clip-of-still": SUBJECT_OFTEN_MISSING}
+    )
+
+    assert unit["asset_id"] == "still"
+    assert unit["kind"] == "live-still"
+    assert unit["favourite"] is favourite
+
+
+@pytest.mark.parametrize("rules", [True, False])
+def test_a_live_photo_with_an_interesting_clip_plays_as_motion(rules):
+    shows = _live_unit(
+        rules=rules, favourite=False, clip_frames={"clip-of-still": "shows_its_moment"}
+    )
+    quiet = _live_unit(
+        rules=rules,
+        favourite=False,
+        clip_frames={"clip-of-still": "shows_its_moment"},
+        residual=0.4,
+    )
+
+    assert shows["kind"] == "live-motion"
+    # Interesting is measured motion AND the subject in frame; either alone is a still.
+    assert quiet["kind"] == "live-still"
+
+
+def test_a_live_photo_line_never_refuses_it_on_the_model_tier():
+    # Even if a still's line ever carried its clip's reading, the gate refuses real videos
+    # only: a Live Photo that plays is one whose clip was read as showing its subject.
+    line = "10:00 | LIVE PHOTO | a child at a door | frames=subject_often_missing"
+    gate, _judge = _standing(lambda _asset: line, kind="live-motion")
+    gate.ensure(["clip"], {"clip": gate.needs("clip", "major", "S1")})
+
+    assert gate.stands("clip", "major", "S1")
+    assert not gate.rejected_motion("clip")
+
+
+def test_a_film_reads_each_live_clips_banked_frames(tmp_path):
+    from immich_memories.analysis.editorial_clip_frames import load_clip_frames
+    from immich_memories.cache.embedding_cache import HeadFactStore
+
+    store = HeadFactStore(tmp_path / "bank.sqlite")
+    store.remember_facts("walled", [clip_frames_fact([MOMENT, NOTHING])], encoder_key="k")
+    store.remember_facts("held", [clip_frames_fact([MOMENT] * 4)], encoder_key="k")
+    store.close()
+
+    frames = load_clip_frames(tmp_path / "bank.sqlite", ["walled", "held", "unread"])
+
+    assert frames == {"walled": SUBJECT_OFTEN_MISSING, "held": "shows_its_moment"}
+    assert load_clip_frames(tmp_path / "absent.sqlite", ["walled"]) == {}
