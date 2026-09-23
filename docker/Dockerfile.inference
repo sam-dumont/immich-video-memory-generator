@@ -90,10 +90,12 @@ ENV PATH=/opt/venv/bin:$PATH
 # the selected extra, constrained by the lock; never overwrite the same package
 # files by installing CPU and GPU wheels together. The lock export is scoped to
 # that extra and carries the wheel hashes, so every dependency download is
-# digest-checked, not just version-pinned; the project itself installs
-# separately (--no-deps) because a local path has no hash to check.
+# digest-checked, not just version-pinned. A local source tree has no hash to
+# check, so the project is built to a wheel and that wheel installed with
+# --no-deps: the extra only ever selected dependencies, and those are in already.
 RUN pip install --no-cache-dir --require-hashes -r /deps-hashes.txt && \
-    pip install --no-cache-dir --no-deps ".[${INFERENCE_EXTRA}]" && \
+    pip wheel --no-cache-dir --no-deps --wheel-dir=/project-wheel . && \
+    pip install --no-cache-dir --no-deps /project-wheel/*.whl && \
     pip check
 
 

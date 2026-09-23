@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from uuid import UUID, uuid4
 
 from immich_memories.processing.output_contract import validate_output
-from immich_memories.security import sanitize_error_message
+from immich_memories.security import credential_fingerprint, sanitize_error_message
 from immich_memories_render_worker.admission import job_identity
 from immich_memories_render_worker.models import JobStatus, RenderRequest
 from immich_memories_render_worker.renderer import RenderArtifact, Renderer
@@ -78,7 +78,7 @@ class RenderJobs:
         self._session = TemporaryDirectory(
             prefix="session-", dir=scratch, ignore_cleanup_errors=True
         )
-        self.root = Path(self._session.name)
+        self.root = Path(os.path.realpath(self._session.name))
 
     def health(self) -> dict:
         from immich_memories import __version__
@@ -95,12 +95,10 @@ class RenderJobs:
         self.cleanup()
         job_id = job_identity(request)
         material = request.model_dump(mode="json")
-        # WHY: the digest exists so a resubmitted cut can be recognised without
-        # ever storing or logging the scoped key; it is an identity fingerprint,
-        # not password storage.
-        material["immich"]["api_key"] = hashlib.sha256(
-            request.immich.api_key.get_secret_value().encode()  # codeql[py/weak-sensitive-data-hashing]
-        ).hexdigest()
+        # A resubmitted cut is recognised without ever storing the scoped key.
+        material["immich"]["api_key"] = credential_fingerprint(
+            request.immich.api_key.get_secret_value()
+        )
         fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
         status, fresh = self.store.admit(
             JobStatus(
@@ -117,10 +115,14 @@ class RenderJobs:
         return status
 
     def directory(self, job_id: UUID) -> Path:
-        path = self.root / str(job_id)
-        if not path.resolve().is_relative_to(self.root.resolve()):
+        # WHY realpath + startswith rather than Path.resolve().is_relative_to: the
+        # same check, in the normalise-then-compare form CodeQL's path-injection
+        # query recognises; the separator keeps a "session-x-evil" sibling out.
+        root = str(self.root)
+        path = os.path.realpath(os.path.join(root, str(job_id)))
+        if not path.startswith(root + os.sep):
             raise ValueError("Job id resolves outside the worker workspace")
-        return path
+        return Path(path)
 
     def _render(self, request: RenderRequest, job_id: UUID) -> None:
         directory = self.directory(job_id)

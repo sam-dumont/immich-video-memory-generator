@@ -87,3 +87,22 @@ def test_configured_secret_values_include_only_current_secret_fields() -> None:
     assert "ordinary-model-name" not in actual
     assert "ordinary-user-name" not in actual
     assert "ordinary-client-id" not in actual
+
+
+class TestCredentialFingerprint:
+    def test_the_same_key_always_gets_the_same_fingerprint(self):
+        assert security.credential_fingerprint("key-one") == security.credential_fingerprint(
+            "key-one"
+        )
+
+    def test_different_keys_get_different_fingerprints(self):
+        assert security.credential_fingerprint("key-one") != security.credential_fingerprint(
+            "key-two"
+        )
+
+    def test_a_plain_sha256_lookup_table_cannot_reverse_it(self):
+        import hashlib
+
+        fingerprint = security.credential_fingerprint("short-key")
+        assert fingerprint != hashlib.sha256(b"short-key").hexdigest()
+        assert "short-key" not in fingerprint

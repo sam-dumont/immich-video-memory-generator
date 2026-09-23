@@ -284,14 +284,16 @@ class TitleScreenGenerator:
             logger.debug(f"  Start date: {start_date}")
         if end_date:
             logger.debug(f"  End date: {end_date}")
+        # WHY presence and lengths only: logs get pasted into bug reports, and a
+        # person title carries the name and age in its text as well as its inputs.
         if person_name:
-            logger.debug(f"  Person name: {person_name}")
+            logger.debug("  Person name: (set)")
         if birthday_age:
-            logger.debug(f"  Birthday age: {birthday_age}")
+            logger.debug("  Birthday age: (set)")
         logger.debug("-" * 40)
-        logger.debug(f'  Main title: "{title_info.main_title}"')
+        logger.debug(f"  Main title: {len(title_info.main_title)} characters")
         if title_info.subtitle:
-            logger.debug(f'  Subtitle: "{title_info.subtitle}"')
+            logger.debug(f"  Subtitle: {len(title_info.subtitle)} characters")
         else:
             logger.debug("  Subtitle: (none)")
         logger.debug("-" * 40)

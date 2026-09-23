@@ -544,7 +544,7 @@ def register_generate_commands(main: click.Group) -> None:
                             print_error(str(exc))
                             sys.exit(1)
                         birthday = anchor.strftime(BIRTHDAY_FLAG_FORMAT)
-                        print_success(f"Using birthday: {birthday}")
+                        print_success("Using the birthday recorded in Immich")
 
                         # The first resolution ran before the birthday was known
                         # and yielded a stand-in calendar year, so both the

@@ -574,7 +574,7 @@ src/immich_memories/
 ├── pinned_models.py            # One digest-pinned artifact table: `models fetch` and the inference service both read it
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
-├── security.py                 # Input sanitization
+├── security.py                 # Input sanitization, secret files, credential fingerprints
 ├── i18n.py                     # Internationalization
 ├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── preflight.py                # Dependency checks
