@@ -8,10 +8,10 @@ import pytest
 
 from immich_memories.analysis.editorial_preparation import PreparationResult
 from immich_memories.analysis.editorial_runtime import (
-    EditorialInputsRequired,
     EditorialRunContext,
     build_editorial_planner,
 )
+from immich_memories.analysis.editorial_runtime_evidence import EditorialInputsRequired
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.selection_trace import Trace

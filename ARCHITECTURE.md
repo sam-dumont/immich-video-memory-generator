@@ -221,6 +221,8 @@ src/immich_memories/
 ├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
+│   ├── editorial_runtime_evidence.py # The film-time preparation a cut waits on, and the annotation store it reads
+│   ├── editorial_film_reach.py # What a film prepares: its demanded pictures, their Live families and capture runs
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation

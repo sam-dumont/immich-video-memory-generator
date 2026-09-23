@@ -4,20 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import closing
-from dataclasses import asdict, dataclass, replace
-from functools import partial
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
-from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
 from immich_memories.analysis.editorial_album_index import (
     RunAlbumNames,
     record_album_index,
 )
 from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
+from immich_memories.analysis.editorial_film_reach import film_reach
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
 from immich_memories.analysis.editorial_orchestration import TextEditorialPlanner
 from immich_memories.analysis.editorial_people import adapt_editorial_people
@@ -27,6 +25,11 @@ from immich_memories.analysis.editorial_rule_episodes import (
     RuleEpisodeReader,
 )
 from immich_memories.analysis.editorial_runtime_backend import ProductionPostCardBackend
+from immich_memories.analysis.editorial_runtime_evidence import (
+    AnnotationReadings,
+    EvidencePreparation,
+    ensure_annotation_store,
+)
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.editorial_source import FullEditorialSource, library_source_scope
 from immich_memories.analysis.editorial_source_route import (
@@ -60,9 +63,7 @@ from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cache.editorial_verdicts import EditorialVerdicts
-from immich_memories.operations.caption_origins import caption_origin_summary
 from immich_memories.operations.cut_progress import ANALYSIS_PHASE, StageUpdate, announcing_stages
-from immich_memories.people.context import PersonPromptContext
 from immich_memories.planning.auto_duration import DURATION_FROM_DURATION_FLAG
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
@@ -363,7 +364,9 @@ class RuntimeEditorialPlanner:
             # The readers and the structure planner announce through the
             # context, since the callback never reaches that deep.
             with announcing_stages(on_stage):
-                prepared = self._prepared_source(trace=trace, on_stage=on_stage)
+                prepared, reach = self._prepared_source(
+                    trace=trace, on_stage=on_stage, demanded=[_asset(s).id for s in sources]
+                )
                 candidates = metadata_demand(
                     prepared,
                     sources,
@@ -381,6 +384,8 @@ class RuntimeEditorialPlanner:
                 raise RuntimeError(
                     f"editorial source evidence unavailable: {plan.unavailable_reason}"
                 )
+            if reach is not None and (unread := set(plan.selected_asset_ids) - reach):
+                raise RuntimeError(f"the cut selected {len(unread)} picture(s) it never prepared")
             result = backend.last_structure_result
             if not plan.selections:
                 return EditorialSourcePlan(
@@ -407,193 +412,34 @@ class RuntimeEditorialPlanner:
             self.close()
 
     def _prepared_source(
-        self, *, trace: Trace, on_stage: Callable[[StageUpdate], None] | None
-    ) -> Any:
+        self,
+        *,
+        trace: Trace,
+        on_stage: Callable[[StageUpdate], None] | None,
+        demanded: Sequence[str],
+    ) -> tuple[Any, frozenset[str] | None]:
         if self._prepare_annotations is None:
-            return self._planner.prepare_source(trace=trace)
-        # Preparation sees the full eligible corpus. Only the final source
-        # pass belongs to the plan trace (excluded_ids reads that pass).
-        preliminary = self._planner.prepare_source(trace=Trace(), include_previews=False)
-        exclusions = self._prepare_annotations(preliminary, on_stage)
-        return self._planner.prepare_source(trace=trace, evidence_exclusions=exclusions)
+            return self._planner.prepare_source(trace=trace), None
+        # Preparation covers what the film can reach; the rest of the window is read
+        # as metadata for the grouping (#1181). The preliminary pass only admits, so
+        # it cuts no groups, and only the final pass belongs to the plan trace.
+        preliminary = self._planner.prepare_source(
+            trace=Trace(), include_previews=False, group=False
+        )
+        reach = film_reach(preliminary.candidates, demanded)
+        logger.info(
+            "preparing %d of %d pictures in the window", len(reach), len(preliminary.candidates)
+        )
+        exclusions = self._prepare_annotations(preliminary, on_stage, reach)
+        # No preview bytes: nothing reads them, and over a long window they were gigabytes.
+        final = self._planner.prepare_source(
+            trace=trace, evidence_exclusions=exclusions, include_previews=False
+        )
+        return final, reach
 
     def close(self) -> None:
         """Release every thread-owned SQLite connection; later reads reopen safely."""
         self._episode_store.close()
-
-
-class EditorialInputsRequired(RuntimeError):
-    """Selection needs prepared annotation evidence before it can run."""
-
-    def __init__(self, store_path: Path, *, detail: str = "") -> None:
-        self.store_path = store_path
-        super().__init__(
-            f"Story-first selection needs prepared annotations at {store_path}. "
-            "Prepare this library's annotations or set advanced.editorial.annotation_database "
-            "to its existing annotation store."
-            + (f" Missing or unavailable: {detail}" if detail else "")
-        )
-
-
-def _ensure_annotation_store(store_path: Path) -> None:
-    if store_path.is_file():
-        return
-    import sqlite3
-
-    from immich_memories.store.editorial_preparation import initialize, private_database_path
-
-    with closing(sqlite3.connect(private_database_path(store_path))) as connection:
-        initialize(connection)
-
-
-@dataclass(frozen=True, slots=True)
-class _AnnotationReadings:
-    """One annotation-line contract shared by episode reading and the source gate."""
-
-    store_path: Path
-    config: Config
-    people: Mapping[str, PersonPromptContext]
-    subjects: tuple[str, ...] = ()
-
-    def reader(self, prepared: Any) -> StoredAnnotationLineReader:
-        editorial = self.config.editorial
-        return StoredAnnotationLineReader(
-            store_path=self.store_path,
-            candidates=prepared.candidates,
-            description_model=editorial.description_model,
-            head_versions=editorial.head_versions,
-            pixel_producer_key=editorial.pixel_producer_key,
-            people_context=self.people,
-            subjects=self.subjects,
-        )
-
-
-def _log_preparation(result: Any) -> None:
-    """Name the tier and what it cost, in the terminal, on the machine that paid for it.
-
-    A wall-clock total cannot tell a self-hoster which producer their box cannot
-    afford, and the artifact holding the same numbers is inside the attempt tree.
-    """
-    service = result.service_rates()
-    rates = " ".join(
-        f"{stage} {seconds:.3f}s/pic"
-        + (f" ({service[stage]:.3f}s of it in the service)" if stage in service else "")
-        for stage, seconds in sorted(result.stage_rates().items())
-    )
-    logger.info(
-        "preparation tier=%s: %d pictures requested%s",
-        result.tier,
-        result.requested,
-        f"; {rates}" if rates else "; nothing to produce",
-    )
-    if origins := caption_origin_summary(result.caption_provenance):
-        logger.info("%s", origins)
-
-
-@dataclass(frozen=True, slots=True)
-class _EvidencePreparation:
-    """Produce every annotation the story-first read needs, then gate screen documents."""
-
-    readings: _AnnotationReadings
-    client: FullEditorialSource
-    thumbnail_cache: ThumbnailCache
-    ports: EditorialRuntimePorts
-    artifact_dir: Callable[[], Path]
-
-    def __call__(
-        self, prepared: Any, on_stage: Callable[[StageUpdate], None] | None
-    ) -> dict[str, Any]:
-        result = self._produce(prepared, on_stage)
-        _log_preparation(result)
-        write_secret_file(
-            self.artifact_dir() / "preparation.private.json",
-            json.dumps(
-                asdict(result) | {"seconds_per_picture": result.stage_rates()},
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        unservable: dict[str, Any] = dict(result.unservable_sources)
-        if unservable:
-            logger.warning(
-                "%d of %d sources leave the film: %s",
-                len(unservable),
-                result.requested,
-                "; ".join(sorted(set(unservable.values()))),
-            )
-        if not result.complete:
-            missing = ", ".join(
-                f"{key}: {len(ids)}" for key, ids in result.missing_by_producer.items()
-            )
-            # A count of missing facts is a symptom. When a producer refused --
-            # no model, no endpoint -- its own sentence says why, so it goes in
-            # the message rather than only into preparation.private.json.
-            raise EditorialInputsRequired(
-                self.readings.store_path,
-                detail="; ".join(filter(None, (missing, *result.producer_failures))),
-            )
-        readable = tuple(a for a in prepared.candidate_ids if a not in unservable)
-        if not readable:
-            return unservable
-        return unservable | self._screen_documents(prepared, readable)
-
-    def _produce(self, prepared: Any, on_stage: Callable[[StageUpdate], None] | None) -> Any:
-        from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
-        from immich_memories.operations.cut_progress import StageProgressWriter
-
-        config = self.readings.config
-        batch_size = config.editorial.preparation.batch_size
-        # The sentence and the numbers are published together, on one throttle,
-        # so a watcher never sees a bar disagreeing with the row above it.
-        live = StageProgressWriter(self.artifact_dir)
-
-        def progress(stage: str, done: int, total: int) -> None:
-            if done not in {0, total} and done % batch_size:
-                return
-            if on_stage is not None:
-                on_stage(live.publish(stage, done, total))
-
-        prepare = self.ports.prepare_annotations or prepare_editorial_annotations
-        return prepare(
-            assets=tuple(candidate.source for candidate in prepared.candidates),
-            store_path=self.readings.store_path,
-            thumbnail_cache=self.thumbnail_cache,
-            preparation_config=config.editorial.preparation,
-            triage_config=config.triage,
-            head_versions=config.editorial.head_versions,
-            inference_config=config.inference,
-            description_model=config.editorial.description_model,
-            pixel_producer_key=config.editorial.pixel_producer_key,
-            fetch_preview=lambda asset_id: self.ports.fetch_preview(self.client, asset_id),
-            fetch_faces=lambda asset_id: self.ports.fetch_faces(self.client, asset_id),
-            read_playback=partial(self.ports.fetch_playback_range, self.client),
-            progress=progress,
-            on_asset=live.note_asset,
-        )
-
-    def _screen_documents(self, prepared: Any, readable: tuple[str, ...]) -> dict[str, Any]:
-        from immich_memories.analysis.editorial_source_gate import (
-            SCREEN_DOCUMENT_GATE_VERSION,
-            screen_document_rejections,
-        )
-
-        batch = self.readings.reader(prepared).lines_for(readable)
-        if batch.missing_asset_ids:
-            raise EditorialInputsRequired(
-                self.readings.store_path,
-                detail=f"{len(batch.missing_asset_ids)} unreadable annotation lines; "
-                + "; ".join(batch.warnings),
-            )
-        exclusions: dict[str, Any] = screen_document_rejections(batch)
-        write_secret_file(
-            self.artifact_dir() / "source-gate.private.json",
-            json.dumps(
-                {"version": SCREEN_DOCUMENT_GATE_VERSION, "excluded": exclusions},
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        return exclusions
 
 
 def _recorded(requester, stage: str, directory: Callable[[], Path]):
@@ -628,7 +474,7 @@ def build_editorial_planner(
     if reader_mode == "rules" and context.product == "custom":
         raise ValueError("custom subjects require a model reader; rules use captured metadata only")
     store_path = config.editorial.resolve_annotation_database(config.cache.cache_path)
-    _ensure_annotation_store(store_path)
+    ensure_annotation_store(store_path)
     runtime_ports = ports or EditorialRuntimePorts()
     context_by_id = runtime_ports.load_people()
     people = adapt_editorial_people(context_by_id)
@@ -670,7 +516,7 @@ def build_editorial_planner(
         )
         return source_snapshot
 
-    readings = _AnnotationReadings(
+    readings = AnnotationReadings(
         store_path=store_path, config=config, people=context_by_id, subjects=context.people
     )
 
@@ -751,7 +597,7 @@ def build_editorial_planner(
         person_expression=context.person_expression,
     )
 
-    runtime._prepare_annotations = _EvidencePreparation(
+    runtime._prepare_annotations = EvidencePreparation(
         readings=readings,
         client=client,
         thumbnail_cache=thumbnail_cache,

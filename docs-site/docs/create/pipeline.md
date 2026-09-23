@@ -605,8 +605,14 @@ February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm; a 1
 13,500 assets cost about 990 calls and about 70 minutes cold, and 11 minutes warm. A warm run asks
 the model nothing at all, and what is left of it is the video work after the cut, playback
 downloads, motion measurement and picture review. There is no depth knob and no shortlist at the
-source: every eligible picture is prepared, because a picture the editor never saw is one it cannot
-weigh.
+source: every picture the film can select is prepared, because a picture the editor never saw is one
+it cannot weigh. A film prepares only those, though, not the whole window around them. A person film
+over her lifetime selects from the pictures where she is recognised, so those are prepared, plus the
+five-minute capture run each one sits in (the exposure rule reads the whole run's flags) and the
+other stills of its Live Photo family. The rest of the window is read as Immich metadata, because
+episodes and moments are cut from the whole library, and gets no preview, head, detector or face
+read. A cut that somehow selected an unprepared picture stops rather than shipping it. Preparing the
+whole library is what [`prepare`](./cli/prepare.md) is for.
 The levers are putting the caption server and the reader where they are fast, preparing a library
 ahead with [`prepare`](./cli/prepare.md), and keeping the cache. If the render is
 the slow part none of that helps: that is decode, scale, blend and encode, and the levers are a

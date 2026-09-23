@@ -190,8 +190,13 @@ def prepare_editorial_source(
     dependencies: EditorialDependencies,
     *,
     trace: Trace | None = None,
+    group: bool = True,
 ) -> PreparedEditorialSource:
-    """Acquire, normalize, and admit the complete source-eligible corpus."""
+    """Acquire, normalize, and admit the complete source-eligible corpus.
+
+    ``group=False`` leaves episodes and moments uncut, for a caller that only needs to
+    know what was admitted.
+    """
     excluded = set(request.owner_excluded_asset_ids)
     sources, normalization_warnings = _coalesce_sources(
         tuple(
@@ -240,7 +245,11 @@ def prepare_editorial_source(
     visual_sources = tuple(
         _visual_source_from(source, dependencies.preview_jpeg) for source in eligible_sources
     )
-    grouped = _grouped_corpus(candidates, rendering_families)
+    grouped = (
+        _grouped_corpus(candidates, rendering_families)
+        if group
+        else _GroupedCorpus(candidates, rendering_families, (), (), ())
+    )
     source_warnings = (*normalization_warnings, *family_warnings, *grouped.warnings)
     trace = Trace() if trace is None else trace
     trace.warnings.extend(source_warnings)

@@ -116,6 +116,7 @@ class TextEditorialPlanner:
         trace: Trace,
         evidence_exclusions: Mapping[str, str] | None = None,
         include_previews: bool = True,
+        group: bool = True,
     ) -> PreparedEditorialSource:
         """Capture canonical context before choosing which eligible sources are demanded."""
         return prepare_editorial_source(
@@ -126,6 +127,7 @@ class TextEditorialPlanner:
             if include_previews
             else replace(self._source_dependencies, preview_jpeg=None),
             trace=trace,
+            group=group,
         )
 
     def plan_prepared(

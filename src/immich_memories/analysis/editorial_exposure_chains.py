@@ -22,7 +22,7 @@ model tier's verdicts and what a ``sendable`` export may carry.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from operator import itemgetter
@@ -75,6 +75,23 @@ def held_chains(rows: Iterable[tuple[str, datetime, bool]]) -> dict[str, ChainHo
         for asset_id, _taken, was_flagged in chain:
             held[asset_id] = ChainHold(len(chain), flagged, swept_in=not was_flagged)
     return held
+
+
+def runs_holding(rows: Iterable[tuple[str, datetime]], asset_ids: Collection[str]) -> set[str]:
+    """Every capture in a run that holds one of these ids, the ids included.
+
+    ``rows`` are ``(asset_id, taken)``, the same clock ``held_chains`` runs on. Whether a run
+    holds one of its pictures is decided by all of the run's flags, so a film preparing that
+    picture prepares its run: an unread neighbour would count as a clean capture and could
+    only ever lift a hold.
+    """
+    ordered = sorted(((asset_id, taken, False) for asset_id, taken in rows), key=itemgetter(1, 0))
+    return {
+        row[0]
+        for chain in _chains(ordered)
+        if any(row[0] in asset_ids for row in chain)
+        for row in chain
+    }
 
 
 def _chains(
