@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from functools import partial
 from typing import NamedTuple
@@ -41,7 +42,7 @@ WORTH_SUBJECT_CRITERION = (
     "words what it shows of the subject.\nSubject: {subject}"
 )
 
-STANDING_PROMPT_VERSION = "picture-stands-v4-motion-evidence"
+STANDING_PROMPT_VERSION = "picture-stands-v5-own-label-example"
 STANDING_CRITERION = (
     "Name the pictures that do NOT stand by themselves: pictures nobody would show on their own because they show "
     "nothing worth showing. A close-up of a body part or an ailment, a screen, a document, a lone everyday object "
@@ -509,6 +510,19 @@ def _warn_on_empty_rounds(rounds: Sequence[Mapping[str, object]]) -> None:
 
 STANDING_MAX_TOKENS = 700
 
+_OFFERED_LABEL = re.compile(r"^(P\d+): ", re.MULTILINE)
+
+
+def weak_example(listing: str) -> str:
+    """The answer shape a reject-only vote is shown, named with the block's own first labels.
+
+    A fixed example of P03 and P07 was copied as the answer by a reader shown P97 to P108,
+    three times over, and a vote naming labels it was not offered ends the film. The example
+    now only ever names labels the block holds: its first two, or its one.
+    """
+    labels = _OFFERED_LABEL.findall(listing)[:2]
+    return json.dumps({"weak": dict.fromkeys(labels, "why")}, separators=(",", ":"))
+
 
 def standing_prompt(contract: str, period_label: str, listing: str) -> str:
     """The whole standing question over one listing of rows."""
@@ -516,7 +530,7 @@ def standing_prompt(contract: str, period_label: str, listing: str) -> str:
     return (
         f"{contract}\n\nBelow are single pictures from one period ({period_label}), one line each: when it "
         f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n"
-        'Answer with one JSON object only, on one line: {"weak":{"P03":"why","P07":"why"}}'
+        f"Answer with one JSON object only, on one line: {weak_example(listing)}"
         f"\n\nPICTURES\n{listing}"
     )
 
