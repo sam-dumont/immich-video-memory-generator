@@ -157,8 +157,9 @@ is handed one picture per source and cannot be handed eight.
 its frames that show a people moment, a place, a record or a screen. A clip that shows its moment
 in fewer than three frames of four, like a clip that is mostly wall with the subject at the edge,
 reads `frames=subject_often_missing` on its line and does not stand on its own: the no-model cut
-scores it 0 unless it is a favourite, and a model cut refuses it on standing whatever the text
-vote says, where it used to depend on which film asked. Measured on 33 real clips: the two a
+scores it 0, and a model cut refuses it on standing whatever the text vote says, where it used to
+depend on which film asked. A favourite is the exception on both: a favourite showing a wall means
+something happened there, so the fact still shows on its line but never removes it. Measured on 33 real clips: the two a
 reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
 or more. The frames are sampled once for this and the exposure head together; a clip already
 prepared is sampled again once. A clip whose frames cannot be read, or an install without the

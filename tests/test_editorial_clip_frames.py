@@ -37,7 +37,7 @@ def test_a_clip_with_no_readable_frame_decides_nothing():
     assert clip_frames_fact([]) is None
 
 
-def _standing(line_of):
+def _standing(line_of, *, favourite=False):
     from types import SimpleNamespace
 
     from immich_memories.analysis.editorial_story_standing import StandingGate
@@ -55,7 +55,13 @@ def _standing(line_of):
             self.calls.append(prompt)
             return '{"weak": {}}'
 
-    clip = {"asset_id": "clip", "kind": "video", "raw_seconds": 12.0, "members": ["clip"]}
+    clip = {
+        "asset_id": "clip",
+        "kind": "video",
+        "raw_seconds": 12.0,
+        "members": ["clip"],
+        "favourite": favourite,
+    }
     judge = Approves()
     gate = StandingGate(
         judge,
@@ -80,6 +86,19 @@ def test_a_clip_whose_frames_often_miss_its_subject_does_not_stand_on_approving_
     assert not gate.stands("clip", "major", "S1")
     # No answer can move it, so nobody is asked about it.
     assert needs == {"clip": 0} and judge.calls == []
+
+
+def test_a_favourite_clip_whose_frames_often_miss_its_subject_still_stands():
+    # The owner's ruling: a favourite showing a wall means something happened there.
+    line = "10:00 | VIDEO 12s raw | a child at a door | frames=subject_often_missing"
+    favourite, _judge = _standing(lambda _asset: line, favourite=True)
+    favourite.ensure(["clip"], {"clip": favourite.needs("clip", "major", "S1")})
+    other, _judge = _standing(lambda _asset: line)
+    other.ensure(["clip"], {"clip": other.needs("clip", "major", "S1")})
+
+    assert favourite.stands("clip", "major", "S1")
+    assert not favourite.rejected_motion("clip")
+    assert not other.stands("clip", "major", "S1")
 
 
 def test_a_clip_that_shows_its_moment_still_stands_on_approving_votes():

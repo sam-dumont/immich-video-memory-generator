@@ -191,9 +191,12 @@ class StandingGate:
         return moving and (self.scores.get(asset, 0) == 0 or self._frames_miss(asset))
 
     def _frames_miss(self, asset: str) -> bool:
-        return carries_motion(self._unit_by_asset[asset][1]) and subject_often_missing(
-            self._line_of(asset)
-        )
+        # A favourite is never refused on its frames: a favourite showing a wall means
+        # something happened there. The fact stays on its line for the reader.
+        unit = self._unit_by_asset[asset][1]
+        if unit.get("favourite"):
+            return False
+        return carries_motion(unit) and subject_often_missing(self._line_of(asset))
 
     def _context_allowed(self, asset: str, weight: str, story_key: str) -> bool:
         starred = bool(self._unit_by_asset[asset][1].get("favourite"))
