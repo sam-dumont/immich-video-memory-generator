@@ -10,7 +10,6 @@ import hashlib
 import json
 import re
 from collections import ChainMap
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from operator import itemgetter
@@ -23,12 +22,7 @@ from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
-from immich_memories.analysis.editorial_preparation_detectors import MARQO_HEAD
-from immich_memories.analysis.editorial_review_list import (
-    exposure_probabilities,
-    to_check,
-    write_review_list,
-)
+from immich_memories.analysis.editorial_review_list import write_for_cut
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     BankedAnswers,
@@ -298,7 +292,13 @@ def plan_structure(
     outcome.shaved = run.shaved
     outcome.content_cap = run.final_content_cap
     outcome.timing_binding = _timing_binding(source, run)
-    _write_review_list(source, run.carriers, outcome.share_log.get("verdicts", {}))
+    write_for_cut(
+        source.store_path,
+        source.artifact_dir,
+        source.config.editorial.head_versions,
+        run.carriers,
+        outcome.share_log.get("verdicts", {}),
+    )
     facts = PlanFacts(
         label=source.case.label,
         target_seconds=source.case.target_seconds,
@@ -319,18 +319,6 @@ def plan_structure(
         prior_plan_ref=source.prior_plan_ref,
     )
     return build_result(source, ports, facts, outcome)
-
-
-def _write_review_list(
-    source: StructurePlanningInput, carriers: Sequence[dict], verdicts: Mapping[str, Any]
-) -> None:
-    """Name the finished cut's shots in the exposure head's grey zone. It changes no shot."""
-    probabilities = exposure_probabilities(
-        source.store_path,
-        [str(carrier.get("asset_id")) for carrier in carriers],
-        source.config.editorial.head_versions.get(MARQO_HEAD, ""),
-    )
-    write_review_list(source.artifact_dir, to_check(carriers, verdicts, probabilities))
 
 
 def _timing_binding(source: StructurePlanningInput, run: PlanRun) -> dict:

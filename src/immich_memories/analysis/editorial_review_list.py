@@ -125,6 +125,22 @@ def write_review_list(directory: Path, rows: Sequence[Mapping[str, Any]]) -> int
     return len(rows)
 
 
+def write_for_cut(
+    store_path: Path | str | None,
+    directory: Path,
+    head_versions: Mapping[str, str],
+    carriers: Sequence[Mapping[str, Any]],
+    verdicts: Mapping[str, Mapping[str, Any]],
+) -> int:
+    """Name the finished cut's shots in the exposure head's grey zone. It changes no shot."""
+    probabilities = exposure_probabilities(
+        store_path,
+        [str(carrier.get("asset_id")) for carrier in carriers],
+        head_versions.get(MARQO_HEAD, ""),
+    )
+    return write_review_list(directory, to_check(carriers, verdicts, probabilities))
+
+
 def _pictures(attempt_dir: Path | None) -> list[dict[str, Any]]:
     if attempt_dir is None:
         return []

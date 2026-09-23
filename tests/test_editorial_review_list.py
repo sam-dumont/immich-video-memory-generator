@@ -95,3 +95,30 @@ def test_the_summary_says_how_many_even_when_there_are_none():
     )
 
     assert "0 pictures to check before sharing" in text
+
+
+def test_a_finished_cut_writes_its_grey_zone_shots_at_the_version_the_run_reads(tmp_path):
+    from immich_memories.analysis.editorial_review_list import write_for_cut
+    from immich_memories.store.editorial_preparation import initialize
+
+    store = tmp_path / "annotations.sqlite"
+    with sqlite3.connect(store) as connection:
+        initialize(connection)
+        connection.executemany(
+            "INSERT INTO head_facts VALUES (?,?,?,?,?,?,?)",
+            [
+                ("a1", "nsfw_marqo", "det-v3", "no", 0.31, "k", "now"),
+                ("b2", "nsfw_marqo", "det-v3", "no", 0.42, "k", "now"),
+            ],
+        )
+
+    written = write_for_cut(
+        store,
+        tmp_path,
+        {"nsfw_marqo": "det-v3"},
+        _carriers("a1", "b2"),
+        {"b2": {"finding": "exposure_chain"}},
+    )
+
+    assert written == 1
+    assert review_note(tmp_path, "a1") and not review_note(tmp_path, "b2")
