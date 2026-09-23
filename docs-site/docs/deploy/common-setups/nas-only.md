@@ -65,7 +65,7 @@ services:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     ports:
-      - "127.0.0.1:8080:8080"        # loopback only, see below
+      - "127.0.0.1:8080:8080"        # loopback only, see below; 8081:8080 if 8080 is taken
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
       - ./output:/app/output          # mkdir it first; chown 1000:1000 if your user is not 1000
@@ -73,6 +73,11 @@ services:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
       IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      # Keeps the document classifier's snapshot on the volume, not in the container.
+      IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"
+      # Home, so a trip reads as one story (see above). Decimal degrees.
+      # IMMICH_MEMORIES_TRIPS__HOMEBASE_LATITUDE: "<your latitude>"
+      # IMMICH_MEMORIES_TRIPS__HOMEBASE_LONGITUDE: "<your longitude>"
       # With a model on another machine. Not localhost: inside a container that is the container.
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://model-box.lan:8000/v1"
       # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
@@ -90,8 +95,15 @@ volumes:
   immich-memories-config:
 ```
 
-`llm.model` must be the exact string the reader reports at `GET /v1/models`. The container runs as
-UID/GID 1000, so create `./output` before the first start. On Synology or QNAP, where that is
+`llm.model` must be the exact string the reader reports at `GET /v1/models`, and a reader that
+answers `401` wants its token in `IMMICH_MEMORIES_LLM__API_KEY`. Whatever serves the model box has to
+listen on the LAN, not only on `127.0.0.1`: the mlxcel caption recipe needs `--host 0.0.0.0` for
+this layout ([Caption server](../installation/caption-server.md#apple-silicon-with-mlxcel)).
+
+UniFi and other NAS apps often hold 8080 already. Change the left side of the port mapping
+(`127.0.0.1:8081:8080`) and use that port in the tunnel below; the container side stays 8080.
+
+The container runs as UID/GID 1000, so create `./output` before the first start. On Synology or QNAP, where that is
 awkward, use a named volume and `docker cp` the video out, or turn on upload-back to Immich.
 
 ### Do not cap the CPU with `cpus:` on a Synology
@@ -120,11 +132,9 @@ docker compose exec immich-memories immich-memories preflight        # Immich, t
 docker compose exec immich-memories immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
 ```
 
-`models fetch` puts the two digest-pinned ONNX exports on the config volume, but the document
-classifier's Hugging Face snapshot lands in the container's writable layer and is gone on the next
-`docker compose pull`. Add
-`IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"`
-to `environment:` before you fetch and all three stay on the volume.
+`models fetch` puts all three artifacts on the config volume. The document classifier's snapshot
+gets there only because of the `DETECTOR_CACHE_DIR` line in the block above; drop it and the
+snapshot lands in the container's writable layer and is gone on the next `docker compose pull`.
 
 Each cut logs its per-producer cost, so
 `docker compose logs immich-memories | grep "preparation tier"` tells you which producer this box

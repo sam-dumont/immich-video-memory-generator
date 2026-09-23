@@ -66,9 +66,9 @@ services:
       # Raise the tier to "full" with this, once a caption server answers.
       # The captioner profile below is one, and it is this compose network:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://immich-memories-captioner:8092/v1"
-      # Against a CPU captioner, ask for one picture at a time. Measured on 136
-      # pictures: 36 s at 1, 461 s at the default 4, same server. Four image
-      # encodes share the threads of one, and none of them finishes sooner.
+      # Against a CPU captioner, keep one picture at a time, the default. Measured
+      # on 136 pictures: 36 s at 1, 461 s at 4, same server. Four image encodes
+      # share the threads of one, and none of them finishes sooner.
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_CONCURRENCY: "1"
       # Optional: run the heads and detectors in the inference service below
       # instead of in this container (start it with --profile inference).
@@ -192,14 +192,13 @@ services:
   # contract, are on docs/deploy/installation/caption-server.md.
   #
   #   docker compose --profile captioner up -d
-  #   curl -s localhost:8092/v1/models
+  #   curl -s localhost:8094/v1/models
   #
   # Then set the tier to full and point the app at it (both lines above).
   #
-  # This publishes host port 8092, which the inference profile publishes too.
-  # Running both means changing one of the two left-hand sides; inside the
-  # compose network they are different service names on the same port, so only
-  # a curl from the host cares.
+  # This publishes host port 8094, so it runs beside the inference profile's
+  # 8092. Inside the compose network both listen on 8092 under different
+  # service names; only a curl from the host sees 8094.
   #
   # On an NVIDIA host, run CAPTIONER_TAG=server-cuda and uncomment the two blocks
   # at the end of the serving service below. Measured: 3.5 s a picture on the CPU
