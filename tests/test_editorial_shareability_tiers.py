@@ -305,3 +305,37 @@ def test_a_clips_detector_rows_are_read_at_the_version_this_run_reads(tmp_path):
     )
 
     assert heads == {"clip": {"nsfw_marqo": "yes"}}
+
+
+def test_a_clip_the_nsfw_head_held_stays_held_when_the_model_reports_no_uncovered_person():
+    """A model reading only adds holds: the owner prefers a false positive to a miss."""
+    evidence = _with_clip({"nsfw_marqo": "yes"})
+    evidence["companion_body_warnings"][0]["body_observation"] = {"uncovered_person": "no"}
+
+    model = share.check_audience(ClearingReader(), evidence, "unit-1")
+
+    assert model["verdict"] == "family_only" and model["finding"] == "clip_exposure"
+
+
+def test_a_still_the_nsfw_head_held_stays_held_when_the_captions_clear_every_person():
+    evidence = share.evidence_for_unit(
+        {"asset_id": "still", "members": ["still"]},
+        {"still": Annotation("A fully clothed family waves.", (("nsfw_marqo", "yes"),))},
+        {},
+        {},
+    )
+
+    model = share.check_audience(ClearingReader(), evidence, "unit-1")
+
+    assert model["verdict"] == "family_only" and model["finding"] == "exposure_evidence"
+
+
+def test_the_owner_clearing_a_picture_on_the_pool_page_is_what_lifts_its_detector_hold():
+    evidence = share.evidence_for_unit(
+        {"asset_id": "still", "members": ["still"]},
+        {"still": Annotation("A fully clothed family waves.", (("nsfw_marqo", "yes"),))},
+        {"still": [share.FlagRow("still", "cleared", "owner reviewed", "owner")]},
+        {},
+    )
+
+    assert share.check_audience(ClearingReader(), evidence, "unit-1")["verdict"] == "share"

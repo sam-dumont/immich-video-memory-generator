@@ -125,6 +125,13 @@ all eight out of the cut regardless of what the model was told. The gate judges 
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 
+**A detector's hold is never lifted by a later reading.** When the exposure detector flags a
+still, any frame of a video, or a Live Photo's clip, that shot stays family-only on every tier.
+A model reading can add a hold but never remove one: not a caption that describes everyone as
+clothed, and not a direct look at the picture that reports nobody uncovered. A false positive
+costs a shot; a false negative puts the wrong picture in front of the wrong people. Only you can
+clear it, on the pool page.
+
 **A video is read across its length, not at its start.** Immich's preview for a video is a single
 frame near its beginning, and the exposure detector used to decide the whole clip on it. It now
 reads up to eight frames spread over the clip (the keyframes nearest eight evenly spaced moments,
@@ -146,8 +153,7 @@ its clip read the same way any clip is read, and the answer is banked under the 
 That pass is deliberately narrow: the exposure detector only, no caption, no context head, no pixel
 fact, so it costs the same 0.3 to 0.4 s per clip as any other. A shot whose clip is flagged is held
 to family viewing whatever its own captions say, because the captions describe the still and a still
-is not evidence about the seconds of motion hanging off it; only a direct observation of that clip
-lifts it. Immich keeps no preview for many of these clips (120 of 193 in one month) but plays all
+is not evidence about the seconds of motion hanging off it. Immich keeps no preview for many of these clips (120 of 193 in one month) but plays all
 of them, so a clip with no preview is read on its frames alone. A clip Immich will neither preview
 nor play leaves its still in the film and one named failure behind, which is exactly the evidence
 every Live Photo carried before.

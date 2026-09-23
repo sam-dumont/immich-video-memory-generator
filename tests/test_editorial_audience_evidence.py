@@ -162,7 +162,8 @@ def test_positive_landscape_detector_has_a_benign_caption_observation():
     item = evidence("An empty rocky beach with a white lighthouse.", nsfw_marqo="yes")
     judge = Judge(activity(), exposure({"p1": []}))
     actual = share.check_audience(judge, item, "test")
-    assert actual["verdict"] == "share"
+    # The observation is recorded; the detector's hold stands whatever it says.
+    assert actual["verdict"] == "family_only" and actual["finding"] == "exposure_evidence"
     assert actual["exposure"]["unresolved_members"] == []
     assert actual["exposure"]["groups"][0]["captions"] == {
         "p1": "An empty rocky beach with a white lighthouse."
@@ -215,7 +216,7 @@ def test_partial_person_coverage_cannot_resolve_a_picture_warning(caption):
     assert "private-id" not in prompt
 
 
-def test_explicit_coverage_for_every_person_can_resolve_a_picture_warning():
+def test_explicit_coverage_for_every_person_resolves_the_review_but_not_the_detector_hold():
     item = evidence(
         "A man wearing a t-shirt holds a baby wrapped in a white blanket.", nsfw_marqo="yes"
     )
@@ -224,7 +225,7 @@ def test_explicit_coverage_for_every_person_can_resolve_a_picture_warning():
         item,
         "test",
     )
-    assert actual["verdict"] == "share"
+    assert actual["verdict"] == "family_only" and actual["finding"] == "exposure_evidence"
     assert actual["exposure"]["unresolved_members"] == []
 
 

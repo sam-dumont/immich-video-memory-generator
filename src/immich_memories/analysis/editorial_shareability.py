@@ -492,20 +492,17 @@ def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[
 
 
 def _floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    """Holds the reader cannot lift, because it was never shown what raised them.
+    """Holds no reading can lift: a model reading only ever adds holds.
 
-    It reads one unit's captions. It cannot see the three minutes around the capture, and
-    it cannot see the clip attached to the still -- the captions describe the still. Both
-    only ever take a unit further from `share`.
+    A detector that flagged a still, a video's frames or a Live Photo's clip keeps the unit
+    in the family whatever the captions or a body observation say afterwards: the owner
+    prefers a false positive to a miss. Nor can the reader see the three minutes around a
+    capture. All of these only ever take a unit further from `share`.
     """
     if result["verdict"] != "share":
         return result
-    if _unresolved_clip(evidence):
-        return result | {
-            "verdict": "family_only",
-            "finding": "clip_exposure",
-            "why": "the attached clip is flagged for exposure",
-        }
+    if finding := _head_hold(evidence):
+        return result | {"verdict": "family_only", "finding": finding, "why": _HEAD_WHY[finding]}
     chain = evidence.get("exposure_chain")
     if not chain:
         return result
@@ -517,19 +514,32 @@ def _floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[s
     }
 
 
-def _unresolved_clip(evidence: Mapping[str, Any]) -> bool:
-    """Whether a flagged attached clip is still unaccounted for.
+_HEAD_WHY = {
+    "exposure_evidence": "an exposure detector flagged this picture",
+    "clip_exposure": "the attached clip is flagged for exposure",
+}
 
-    Only a direct observation of that clip clears it. The captions describe the still, and
-    a still is not evidence about the seconds of motion hanging off it.
-    """
-    return any(
+
+def _head_hold(evidence: Mapping[str, Any]) -> str:
+    """Which detector hold stands; only the owner's own clearance on the pool page lifts one."""
+    if any(
+        exposure_flagged(member.get("detectors", {})) and not _owner_cleared(member)
+        for member in evidence.get("members", ())
+    ):
+        return "exposure_evidence"
+    # A companion warning is only written for a clip the owner has not cleared.
+    if any(
         exposure_flagged(warning.get("detectors", {}))
-        and not (
-            isinstance(warning.get("body_observation"), Mapping)
-            and warning["body_observation"].get("uncovered_person") == "no"
-        )
         for warning in evidence.get("companion_body_warnings", ())
+    ):
+        return "clip_exposure"
+    return ""
+
+
+def _owner_cleared(member: Mapping[str, Any]) -> bool:
+    return any(
+        row.get("source") == OWNER_SOURCE and row.get("flag") == OWNER_CLEARED
+        for row in member.get("flags", ())
     )
 
 
