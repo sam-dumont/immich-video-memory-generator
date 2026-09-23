@@ -18,6 +18,19 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+_ORIENTATION_TAG = 0x0112
+# The EXIF orientation values and the transpose that displays each, as Pillow's
+# ImageOps.exif_transpose applies them.
+_EXIF_TRANSPOSE = {
+    2: Image.Transpose.FLIP_LEFT_RIGHT,
+    3: Image.Transpose.ROTATE_180,
+    4: Image.Transpose.FLIP_TOP_BOTTOM,
+    5: Image.Transpose.TRANSPOSE,
+    6: Image.Transpose.ROTATE_270,
+    7: Image.Transpose.TRANSVERSE,
+    8: Image.Transpose.ROTATE_90,
+}
+
 
 @dataclass
 class GainMapMetadata:
@@ -52,7 +65,20 @@ def extract_gain_map(jpeg_path: str | Path) -> tuple[Image.Image, Image.Image]:
         size1 = len(data) - offset1
     gain_map = Image.open(io.BytesIO(data[offset1 : offset1 + size1]))
 
-    return primary, gain_map
+    return _upright(primary, gain_map)
+
+
+def _upright(primary: Image.Image, gain_map: Image.Image) -> tuple[Image.Image, Image.Image]:
+    """Turn the base image and its gain map to the base image's EXIF orientation.
+
+    The gain map is stored on the base image's axes and carries no orientation of its
+    own, so it takes the same transform or it brightens the wrong half of the picture.
+    An upright file is returned untouched, keeping the decoder's draft downscale.
+    """
+    method = _EXIF_TRANSPOSE.get(primary.getexif().get(_ORIENTATION_TAG, 1))
+    if method is None:
+        return primary, gain_map
+    return primary.transpose(method), gain_map.transpose(method)
 
 
 def parse_hdrgm_metadata(jpeg_path: str | Path) -> GainMapMetadata:
