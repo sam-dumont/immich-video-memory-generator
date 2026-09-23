@@ -152,7 +152,7 @@ class Film:
         )
 
 
-def polish(tmp_path, film: Film, *, audience_batch: int = 12):
+def polish(tmp_path, film: Film, *, audience_batch: int = 12, short=None, room: float = 120.0):
     judge = CountingJudge()
     recorded: dict = {}
     standing = StandingGate(
@@ -175,7 +175,7 @@ def polish(tmp_path, film: Film, *, audience_batch: int = 12):
         library=AudienceBank(tmp_path / "audience-verdicts.private.json", answerer="full|model-a"),
     )
     drafted = {row["asset_id"] for row in film.draft}
-    cut = ThinPolish(bank_dir=tmp_path).polish(
+    cut = ThinPolish(bank_dir=tmp_path, short=short).polish(
         film.draft,
         judge=judge,
         gates=ThinGates(
@@ -189,7 +189,7 @@ def polish(tmp_path, film: Film, *, audience_batch: int = 12):
         line_of=film.lines.get,
         record=lambda name, payload: recorded.__setitem__(name, payload),
         candidates_of=lambda key: film.pool.get(key, []),
-        content_cap=sum(row["seconds"] for row in film.draft) + 120.0,
+        content_cap=sum(row["seconds"] for row in film.draft) + room,
     )
     newcomers = [row["asset_id"] for row in cut if row["asset_id"] not in drafted]
     return judge, recorded["thin-polish"], cut, newcomers

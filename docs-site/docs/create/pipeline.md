@@ -539,8 +539,19 @@ Every replacement goes through the same gates and is voted on again in the compa
 joined, not the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
 
+A film the polish leaves short gets one more look before it gives up the seconds. On a cold
+library a story the draft never reached has no reading, so it can never show that it holds a
+moment worth a place: a measured month ended at 27 s of 60, with two whole weeks unshown. When the
+cut is short by S seconds, the polish reads at most 2 × ⌈S / 3.5⌉ unread episodes of the stories
+it holds no shot of. A week the film does not reach goes first, then a day it does not reach, then
+the story's worthiness, close family in the pictures, motion, and how many pictures the no-model
+reader stands at two. Those readings are banked like any other. A story whose reading records a
+moment may then take a seat, at most ⌈S / 3.5⌉ of them, through the same pick, gates and vote. A
+story whose reading records nothing gets no seat, and the film stays short. The budget grows by
+one call per three episodes read and four per seat. The no-model tier never reads here.
+
 The polish is held to a budget: four questions per twelve draft shots (standing and fit once, the
-audience question in its two orders) and four per seat it opens. `thin-polish.private.json` records what it asked against that budget,
+audience question in its two orders) and four per seat it opens, plus what a short film reads. `thin-polish.private.json` records what it asked against that budget,
 and the run warns when it goes over. The cold 2024 year used to spend 466 calls on the polish for 10
 new shots, most of them putting every picture of the seats' stories, up to a thousand at a time, to
 the standing gate before any seat had picked. The audience question stays on every shot that enters

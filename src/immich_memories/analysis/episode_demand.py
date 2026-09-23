@@ -62,6 +62,22 @@ class DemandEpisodeReadings:
             raise RuntimeError("the demand reader has no prepared source yet")
         return build(self._prepared)
 
+    def unread_episodes(self, asset_ids: Sequence[str]) -> dict[str, tuple[str, ...]]:
+        """The canonical episodes these pictures sit in that no demand of this run has read.
+
+        Each maps to its members among the pictures handed in. Nothing is read to answer it.
+        """
+        prepared = self._prepared
+        if prepared is None:
+            return {}
+        known = frozenset(prepared.candidate_ids)
+        wanted = [asset for asset in dict.fromkeys(asset_ids) if asset in known]
+        return {
+            projection.group.group_id: projection.scoped_candidate_ids
+            for projection in project_episode_groups(prepared, wanted)
+            if projection.group.group_id not in self.demanded
+        }
+
     def readings_for(self, asset_ids: Sequence[str]) -> dict[str, BankedEpisodeReading]:
         """Read and bank every canonical episode these pictures belong to, by episode id.
 

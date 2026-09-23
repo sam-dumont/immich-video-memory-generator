@@ -131,6 +131,21 @@ def test_a_second_demand_for_the_same_story_is_free(tmp_path):
     assert list(again)
 
 
+def test_the_unread_episodes_are_the_ones_no_demand_has_read_and_asking_is_free(tmp_path):
+    asked: list[str] = []
+    demand, prepared = demand_for(tmp_path, asked)
+    demand.readings_for(["day-two"])
+    paid = len(asked)
+
+    unread = demand.unread_episodes(list(ASSETS) + ["not-in-this-film"])
+
+    group_of = {
+        asset: project_episode_groups(prepared, (asset,))[0].group.group_id for asset in ASSETS
+    }
+    assert unread == {group_of["day-one"]: ("day-one",), group_of["day-three"]: ("day-three",)}
+    assert len(asked) == paid
+
+
 def test_a_picture_outside_this_corpus_demands_nothing(tmp_path):
     asked: list[str] = []
     demand, _prepared = demand_for(tmp_path, asked)

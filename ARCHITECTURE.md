@@ -236,6 +236,8 @@ src/immich_memories/
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
 │   │                               # source order first, the hashed order only where it decides
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
+│   ├── editorial_thin_short.py     # A short cut reads ≤2·⌈S/3.5⌉ unread episodes of shot-less stories;
+│   │                               # only a story whose reading records a moment gets a seat
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
 │   │                               # meet the gates, and a refused pick is picked once more
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,

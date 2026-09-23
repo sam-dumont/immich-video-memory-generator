@@ -127,7 +127,7 @@ def plan_slots(
     story_of = {asset: story.key for story in catalogue.stories for asset in story.asset_ids}
     offers = _offers(candidates_of, seen)
     room = openable_slots(content_cap, sum(row["seconds"] for row in cut))
-    slots = _newcomer_slots(cut, catalogue, refused, offers, room)
+    slots = newcomer_slots(cut, catalogue, offers, room, refused=refused)
     appends = [
         (asset, VOTE_BAD, story_of.get(asset, ""), "")
         for asset, verdict in verdicts.items()
@@ -158,9 +158,19 @@ def _offers(candidates_of, seen: set[str]):
     return offers
 
 
-def _newcomer_slots(cut, catalogue, refused, offers, room: int) -> list[ThinSlot]:
-    # A story whose shot the gates took already has its seat back; a newcomer slot as well would
-    # be a second picture the draft never gave it, which is depth.
+def newcomer_slots(
+    cut: Sequence[Mapping[str, Any]],
+    catalogue: ThinCatalogue,
+    offers: Callable[[str], list[dict[str, Any]]],
+    room: int,
+    *,
+    refused: Sequence[GateRefusal] = (),
+) -> list[ThinSlot]:
+    """A seat for each story the catalogue records something about and the cut has no shot of.
+
+    A story whose shot the gates took already has its seat back; a newcomer slot as well would
+    be a second picture the draft never gave it, which is depth.
+    """
     held = {str(row.get("story_episode") or "") for row in cut} | {row.story for row in refused}
     stories = newcomer_stories(
         catalogue,

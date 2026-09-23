@@ -29,7 +29,7 @@ MAY = DateRange(
 )
 
 
-def whole_month(captured, bank):
+def whole_month(captured, bank, *, notable=()):
     """The same capture, presented as the whole calendar month a film of it would ask for."""
     identity = IDENTITY
     asset_ids = tuple(captured.assets)
@@ -44,6 +44,10 @@ def whole_month(captured, bank):
                         EpisodeRepresentative(asset_id=asset_ids[0], reason="the first box"),
                     ),
                     cull_decisions=(),
+                    notable_moments=tuple(
+                        EpisodeRepresentative(asset_id=asset_ids[n], reason=why)
+                        for n, why in notable
+                    ),
                 )
             ]
         )
@@ -72,6 +76,9 @@ class BankedDemand:
     def __init__(self, bank, identity):
         self.bank, self.identity = bank, identity
         self.asked: list[tuple[str, ...]] = []
+
+    def unread_episodes(self, asset_ids):
+        return {self.identity.group_id: tuple(asset_ids)}
 
     def readings_for(self, asset_ids):
         self.asked.append(tuple(asset_ids))
@@ -126,6 +133,38 @@ def test_a_period_with_no_account_is_catalogued_when_the_draft_asks_for_it(tmp_p
     assert records == {}
     # One episode: its own reading is the month's account, so nothing was asked.
     assert reader.prompts == []
+
+
+def test_a_short_film_reads_more_through_the_demand_and_gets_its_records(tmp_path):
+    bank = tmp_path / "annotations.sqlite"
+    captured = whole_month(
+        source(tmp_path, seconds=60, pictures=3), bank, notable=[(1, "the first box packed")]
+    )
+    model_reader(captured.config)
+    demand = BankedDemand(bank, IDENTITY)
+
+    short = backend_for(captured, Reader(), demand)._thin_polish(captured)["thin"].short
+    assets = tuple(captured.assets)
+
+    assert short.unread(assets) == {IDENTITY.group_id: assets}
+    assert short.records(assets[1:]) == {assets[1]: "the first box packed"}
+    assert demand.asked == [assets[1:]]
+    assert short.standing(assets[0]) in {0, 1, 2}
+
+
+def test_a_short_film_whose_reading_fails_reads_no_records(tmp_path):
+    class Failing(BankedDemand):
+        def readings_for(self, asset_ids):
+            raise RuntimeError("the reader is down")
+
+    bank = tmp_path / "annotations.sqlite"
+    captured = whole_month(source(tmp_path, seconds=60, pictures=3), bank)
+    model_reader(captured.config)
+
+    backend = backend_for(captured, Reader(), Failing(bank, IDENTITY))
+    short = backend._thin_polish(captured)["thin"].short
+
+    assert short.records(tuple(captured.assets)) == {}
 
 
 def test_the_no_model_reader_leaves_the_period_uncatalogued(tmp_path):

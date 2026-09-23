@@ -37,6 +37,7 @@ from immich_memories.analysis.editorial_structure_contract import (
 from immich_memories.analysis.editorial_structure_io import StructureReranker, StructureTextJudge
 from immich_memories.analysis.editorial_structure_source import capture_structure_input
 from immich_memories.analysis.editorial_thin_layer import ThinPolish, catalogued_period
+from immich_memories.analysis.editorial_thin_short import ShortReads
 from immich_memories.analysis.editorial_thumbnail_hashes import CachedThumbnailHasher
 from immich_memories.analysis.episode_demand import DemandEpisodeReadings
 from immich_memories.analysis.selection_trace import Trace
@@ -300,13 +301,47 @@ class ProductionPostCardBackend:
             return {}
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
+        rules = RuleStructureReader(source)
         return {
-            "rules": RuleStructureReader(source),
+            "rules": rules,
             "thin": ThinPolish(
                 bank_dir=source.bank_dir,
                 read_period=lambda asset_ids_of: self._read_period(source, period, asset_ids_of),
+                short=self._short_reads(source, rules.standing),
             ),
         }
+
+    def _short_reads(
+        self, source: StructurePlanningInput, standing: Callable[[str], int]
+    ) -> ShortReads | None:
+        """What a film the polish left short may still read: the run's unread episodes."""
+        demand = self._episode_demand
+        if demand is None:
+            return None
+        return ShortReads(
+            unread=demand.unread_episodes,
+            records=lambda asset_ids: self._records_for(source, asset_ids),
+            standing=standing,
+        )
+
+    def _records_for(
+        self, source: StructurePlanningInput, asset_ids: Sequence[str]
+    ) -> Mapping[str, str]:
+        """Read and bank these pictures' episodes; what the readings recorded, by picture.
+
+        A failed reading is a film that stays short, never a failed film.
+        """
+        from immich_memories.analysis.catalogue_runtime import banked_notable_records
+
+        assert source.store_path is not None and self._episode_demand is not None
+        try:
+            readings = self._episode_demand.readings_for(list(asset_ids))
+            return banked_notable_records(
+                [reading.identity for reading in readings.values()], store_path=source.store_path
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            logger.warning("Could not read more of this period for a short film (%s)", exc)
+            return {}
 
     def _read_period(
         self, source: StructurePlanningInput, period: str, asset_ids_of: Mapping[str, Sequence[str]]

@@ -18,6 +18,7 @@ import logging
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import chain
 from operator import itemgetter
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,20 @@ from immich_memories.analysis.editorial_thin_catalogue import (
     banked_catalogue,
 )
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
-from immich_memories.analysis.editorial_thin_refill import ThinRefill, ThinSlot, plan_slots
+from immich_memories.analysis.editorial_thin_refill import (
+    ThinRefill,
+    ThinSlot,
+    newcomer_slots,
+    openable_slots,
+    plan_slots,
+)
+from immich_memories.analysis.editorial_thin_short import (
+    ShortReads,
+    episodes_to_read,
+    seats_for,
+    short_budget,
+    with_records,
+)
 from immich_memories.analysis.editorial_thin_vote import (
     classify_fit,
     is_protected,
@@ -80,6 +94,8 @@ class ThinPolish:
     read_period: Callable[[Mapping[str, Sequence[str]]], tuple[str, Mapping[str, str]]] = (
         lambda _stories: ("", {})
     )
+    # What a film left short may still read; None on a route that reads nothing more.
+    short: ShortReads | None = None
 
     def catalogue_of(
         self,
@@ -161,6 +177,20 @@ class ThinPolish:
         final, revoked = self._checked(
             filled, kept, outcomes, partition, judge, catalogue, contract, line_of
         )
+        seen = {c["asset_id"] for c in carriers} | {c["asset_id"] for c in final}
+        topped, short_slots, short = self._short_reads(
+            final,
+            catalogue=catalogue,
+            offers=lambda key: [dict(u) for u in candidates_of(key) if u["asset_id"] not in seen],
+            refill=refill,
+            content_cap=content_cap,
+            line_of=line_of,
+        )
+        if short_slots:
+            final, late = self._checked(
+                topped, final, short_slots, partition, judge, catalogue, contract, line_of
+            )
+            revoked |= late
         record(
             "thin-polish",
             {
@@ -178,15 +208,68 @@ class ThinPolish:
                 "held_by_the_owner": [
                     asset for asset, verdict in verdicts.items() if verdict["held_by"]
                 ],
-                "slots": [slot.row() for slot in outcomes],
+                "slots": [slot.row() for slot in (*outcomes, *short_slots)],
+                "short": short,
                 "revoked_by_the_fit_check": sorted(revoked),
                 "shots": len(final),
                 "planned_seconds": round(sum(c["seconds"] for c in final), 3),
                 "content_cap": content_cap,
-                "calls": _spent(len(judge.calls) - first_call, len(carriers), len(outcomes)),
+                "calls": _spent(
+                    len(judge.calls) - first_call,
+                    thin_budget(len(carriers), len(outcomes))
+                    + short_budget(short.get("episodes_read", 0), len(short_slots)),
+                ),
             },
         )
         return final
+
+    def _short_reads(
+        self,
+        cut: list[dict[str, Any]],
+        *,
+        catalogue: ThinCatalogue,
+        offers: Callable[[str], list[dict[str, Any]]],
+        refill: ThinRefill,
+        content_cap: float,
+        line_of: Callable[[str], str],
+    ) -> tuple[list[dict[str, Any]], list[ThinSlot], dict[str, Any]]:
+        """The cut after a short film read a few unread episodes and seated what they recorded.
+
+        Only a story whose reading recorded something is offered a seat, so the film stays short
+        when nothing did. See `editorial_thin_short`.
+        """
+        missing = content_cap - sum(row["seconds"] for row in cut)
+        seats = seats_for(missing)
+        if self.short is None or not seats:
+            return cut, [], {}
+        episodes = episodes_to_read(
+            cut,
+            catalogue=catalogue,
+            offers=offers,
+            reads=self.short,
+            line_of=line_of,
+            limit=2 * seats,
+        )
+        wanted = list(chain.from_iterable(episodes))
+        records = dict(self.short.records(wanted)) if wanted else {}
+        richer = with_records(catalogue, records)
+        slots = newcomer_slots(
+            cut,
+            richer,
+            lambda key: _with_records(offers(key), richer),
+            min(seats, openable_slots(content_cap, content_cap - missing)),
+        )
+        filled, outcomes = refill.fill(cut, slots)
+        return (
+            filled,
+            outcomes,
+            {
+                "short_by": round(missing, 3),
+                "episodes_read": len(episodes),
+                "records": len(records),
+                "seats": len(slots),
+            },
+        )
 
     def _checked(
         self,
@@ -287,16 +370,9 @@ def thin_budget(draft: int, seats: int) -> int:
     return 4 * math.ceil(draft / BLOCK_SIZE) + 4 * seats
 
 
-def _spent(asked: int, draft: int, seats: int) -> dict[str, int]:
-    budget = thin_budget(draft, seats)
+def _spent(asked: int, budget: int) -> dict[str, int]:
     if asked > budget:
-        logger.warning(
-            "The thin layer asked %d questions for %d shots and %d seats (budget %d)",
-            asked,
-            draft,
-            seats,
-            budget,
-        )
+        logger.warning("The thin layer asked %d questions (budget %d)", asked, budget)
     return {"asked": asked, "budget": budget}
 
 
