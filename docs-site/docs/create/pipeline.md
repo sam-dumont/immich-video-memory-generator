@@ -539,16 +539,18 @@ Every replacement goes through the same gates and is voted on again in the compa
 joined, not the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
 
-The polish is held to a budget: three questions per twelve draft shots (standing, audience and fit)
-and four per seat it opens. `thin-polish.private.json` records what it asked against that budget,
+The polish is held to a budget: four questions per twelve draft shots (standing and fit once, the
+audience question in its two orders) and four per seat it opens. `thin-polish.private.json` records what it asked against that budget,
 and the run warns when it goes over. The cold 2024 year used to spend 466 calls on the polish for 10
 new shots, most of them putting every picture of the seats' stories, up to a thousand at a time, to
 the standing gate before any seat had picked. The audience question stays on every shot that enters
 the cut: on that year it held back 19 private-activity shots the detectors missed.
 `advanced.editorial.thin_batched_audience` asks it of twelve shots per request, each with its own
-answer; a shot the reply skips is asked alone, and anything but "none" holds. It stays off until
-`scripts/probe_audience_batch.py`, which replays a run's single audience requests through the
-batched question against your reader, loses no hold.
+answer, twice: once with the rows as they come and once shuffled. A shot either order holds is
+held, and a shot the replies skip is asked alone. One order alone lost 4 of the 16 holds the single
+question found on the measured year, so the flag stays off until `scripts/probe_audience_batch.py`,
+which replays a run's single audience requests through both batched orders against your reader,
+loses no hold.
 
 It needs a period the library holds an account of: what the month or year itself was about,
 read once and reused by every later cut of it. Nothing is read in advance. The draft is built from

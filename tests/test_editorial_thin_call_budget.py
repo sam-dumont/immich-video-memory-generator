@@ -2,7 +2,8 @@
 
 A counting judge answers every question the layer asks, through the production standing gate,
 audience gate, vote, picker and refill. The budget is the owner's: one look at the draft costs
-three questions per twelve shots (standing, audience, fit), and each seat costs at most four more.
+four questions per twelve shots (standing and fit once, audience in two orders), and each seat
+costs at most four more.
 A seat whose story holds a thousand pictures costs what a seat in a small story costs.
 """
 

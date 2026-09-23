@@ -281,9 +281,10 @@ class ThinPolish:
 
 
 def thin_budget(draft: int, seats: int) -> int:
-    """The calls a polish may spend: three questions per twelve draft shots (standing, audience
-    and fit, one look at the draft) and four per seat it opens. Owner's budget, 09-23."""
-    return 3 * math.ceil(draft / BLOCK_SIZE) + 4 * seats
+    """The calls a polish may spend: four questions per twelve draft shots (standing and fit
+    once, audience in its two orders: one look at the draft) and four per seat it opens.
+    Owner's budget, 09-23, with the audience's second order counted in."""
+    return 4 * math.ceil(draft / BLOCK_SIZE) + 4 * seats
 
 
 def _spent(asked: int, draft: int, seats: int) -> dict[str, int]:

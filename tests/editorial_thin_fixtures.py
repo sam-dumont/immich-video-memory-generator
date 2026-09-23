@@ -25,7 +25,8 @@ START = datetime(2024, 1, 1, 9, 0)
 
 
 def thin_budget(draft: int, seats: int) -> int:
-    return 3 * math.ceil(draft / 12) + 4 * seats
+    # standing and fit once, audience in two orders, per twelve shots; four per seat
+    return 4 * math.ceil(draft / 12) + 4 * seats
 
 
 class CountingJudge:

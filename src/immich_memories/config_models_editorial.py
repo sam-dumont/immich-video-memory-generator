@@ -99,9 +99,10 @@ class EditorialConfig(BaseModel):
     thin_batched_audience: bool = Field(
         default=False,
         description=(
-            "Ask the thin layer's audience question of twelve carriers per request instead of "
-            "one. Every carrier still gets its own answer, and one the reply skips is asked "
-            "alone. Off until a probe on the local reader shows batching keeps every hold"
+            "Ask the thin layer's audience question of twelve carriers per request, in two row "
+            "orders, instead of one carrier per request. Every carrier gets its own answer, one "
+            "either order holds is held, and one the replies skip is asked alone. Off until a "
+            "probe on the local reader shows batching keeps every hold"
         ),
     )
 

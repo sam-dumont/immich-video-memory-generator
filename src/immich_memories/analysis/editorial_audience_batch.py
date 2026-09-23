@@ -11,20 +11,26 @@ cleared one.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from functools import partial
+from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
+from immich_memories.analysis.editorial_shareability import VERDICTS
 from immich_memories.analysis.editorial_shareability_audience import (
     ACTIVITY_CONTENT_FINDINGS,
     ACTIVITY_CONTENT_PROMPT,
     _first_json_object,
+    parse_audience_verdict,
 )
 
 AUDIENCE_BATCH_SIZE = 12
+# Every batch is asked with its rows in their own order and again shuffled.
+ORDERS = ("source", "shuffled")
 _ANSWER_LINE = "Return one JSON object only:"
 _ONE_GROUP = "Any matching picture makes its finding apply to this group."
 _NUDITY_LINE = "- nudity_shirtless_or_underwear:"
@@ -81,25 +87,59 @@ def read_batched_activity(raw: str, labels: Sequence[str], *, allow_nudity: bool
 def ask_activity_batches(
     judge, pending: Mapping[str, tuple[Mapping[str, Any], bool]], *, size: int
 ) -> dict[str, str]:
-    """The activity answer for each evidence key, asked `size` carriers at a time.
+    """The activity answer for each evidence key, asked `size` carriers at a time, in two orders.
+
+    Each batch is asked with its rows in their own order and again shuffled. A carrier either
+    order holds is held, with the stricter of the two answers: the owner would rather lose a
+    fine picture than show a private one, and one order alone lost 4 of the 16 holds a single
+    question found on the measured year. A carrier only one order answered, and answered
+    `none`, is left to be asked alone, as is one neither order answered.
 
     `pending` maps an evidence key to its evidence and whether the nudity finding may be
-    answered for it; a batch only ever mixes carriers asked the same way. A batch that fails
-    every bounded attempt answers none of its carriers, which the caller then asks alone.
+    answered for it; a batch only ever mixes carriers asked the same way.
     """
     chunks: list[tuple[list[str], bool]] = []
     for allow in (True, False):
         keys = [key for key, (_evidence, allowed) in pending.items() if allowed is allow]
         chunks.extend((keys[i : i + size], allow) for i in range(0, len(keys), size))
-    answers: dict[str, str] = {}
-    staged = [(number, keys, allow) for number, (keys, allow) in enumerate(chunks, 1)]
+    staged = [
+        (number, order, _ordered(keys, order), allow)
+        for number, (keys, allow) in enumerate(chunks, 1)
+        for order in ORDERS
+    ]
+    heard: dict[str, list[str]] = {}
     for part in reader_map(judge, partial(_ask_batch, pending=pending), staged):
-        answers.update(part)
+        for key, raw in part.items():
+            heard.setdefault(key, []).append(raw)
+    answers = {}
+    for key, raws in heard.items():
+        evidence, allow = pending[key]
+        if (answer := _strictest(raws, evidence, allow)) is not None:
+            answers[key] = answer
     return answers
 
 
+def _ordered(keys: Sequence[str], order: str) -> list[str]:
+    if order == ORDERS[0]:
+        return list(keys)
+    return sorted(keys, key=lambda key: hashlib.sha256(key.encode()).hexdigest())
+
+
+def _strictest(raws: Sequence[str], evidence: Mapping[str, Any], allow: bool) -> str | None:
+    """The answer that holds the carrier furthest from `share`, or None to ask it alone."""
+    ranked = []
+    for raw in raws:
+        parsed = parse_audience_verdict(raw, evidence, allow_nudity=allow)
+        if parsed is not None:
+            ranked.append((VERDICTS.index(parsed[0]), raw))
+    if not ranked:
+        return None
+    rank, raw = max(ranked, key=itemgetter(0))
+    return raw if rank > 0 or len(ranked) == len(ORDERS) else None
+
+
 def _ask_batch(judge, chunk, *, pending) -> dict[str, str]:
-    number, keys, allow = chunk
+    number, order, keys, allow = chunk
     labels = {key: f"G{index + 1:02d}" for index, key in enumerate(keys)}
     prompt = batched_activity_prompt(
         [(labels[key], pending[key][0].get("members", ())) for key in keys], allow_nudity=allow
@@ -107,7 +147,7 @@ def _ask_batch(judge, chunk, *, pending) -> dict[str, str]:
     try:
         by_label = read_page_answer(
             judge,
-            stage=f"shareability-batch-{number:02d}-activity",
+            stage=f"shareability-batch-{number:02d}-{order}-activity",
             prompt=prompt,
             max_tokens=60 * len(keys) + 60,
             read=partial(read_batched_activity, labels=list(labels.values()), allow_nudity=allow),

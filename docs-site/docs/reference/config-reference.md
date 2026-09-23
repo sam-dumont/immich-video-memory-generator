@@ -531,8 +531,8 @@ exactly as it always has, so a library is never left without a film. `false` mak
 the whole film even when an account exists.
 
 `thin_batched_audience` asks the thin layer's audience question (does this shot show a private
-activity?) of twelve shots per request instead of one. Each shot still gets its own answer, a shot
-the reply skips is asked alone, and anything but "none" is a hold. It is off until a probe against
+activity?) of twelve shots per request instead of one, in two row orders. Each shot still gets its
+own answer, a shot either order holds is held, and a shot the replies skip is asked alone. It is off until a probe against
 the local reader shows the batched question keeps every hold the single one finds.
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
