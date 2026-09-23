@@ -418,7 +418,7 @@ class TestTheGroundingFilterKeepsWhatItPromised:
 class TestADayEndsWhenThePhotographsDo:
     """Midnight is an arbitrary place to cut an occasion in half.
 
-    A birth ran past midnight: one continuous run from the evening before
+    A long occasion ran past midnight: one continuous run from the evening before
     through the following afternoon, which grouping by calendar date cut into
     three, leaving the detector looking at the middle slice.
     """
@@ -452,6 +452,31 @@ class TestADayEndsWhenThePhotographsDo:
         ]
 
         assert len(candidate_days(two)) == 2
+
+    def test_a_run_whose_own_date_is_a_trip_day_is_not_a_candidate(self) -> None:
+        """The trip memory already tells that story end to end."""
+        inside = [self._at(7, hour, minute) for hour in range(8, 20) for minute in (0, 30)]
+
+        assert not candidate_days(inside, away_days={date(2024, 3, 7)})
+
+    def test_a_run_stops_where_a_trip_starts(self) -> None:
+        """The trip owns its dates, and a 4 a.m. departure does not take one back.
+
+        Only the run's own key date was checked against the trip, so a run that
+        began the evening before a holiday reached into the trip's first date
+        and the memory would have been cut across both.
+        """
+        night = [self._at(6, h, m) for h in range(18, 24) for m in (0, 15, 30, 45)] + [
+            self._at(7, h, m) for h in range(0, 12) for m in (0, 30)
+        ]
+
+        candidates = candidate_days(night, away_days={date(2024, 3, 7)})
+
+        assert list(candidates) == [date(2024, 3, 6)], "the evening is still its own day"
+        assert all(
+            asset.file_created_at.date() == date(2024, 3, 6)
+            for asset in candidates[date(2024, 3, 6)]
+        ), "the trip's own date came along with the run"
 
 
 class TestANumberIsAClaimLikeAnyOther:

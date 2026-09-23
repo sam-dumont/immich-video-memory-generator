@@ -9,7 +9,7 @@ second busiest is 413 of one street performer.
 What separates them, measured on labelled days, is how long the day stayed
 alive:
 
-    a birth            289 photos   18 active hours   +
+    a long occasion    289 photos   18 active hours   +
     wedding party       48 photos   12 active hours   +
     track day          133 photos    7 active hours   +
     apartment viewing  258 photos    5 active hours   -
@@ -121,14 +121,22 @@ def candidate_days(
     away_days are excluded: a holiday is full of days that clear every bar
     here, and a trip memory already tells that story end to end. What is left
     is the day that stands out from an ordinary run of them.
+
+    Excluded date by date rather than run by run. A run is the occasion and can
+    end on another date, so a night that began at home and ran into the morning
+    a trip departed on used to carry the trip's first hours with it — and since
+    the run's extent is what a memory of the day is scoped to, the film would
+    have been cut across both. The trip owns its dates; what is left of the run
+    is still this day's, and has to clear the bars on its own.
     """
-    return {
-        day: items
-        for day, items in _runs_of_activity(assets).items()
-        if day not in away_days
-        and len(items) >= MIN_PHOTOS
-        and active_hours(items) >= MIN_ACTIVE_HOURS
-    }
+    kept: dict[date, list] = {}
+    for day, items in _runs_of_activity(assets).items():
+        if day in away_days:
+            continue
+        ours = [a for a in items if a.file_created_at.date() not in away_days]
+        if len(ours) >= MIN_PHOTOS and active_hours(ours) >= MIN_ACTIVE_HOURS:
+            kept[day] = ours
+    return kept
 
 
 def active_hours(items: Iterable) -> int:
@@ -145,7 +153,7 @@ def run_extent(items: Iterable) -> tuple[datetime, datetime] | None:
     """When a run's first and last pictures were taken.
 
     Not the calendar day's bounds: the run is the occasion, and one labelled
-    day was a birth that ran 45 continuous hours, from one evening to the
+    day was a long occasion that ran 45 continuous hours, from one evening to the
     afternoon two dates later. Anything that scopes itself to the date the
     run began stops at midnight, part-way through what happened.
     """
@@ -154,7 +162,7 @@ def run_extent(items: Iterable) -> tuple[datetime, datetime] | None:
 
 
 # A day ends when the photographs stop for this long, not at midnight. One
-# labelled day was a birth that ran past midnight: the run began the evening
+# labelled day was a long occasion that ran past midnight: the run began the evening
 # before and ended the following afternoon as one continuous 45-hour run, and
 # grouping by calendar date cut it into three, leaving the detector looking at
 # the middle slice.
@@ -164,8 +172,8 @@ _NIGHT_GAP_HOURS = 5
 def _runs_of_activity(assets: Iterable) -> dict[date, list]:
     """Group assets into runs separated by a long quiet gap.
 
-    A wedding that goes past midnight, New Year, a birth that starts with
-    contractions at ten in the evening — all of them are one occasion, and the
+    A wedding that goes past midnight, New Year, a party that starts
+    at ten in the evening and ends at dawn — all of them are one occasion, and the
     calendar disagrees. Sleep is the honest boundary.
 
     Two runs can still begin on the same date — a morning of preparation, a

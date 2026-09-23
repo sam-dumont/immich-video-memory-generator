@@ -354,15 +354,29 @@ it. That stamp is what makes a row written by an older scan recognisable:
 a catalogue that filled up over several releases can be cleaned without editing JSON by hand.
 Nothing is ever deleted unless you ask for it.
 
-Scope is that window when there is one, midnight to midnight when there is not. The window shrinks
-and never pads, so a track day starts at the circuit rather than at the cat on the balcony that
-morning. What decides whether a window is kept is how much of the day it holds, not how long it
-runs: the row records `window_photos` beside `photos`, and a window holding fewer than half the
-day's pictures is dropped in favour of the day itself. That track day spends 2.3 hours of a
-10.6-hour day in one place and still holds 92 % of its pictures, so it keeps its window. A birth
-over 21 hours whose recorded window held 24 of 379 pictures does not: cut from that window the film
-saw 24 sources and was refused for want of material. Rows written before the count existed are
-taken as written; `discover-days --replace` is what repairs them.
+Scope is that window when there is one, otherwise the day's **run**: the stretch of photographs the
+occasion left, which the scan groups by five hours of silence rather than by midnight. The row
+records `run_start` and `run_end`, and a run can outlast the date it began on: one catalogued day is
+a long occasion that ran most of two days, and scoped to the date it began on the film
+stopped at midnight with a quarter of its 379 pictures on the other side.
+Rows written before the run was recorded fall back to midnight-to-midnight, and
+`discover-days --replace` is what repairs them.
+
+The run does not pad either. It never reaches past its own first and last picture, so a neighbouring
+day it merely shares a date with stays out; a run reaching into a trip's dates is cut back at the
+scan, and a run longer than 48 hours is not treated as one occasion at all.
+
+The window shrinks and never pads, so a track day starts at the circuit rather than at the cat on
+the balcony that morning. What decides whether a window is kept is how much of the run it holds, not
+how long it runs: the row records `window_photos` beside `photos`, and a window holding fewer than
+half of them is dropped in favour of the run itself. That track day spends 2.3 hours of a 10.6-hour
+day in one place and still holds 92 % of its pictures, so it keeps its window. The occasion above,
+whose recorded window held a few dozen of 379, does not: cut from that window the film saw a sliver
+of the night and was refused for want of material. Rows written before the count existed are taken
+as written.
+
+Whichever of the three was used, and why, reaches the run record as `window_origin`, so
+`immich-memories runs` can say a film was cut from the run rather than from the date.
 
 Three routes bring a day back: `auto run` offers anniversaries within 3 days, **Surprise me** on the
 Memory page offers the whole catalogue with anniversaries first, and `generate --day` takes any day

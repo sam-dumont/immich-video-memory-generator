@@ -12,6 +12,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from immich_memories.automation.special_day_scan import DiscoveredDay
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.ui.pages import step1_presets
@@ -105,6 +107,33 @@ def test_choosing_a_day_scopes_the_wizard_to_the_hours_it_happened_in(
     assert state.memory_preset_params["day"] == date(2016, 6, 12)
     assert state.memory_preset_params["photos"] == 289
     assert state.memory_preset_params["active_hours"] == 9
+
+
+def test_choosing_a_day_whose_run_outlasted_its_date_scopes_to_the_run(
+    monkeypatch, tmp_path
+) -> None:
+    """The wizard reads the run through the same helper the CLI does."""
+    _catalogue(
+        tmp_path,
+        {
+            **_A_LONG_EVENING,
+            "window": None,
+            "active_hours": 21,
+            "run_start": "2016-06-12T02:57:00+02:00",
+            "run_end": "2016-06-13T21:29:00+02:00",
+        },
+    )
+
+    state, _ = _render_card(monkeypatch, tmp_path, pick=0)
+
+    assert [(r.start, r.end) for r in state.date_ranges] == [
+        (
+            datetime(2016, 6, 12, 2, 57, tzinfo=BRUSSELS),
+            datetime(2016, 6, 13, 21, 29, tzinfo=BRUSSELS),
+        )
+    ]
+    # Not the 21 hours of the clock it touched: the run itself outlasted a day.
+    assert state.memory_preset_params["active_hours"] == pytest.approx(42.53, abs=0.01)
 
 
 def test_choosing_a_day_carries_its_own_name_to_the_title(monkeypatch, tmp_path) -> None:
