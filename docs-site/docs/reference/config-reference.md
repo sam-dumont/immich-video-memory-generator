@@ -508,9 +508,12 @@ built by the rules reader, with no model at all, and the model is then asked one
 over the finished film: which of these shots adds nothing to it? What the answer and the gates
 leave open is refilled from the same stories, and nothing else moves.
 
-It needs a period the library holds an account of, which cataloguing writes. Without one the run
-plans the film with the story-first planner exactly as it always has, so a library is never left
-without a film. `false` makes the model plan the whole film even when an account exists.
+It needs a period the library holds an account of, which cataloguing writes:
+`immich-memories prepare --overviews` banks one per calendar month, and a cut of a whole month or
+year that finds none writes its own from the readings it has just paid for. Any span that is not a
+whole calendar month or year has no account, and plans the film with the story-first planner
+exactly as it always has, so a library is never left without a film. `false` makes the model plan
+the whole film even when an account exists.
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

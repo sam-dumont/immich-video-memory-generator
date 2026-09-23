@@ -62,6 +62,34 @@ usual cause, and one that is running but answers 401 or 403 says so and names
 `advanced.editorial.preparation.caption_api_key`. Rerunning is cheap, so "run it until it exits 0"
 is the intended loop.
 
+### `--overviews`: what the month was about
+
+```bash
+immich-memories prepare --year 2024 --month 6 --overviews
+```
+
+Preparation banks facts about pictures. `--overviews` goes one step further and banks meaning: it
+reads each 90-minute episode of the scope once, then writes one account per calendar month: a
+couple of sentences saying what that month was, written over the episode readings rather than over
+captions. A cut of that month reads it as its thesis instead of working one out, which is what
+[the thin model layer](../pipeline.md) needs to run at all.
+
+It is banked like everything else: the account is keyed by the readings it summarises and by the
+model that wrote them, so running it twice over an unchanged month asks nothing, and one changed
+episode reopens that month and no other. A month holding a single episode is copied up with no call
+at all.
+
+```text
+✓ Banked 37 episode readings, 1 month and 1 year account(s).
+```
+
+You do not have to run it. A cut of a whole calendar month or year that finds no account writes its
+own, from the readings its own event pass has just paid for. `--overviews` is worth running when
+you would rather pay for a year of months overnight than during the first cut of each one.
+
+It needs a model reader: `--overviews` with `advanced.editorial.reader: rules` is refused by name,
+because an account is a reading and the rules reader does not read.
+
 Preparation is the only stage that sends pixels anywhere, and it sends them only where you point it.
 Both endpoints default to `localhost` and nothing asks a second time once you point one elsewhere:
 read [Network and privacy](../../deploy/configuration/network-and-privacy.md#the-two-picture-seats)

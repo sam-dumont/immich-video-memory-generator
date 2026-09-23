@@ -11,6 +11,7 @@ from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from immich_memories.analysis.catalogue_runtime import catalogue_requester
 from immich_memories.analysis.editorial_attached_outcomes import AttachedAttemptOutcomes
 from immich_memories.analysis.editorial_attached_samples import AttachedVideoSamples
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
@@ -78,6 +79,9 @@ class EditorialRuntimePorts:
             batch=BatchCoordinator(config.llm, BatchPolicy.from_config(config.llm)),
         )
     )
+    # The period account is one small request over readings the run has already paid for,
+    # so it uses its own plain transport rather than the episode batch above.
+    catalogue_requester_factory: Callable[[Config], Callable[[str], str]] = catalogue_requester
     episode_store_factory: Callable[[Path], EpisodeReadingStore] = EpisodeReadingStore
     structure_planner: Callable[
         [StructurePlanningInput, StructurePlannerPorts], StructurePlanningResult

@@ -502,10 +502,20 @@ the frame you starred wins. Every replacement goes through the same gates and is
 the company of the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
 
-It needs a period the library holds an account of, which cataloguing writes. Without one the run
-plans the film with the story-first planner exactly as it always has, so a library is never left
-without a film. `advanced.editorial.thin_model_layer: false` makes the model plan the whole film
-even when an account exists.
+It needs a period the library holds an account of: what the month itself was about, read once off
+the banked episode readings and reused by every later cut of that month. `immich-memories prepare
+--year 2024 --month 6 --overviews` writes it ahead of time, month by month. A run over a whole
+calendar month or year that finds none writes its own, from the readings its event pass has just
+paid for, so the layer works without ever having run `prepare --overviews`. Either way it is paid
+for once: the account is keyed by the exact readings it summarises and by the model that wrote
+them, so a second cut of the same month asks nothing. The no-model reader writes no account at all,
+because there is no thesis without a reader.
+
+A span that is not a whole calendar month or year has no account: a film over a fortnight, a trip,
+a person. Those plan the film with the story-first planner exactly as they always have, so a
+library is never left without a film.
+`advanced.editorial.thin_model_layer: false` makes the model plan the whole film even when an
+account exists.
 
 ## The stages, and what each one costs
 

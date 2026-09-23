@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from dataclasses import replace
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
     from immich_memories.analysis.editorial_runtime import EditorialRunContext
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
+
+logger = logging.getLogger(__name__)
 
 
 class ProductionPostCardBackend:
@@ -280,13 +283,19 @@ class ProductionPostCardBackend:
     def _thin_polish(self, source: StructurePlanningInput) -> dict[str, Any]:
         """Build the draft with the no-model reader and let the model polish it, when asked.
 
-        Only for a period the library holds an account of: without one there is nothing to
-        polish against, and the run plans the film the way it always has.
+        Only for a period the library holds an account of. `prepare --overviews` banks one
+        ahead of time; a run that finds none banks it here from the readings its own event
+        pass has just paid for, so a library nobody catalogued still gets the layer.
         """
         if not self._config.editorial.thin_model_layer or source.store_path is None:
             return {}
         period = catalogued_period(source.case.ranges)
-        account = library_period_account(source.store_path, period) if period else ""
+        if not period:
+            return {}
+        account = library_period_account(source.store_path, period)
+        if not account:
+            self._bank_period_account(source)
+            account = library_period_account(source.store_path, period)
         if not account:
             return {}
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
@@ -295,6 +304,40 @@ class ProductionPostCardBackend:
             "rules": RuleStructureReader(source),
             "thin": ThinPolish(account=account, bank_dir=source.bank_dir),
         }
+
+    def _bank_period_account(self, source: StructurePlanningInput) -> None:
+        """Write the account this period has never had, from this run's own readings.
+
+        The no-model reader writes nothing: there is no thesis without a reader, and the
+        layer is meant to fall back for it. A failure here is not a failed film -- the run
+        simply plans the way it always has.
+        """
+        from immich_memories.analysis.catalogue_runtime import catalogue_banked_episodes
+        from immich_memories.store.episode_readings import EpisodeReadingIdentity
+
+        config = self._config
+        if config.editorial.resolve_reader(config.llm.model) == "rules":
+            return
+        identities = [
+            EpisodeReadingIdentity(
+                group_id=str(row["group_id"]),
+                producer_key=str(row["producer_key"]),
+                evidence_key=str(row["evidence_key"]),
+            )
+            for row in source.lineage.get("episode_readings") or ()
+        ]
+        if not identities or source.store_path is None:
+            return
+        try:
+            catalogue_banked_episodes(
+                identities,
+                store_path=source.store_path,
+                capture_dates={key: asset.file_created_at for key, asset in source.assets.items()},
+                config=config,
+                requester=self._ports.catalogue_requester_factory(config),
+            )
+        except (OSError, ValueError, RuntimeError) as exc:  # noqa: BLE001 - see docstring
+            logger.warning("Could not bank an account of this period (%s); planning as before", exc)
 
     def _adopt(
         self, result: StructurePlanningResult, artifact_dir: Path, allowed_ids: set[str]

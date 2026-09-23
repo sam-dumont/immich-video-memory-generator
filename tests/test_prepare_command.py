@@ -185,3 +185,47 @@ def test_a_month_outside_the_calendar_is_a_usage_error(tmp_path, monkeypatch) ->
 
     assert result.exit_code == 2, result.output
     assert "Invalid month: 13" in result.output
+
+
+def _model_config() -> Config:
+    config = _config()
+    config.editorial.reader = "model"
+    config.llm.model = "a-model"
+    return config
+
+
+def test_overviews_says_how_much_of_the_library_it_banked(tmp_path, monkeypatch) -> None:
+    from immich_memories.analysis.library_catalogue import LibraryCatalogue
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    banked = LibraryCatalogue(
+        events=("e1", "e2", "e3"), months={"2024-06": "m"}, years={"2024": "y"}
+    )
+
+    with patch(
+        # WHY: the account writer asks the configured text model over HTTP; what it
+        # writes and what it refuses to pay for twice is tested in test_library_catalogue.
+        "immich_memories.analysis.catalogue_runtime.catalogue_prepared_window",
+        return_value=(banked, ("e4",)),
+    ) as writer:
+        result = _invoke(
+            ["prepare", "--year", "2024", "--month", "6", "--overviews"],
+            _model_config(),
+            photos=[_photo("a1"), _photo("a2")],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert writer.called
+    assert "Banked 3 episode readings, 1 month and 1 year account(s)." in result.output
+    assert "1 episode(s) stayed unread" in result.output
+
+
+def test_overviews_without_a_model_reader_is_refused_by_name(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = _config()
+    config.editorial.reader = "rules"
+
+    result = _invoke(["prepare", "--year", "2024", "--overviews"], config, photos=[_photo("a1")])
+
+    assert result.exit_code == 2, result.output
+    assert "--overviews needs a configured model reader" in result.output

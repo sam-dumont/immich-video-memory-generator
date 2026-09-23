@@ -490,6 +490,10 @@ No selection and no render happen. Preparation is banked per picture, so
 a scope prepared today is free for every later cut:
   immich-memories prepare --year 2024 --month 6
   immich-memories prepare --start 2024-01-01 --period 1y
+
+--overviews goes one step further and banks what each month was about,
+which a cut of that month then reads instead of working it out again:
+  immich-memories prepare --year 2024 --month 6 --overviews
 ```
 
 ```bash
@@ -503,6 +507,7 @@ immich-memories prepare [OPTIONS]
 | `--start` | text | - | Start date (YYYY-MM-DD) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from the start date (e.g. 6m, 1y, 2w) |
+| `--overviews` | boolean | false | Also bank each month's episode readings and the account a cut reads as its thesis |
 | `--library-size` | integer | 1000 | Project the measured rate onto a library of this many pictures |
 
 ## `runs`
