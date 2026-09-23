@@ -52,7 +52,18 @@ def records_first(
     page filtered down to records leaves a record-owning story with nothing to offer whenever the
     recorded picture is one the cut already holds.
     """
-    return sorted(motion_first(rows), key=lambda row: not record_of(row["asset_id"]))
+    return records_lead(motion_first(rows), record_of)
+
+
+def records_lead(
+    rows: Sequence[Mapping[str, Any]], record_of: Callable[[str], str]
+) -> list[dict[str, Any]]:
+    """The same page with what the catalogue recorded moved to the top, every other order kept.
+
+    A record is the catalogue saying a picture matters. A seat inside a story the draft already
+    speaks for is offered it first, exactly as a newcomer seat is.
+    """
+    return sorted((dict(row) for row in rows), key=lambda row: not record_of(row["asset_id"]))
 
 
 def gate_refill_page(

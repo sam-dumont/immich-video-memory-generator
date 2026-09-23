@@ -96,6 +96,7 @@ class Film:
         self.pool: dict[str, list[dict]] = {}
         self.tiers: dict[str, str] = {}
         self.draft: list[dict] = []
+        self.records: dict[str, str] = {}
 
     def shot(self, asset, story, when, caption, *, kind="still", favourite=False):
         taken = when.strftime("%Y-%m-%dT%H:%M:%S")
@@ -140,7 +141,9 @@ class Film:
             )
             for key, rows in self.pool.items()
         )
-        return BankedCatalogue(thesis="A year a family grew.", stories=stories, hints={})
+        return BankedCatalogue(
+            thesis="A year a family grew.", stories=stories, hints={}, records=self.records
+        )
 
 
 def polish(tmp_path, film: Film):
@@ -148,8 +151,6 @@ def polish(tmp_path, film: Film):
     recorded: dict = {}
     standing = StandingGate(
         judge,
-        contract="contract",
-        period_label="2024",
         line_of=film.lines.get,
         life=lambda _asset: True,
         unit_by_asset={asset: ("fam", row) for asset, row in film.units.items()},

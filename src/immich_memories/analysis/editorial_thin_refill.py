@@ -28,6 +28,7 @@ from immich_memories.analysis.editorial_thin_pages import (
     motion_first,
     newcomer_stories,
     records_first,
+    records_lead,
 )
 
 NOTABLE = "notable"
@@ -133,13 +134,15 @@ def plan_slots(
         if verdict["state"] == "bad"
     ]
     appends.extend((row.asset_id, GATE_REFUSED, row.story, row.moment) for row in refused)
-    slots.extend(_append_slots(cut, appends, offers, room - len(slots)))
+    slots.extend(
+        _append_slots(cut, appends, offers, room - len(slots), catalogue.notable_record_of)
+    )
     slots.extend(
         ThinSlot(
             key=f"D9{number:02d}",
             story=story_of.get(asset, ""),
             kind=VOTE_WEAK,
-            page=tuple(motion_first(offers(story_of.get(asset, "")))),
+            page=tuple(records_first(offers(story_of.get(asset, "")), catalogue.notable_record_of)),
             replacing=asset,
         )
         for number, (asset, verdict) in enumerate(sorted(verdicts.items()), 1)
@@ -176,7 +179,7 @@ def _newcomer_slots(cut, catalogue, refused, offers, room: int) -> list[ThinSlot
     ]
 
 
-def _append_slots(cut, appends, offers, room: int) -> list[ThinSlot]:
+def _append_slots(cut, appends, offers, room: int, record_of) -> list[ThinSlot]:
     moments_in_cut = {row.get("moment") for row in cut}
     refused_moments: dict[str, list[str]] = {}
     for _asset, kind, story, moment in appends:
@@ -189,6 +192,7 @@ def _append_slots(cut, appends, offers, room: int) -> list[ThinSlot]:
             page = gate_refill_page(page, refused_moments[story], moments_in_cut)
         else:
             page = motion_first(page)
+        page = records_lead(page, record_of)
         prefix = "R" if kind == VOTE_BAD else "T"
         slots.append(
             ThinSlot(key=f"{prefix}{number:03d}", story=story, kind=kind, page=tuple(page))

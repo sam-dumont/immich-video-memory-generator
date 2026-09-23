@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from tests.editorial_thin_fixtures import START, UNSTEADY, Film, polish
+from tests.editorial_thin_fixtures import JUNK, START, UNSTEADY, Film, polish
 
 
 def small_draft(film: Film, *, refused_caption: str = UNSTEADY) -> None:
@@ -64,3 +64,26 @@ def test_the_picker_is_shown_at_most_twelve_rows(tmp_path):
 
     assert rows_asked(judge, "story-pick-")
     assert max(rows_asked(judge, "story-pick-")) <= 12
+
+
+def test_a_shot_the_catalogue_records_is_never_voted_out(tmp_path):
+    film = Film()
+    small_draft(film, refused_caption=JUNK)
+    film.records = {"d005": "the first of them"}
+
+    _judge, payload, cut, _newcomers = polish(tmp_path, film)
+
+    assert "d005" in {row["asset_id"] for row in cut}
+    assert payload["verdicts"]["d005"]["held_by"]
+
+
+def test_a_starred_shot_the_catalogue_records_is_not_refused_on_its_text_alone(tmp_path):
+    film = Film()
+    small_draft(film)
+    film.draft[5]["favourite"] = True
+    film.records = {"d005": "the first of them"}
+
+    _judge, payload, cut, _newcomers = polish(tmp_path, film)
+
+    assert "d005" in {row["asset_id"] for row in cut}
+    assert payload["refused_by_the_gates"] == []

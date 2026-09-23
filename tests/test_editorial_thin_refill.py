@@ -174,3 +174,35 @@ def test_a_shot_the_cut_already_holds_is_never_seated_twice():
     cut = [shot("a1", "S1")]
     after, changed = seat(cut, shot("a1", "S1"), replacing="", content_cap=60.0)
     assert not changed and [row["asset_id"] for row in after] == ["a1"]
+
+
+def test_a_refill_page_inside_a_drafted_story_leads_with_what_the_catalogue_records():
+    """A record is the catalogue saying a picture matters; a seat in a story the draft already
+    speaks for is offered it first, exactly as a newcomer seat is."""
+    cut = [shot("a1", "S1"), shot("b1", "S2", day="02"), shot("c1", "S3", day="03")]
+    refused = [GateRefusal("g2", "S2", "standing", "weak", moment="q1")]
+    pool = {
+        "S1": [shot("plain", "S1", moment="p1"), shot("rec1", "S1", moment="p2")],
+        "S2": [shot("twin", "S2", moment="q1"), shot("rec2", "S2", moment="q7")],
+        "S3": [shot("other", "S3", moment="r1"), shot("rec3", "S3", moment="r2")],
+    }
+    slots = plan_slots(
+        cut,
+        catalogue=catalogue(
+            [
+                story("S1", ["a1", "plain", "rec1"]),
+                story("S2", ["b1", "g2", "twin", "rec2"]),
+                story("S3", ["c1", "other", "rec3"]),
+            ],
+            records={"rec1": "a first", "rec2": "a first", "rec3": "a first"},
+        ),
+        verdicts={"a1": verdict("bad", 2), "b1": verdict("kept"), "c1": verdict("weak", 1)},
+        refused=refused,
+        candidates_of=pool.get,
+        seen={"a1", "b1", "c1", "g2"},
+        content_cap=60.0,
+    )
+    pages = {slot.kind: [row["asset_id"] for row in slot.page] for slot in slots}
+    assert pages["vote-bad"][0] == "rec1"
+    assert pages["gate-refused"][0] == "rec2"
+    assert pages["vote-weak"][0] == "rec3"

@@ -123,6 +123,7 @@ class ThinPolish:
             reason = "no catalogued account of this period" if catalogue is None else "no draft"
             record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": reason})
             return list(carriers)
+        carriers = _with_records(carriers, catalogue)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
         kept, verdicts, rounds = self._voted(admitted, judge, catalogue, contract, line_of)
@@ -131,7 +132,7 @@ class ThinPolish:
             catalogue=catalogue,
             verdicts=verdicts,
             refused=refused,
-            candidates_of=candidates_of,
+            candidates_of=lambda key: _with_records(candidates_of(key), catalogue),
             seen={c["asset_id"] for c in carriers},
             content_cap=content_cap,
         )
@@ -246,6 +247,21 @@ class ThinPolish:
             bank=bank,
             save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
+
+
+def _with_records(
+    rows: Sequence[Mapping[str, Any]], catalogue: ThinCatalogue
+) -> list[dict[str, Any]]:
+    """Each shot with what the catalogue records it as, which is what protects it from a vote.
+
+    The vote and the standing gate read `notable_record` off the shot itself, so a record the
+    catalogue holds but the shot does not carry protects nothing.
+    """
+    marked = []
+    for row in rows:
+        record = catalogue.notable_record_of(row["asset_id"])
+        marked.append(dict(row) | {"notable_record": record} if record else dict(row))
+    return marked
 
 
 def _drafted_shots(
