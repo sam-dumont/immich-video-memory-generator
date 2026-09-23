@@ -151,6 +151,15 @@ months moved from 2.6 % to 2.8 % held, baby months from 18.5 % to 21.0 %, and 31
 of 66,597 were swept in; a fifteen-minute window added nothing. A carrier swept in this way gets the
 reason `exposure_chain`, with the run's length and how many of it were flagged.
 
+**Between 0.2 and 0.5, the run writes you a list.** The exposure detector holds at 0.5 and stays
+there (dropping the cut to 0.1 holds 51 % of a baby month, which is not a film), but underwear in
+particular sits in the band below it, neither caught nor clearly fine. Every run writes
+`review-before-sharing.private.json` into its attempt directory: the shots of the finished cut whose
+detector probability is between 0.2 and 0.5 and that no other hold already keeps to the family, with
+the probability. The run's summary prints how many there are, and `runs why <asset id>` says so for
+one picture. Nothing in the cut changes. It is a list for you, and it matters most before a
+`sendable` export, where the rules tier's blanket `family_only` is not what is being asked.
+
 **A day's title claims only what the evidence shows.** A special day's title is checked against the
 evidence lines it was written from, and an unsupported claim is dropped rather than printed. Trip
 titles are a different path, written from dates and place names, with no such check.

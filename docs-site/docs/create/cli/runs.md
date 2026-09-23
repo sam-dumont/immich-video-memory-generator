@@ -67,6 +67,13 @@ immich-memories runs why 3f1c9a2e-... --run 20260913_08   # --run defaults to th
 Every run writes its decision log (`selection-trace.private.json`) beside its plan, so this works
 without `--trace-selection`. Runs made before 0.78 answer "left no decision log".
 
+A picture on the run's check-before-sharing list gets one more line, naming what the
+sensitive-content detector read for it and the hold it sits under:
+
+```text
+  worth a look before sharing: the exposure head read 0.35, under the 0.5 hold
+```
+
 Both commands find the run through the run id, which the CLI and the web UI share: a memory cut on
 the page can be read from the terminal and the other way round.
 

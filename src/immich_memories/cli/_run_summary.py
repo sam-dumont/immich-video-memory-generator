@@ -107,6 +107,21 @@ def _tier_lines(tier: str) -> list[str]:
     return ["", "  TIER  " + described] if described else []
 
 
+def _review_lines(pictures: int, run_id: str | None) -> list[str]:
+    """How many shots sit in the exposure head's grey zone, and where to read them.
+
+    Zero is worth saying: it means the run looked, not that nothing looked. Nothing in
+    the cut changed either way -- this is the owner's list, not another gate.
+    """
+    handle = run_id or "<run id>"
+    shot = "picture" if pictures == 1 else "pictures"
+    return [
+        "",
+        f"  CHECK {pictures} {shot} to check before sharing"
+        + (f" · immich-memories runs why <asset id> --run {handle}" if pictures else ""),
+    ]
+
+
 def render_run_summary(
     *,
     total_seconds: float,
@@ -118,6 +133,7 @@ def render_run_summary(
     preparation_tier: str = "full",
     storyboard: Storyboard | None = None,
     run_id: str | None = None,
+    review_before_sharing: int = 0,
 ) -> str:
     """The end-of-run block, as printable text.
 
@@ -135,6 +151,7 @@ def render_run_summary(
         f"    generation             {_clock(generation_seconds):>8}",
     ]
     lines.extend(_tier_lines(preparation_tier))
+    lines.extend(_review_lines(review_before_sharing, run_id))
     lines.extend(_llm_lines(counters))
     lines.extend(_storyboard_lines(storyboard, run_id))
     return "\n".join(lines)

@@ -45,13 +45,16 @@ A scope of one place is never bounded. The synthesis card also carries `arrivals
 `editorial_person_period_facts.py` projection of who the library first holds in that episode's own
 month, so the thesis and the weighing can read an arrival that the relation counts flatten away.
 
-The exposure head `nsfw_marqo` decides a still on its preview and a video on up to eight frames
+The family-viewing gate has two floors under the reader's answer and a list beside it. The exposure
+head `nsfw_marqo` decides a still on its preview and a video on up to eight frames
 across its length (`editorial_preparation_detector_frames.py`, through the motion line's byte-range
 keyframe reader), keeping the strongest frame: that is `det-v3`, so an existing bank re-reads that
 head for every source, and videos stay out of an inference-service offload for it.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is three or more
 captures long and at least half flagged, with the reason `exposure_chain`. Neither the reduced
-tier's `_hold()` nor the model check can clear it.
+tier's `_hold()` nor the model check can clear it. `editorial_review_list.py` writes
+`review-before-sharing.private.json`: the finished cut's shots between 0.2 and 0.5 that nothing
+else already holds, counted in the run summary and named by `runs why`. It changes no shot.
 
 Large period accounts page their episode evidence at 48,000 request characters. Story weighing
 also caps each page at 60 stories / 48,000 characters, repeats the whole-period thesis and central
@@ -224,6 +227,8 @@ src/immich_memories/
 │   ├── editorial_thin_refill.py    # Which seats open, and the transaction that fills one
 │   ├── editorial_home_radius.py    # Where home is, and whether captures sit inside its radius
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
+│   ├── editorial_review_list.py    # The finished cut's shots in the detector's 0.2-0.5 grey zone that
+│   │                               # nothing else holds; a list for the owner, never a gate
 │   ├── editorial_exposure_chains.py # A five-minute capture run that is 3+ long and half flagged
 │   │                                # is held whole: the hold the detector's per-picture answer misses
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
