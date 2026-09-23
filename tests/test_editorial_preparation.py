@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import logging
 import os
-import socket
 import sqlite3
 import stat
 import time
@@ -31,19 +30,12 @@ from immich_memories.analysis.editorial_preparation_detectors import (
     decide,
     docling_pixels,
 )
-from immich_memories.analysis.editorial_preparation_picture_facts import (
-    NOULS,
-    prepare_picture_facts,
-)
 from immich_memories.analysis.editorial_preparation_pixels import pixel_facts
 from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset, Person
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
 from immich_memories.config_models_editorial import EditorialConfig
-from immich_memories.config_models_editorial_preparation import (
-    EditorialPreparationConfig,
-    PictureFactsConfig,
-)
+from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.operations.cancellation import PipelineCancelled, cancellation_scope
 from immich_memories.store.editorial_preparation import initialize, remember_assets
@@ -105,19 +97,12 @@ def successful_ports(calls):
     return PreparationPorts(captions=captions, heads=heads, detectors=detectors)
 
 
-def without_picture_facts(**overrides):
-    """The preparation config of a case that is not about the optional picture reader."""
-    return EditorialPreparationConfig(picture_facts=PictureFactsConfig(enabled=False), **overrides)
-
-
 def run(tmp_path, **kwargs):
     return prepare_editorial_annotations(
         assets=kwargs.pop("assets", [asset("aa1"), asset("bb2")]),
         store_path=tmp_path / "annotations.sqlite",
         thumbnail_cache=kwargs.pop("thumbnail_cache", tmp_path / "previews"),
-        # Off unless a test is about it: the reader is a socket to a local address, and
-        # these cases are about captions, heads, detectors and motion.
-        preparation_config=kwargs.pop("preparation_config", without_picture_facts()),
+        preparation_config=kwargs.pop("preparation_config", EditorialPreparationConfig()),
         triage_config=TriageConfig(),
         head_versions=kwargs.pop("head_versions", EditorialConfig().head_versions),
         **kwargs,
@@ -161,7 +146,7 @@ def test_changing_caption_server_preserves_rows_and_marks_legacy_origins_unknown
     result = run(
         tmp_path,
         ports=successful_ports(calls),
-        preparation_config=without_picture_facts(
+        preparation_config=EditorialPreparationConfig(
             caption_base_url="http://replacement.invalid/v1",
             caption_artifact_id="new-build",
         ),
@@ -188,7 +173,7 @@ def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
             tmp_path,
             ports=ports,
             fetch_preview=lambda _: preview(),
-            preparation_config=without_picture_facts(
+            preparation_config=EditorialPreparationConfig(
                 caption_base_url=first_url, caption_artifact_id="original-build"
             ),
         )
@@ -199,7 +184,7 @@ def test_warm_preparation_keeps_the_original_server_and_build(tmp_path):
     second = run(
         tmp_path,
         ports=ports,
-        preparation_config=without_picture_facts(
+        preparation_config=EditorialPreparationConfig(
             caption_base_url="http://replacement.invalid/v1",
             caption_artifact_id="replacement-build",
         ),
@@ -553,7 +538,7 @@ def test_the_no_captions_tier_finishes_without_a_caption_server(tmp_path):
         tmp_path,
         ports=ports,
         fetch_preview=lambda _: preview(),
-        preparation_config=without_picture_facts(tier="no_captions"),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
     )
 
     assert result.complete
@@ -569,7 +554,7 @@ def test_the_metadata_only_tier_finishes_with_no_onnx_and_no_captions(tmp_path):
         tmp_path,
         ports=ports,
         fetch_preview=lambda _: preview(),
-        preparation_config=without_picture_facts(tier="metadata_only"),
+        preparation_config=EditorialPreparationConfig(tier="metadata_only"),
     )
 
     assert result.complete
@@ -594,7 +579,7 @@ def test_an_undemanded_producer_is_never_reported_missing(tmp_path):
             captions=lambda **_: {}, heads=lambda **_: None, detectors=lambda **_: {}
         ),
         fetch_preview=lambda _: preview(),
-        preparation_config=without_picture_facts(tier="metadata_only"),
+        preparation_config=EditorialPreparationConfig(tier="metadata_only"),
     )
 
     assert not full.complete
@@ -608,7 +593,7 @@ def test_a_run_reports_what_each_stage_cost_and_how_many_pictures_it_saw(tmp_pat
         tmp_path,
         ports=successful_ports([]),
         fetch_preview=lambda _: preview(),
-        preparation_config=without_picture_facts(tier="no_captions"),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
     )
 
     rates = result.stage_rates()
@@ -629,7 +614,7 @@ def test_the_configured_caption_key_reaches_the_caption_request(tmp_path):
     run(
         tmp_path,
         ports=replace(ports, captions=captions),
-        preparation_config=without_picture_facts(caption_api_key="caption-token"),
+        preparation_config=EditorialPreparationConfig(caption_api_key="caption-token"),
         fetch_preview=lambda _: preview(),
     )
 
@@ -693,89 +678,11 @@ def test_a_run_without_a_face_reader_banks_nothing_and_leaves_the_rest_alone(tmp
         assert connection.execute("SELECT count(*) FROM face_reads").fetchone()[0] == 0
 
 
-def _picture_facts_config(**overrides):
-    return EditorialPreparationConfig(picture_facts=PictureFactsConfig(enabled=True, **overrides))
+def test_a_prepared_scope_with_nothing_left_to_do_is_complete_with_no_failures(tmp_path):
+    """Completeness is the plain rule again: nothing missing, and nothing failed."""
+    run(tmp_path, ports=successful_ports([]), fetch_preview=lambda _: preview())
 
+    result = run(tmp_path, ports=successful_ports([]))
 
-def test_a_deployment_that_switched_the_picture_reader_off_is_never_contacted(tmp_path):
-    ports = replace(successful_ports([]), picture_facts=_refuse("picture_facts"))
-
-    result = run(
-        tmp_path,
-        ports=ports,
-        preparation_config=without_picture_facts(),
-        fetch_preview=lambda _: preview(),
-    )
-
+    assert dict(result.failures) == {}
     assert result.complete
-
-
-def test_an_enabled_picture_reader_pays_once_and_reports_what_it_asked(tmp_path):
-    asked = []
-
-    def picture_facts(**kwargs):
-        asked.append(tuple(source.asset_id for source in kwargs["sources"]))
-        return prepare_picture_facts(**kwargs | {"ask": lambda _tile: _reader_reply()})
-
-    ports = replace(successful_ports([]), picture_facts=picture_facts)
-    config = _picture_facts_config()
-
-    first = run(
-        tmp_path,
-        ports=ports,
-        preparation_config=config,
-        fetch_preview=lambda _: preview(),
-    )
-    second = run(tmp_path, ports=ports, preparation_config=config)
-
-    assert asked == [("aa1", "bb2")]
-    assert first.transfer_by_stage["picture_facts"] == {"requests": 2}
-    assert first.complete and second.complete
-    assert "picture_facts" in first.stage_rates()
-
-
-def test_a_picture_reader_that_is_not_there_refuses_once_without_failing_the_cut(tmp_path):
-    def picture_facts(**_kwargs):
-        raise OSError("connection refused")
-
-    ports = replace(successful_ports([]), picture_facts=picture_facts)
-
-    result = run(
-        tmp_path,
-        ports=ports,
-        preparation_config=_picture_facts_config(),
-        fetch_preview=lambda _: preview(),
-    )
-
-    assert [reason for reason in result.producer_failures if "connection refused" in reason]
-    assert not result.missing_by_producer
-    assert result.complete, "no picture fact is demanded, so none of them can block a cut"
-
-
-def _closed_endpoint() -> str:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return f"http://127.0.0.1:{probe.getsockname()[1]}/v1"
-
-
-def test_a_silent_picture_reader_costs_one_line_and_the_run_carries_on(tmp_path):
-    ports = replace(successful_ports([]), picture_facts=prepare_picture_facts)
-
-    result = run(
-        tmp_path,
-        ports=ports,
-        preparation_config=_picture_facts_config(base_url=_closed_endpoint()),
-        fetch_preview=lambda _: preview(),
-    )
-
-    assert list(result.failures) == ["picture_facts:reader"]
-    assert result.failures["picture_facts:reader"].endswith("2 pictures left unread")
-    assert result.complete
-
-
-def _reader_reply():
-    answers = {name: {"noul": 0.02} for name in NOULS}
-    answers["what"] = {"choice": "people_moment", "probabilities": {"people_moment": 0.9}}
-    answers["adult_coverage"] = {"choice": "clothed", "probabilities": {"clothed": 0.9}}
-    answers["child_coverage"] = {"choice": "no_child", "probabilities": {"no_child": 0.9}}
-    return {"answers": answers}

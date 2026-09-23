@@ -202,16 +202,5 @@ def test_captions_are_asked_for_one_at_a_time_by_default() -> None:
     assert EditorialPreparationConfig().caption_concurrency == 1
 
 
-def test_the_picture_facts_reader_is_on_by_default():
-    assert EditorialPreparationConfig().picture_facts.enabled is True
-
-
-def test_an_enabled_picture_facts_reader_needs_an_endpoint_without_credentials():
-    from immich_memories.config_models_editorial_preparation import PictureFactsConfig
-
-    enabled = EditorialPreparationConfig(picture_facts=PictureFactsConfig(enabled=True))
-
-    assert enabled.demands_picture_facts is True
-    assert enabled.picture_facts.base_url == "http://127.0.0.1:8080/v1"
-    with pytest.raises(ValidationError):
-        PictureFactsConfig(base_url="http://user:secret@127.0.0.1:8080/v1")
+def test_the_removed_picture_reader_leaves_no_key_behind():
+    assert not hasattr(EditorialPreparationConfig(), "picture_facts")

@@ -39,9 +39,7 @@ def build(tmp_path, *, providers, fetched, tier="full", sources=None, preview_po
         llm={"model": "offline-editor"},
         cache={"directory": str(tmp_path / "cache")},
         analysis={"min_source_short_side": 0},
-        # The optional picture reader opens a socket to a local address; these cases are
-        # about the producers the tier itself demands.
-        editorial={"preparation": {"tier": tier, "picture_facts": {"enabled": False}}},
+        editorial={"preparation": {"tier": tier}},
     )
     acquisitions = []
 

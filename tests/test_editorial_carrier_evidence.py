@@ -82,13 +82,3 @@ def test_partial_year_months_are_clipped_and_leap_day_is_covered():
 @pytest.mark.parametrize("product", ["person_spotlight", "trip", "monthly_highlights"])
 def test_other_product_contracts_keep_their_existing_partitioning(product):
     assert len(intent(product).partitions) == 1
-
-
-def test_a_picture_the_reader_calls_a_screen_stops_being_a_carrier():
-    watched = "2026-08-25 12:00 | A room with a wall. | picture: screen 0.98; worth 0.97"
-    named = "2026-08-25 12:00 | A room with a wall. | picture: worth 0.97; what=screen_or_document"
-    unsure = "2026-08-25 12:00 | A room with a wall. | picture: screen 0.62; worth 0.97"
-
-    assert excluded_carrier_sources({"a": watched}) == {"a": "picture-facts:screen"}
-    assert excluded_carrier_sources({"a": named}) == {"a": "picture-facts:screen"}
-    assert excluded_carrier_sources({"a": unsure}) == {}

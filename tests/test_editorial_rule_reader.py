@@ -68,9 +68,7 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
         cache={"directory": str(tmp_path / "cache")},
         editorial={
             "reader": "rules",
-            # The optional picture reader would open a socket to a local address, and this
-            # case is about finishing a product with no transport of any kind.
-            "preparation": {"tier": "metadata_only", "picture_facts": {"enabled": False}},
+            "preparation": {"tier": "metadata_only"},
         },
         analysis={"min_source_short_side": 0},
     )

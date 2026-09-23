@@ -17,6 +17,7 @@ from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VER
 from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
 from immich_memories.analysis.remote_facts import RemoteFactsClient, RemoteFactsError
 from immich_memories.config_models_editorial import EditorialConfig
+from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
 from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.operations.cancellation import PipelineCancelled
 from tests.test_editorial_preparation import (
@@ -24,7 +25,6 @@ from tests.test_editorial_preparation import (
     refusing_ports,
     run,
     successful_ports,
-    without_picture_facts,
 )
 
 ENDPOINT = "http://inference.test:8092"
@@ -49,7 +49,7 @@ def answer(producers):
 def remote_run(tmp_path, *, inference=None, ports=None, **kwargs):
     return run(
         tmp_path,
-        preparation_config=without_picture_facts(tier="no_captions"),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
         inference_config=inference or InferenceConfig(facts_base_url=ENDPOINT),
         ports=ports or refusing_ports("heads", "detectors", "captions")[0],
         fetch_preview=lambda _: preview(),
@@ -172,7 +172,7 @@ def test_the_local_path_is_untouched_when_no_endpoint_is_configured(tmp_path):
     calls = []
     result = run(
         tmp_path,
-        preparation_config=without_picture_facts(tier="no_captions"),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
         inference_config=InferenceConfig(),
         ports=successful_ports(calls),
         fetch_preview=lambda _: preview(),

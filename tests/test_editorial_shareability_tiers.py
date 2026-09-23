@@ -85,18 +85,6 @@ def test_an_exposure_flag_holds_the_unit_even_with_every_head_clear():
     assert result["finding"] == "exposure_evidence"
 
 
-def test_a_child_in_swimwear_is_held_to_the_family_when_the_picture_reader_saw_one():
-    evidence = evidence_of(
-        heads=(("nsfw_marqo", "no"),),
-        line="2026-07-01 12:00 | A garden. | picture: worth 0.90; child=swimwear",
-    )
-
-    result = rule_audience(RefusingJudge(), evidence, "unit-1")
-
-    assert result["verdict"] == "family_only"
-    assert result["finding"] == "children_in_swimwear"
-
-
 def test_the_retired_swim_head_no_longer_raises_a_swimwear_hold():
     """Measured against a typed reader it flagged 551 pictures where 22 held swimwear."""
     evidence = evidence_of(heads=(("swim", "yes"), ("children", "yes"), ("nsfw_marqo", "no")))
@@ -104,7 +92,7 @@ def test_the_retired_swim_head_no_longer_raises_a_swimwear_hold():
     result = rule_audience(RefusingJudge(), evidence, "unit-1")
 
     assert result["verdict"] == "family_only"
-    assert result["finding"] != "children_in_swimwear"
+    assert result["finding"] == "unread_private_activity"
 
 
 def test_an_owner_review_flag_holds_the_unit_to_the_family():

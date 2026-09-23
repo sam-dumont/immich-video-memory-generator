@@ -32,10 +32,6 @@ from immich_memories.analysis.editorial_preparation_motion import (
     prepare_motion_lines,
     seat_asker,
 )
-from immich_memories.analysis.editorial_preparation_picture_facts import (
-    acquire_picture_facts,
-    prepare_picture_facts,
-)
 from immich_memories.analysis.editorial_preparation_pixels import (
     PRODUCER_KEY,
     refresh_threshold,
@@ -92,15 +88,7 @@ class PreparationResult:
 
     @property
     def complete(self) -> bool:
-        """Whether the cut has what it was promised.
-
-        The optional picture reader is never part of that: nothing downstream demands its
-        rows, so an install whose reader is not up still cuts its films and is one line
-        poorer in this report rather than unable to start.
-        """
-        return not self.missing_by_producer and all(
-            key.startswith("picture_facts") for key in self.failures
-        )
+        return not self.missing_by_producer and not self.failures
 
     @property
     def producer_failures(self) -> tuple[str, ...]:
@@ -146,7 +134,6 @@ class PreparationPorts:
     heads: Callable = prepare_heads
     detectors: Callable = prepare_detectors
     motion: Callable = prepare_motion_lines
-    picture_facts: Callable = prepare_picture_facts
 
 
 PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
@@ -536,14 +523,6 @@ def prepare_editorial_annotations(
             _acquire_captions(
                 stage, connection, pending(f"description:{description_model}"), description_model
             )
-        acquire_picture_facts(
-            stage,
-            connection,
-            source,
-            available,
-            config=preparation_config.picture_facts,
-            provider=stage.providers.picture_facts,
-        )
         motion = _MotionScope(
             source, store_path, read_playback, demanded=preparation_config.demands_captions
         )

@@ -179,6 +179,5 @@ def register_prepare_commands(cli_group: click.Group) -> None:
             clock, result = _run_preparation(client, config, assets)
 
         _print_outcome(clock, result, pictures=len(assets), library_size=library_size)
-        # Named above either way; only a producer the cut actually needs sets the exit code.
         if not result.complete:
             sys.exit(1)

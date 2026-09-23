@@ -15,7 +15,6 @@ from typing import Any
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
 from immich_memories.analysis.editorial_final_attached import sample_audience_evidence
-from immich_memories.analysis.editorial_shareability_audience import picture_facts_hold
 from immich_memories.security import write_secret_file
 
 
@@ -91,16 +90,8 @@ class AudienceGate:
             )
         )
         key, record = self.check(evidence, terminal)
-        # A picture fact is a floor under the reader's answer, never a clearance: it can
-        # only take a unit further from `share`, and it is recorded so an audit says why.
-        hold = picture_facts_hold(self._pictures.line(u))
-        verdict = _share.tighten(record["verdict"], hold)
-        self.verdicts[u["asset_id"]] = (
-            record
-            | {"evidence_key": key, "verdict": verdict}
-            | ({"picture_facts_hold": hold} if hold else {})
-        )
-        return verdict
+        self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
+        return record["verdict"]
 
     def exclude_refused_members(self, candidates) -> None:
         """Exclude the whole refused carrier, including alternate members, from later offers."""

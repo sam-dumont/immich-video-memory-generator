@@ -2,7 +2,6 @@
 The source-preparation variants arrive with the slice that ports `selection_source`.
 """
 
-import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -12,8 +11,6 @@ import pytest
 
 from immich_memories.analysis.annotation_lines import StoredAnnotationLineReader
 from immich_memories.analysis.editorial_contracts import EditorialCandidate
-from immich_memories.analysis.editorial_preparation_picture_facts import PICTURE_FACTS_PRODUCER
-from immich_memories.analysis.editorial_structure_lines import UnitLines
 from immich_memories.api.models import ExifInfo, Person
 from immich_memories.store.asset_annotations import (
     AssetAnnotationFactBatch,
@@ -49,8 +46,6 @@ CREATE TABLE pixel_facts (asset_id, producer_key, sharpness, brightness, contras
 CREATE TABLE pixel_facts_thresholds (name, value, producer_key);
 CREATE TABLE motion_bursts (asset_id, burst_id, still_ids, duration_seconds, beats_a_still);
 CREATE TABLE face_boxes (asset_id, named, x1, y1, x2, y2);
-CREATE TABLE picture_facts (asset_id, producer, source_digest, status, probabilities,
-    answered_at);
 """
 
 
@@ -344,55 +339,3 @@ def test_a_line_for_a_picture_with_no_banked_face_is_the_line_it_always_was(
     [line] = reader(store_path, candidate(asset)).lines_for((asset,)).lines
 
     assert "subject-framing" not in line.text
-
-
-def test_banked_picture_facts_reach_the_line_as_a_fact_the_prose_readers_never_see(tmp_path):
-    asset = "asset-picture-facts"
-    producer = PICTURE_FACTS_PRODUCER
-    store_path = store_with(
-        tmp_path,
-        descriptions=((asset, "student-v1", "A television stands against a wall."),),
-        picture_facts=(
-            (
-                asset,
-                producer,
-                "digest",
-                "described",
-                json.dumps(
-                    {
-                        "screen": 0.98,
-                        "worth": 0.12,
-                        "what": {"choice": "screen_or_document", "probabilities": {}},
-                        "child_coverage": {"choice": "no_child", "probabilities": {}},
-                    }
-                ),
-                "now",
-            ),
-        ),
-    )
-
-    read = reader(store_path, candidate(asset), picture_facts_producer=producer)
-    line = read.lines_for((asset,)).as_mapping()[asset]
-    prose = UnitLines({asset: line}).description({"asset_id": asset})
-
-    assert "picture: screen 0.98; worth 0.12; what=screen_or_document" in line
-    assert prose == "A television stands against a wall."
-    assert f"picture-facts:{producer}" in read.contract.producer_versions
-
-
-def test_a_line_is_byte_identical_when_no_picture_reader_is_configured(tmp_path):
-    asset = "asset-no-picture-facts"
-    store_path = store_with(
-        tmp_path, descriptions=((asset, "student-v1", "A television stands against a wall."),)
-    )
-
-    read = reader(store_path, candidate(asset))
-
-    assert "picture:" not in read.lines_for((asset,)).as_mapping()[asset]
-    assert not any("picture-facts" in v for v in read.contract.producer_versions)
-
-
-def test_a_picture_with_no_caption_reads_as_no_prose_rather_than_as_its_facts():
-    line = "2026-08-25 12:00 | picture: worth 0.04; what=empty_room_ceiling_or_floor | DARK"
-
-    assert UnitLines({"a": line}).description({"asset_id": "a"}) == ""

@@ -5,11 +5,24 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from immich_memories.analysis.editorial_preparation_picture_facts import picture_facts_on
-
-# The reader is certain or it says nothing: the probe measured a spread of up to 0.174
-# between reads of one picture, so a bar near the middle would be a coin toss.
-SCREEN_CERTAIN = 0.9
+# The kinds of frame that carry nothing a film can show, against the ones that do. This is
+# the `frame_kind` head's label set, split the way the standing gate reads it.
+NOTHING_KINDS = frozenset(
+    {
+        "empty_room_ceiling_or_floor",
+        "accidental_or_blurred_frame",
+        "lone_everyday_object",
+        "body_part_closeup",
+    }
+)
+CARRYING_KINDS = frozenset(
+    {
+        "people_moment",
+        "place_or_scenery",
+        "meaningful_record",
+        "screen_or_document",
+    }
+)
 
 SCREEN_DOCUMENT_LABELS = frozenset(
     {
@@ -130,19 +143,6 @@ def screenshot_by_resolution(line: str) -> bool:
     return (min(w, h), max(w, h)) in PHONE_SCREEN_SIZES
 
 
-def read_as_a_screen(line: str) -> bool:
-    """The optional picture reader says this is a screen. Silent without its row.
-
-    This is the arm that catches a TV or a watch face, which no head answers for: the
-    document head calls every one of them a photograph.
-    """
-    facts = picture_facts_on(line)
-    screen = facts.get("screen")
-    return (isinstance(screen, float) and screen >= SCREEN_CERTAIN) or facts.get(
-        "what"
-    ) == "screen_or_document"
-
-
 def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
     """Use grounded annotation fields, without reclassifying the event's importance.
 
@@ -152,9 +152,7 @@ def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
     excluded = {}
     for asset_id, line in annotations.items():
         document = _DOCUMENT_FIELD.search(line)
-        if read_as_a_screen(line):
-            excluded[asset_id] = "picture-facts:screen"
-        elif document and document.group(1) in SCREEN_DOCUMENT_LABELS:
+        if document and document.group(1) in SCREEN_DOCUMENT_LABELS:
             excluded[asset_id] = f"document-head:{document.group(1)}"
         elif screen_flagged_on_line(line):
             excluded[asset_id] = "screen-head"

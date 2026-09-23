@@ -10,7 +10,6 @@ from datetime import date, datetime
 from pathlib import Path
 
 from immich_memories.analysis.subject_framing import FaceBox
-from immich_memories.store.picture_facts import PictureFacts, banked_picture_facts
 
 
 @dataclass(frozen=True)
@@ -68,7 +67,6 @@ class StoredAssetAnnotationFacts:
     flags: tuple[StoredFlagFact, ...] = ()
     pixel: StoredPixelFacts | None = None
     motion: StoredMotionBurstFact | None = None
-    picture_facts: PictureFacts | None = None
 
 
 @dataclass
@@ -82,7 +80,6 @@ class _MutableAssetFacts:
     flags: list[StoredFlagFact] = field(default_factory=list)
     pixel: StoredPixelFacts | None = None
     motion: StoredMotionBurstFact | None = None
-    picture_facts: PictureFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -109,13 +106,11 @@ class AssetAnnotationFactRepository:
         description_model: str,
         head_versions: Mapping[str, str],
         pixel_producer_key: str,
-        picture_facts_producer: str = "",
     ) -> None:
         self._store_path = Path(store_path)
         self._description_model = description_model
         self._head_versions = dict(head_versions)
         self._pixel_producer_key = pixel_producer_key
-        self._picture_facts_producer = picture_facts_producer
 
     def facts_for(self, asset_ids: tuple[str, ...]) -> AssetAnnotationFactBatch:
         """Read exact-producer facts for the unique requested asset IDs."""
@@ -161,7 +156,6 @@ class AssetAnnotationFactRepository:
         self._read_heads(connection, records)
         self._read_pixels(connection, records)
         self._read_motion(connection, records)
-        self._read_picture_facts(connection, records)
 
     def _read_people(
         self, connection: sqlite3.Connection, records: dict[str, _MutableAssetFacts]
@@ -321,25 +315,6 @@ class AssetAnnotationFactRepository:
             if not _is_missing_table(exc, "motion_bursts"):
                 raise
 
-    def _read_picture_facts(
-        self, connection: sqlite3.Connection, records: dict[str, _MutableAssetFacts]
-    ) -> None:
-        """Only an asked-for producer is read: a bank may hold rows from an older question set.
-
-        Like every other family here, the row is read by its producer alone. The source digest
-        it carries decides whether preparation owes the picture another read, not whether the
-        line may show what was already read.
-        """
-        if not self._picture_facts_producer:
-            return
-        try:
-            banked = banked_picture_facts(connection, list(records), self._picture_facts_producer)
-            for asset_id, (_digest, facts) in banked.items():
-                records[asset_id].picture_facts = facts
-        except sqlite3.OperationalError as exc:
-            if not _is_missing_table(exc, "picture_facts"):
-                raise
-
 
 def _freeze(asset_id: str, record: _MutableAssetFacts) -> StoredAssetAnnotationFacts:
     return StoredAssetAnnotationFacts(
@@ -352,7 +327,6 @@ def _freeze(asset_id: str, record: _MutableAssetFacts) -> StoredAssetAnnotationF
         heads=tuple(sorted(record.heads.items())),
         flags=tuple(sorted(record.flags, key=lambda item: (item.flag, item.reason, item.source))),
         pixel=record.pixel,
-        picture_facts=record.picture_facts,
         motion=record.motion,
     )
 

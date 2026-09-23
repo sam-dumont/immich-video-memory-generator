@@ -28,38 +28,10 @@ def _endpoint(value: str, field: str) -> str:
     return value
 
 
-class PictureFactsConfig(BaseModel):
-    """A local typed-decision reader, asked once per picture at ingest.
-
-    On, because what it answers is worth having and it is told exactly one endpoint: the
-    address below and nothing else, which is a local one. A deployment with nothing there
-    pays one line in the preparation report and cuts its films as before.
-    """
-
-    enabled: bool = True
-    base_url: str = "http://127.0.0.1:8080/v1"
-    timeout_seconds: float = Field(default=120, gt=0)
-    concurrency: int = Field(
-        default=1,
-        ge=1,
-        le=16,
-        description=(
-            "Picture reads in flight. The reader answers one tile at a time on one GPU; "
-            "raise it only for a server that batches across cards"
-        ),
-    )
-
-    @field_validator("base_url")
-    @classmethod
-    def validate_endpoint(cls, value: str) -> str:
-        return _endpoint(value, "picture_facts.base_url")
-
-
 class EditorialPreparationConfig(BaseModel):
     """Missing facts are acquired; complete facts never contact a provider."""
 
     tier: PreparationTier = "full"
-    picture_facts: PictureFactsConfig = Field(default_factory=PictureFactsConfig)
     caption_base_url: str = "http://localhost:8092/v1"
     caption_artifact_id: str = Field(
         default="",
@@ -134,11 +106,6 @@ class EditorialPreparationConfig(BaseModel):
     @property
     def demands_captions(self) -> bool:
         return self.tier == "full"
-
-    @property
-    def demands_picture_facts(self) -> bool:
-        """Never implied by a tier: reading pixels twice is a deployment's own decision."""
-        return self.picture_facts.enabled
 
     @property
     def demands_models(self) -> bool:
