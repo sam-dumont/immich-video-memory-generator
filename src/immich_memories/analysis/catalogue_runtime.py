@@ -27,7 +27,7 @@ from immich_memories.analysis.library_catalogue import (
     bank_month_accounts,
     build_catalogue,
 )
-from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
+from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.store.episode_readings import (
     EpisodeReadingIdentity,
     EpisodeReadingStore,

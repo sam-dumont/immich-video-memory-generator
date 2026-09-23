@@ -20,10 +20,10 @@ from immich_memories.analysis.selection_source import (
     prepare_editorial_source,
 )
 from immich_memories.analysis.selection_source_groups import project_episode_groups
+from immich_memories.analysis.text_episode_paging import TextEpisodeRequestLimits
 from immich_memories.analysis.text_episode_reader import (
     CachedTextEpisodeReader,
     EpisodeCacheRequestPlan,
-    TextEpisodeRequestLimits,
 )
 from immich_memories.store.episode_readings import (
     BankedEpisodeReading,

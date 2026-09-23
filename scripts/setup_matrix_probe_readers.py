@@ -54,7 +54,7 @@ from immich_memories.analysis.text_episode_answers import (  # noqa: E402
     _EpisodeRequestScope,
     _read_response_result,
 )
-from immich_memories.analysis.text_episode_reader import (  # noqa: E402
+from immich_memories.analysis.text_episode_paging import (  # noqa: E402
     TEXT_EPISODE_MAX_OUTPUT_TOKENS,
 )
 from immich_memories.config_loader import Config  # noqa: E402

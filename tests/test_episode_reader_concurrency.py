@@ -18,10 +18,8 @@ from immich_memories.analysis.selection_source import (
     prepare_editorial_source,
 )
 from immich_memories.analysis.selection_source_groups import project_episode_groups
-from immich_memories.analysis.text_episode_reader import (
-    CachedTextEpisodeReader,
-    TextEpisodeRequestLimits,
-)
+from immich_memories.analysis.text_episode_paging import TextEpisodeRequestLimits
+from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
 from immich_memories.config_models_llm import LLMConfig
 from immich_memories.store.episode_readings import EpisodeReadingProducer, EpisodeReadingStore
 from tests.conftest import make_asset

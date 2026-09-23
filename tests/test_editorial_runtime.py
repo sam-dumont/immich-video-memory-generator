@@ -27,7 +27,7 @@ from immich_memories.analysis.selection_source import (
 )
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.smart_pipeline import ClipWithSegment
-from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
+from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.config_loader import Config
 from immich_memories.memory_types.date_builders import build_birthday_windows
 from immich_memories.store.episode_readings import EpisodeReadingStore

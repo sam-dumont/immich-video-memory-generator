@@ -33,7 +33,7 @@ from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPolicy
 from immich_memories.analysis.selection_source import SourceScope
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.subject_framing import FaceBox, face_boxes_of
-from immich_memories.analysis.text_episode_reader import TEXT_EPISODE_MAX_OUTPUT_TOKENS
+from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.people.context import PersonPromptContext, load_people_prompt_context
 from immich_memories.store.episode_readings import EpisodeReadingStore
