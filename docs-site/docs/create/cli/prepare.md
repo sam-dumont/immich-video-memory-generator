@@ -26,7 +26,10 @@ immich-memories prepare --year 2024 --month 6
 That prepares the month and stops. No selection, no video. The scope flags are `generate`'s
 (`--year`, `--year --month`, `--start --end`, `--start --period`) and it prepares exactly the
 pictures a cut over that scope would: no archived or hidden assets, no forwarded or re-encoded
-media, Live Photo components handled the same way. Each run resumes where the last stopped, so a
+media, none of the films this app already uploaded, Live Photo components handled the same way.
+Both ask one function for the scope, so they cannot drift apart. "Free for every later cut" still
+holds only until a producer's version changes: a store prepared before a new head shipped pays that
+head at the next cut. Each run resumes where the last stopped, so a
 `for month in 1 2 3 …` loop works through a year.
 
 `--month` needs `--year`, and is refused without one. Before

@@ -124,8 +124,11 @@ advanced:
 ```
 
 `llm.model` must be the string the server reports at `GET /v1/models`. `llm.base_url` defaults to
-`http://localhost:8080/v1`, the app's own port: set it. In a container, `localhost` is the
-container, so both endpoints need real hostnames.
+`http://localhost:8080/v1`, the app's own port: set it. If the reader answers `401`, give it its
+token in `llm.api_key` (`IMMICH_MEMORIES_LLM__API_KEY`). In a container, `localhost` is the
+container, so both endpoints need real hostnames: `host.docker.internal` for servers on the Docker
+host itself, which Linux needs one line for
+([Docker](./installation/docker.md#reaching-a-model-server)).
 
 Every key has an env var (`IMMICH_MEMORIES_LLM__BASE_URL`,
 `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER`, and so on), and the env var wins over the YAML.
@@ -168,7 +171,8 @@ second run a fifth later), 30.9 s for the caption. That is the whole reason
 | A NAS alone: `reader: rules`, `tier: metadata_only` | **Selection measured**: 279 s cold, 11.1 s warm on a DS423+. Simpler cut; review it |
 
 Two things bite on the split layout: `localhost` inside a container is the container, so
-`caption_base_url` and `llm.base_url` need real hostnames; and the shipped Kubernetes
+`caption_base_url` and `llm.base_url` need real hostnames, and a server on another machine has to
+listen on more than loopback (mlxcel needs `--host 0.0.0.0`); and the shipped Kubernetes
 NetworkPolicy opens egress to DNS, 80, 443, 2283, 11434 and 8092 (11434 is Ollama's port, not
 oMLX's 8000), so edit it for anything else. Hardware encoders (VAAPI, Quick Sync, NVENC) decode,
 scale and encode; none of them runs inference.

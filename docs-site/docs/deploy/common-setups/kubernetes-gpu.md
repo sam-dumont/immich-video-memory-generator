@@ -45,6 +45,9 @@ kubectl apply -k overlays/gpu
 image tag (no `v` prefix: release `vX.Y.Z` is tag `X.Y.Z`); the checked-in pin is only as current
 as the last bump, so check the
 [releases page](https://github.com/sam-dumont/immich-video-memory-generator/releases) first.
+Everything lands in the `immich-memories` namespace; to use another,
+[set it in each kustomization root](../installation/kubernetes.md#another-namespace) before you
+apply. The pods pin `tier: no_captions` in their env, so a first cut needs no caption server.
 
 Don't commit a plain Secret. Use
 [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets), or whatever your cluster has:

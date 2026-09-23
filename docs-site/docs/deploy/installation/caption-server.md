@@ -62,8 +62,12 @@ brew install lablup/tap/mlxcel
 pip install huggingface-hub          # for the `hf` command, if you do not have it
 SNAPSHOT=$(hf download mlx-community/SmolVLM2-500M-Video-Instruct-mlx \
   --revision fa57db46815177fbdfd65cc85a2b3416a8332268)
-mlxcel serve --model "$SNAPSHOT" --alias smolvlm2-500m-base-public --port 8092
+mlxcel serve --model "$SNAPSHOT" --alias smolvlm2-500m-base-public --host 0.0.0.0 --port 8092
 ```
+
+`--host 0.0.0.0` because mlxcel binds `127.0.0.1` by default, which an app on a NAS or another host
+cannot reach (`Caption endpoint unreachable`); nothing behind the port checks a credential, so keep
+it on your LAN.
 
 `hf download` prints the snapshot directory it wrote, which is what the server wants. Then in your
 config:
@@ -76,8 +80,10 @@ editorial:
 ```
 
 That is the default value of `caption_base_url`, so on a Mac running the app locally there is
-nothing to set but the tier. oMLX cannot load SmolVLM2 at all: if you already run oMLX for the
-reader, the captioner still needs its own process on its own port.
+nothing to set but the tier. From the app in Docker Desktop on the same Mac, the address is
+`http://host.docker.internal:8092/v1`; from a NAS, the Mac's LAN name or IP. oMLX cannot load
+SmolVLM2 at all: if you already run oMLX for the reader, the captioner still needs its own process
+on its own port.
 
 ## Docker and Linux, with llama.cpp
 
