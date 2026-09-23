@@ -165,30 +165,18 @@ class StandingGate:
             self.scores.setdefault(a, 0)
 
     def needs(self, asset: str, weight: str, story_key: str = "") -> int:
-        """How many orders' approval this picture's standing turns on, as `stands` reads it.
+        """How many orders' answers this picture's standing turns on, as `stands` reads it.
 
         0 when no answer changes whether it stands (it has no context to serve, or it is a still
-        with life in a dominant or major story); 1 when one approval decides it; 2 when it must
-        stand by both orders.
+        with life the gate only orders); otherwise 1: an order that does not name it
+        decides it stands, and one that does is always checked by the other.
         """
         if asset not in self._unit_by_asset:
-            return 2
+            return 1
         if not self._context_allowed(asset, weight, story_key):
             return 0
-        lively, starred = self._life(asset), self._starred(asset)
-        if weight == "glimpse" or self.thin(story_key):
-            return 2
-        if not lively and not starred and weight == "minor":
-            return 2
         moving = carries_motion(self._unit_by_asset[asset][1])
-        return 0 if lively and weight in ("dominant", "major") and not moving else 1
-
-    def _starred(self, asset: str) -> bool:
-        return (
-            bool(self._unit_by_asset[asset][1].get("favourite"))
-            if asset in self._unit_by_asset
-            else False
-        )
+        return 0 if self._ordered_only(asset, weight, story_key) and not moving else 1
 
     def thin(self, story_key: str) -> bool:
         """A story of one or two pictures has no context for a weak picture to serve."""
@@ -214,27 +202,28 @@ class StandingGate:
         return allowed
 
     def stands(self, asset: str, weight: str, story_key: str = "") -> bool:
-        """A glimpse, or a story of one or two pictures, has no context to serve, so its picture
-        must stand entirely alone (named weak by neither order). Inside a dominant or major story a
-        picture with people or animals in it serves its purpose with context and is only ORDERED by
-        the gate, never removed; a lifeless one (a room, an object) needs one order's approval. In a
-        minor story a picture with life needs one order, a lifeless one both. Moving clips always
-        need at least one standing approval; their media kind cannot override two weak votes."""
+        """A picture is refused on standing only when both orders named it weak (score 0).
+
+        The reader agrees with itself across the two orders at about half its weak set (0.46 to
+        0.50 on the April 2021 A/B), so one order's doubt is noise: refusing on it emptied a
+        funded week. Inside a dominant or major story a still with people or animals in it
+        serves its purpose with context and is only ORDERED by the gate, never removed, unless the
+        story is a glimpse or holds one or two pictures, which leaves it no context to serve. A
+        moving clip needs at least one approval like any other picture, and a picture with no
+        context to serve is refused whatever the votes."""
         score = self.scores.get(asset, 0)
         if self.rejected_motion(asset):
             return False
-        lively = self._life(asset)
-        thin = self.thin(story_key)
         if not self.has_required_context(asset, weight, story_key):
             return False
-        if not lively and not self._starred(asset) and weight == "minor":
-            # Context pictures in a minor story still need both standing votes.
-            return score == 2
-        if weight == "glimpse" or thin:
-            return score == 2
-        if weight in ("dominant", "major"):
-            return lively or score >= 1
+        if self._ordered_only(asset, weight, story_key):
+            return True
         return score >= 1
+
+    def _ordered_only(self, asset: str, weight: str, story_key: str) -> bool:
+        """A picture with life in a dominant or major story of more than two pictures: the gate
+        orders it and never removes it. A glimpse or a thin story has no context to lend it."""
+        return weight in ("dominant", "major") and not self.thin(story_key) and self._life(asset)
 
 
 def _settled_by(needs: Mapping[str, int]) -> Callable[[str, bool], bool]:
@@ -243,4 +232,4 @@ def _settled_by(needs: Mapping[str, int]) -> Callable[[str, bool], bool]:
     A picture one order named is always asked again: the reader's reject-only answers flip with
     the order of the rows, so one order's doubt never refuses a picture on its own.
     """
-    return lambda asset, named: needs.get(asset, 2) == 1 and not named
+    return lambda asset, named: needs.get(asset, 1) == 1 and not named

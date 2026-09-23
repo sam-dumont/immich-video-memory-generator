@@ -10,6 +10,9 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
+import pytest
+
+from immich_memories.analysis.editorial_story_standing import StandingGate
 from tests.editorial_thin_fixtures import (
     DOUBTFUL,
     ONE_ORDER,
@@ -61,15 +64,44 @@ def test_one_orders_doubt_asks_the_other_order_and_never_removes_a_shot_alone(tm
     assert "d017" not in payload["removed_by_the_vote"]
 
 
-def test_a_glimpse_one_order_doubts_is_asked_again_before_the_gate_decides(tmp_path):
+def test_a_glimpse_one_order_doubts_is_asked_again_and_kept(tmp_path):
+    """The reader agrees with itself across orders at about half the weak set, so one order's
+    doubt is noise: it emptied a funded week of April 2021 when it could refuse a glimpse."""
     film = Film()
     draft(film, 12, captions={5: ONE_ORDER}, tier="background")
 
-    judge, payload, _cut, _newcomers = polish(tmp_path, film)
+    judge, payload, cut, _newcomers = polish(tmp_path, film)
 
     assert any(stage.endswith("-hashed") for stage in asked(judge, "standing-"))
-    # a glimpse has no context to serve, so it still has to stand by both orders
-    assert [row["asset_id"] for row in payload["refused_by_the_gates"]] == ["d005"]
+    assert payload["refused_by_the_gates"] == []
+    assert "d005" in {row["asset_id"] for row in cut}
+
+
+def standing_gate(*, life: bool, pictures: int) -> StandingGate:
+    return StandingGate(
+        None,
+        line_of=lambda _asset: "a line",
+        life=lambda _asset: life,
+        unit_by_asset={"p": ("fam", {"asset_id": "p", "kind": "still", "favourite": False})},
+        pictures_of={"S": pictures},
+        bank=None,
+        save=None,
+        calls={"standing_rounds": 0},
+    )
+
+
+@pytest.mark.parametrize(
+    ("weight", "life", "pictures"),
+    [("glimpse", True, 10), ("minor", True, 2), ("minor", False, 10)],
+    ids=["glimpse", "story of two", "lifeless minor"],
+)
+def test_only_both_orders_naming_a_picture_refuse_it(weight, life, pictures):
+    gate = standing_gate(life=life, pictures=pictures)
+
+    gate.scores["p"] = 1
+    assert gate.stands("p", weight, "S")
+    gate.scores["p"] = 0
+    assert not gate.stands("p", weight, "S")
 
 
 def test_a_block_every_shot_of_which_the_owner_protects_is_not_voted_on(tmp_path):
