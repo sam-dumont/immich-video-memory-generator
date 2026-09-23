@@ -95,20 +95,24 @@ def acquire_clip_companions(
         return
     refused = set(stage.unservable)
     paths, _unusable = stage.previews(owed, cache_path, fetch_preview)
-    for asset_id in set(stage.unservable) - refused:
-        # A clip Immich will not preview is not a source leaving the film: its still stays.
-        stage.failures[f"{CLIP_COMPANION}:{asset_id}"] = stage.unservable.pop(asset_id)
-    readable = tuple(asset_id for asset_id in owed if asset_id in paths)
-    if not readable:
-        return
+    # A clip Immich will not preview is not a source leaving the film: its still stays.
+    # Nor is it unread: Immich keeps no preview for many Live Photo clips and plays them all.
+    no_preview = {
+        asset_id: stage.unservable.pop(asset_id) for asset_id in set(stage.unservable) - refused
+    }
     with frames.sampled(
-        readable,
+        owed,
         check=stage.check,
         report=stage.report,
         failures=stage.failures,
         timed=stage.timed,
     ) as sampled:
-        stage.detectors({MARQO_HEAD: readable}, paths, sampled)
+        for asset_id, reason in no_preview.items():
+            if asset_id not in sampled:
+                stage.failures[f"{CLIP_COMPANION}:{asset_id}"] = reason
+        readable = tuple(asset_id for asset_id in owed if asset_id in paths or asset_id in sampled)
+        if readable:
+            stage.detectors({MARQO_HEAD: readable}, paths, sampled)
 
 
 def acquire_model_facts(

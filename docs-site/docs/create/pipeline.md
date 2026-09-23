@@ -147,8 +147,10 @@ That pass is deliberately narrow: the exposure detector only, no caption, no con
 fact, so it costs the same 0.3 to 0.4 s per clip as any other. A shot whose clip is flagged is held
 to family viewing whatever its own captions say, because the captions describe the still and a still
 is not evidence about the seconds of motion hanging off it; only a direct observation of that clip
-lifts it. A clip Immich will not serve leaves its still in the film and one named failure behind,
-which is exactly the evidence every Live Photo carried before.
+lifts it. Immich keeps no preview for many of these clips (120 of 193 in one month) but plays all
+of them, so a clip with no preview is read on its frames alone. A clip Immich will neither preview
+nor play leaves its still in the film and one named failure behind, which is exactly the evidence
+every Live Photo carried before.
 
 **A run of flagged captures holds the clean captures inside it.** The detector decides one picture at
 a time, and a nappy change or a bath is not one picture: it is three minutes of them, of which the

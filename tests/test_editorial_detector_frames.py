@@ -187,3 +187,46 @@ def test_a_clip_immich_will_not_serve_leaves_its_still_in_the_film(tmp_path):
     assert result.failures["clip_companion:cc3"] == "preview unavailable at Immich (HTTP 404)"
     # The still stays: a clip nobody could read is what every Live Photo had before.
     assert result.unservable_sources == {}
+
+
+@requires_ffmpeg
+def test_a_clip_with_no_preview_is_still_read_on_its_frames(tmp_path):
+    """Immich keeps no preview for many Live Photo clips, and plays every one of them."""
+    import sqlite3
+
+    import httpx
+
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+    from tests.test_playback_keyframes import encode
+
+    data = encode(tmp_path / "clip.mp4", gop=30)
+
+    def fetch_preview(asset_id):
+        if asset_id == "cc3":
+            # WHY: Immich's settled answer for a source it holds no preview for.
+            raise httpx.HTTPStatusError(
+                "404",
+                request=httpx.Request("GET", "http://immich.test"),
+                response=httpx.Response(404),
+            )
+        return preview()
+
+    result = run(
+        tmp_path,
+        assets=[asset("aa1"), _live_photo("bb2", "cc3")],
+        ports=successful_ports([]),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+        fetch_preview=fetch_preview,
+        # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+        read_playback=lambda _id, start, length: (data[start : start + length], len(data)),
+    )
+
+    assert result.complete
+    assert "clip_companion:cc3" not in result.failures
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        banked = connection.execute(
+            "SELECT 1 FROM head_facts WHERE asset_id='cc3' AND head='nsfw_marqo'"
+        ).fetchone()
+    connection.close()
+    assert banked
