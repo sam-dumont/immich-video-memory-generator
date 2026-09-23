@@ -160,7 +160,7 @@ how long the day stayed alive:
 
 | day | photos | active hours | occasion |
 |---|---|---|---|
-| a birth | 289 | 18 | yes |
+| a long occasion | 289 | 18 | yes |
 | a wedding party | 48 | 12 | yes |
 | a track day | 133 | 7 | yes |
 | an apartment viewing | 258 | 5 | no |

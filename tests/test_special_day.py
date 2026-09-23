@@ -418,7 +418,7 @@ class TestTheGroundingFilterKeepsWhatItPromised:
 class TestADayEndsWhenThePhotographsDo:
     """Midnight is an arbitrary place to cut an occasion in half.
 
-    A birth ran past midnight: one continuous run from the evening before
+    A long occasion ran past midnight: one continuous run from the evening before
     through the following afternoon, which grouping by calendar date cut into
     three, leaving the detector looking at the middle slice.
     """
