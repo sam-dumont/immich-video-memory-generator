@@ -409,7 +409,8 @@ def _central_stories(abouts, candidates, by_key, stories):
     confirmed = list(named)
     if not named and candidates:
         # Unconfirmed: a candidate stands only if it is the period's largest story by moments (a
-        # chunk's local "about", one posing afternoon, must not take half of a month around a birth).
+        # chunk's local "about", one posing afternoon, must not take half of a month around a big
+        # occasion).
         most = max(
             (
                 (story.get("seen") or {}).get("moments", 0)

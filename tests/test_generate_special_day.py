@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
+from immich_memories.automation.catalogue import SCOPE_FROM_RUN
 from immich_memories.cli.generate_resolution import name_from_catalogue, resolve_special_day
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
@@ -205,6 +206,101 @@ class TestTheWindowIsTheScope:
         payload = _immich_payload_for(windows[0])
         assert payload["takenAfter"] == "2016-06-12T00:00:00+00:00"
         assert payload["takenBefore"] == "2016-06-12T23:59:59+00:00"
+
+
+class TestTheRunIsTheOuterScope:
+    """An occasion is a stretch of photography; the calendar cuts the long ones."""
+
+    def test_a_run_that_crosses_midnight_is_asked_for_whole(
+        self, windows_asked_for, catalogue_at
+    ) -> None:
+        catalogue_at(
+            {
+                **ENTRY,
+                "active_hours": 21,
+                "run_start": "2016-06-12T00:57:00+00:00",
+                "run_end": "2016-06-13T19:29:00+00:00",
+            }
+        )
+
+        windows = windows_asked_for("--memory-type", "special_day", "--day", DAY_ISO)
+
+        payload = _immich_payload_for(windows[0])
+        assert payload["takenAfter"] == "2016-06-12T00:57:00+00:00"
+        assert payload["takenBefore"] == "2016-06-13T19:29:00+00:00"
+
+    def test_a_window_that_holds_a_sliver_of_its_run_loses_to_the_run(
+        self, windows_asked_for, catalogue_at
+    ) -> None:
+        # The measured shape: five recorded hours over 33 of a 379-picture run.
+        catalogue_at(
+            {
+                **ENTRY,
+                "photos": 379,
+                "window": ["2016-06-12T01:53:00+00:00", "2016-06-12T06:59:00+00:00"],
+                "window_photos": 33,
+                "run_start": "2016-06-12T00:57:00+00:00",
+                "run_end": "2016-06-13T19:29:00+00:00",
+            }
+        )
+
+        payload = _immich_payload_for(
+            windows_asked_for("--memory-type", "special_day", "--day", DAY_ISO)[0]
+        )
+
+        assert payload["takenBefore"] == "2016-06-13T19:29:00+00:00"
+
+    def test_a_window_that_holds_its_run_still_trims_inside_it(
+        self, windows_asked_for, catalogue_at
+    ) -> None:
+        catalogue_at(
+            {
+                **ENTRY,
+                "photos": 379,
+                "window": ["2016-06-12T03:00:00+00:00", "2016-06-13T18:00:00+00:00"],
+                "window_photos": 340,
+                "run_start": "2016-06-12T00:57:00+00:00",
+                "run_end": "2016-06-13T19:29:00+00:00",
+            }
+        )
+
+        payload = _immich_payload_for(
+            windows_asked_for("--memory-type", "special_day", "--day", DAY_ISO)[0]
+        )
+
+        assert payload["takenAfter"] == "2016-06-12T03:00:00+00:00"
+        assert payload["takenBefore"] == "2016-06-13T18:00:00+00:00"
+
+    def test_a_run_reaching_into_another_catalogued_day_keeps_its_own_date(
+        self, windows_asked_for, catalogue_at
+    ) -> None:
+        catalogue_at(
+            {
+                **ENTRY,
+                "run_start": "2016-06-12T00:57:00+00:00",
+                "run_end": "2016-06-13T19:29:00+00:00",
+            },
+            {**ENTRY, "day": "2016-06-13", "title": "Another occasion entirely"},
+        )
+
+        payload = _immich_payload_for(
+            windows_asked_for("--memory-type", "special_day", "--day", DAY_ISO)[0]
+        )
+
+        assert payload["takenBefore"] == "2016-06-12T23:59:59+00:00"
+
+    def test_the_run_record_says_which_scope_was_used(self, catalogue_at) -> None:
+        catalogue_at(
+            {
+                **ENTRY,
+                "run_start": "2016-06-12T00:57:00+00:00",
+                "run_end": "2016-06-13T19:29:00+00:00",
+            }
+        )
+
+        params = resolve_special_day(DAY, "special_day")
+
+        assert params["window_origin"] == SCOPE_FROM_RUN
 
 
 class TestTheTitleNeverTravelsOnTheCommandLine:
