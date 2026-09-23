@@ -198,6 +198,7 @@ def _capture_group_moments(
     plays: Callable[[dict], bool] = lambda _u: False,
     subject: Callable[[str], SubjectVisibility] = lambda _a: SubjectVisibility(0, 0.0),
     rank: Callable[[str, int, int], tuple] | None = None,
+    withhold: Callable[[str], bool] | None = None,
 ) -> list[DepictedChoice]:
     """Without a model inventory a capture group is the moment; the favourite, else the best unflagged
     picture that shows life, carries it.
@@ -214,12 +215,18 @@ def _capture_group_moments(
 
     A reader with no model behind it passes its own ``rank``, which reads capture facts
     instead of a caption and knows where a picture sits inside its burst.
+
+    ``withhold`` names pictures an answer already banked about this library refuses: offering
+    one costs the moment its slot, because the gate that refused it refuses it again. A moment
+    whose every picture is withheld keeps them all: there is nothing left to offer instead, and
+    the existing gates decide its fate exactly as they did before.
     """
     groups: dict[str, list[dict]] = {}
     for u in units:
         groups.setdefault(u.get("moment") or u["asset_id"], []).append(u)
     choices = []
-    for moment, members in groups.items():
+    for moment, group in groups.items():
+        members = _offerable(group, withhold)
         place = {u["asset_id"]: i for i, u in enumerate(sorted(members, key=itemgetter("taken")))}
         ordered = sorted(
             members,
@@ -249,6 +256,13 @@ def _capture_group_moments(
             )
         )
     return sorted(choices, key=lambda c: c.taken)
+
+
+def _offerable(members: list[dict], withhold: Callable[[str], bool] | None) -> list[dict]:
+    if withhold is None:
+        return members
+    kept = [u for u in members if not withhold(u["asset_id"])]
+    return kept or members
 
 
 def _instant(value):

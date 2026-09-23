@@ -1,0 +1,392 @@
+"""What a model already answered about this library, read by the reader that asks nothing.
+
+The rules draft is built from indicators and head facts and asks no question. On an install
+where a model HAS answered — an earlier cut of the same film, or the thin layer polishing last
+week's draft — those answers are sitting in banks the draft never opened, so it kept offering
+pictures a gate had already refused and the film came out short. This module opens those banks
+read-only and answers five questions about a picture or an episode. It never asks anything, it
+never writes, and a missing bank answers None, False or () everywhere, so a cold install draws
+exactly the draft it drew before.
+
+Keying. A bank answer is only an answer to the question it was asked, so each read is named the
+way the writing side named it:
+
+* Standing votes live per row under `picture-stands.private.json`, named by the criterion, the
+  contract, the period, the motion seat behind a moving row, the replying model and the row's
+  own text (`editorial_block_votes.standing_row_name`). The model identity is part of that name,
+  so a bank written by another reader simply does not answer here — it cannot be mistaken for
+  one that does.
+* Episode readings live in the annotation store under (group, producer, evidence). The producer
+  is the reading contract; the evidence is a digest of the exact annotation lines. This module
+  matches on group and evidence and ignores the producer, so a reading made by any reader of the
+  same pictures is read. That is safe for a cull, which is a refusal, and for a representative,
+  which is a nomination the rules order still has to rank: neither can admit a picture the
+  current rules would refuse, and both only ever reorder or withhold within one episode.
+* Audience verdicts are recorded per picture by the gate that cast them, in the cut they belong
+  to. Only refusals are read, and only from cuts for the same audience: a stale `share` never
+  clears anything, which is the direction the owner asked for (a hold is never lifted by a
+  later read).
+
+A favourite is never withheld by anything read here. The owner's own choice outranks a banked
+answer about it, exactly as it outranks the rules' own standing verdict.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from itertools import chain
+from pathlib import Path
+from typing import Any, Protocol
+
+from immich_memories.analysis.editorial_block_votes import standing_row_name
+from immich_memories.analysis.editorial_shareability import allowed
+
+logger = logging.getLogger(__name__)
+
+STANDING_BANK_NAME = "picture-stands.private.json"
+CUT_RECORD_NAME = "plan.private.json"
+
+
+class BankedFacts(Protocol):
+    """The five things the rules draft asks of answers it did not pay for."""
+
+    def standing_of(self, asset_id: str) -> int | None: ...
+
+    def refused_for_audience(self, asset_id: str) -> bool: ...
+
+    def episode_representatives(self, episode_key: str) -> tuple[str, ...]: ...
+
+    def culled(self, asset_id: str) -> bool: ...
+
+    def record_owning(self, episode_key: str) -> tuple[str, ...]: ...
+
+
+class NoBankedFacts:
+    """A library nothing has read yet. Every question comes back unanswered."""
+
+    def standing_of(self, asset_id: str) -> int | None:
+        return None
+
+    def refused_for_audience(self, asset_id: str) -> bool:
+        return False
+
+    def episode_representatives(self, episode_key: str) -> tuple[str, ...]:
+        return ()
+
+    def culled(self, asset_id: str) -> bool:
+        return False
+
+    def record_owning(self, episode_key: str) -> tuple[str, ...]:
+        return ()
+
+
+NO_BANKED_FACTS: BankedFacts = NoBankedFacts()
+
+
+@dataclass(frozen=True)
+class BankedAnswers:
+    """Answers already banked for this film, resolved once when the banks are opened."""
+
+    standing: Mapping[str, int]
+    refused: frozenset[str]
+    representatives: Mapping[str, tuple[str, ...]]
+    culls: frozenset[str]
+
+    def standing_of(self, asset_id: str) -> int | None:
+        return self.standing.get(asset_id)
+
+    def refused_for_audience(self, asset_id: str) -> bool:
+        return asset_id in self.refused
+
+    def episode_representatives(self, episode_key: str) -> tuple[str, ...]:
+        return self.representatives.get(episode_key, ())
+
+    def culled(self, asset_id: str) -> bool:
+        return asset_id in self.culls
+
+    def record_owning(self, episode_key: str) -> tuple[str, ...]:
+        """The pictures that own an episode's notable record.
+
+        A reading names them on `notable_moments`, a field the episode bank does not carry yet.
+        Until it does this answers nothing, which costs the draft the ranking it would gain and
+        nothing else; when the field lands, this returns those asset ids and the draft leads
+        with them the way it already leads with a reading's representatives.
+        """
+        return ()
+
+
+def configured_text_identity(llm_config: Any) -> str:
+    """The reader this install is configured with, named the way a vote bank names it.
+
+    A no-model run still has the configuration of whatever model read this library before, and
+    that name is half of every banked answer's key. Without it nothing can be read back, which
+    is the honest outcome for an install that has never had a reader.
+    """
+    if llm_config is None:
+        return ""
+    from immich_memories.analysis.llm_providers import resolved_llm_config
+    from immich_memories.analysis.llm_text_identity import text_model_identity
+
+    try:
+        return text_model_identity(resolved_llm_config(llm_config), thinking=False)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        logger.debug("No configured reader identity (%s): banked answers stay closed", exc)
+        return ""
+
+
+def open_banked_facts(
+    *,
+    bank_dir: Path,
+    attempts_dir: Path | None,
+    store_path: Path | None,
+    audience: str,
+    model_identity: str,
+    contract: str,
+    period_label: str,
+    motion_identity: str,
+    rows_of: Mapping[str, str],
+    episode_cards: Mapping[str, Any],
+    own_producers: frozenset[str] = frozenset(),
+) -> BankedFacts:
+    """Open this film's banks read-only and resolve what they already say.
+
+    `rows_of` is each picture's standing row as the gate renders it; `episode_cards` maps a
+    moment alias to the episode card the run carries, whose episode id and evidence key name the
+    reading to look for. `own_producers` names the reading contracts this very run produced, so
+    the draft is not handed its own answer back as if somebody else had given it. Anything
+    unreadable is treated as unanswered rather than raised: a draft that cannot open a bank is
+    the cold draft, which is always a valid film.
+    """
+    standing = (
+        _banked_standing(
+            bank_dir / STANDING_BANK_NAME,
+            rows_of=rows_of,
+            model_identity=model_identity,
+            contract=contract,
+            period_label=period_label,
+            motion_identity=motion_identity,
+        )
+        if model_identity
+        else {}
+    )
+    representatives, culls = _banked_readings(store_path, episode_cards, own_producers)
+    answers = BankedAnswers(
+        standing=standing,
+        refused=_refused_before(attempts_dir, audience=audience),
+        representatives=representatives,
+        culls=culls,
+    )
+    logger.debug(
+        "banked facts: %d standing, %d refused, %d read episodes, %d culled",
+        len(answers.standing),
+        len(answers.refused),
+        len(answers.representatives),
+        len(answers.culls),
+    )
+    return answers
+
+
+def _banked_standing(
+    path: Path,
+    *,
+    rows_of: Mapping[str, str],
+    model_identity: str,
+    contract: str,
+    period_label: str,
+    motion_identity: str,
+) -> dict[str, int]:
+    """Each picture's banked standing score, named exactly as the asking side named it."""
+    rows = _bank_rows(path)
+    if not rows:
+        return {}
+    banked = {}
+    for asset_id, row in rows_of.items():
+        if not row:
+            continue
+        name = standing_row_name(
+            row,
+            contract=contract,
+            period_label=period_label,
+            identity=model_identity,
+            motion_identity=motion_identity,
+        )
+        entry = rows.get(name)
+        if isinstance(entry, Mapping) and "votes" in entry:
+            banked[asset_id] = 2 - int(entry["votes"])
+    return banked
+
+
+def _bank_rows(path: Path) -> Mapping[str, Any]:
+    try:
+        bank = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    rows = bank.get("rows") if isinstance(bank, Mapping) else None
+    return rows if isinstance(rows, Mapping) else {}
+
+
+def _refused_before(attempts_dir: Path | None, *, audience: str) -> frozenset[str]:
+    """Every picture an earlier cut of this film refused for this same audience.
+
+    A verdict is only read when the cut that cast it was made for the audience being cut for
+    now, and only a refusal is carried over. The reverse — treating a banked `share` as a pass —
+    would let one cut's clearance stand in for a check this cut never made.
+    """
+    if attempts_dir is None:
+        return frozenset()
+    refused: set[str] = set()
+    for record in sorted(attempts_dir.glob(f"*/{CUT_RECORD_NAME}")):
+        share = _cut_shareability(record)
+        if share.get("audience") != audience:
+            continue
+        verdicts = share.get("verdicts")
+        if not isinstance(verdicts, Mapping):
+            continue
+        refused.update(
+            asset_id
+            for asset_id, verdict in verdicts.items()
+            if isinstance(verdict, Mapping) and not allowed(str(verdict.get("verdict")), audience)
+        )
+    return frozenset(refused)
+
+
+def _cut_shareability(record: Path) -> Mapping[str, Any]:
+    try:
+        plan = json.loads(record.read_text())
+    except (OSError, ValueError):
+        return {}
+    share = plan.get("shareability") if isinstance(plan, Mapping) else None
+    return share if isinstance(share, Mapping) else {}
+
+
+def _banked_readings(
+    store_path: Path | None, episode_cards: Mapping[str, Any], own_producers: frozenset[str]
+) -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
+    """The representatives and culls of every episode ANOTHER reader has already read.
+
+    The lookup ignores the producer column except to drop this run's own readings: the question
+    is what was read about these exact pictures, not who read them, and a run being handed its
+    own answer back would be reading its own mind. Membership and evidence match exactly.
+    """
+    wanted = {
+        (card.episode_id, card.evidence_key)
+        for card in episode_cards.values()
+        if getattr(card, "evidence_key", "")
+    }
+    if store_path is None or not wanted:
+        return {}, frozenset()
+    read = _read_episode_rows(store_path, sorted(wanted), own_producers)
+    representatives = {
+        alias: read[(card.episode_id, card.evidence_key)][0]
+        for alias, card in episode_cards.items()
+        if (card.episode_id, getattr(card, "evidence_key", "")) in read
+    }
+    # Every read episode's refusals.
+    culls = chain.from_iterable(culled for _reps, culled in read.values())
+    return representatives, frozenset(culls)
+
+
+def _read_episode_rows(
+    store_path: Path, wanted: list[tuple[str, str]], own_producers: frozenset[str]
+) -> dict[tuple[str, str], tuple[tuple[str, ...], tuple[str, ...]]]:
+    """(representatives, culled) per (group, evidence), newest reading of each pair winning."""
+    out: dict[tuple[str, str], tuple[tuple[str, ...], tuple[str, ...]]] = {}
+    try:
+        connection = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return out
+    try:
+        for start in range(0, len(wanted), 250):
+            chunk = wanted[start : start + 250]
+            marks = ",".join("(?, ?)" for _ in chunk)
+            rows = connection.execute(
+                "SELECT group_id, evidence_key, producer_key, representatives, cull_decisions "  # noqa: S608 -- generated placeholders; every value is bound
+                "FROM editorial_episode_readings "
+                f"WHERE (group_id, evidence_key) IN ({marks}) ORDER BY answered_at",
+                tuple(chain.from_iterable(chunk)),
+            )
+            out.update(
+                ((str(group), str(evidence)), _reading_lists(reps, culls))
+                for group, evidence, producer, reps, culls in rows
+                if str(producer) not in own_producers
+            )
+    except sqlite3.Error:
+        return out
+    finally:
+        connection.close()
+    return out
+
+
+def _reading_lists(
+    representatives: object, culls: object
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    return _asset_ids(representatives), _asset_ids(culls)
+
+
+def _asset_ids(payload: object) -> tuple[str, ...]:
+    try:
+        rows = json.loads(str(payload))
+    except ValueError:
+        return ()
+    return tuple(
+        str(row["asset_id"])
+        for row in rows
+        if isinstance(row, Mapping) and str(row.get("asset_id", "")).strip()
+    )
+
+
+def standing_with_bank(
+    rule_standing: Callable[[str], int], banked: BankedFacts, *, favourite: Callable[[str], bool]
+) -> Callable[[str], int]:
+    """The rules' own standing answer, replaced by a banked one where a model gave it.
+
+    A favourite keeps the rules answer: the owner's choice is the one judgment nothing banked
+    overrules, so a banked zero on a starred picture leaves it standing.
+    """
+
+    def standing(asset_id: str) -> int:
+        if favourite(asset_id):
+            return rule_standing(asset_id)
+        answer = banked.standing_of(asset_id)
+        return rule_standing(asset_id) if answer is None else answer
+
+    return standing
+
+
+def withheld_by_bank(
+    banked: BankedFacts, *, favourite: Callable[[str], bool]
+) -> Callable[[str], bool]:
+    """Whether a picture should not be offered at all: already refused, or already culled."""
+
+    def withheld(asset_id: str) -> bool:
+        if favourite(asset_id):
+            return False
+        return banked.refused_for_audience(asset_id) or banked.culled(asset_id)
+
+    return withheld
+
+
+def banked_leaders(banked: BankedFacts, episode_keys: tuple[str, ...]) -> frozenset[str]:
+    """The pictures a banked reading named for their own episode: its representatives, and the
+    ones that own its record. A representative is only ever a member of the episode that names
+    it, so one set over the whole film says the same thing as a set per episode."""
+    return frozenset(
+        asset_id
+        for key in episode_keys
+        for asset_id in (*banked.episode_representatives(key), *banked.record_owning(key))
+    )
+
+
+def banked_weak(
+    banked: BankedFacts, assets: tuple[str, ...], *, favourite: Callable[[str], bool]
+) -> frozenset[str]:
+    """The pictures a model said stand for nothing, the owner's own choices excepted."""
+    return frozenset(
+        asset_id
+        for asset_id in assets
+        if not favourite(asset_id) and banked.standing_of(asset_id) == 0
+    )

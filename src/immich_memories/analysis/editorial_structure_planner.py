@@ -21,6 +21,13 @@ from immich_memories.analysis.editorial_episode_documents import factual_moment_
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
+from immich_memories.analysis.editorial_rule_banked_facts import (
+    NO_BANKED_FACTS,
+    banked_leaders,
+    banked_weak,
+    configured_text_identity,
+    open_banked_facts,
+)
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
@@ -31,7 +38,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_replies import WEIGHT_ROLE
-from immich_memories.analysis.editorial_story_standing import StandingGate
+from immich_memories.analysis.editorial_story_standing import StandingGate, standing_row
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
@@ -553,6 +560,7 @@ def _story_selection(
     bank_path = source.bank_dir / "picture-stands.private.json"
     bank = json.loads(bank_path.read_text()) if bank_path.exists() and ports.rules is None else {}
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
+    banked = _banked_facts(source, ports, unit_of, contract=contract)
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
     pool_assets = {a for ids in pool.moment_assets.values() for a in ids if a in source.assets}
@@ -571,9 +579,18 @@ def _story_selection(
         lines=material.story_lines,
         flagged=lambda asset_id: bool(FLAGGED_LINE.search(source.annotations.get(asset_id, ""))),
         subject=lambda asset_id: framing_visibility(source.annotations.get(asset_id, "")),
-        # With no model to compare pictures, a capture group's frame is won on capture facts.
+        # With no model to compare pictures, a capture group's frame is won on capture facts,
+        # and on whatever a model already said about them on an earlier run.
         representative_rank=rule_representative_rank(
-            source.assets, source.annotations, source.motion_residuals
+            source.assets,
+            source.annotations,
+            source.motion_residuals,
+            weak=banked_weak(
+                banked,
+                tuple(unit_of),
+                favourite=lambda asset_id: bool(unit_of[asset_id].get("favourite")),
+            ),
+            leads=banked_leaders(banked, tuple(source.episode_readings)),
         )
         if ports.rules is not None
         else None,
@@ -614,6 +631,41 @@ def _story_selection(
         looks_alike=looks_alike,
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
         near_home=_near_home_test(source, wall),
+        banked=banked,
+    )
+
+
+def _banked_facts(source, ports, unit_of, *, contract: str):
+    """What earlier model answers about this library say, for the draft that asks nothing.
+
+    Only the no-model draft reads them. A model run asks its own questions about every
+    candidate and banks the replies; handing it the same answers twice would change nothing
+    and hide which run paid for what.
+    """
+    if ports.rules is None:
+        return NO_BANKED_FACTS
+    return open_banked_facts(
+        bank_dir=source.bank_dir,
+        attempts_dir=source.artifact_dir.parent,
+        store_path=source.store_path,
+        audience=source.audience,
+        model_identity=configured_text_identity(source.config.llm),
+        # The thin layer's own standing gate asks on the bare contract, so that is the name
+        # its answers are banked under; the story block belongs to the draft's own questions.
+        contract=contract,
+        period_label=source.case.label,
+        motion_identity=ports.story_motion_identity,
+        rows_of={
+            asset_id: standing_row(
+                source.annotations.get(asset_id, ""), unit, ports.observe_story_motion
+            )
+            for asset_id, unit in unit_of.items()
+        },
+        episode_cards=source.episode_readings,
+        own_producers=frozenset(
+            str(row.get("producer_key", ""))
+            for row in (source.lineage.get("episode_readings") or ())
+        ),
     )
 
 

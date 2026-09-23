@@ -20,6 +20,24 @@ from immich_memories.analysis.editorial_story_pick_contract import (
 WEIGHED_STORY_WEIGHTS = ("dominant", "major", "minor")
 
 
+def standing_row(
+    line: str,
+    unit: Mapping[str, Any] | None,
+    motion_line: Callable[[Mapping[str, Any]], str] | None,
+) -> str:
+    """The row the standing question is asked about: a still's own line; a video's, or a Live
+    Photo whose motion plays, says what it is, how long it runs and what happens across it.
+
+    Cut-time speech detection guides timing, not this picture's standing. Keep it out of both
+    the source marker and the motion observer's plain-facts fallback.
+    """
+    if not line or unit is None:
+        return line
+    without_speech = dict(unit)
+    without_speech.pop("speech_regions", None)
+    return moving_picture_row(line, without_speech, motion_line)
+
+
 class StandingGate:
     """Does a picture stand by itself, and may it serve as context inside its story?"""
 
@@ -57,16 +75,11 @@ class StandingGate:
         self.context_rejected: set[tuple[str, str]] = set()
 
     def row_of(self, asset: str) -> str:
-        """The row the gate judges. A still's is its own line; a video's, or a Live Photo whose
-        motion plays, says what it is, how long it runs and what happens across it."""
-        line = self._line_of(asset)
-        if not line or asset not in self._unit_by_asset:
-            return line
-        # Cut-time speech detection guides timing, not this picture's standing. Keep it out
-        # of both the source marker and the motion observer's plain-facts fallback.
-        unit = dict(self._unit_by_asset[asset][1])
-        unit.pop("speech_regions", None)
-        return moving_picture_row(line, unit, self._motion_line)
+        """The row the gate judges, rendered exactly as any other reader of these answers does."""
+        entry = self._unit_by_asset.get(asset)
+        return standing_row(
+            self._line_of(asset), None if entry is None else entry[1], self._motion_line
+        )
 
     def ensure(self, assets: Sequence[str]) -> None:
         unknown = [a for a in dict.fromkeys(assets) if a not in self.scores and self._line_of(a)]

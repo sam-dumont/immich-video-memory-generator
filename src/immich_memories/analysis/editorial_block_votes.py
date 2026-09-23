@@ -507,6 +507,38 @@ def _warn_on_empty_rounds(rounds: Sequence[Mapping[str, object]]) -> None:
         )
 
 
+STANDING_MAX_TOKENS = 700
+
+
+def standing_prompt(contract: str, period_label: str, listing: str) -> str:
+    """The whole standing question over one listing of rows."""
+    # Pictures last: see judge_worthiness.prompt_of (#981).
+    return (
+        f"{contract}\n\nBelow are single pictures from one period ({period_label}), one line each: when it "
+        f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n"
+        'Answer with one JSON object only, on one line: {"weak":{"P03":"why","P07":"why"}}'
+        f"\n\nPICTURES\n{listing}"
+    )
+
+
+def standing_row_name(
+    row: str, *, contract: str, period_label: str, identity: str, motion_identity: str = ""
+) -> str:
+    """The name one picture's standing answer lives under in the bank's per-row store.
+
+    A reader that wants to know what was already answered about a picture has to name that
+    answer exactly as the asking side named it: the criterion, the contract, the period, the
+    motion seat behind a moving row, the model that replied, and the row's own text. Both
+    sides derive the name here, so neither can drift away from the other.
+    """
+    version = standing_pass_version(motion_identity)
+    question = version + "|" + standing_prompt(contract, period_label, "") + "|"
+    row_key = hashlib.sha256((question + row).encode()).hexdigest()
+    return _vote_cache_key(
+        {"row": row_key}, identity, STANDING_MAX_TOKENS, "weak", rows_version=version
+    )
+
+
 def judge_standing(
     judge,
     *,
@@ -526,13 +558,7 @@ def judge_standing(
     version = standing_pass_version(motion_identity)
 
     def prompt_of(listing: str) -> str:
-        # Pictures last: see judge_worthiness.prompt_of (#981).
-        return (
-            f"{contract}\n\nBelow are single pictures from one period ({period_label}), one line each: when it "
-            f"was taken and what it shows. Text only.\n\n{STANDING_CRITERION}\n\n"
-            'Answer with one JSON object only, on one line: {"weak":{"P03":"why","P07":"why"}}'
-            f"\n\nPICTURES\n{listing}"
-        )
+        return standing_prompt(contract, period_label, listing)
 
     def bank_key(block: Sequence[str]) -> str:
         return hashlib.sha256(
@@ -556,7 +582,7 @@ def judge_standing(
         bank_key=bank_key,
         bank=bank,
         save=save,
-        max_tokens=700,
+        max_tokens=STANDING_MAX_TOKENS,
         model_identity=model_identity,
         row_key=row_key,
         rows_version=version,

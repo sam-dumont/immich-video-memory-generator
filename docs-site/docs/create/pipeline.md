@@ -359,8 +359,30 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing, and the distilled `uncovered_person` head is a second opinion that can add one. A `no` from it lifts nothing: nothing clears a flag except you, on the pool page |
 | How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it. The ends are not the rules reader's: on every tier the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back when the target leaves no room |
 
+| Has anything already been answered about this picture? | On a library a model has read before, yes, and the draft reads it. A picture an earlier cut refused for this same audience is not offered; a picture a banked episode reading culled is not offered; a picture a model gave no standing to does not carry its moment while anything else in its group could; a picture a banked reading named for its episode leads that episode's order. Nothing is asked to find this out, and nothing is written |
+
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
 which reader spoke.
+
+### Reading what a model already answered
+
+On a fresh install the draft has nothing to read and cuts exactly the film it cut before. On an
+install where a model has answered questions in earlier runs, those answers are already on disk and
+the draft was ignoring them, so it kept offering shots a gate had refused on sight and the film came
+out short of its target. The draft now opens those banks read only. It still asks nothing.
+
+Three rules bound it. A picture you starred is never withheld by a banked answer: your choice
+outranks it, exactly as it outranks the rules reader's own verdict. Only refusals carry over, never
+clearances, so one cut's `share` never stands in for a check this cut did not make. And an answer is
+read only under the name the asking side wrote it under: the criterion, the contract, the period,
+and for a standing vote the model that replied, so a bank written by another reader is not mistaken
+for one written by yours. Episode readings are the exception, on purpose: they are matched on the
+episode and on the exact pictures that were read, whoever read them, because a cull is a refusal and
+a representative is a nomination the rules order still has to rank. Neither can let in a picture the
+rules would refuse.
+
+A moment whose every picture is withheld keeps them all. There is nothing left to offer in its
+place, and the gates decide its fate the way they always did.
 
 What you lose: the thesis (the page hides the quote rather than showing a templated one), an
 editor's sentence under each picture (you get `<story>: <n> pictures at <place>` instead), moments

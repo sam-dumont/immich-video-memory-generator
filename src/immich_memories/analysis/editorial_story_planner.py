@@ -19,6 +19,12 @@ from immich_memories.analysis.editorial_person_period_facts import (
     arrival_notes,
     person_period_facts,
 )
+from immich_memories.analysis.editorial_rule_banked_facts import (
+    NO_BANKED_FACTS,
+    BankedFacts,
+    standing_with_bank,
+    withheld_by_bank,
+)
 from immich_memories.analysis.editorial_story_carriers import (
     CarrierAdmission,
     choice_is_starred,
@@ -489,6 +495,7 @@ def select_story_first(
     looks_alike: PairLooksAlike | None = None,
     film_span: tuple[date, date] | None = None,
     near_home: Callable[[str], bool | None] | None = None,
+    banked: BankedFacts = NO_BANKED_FACTS,
 ) -> StorySelection:
     """Read the period into weighed stories, fund them, and choose captioned pictures.
 
@@ -501,6 +508,8 @@ def select_story_first(
     `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
     `film_span` is the requested period; a recurring activity is one thread per era of it.
     `near_home(family)` says whether a happening was photographed near the home base.
+    `banked` answers what a model already said about these pictures on an earlier run; it asks
+    nothing, and on a library nothing has read it answers nothing and the draft is unchanged.
     """
     calls = {
         "story_pages": 0,
@@ -560,6 +569,9 @@ def select_story_first(
     stories, story_units = _weighed_stories(story, story.audit.get("hints") or {}, units)
 
     # 3. Capture groups set capacity; captioned candidates preserve their available depth.
+    def starred(asset: str) -> bool:
+        return bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite"))
+
     picking: dict[str, Any] = {
         "quality": quality,
         "flagged": flagged,
@@ -567,6 +579,9 @@ def select_story_first(
         "plays": carries_motion,
         "subject": subject,
         "rank": representative_rank,
+        # Only the no-model draft withholds on banked answers; the model tier asks its own
+        # questions about every candidate and must keep seeing them all.
+        "withhold": withheld_by_bank(banked, favourite=starred) if rules is not None else None,
     }
     choices_of = _capture_group_choices(stories, story_units, **picking)
     groups_offered = {s["key"]: len(choices_of[s["key"]]) for s in stories}
@@ -616,7 +631,9 @@ def select_story_first(
         life=life,
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in stories},
-        score_of=rules.standing if rules is not None else None,
+        score_of=standing_with_bank(rules.standing, banked, favourite=starred)
+        if rules is not None
+        else None,
         bank=standing_bank,
         save=standing_save,
         calls=calls,

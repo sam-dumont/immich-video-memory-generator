@@ -60,6 +60,17 @@ after transport recovery, it is split between join-compatible groups
 and read again with the same central context. An indivisible group still fails visibly; partial
 weights and edits never carry into the recovered page.
 
+`editorial_rule_banked_facts.py` lets the no-model draft read what a model already answered about
+this library without asking anything: standing votes under the bank's own per-row name, audience
+refusals recorded by earlier cuts of the same film for the same audience, and the representatives
+and culls of any banked episode reading of the same pictures. A withheld picture is not offered to
+its moment, unless it is the owner's favourite or the moment has nothing else; a named
+representative leads its episode's order. Every read is named the way the writing side named it, so
+a standing vote cast by another reader does not answer here; episode readings are matched on the
+episode and the exact pictures read, whatever produced them, because a cull is a refusal and a
+representative still has to win the rules order. A library nothing has read answers None, False or
+() everywhere, and the draft is the one it always cut.
+
 ## Two Trees
 
 `src/immich_memories/` is the app. `services/inference/immich_memories_inference/` is a second
@@ -191,6 +202,7 @@ src/immich_memories/
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
+│   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
 │   ├── editorial_final_hash_review.py # The final duplicate review a no-model cut runs, on cached preview hashes
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film
