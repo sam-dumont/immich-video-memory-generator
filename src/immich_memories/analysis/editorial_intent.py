@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import calendar
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from operator import itemgetter
@@ -130,8 +130,14 @@ def build_editorial_intent(
     brief: str,
     people: Sequence[str] = (),
     event_admission: SpecialEventAdmission | None = None,
+    material: Collection[date] | None = None,
 ) -> EditorialIntent:
-    """Derive the contract from the product, its date ranges, and (for a custom memory) its brief."""
+    """Derive the contract from the product, its date ranges, and (for a custom memory) its brief.
+
+    `material` is the days the film's own pictures were taken. A person film read as eras then
+    names only the years that hold some: a window from a birth date holds many years with no
+    picture of the person, and those are not parts of her film.
+    """
     if not product.strip():
         raise ValueError("editorial intent needs a product")
     if not ranges:
@@ -144,7 +150,14 @@ def build_editorial_intent(
     builder = (
         _accepted_special_day if event_admission is not None else _BUILDERS.get(product, _generic)
     )
-    return builder(product, spans, whole, brief=brief, who=who)
+    intent = builder(product, spans, whole, brief=brief, who=who)
+    if material is None or builder is not _person:
+        return intent
+    years = {day.year for day in material}
+    kept = tuple(
+        p for p in intent.partitions if not p.key.startswith("year-") or p.start.year in years
+    )
+    return replace(intent, partitions=kept) if kept else intent
 
 
 def _per_range(spans, prefix: str, *, required: bool) -> tuple[IntentPartition, ...]:

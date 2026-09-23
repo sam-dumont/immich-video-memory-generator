@@ -126,6 +126,12 @@ def capture_structure_input(
             brief=case.brief,
             people=case.people,
             event_admission=case.event_admission,
+            material={
+                assets[asset_id].file_created_at.date()
+                for card in workprint.cards
+                for asset_id in card.selectable_asset_ids
+                if asset_id in assets
+            },
         ),
         config=config,
         wall_bytes=wall.text.encode(),

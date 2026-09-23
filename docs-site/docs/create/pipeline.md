@@ -98,7 +98,8 @@ and a place alone never links two days; neither does a name, a relation, a time 
 like "moments", "life" or "stay". The reader is then asked, with the
 film's dates and contract, which of them are one recurring activity and which are steps worth showing
 apart, and a confirmed thread becomes one story with the weight of its heaviest day. A film longer
-than about 18 months is read in calendar years, and keeps one thread per year, so a child getting
+than about 18 months is read in calendar years (for a person film, only the years that hold a
+picture of the person), and keeps one thread per year, so a child getting
 better at swimming still shows the progress. Trip films and subject memories ask nothing: their days
 are already their stories.
 
