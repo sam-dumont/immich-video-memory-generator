@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from pydantic import ValidationError
 
-from immich_memories.api.album_service import AlbumRef, AlbumService
+from immich_memories.api.album_service import AlbumRef, AlbumService, FilmScope
 from immich_memories.api.all_assets_service import AllAssetsService
 from immich_memories.api.asset_service import AssetService
 from immich_memories.api.compatibility import (
@@ -445,8 +445,8 @@ class ImmichClient:
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         return await self.albums.resolve_album(name_or_id)
 
-    async def album_holding_most(self, asset_ids: Sequence[str]) -> str | None:
-        return await self.albums.album_holding_most(asset_ids)
+    async def album_holding_most(self, asset_ids: Sequence[str], *, scope: FilmScope) -> str | None:
+        return await self.albums.album_holding_most(asset_ids, scope=scope)
 
     async def list_album_assets(self, album_id: str) -> list[dict]:
         return await self.albums.list_album_assets(album_id)

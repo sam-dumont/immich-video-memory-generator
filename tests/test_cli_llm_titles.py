@@ -8,9 +8,11 @@ template for a matrix run that has to stay comparable across months.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 
+from immich_memories.api.album_service import AlbumService, FilmScope
 from immich_memories.cli._llm_title import resolve_cli_title
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
@@ -191,6 +193,45 @@ def test_the_album_the_cut_sits_in_reaches_the_facts() -> None:
     )
 
     assert seen["facts"].album_name == "Sunday at the lake"
+
+
+def test_a_year_film_in_the_phone_catch_all_gets_its_normal_title_facts() -> None:
+    """121 of 127 pictures in a library-scale catch-all: the model hears no album name."""
+    cut = [f"p{n:03d}" for n in range(127)]
+    everything = {
+        "id": "album-everything",
+        "albumName": "Everything",
+        "assetCount": 38_000,
+        "startDate": "2014-02-01T09:00:00.000Z",
+        "endDate": "2026-09-20T18:00:00.000Z",
+    }
+
+    async def request(method: str, endpoint: str, **kwargs):
+        # WHY: stands in for Immich's `GET /albums?assetId=` read, the only boundary.
+        return [everything] if kwargs["params"]["assetId"] in cut[:121] else []
+
+    async def version():  # pragma: no cover - never reached
+        raise AssertionError
+
+    service = AlbumService(request, version)
+    year = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59))
+    scope = FilmScope(start=year.start, end=year.end, pool=3500)
+    ask, seen = _answers(title="2024")
+
+    title, _subtitle = resolve_cli_title(
+        enabled=True,
+        title_override=None,
+        clips=[make_clip("clip-1")],
+        config=_config_with_llm(),
+        memory_type="year",
+        date_range=year,
+        person_names=[],
+        album_lookup=lambda: asyncio.run(service.album_holding_most(cut, scope=scope)),
+        ask=ask,
+    )
+
+    assert seen["facts"].album_name is None
+    assert title == "2024"
 
 
 def test_an_album_memory_never_pays_for_the_lookup() -> None:

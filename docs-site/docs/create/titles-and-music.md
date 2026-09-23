@@ -199,6 +199,15 @@ out of ten in some catch-all learn nothing. Between albums holding as much of th
 the smaller one wins, because a collection that swallows the day names it less well than the day's
 own album. Trips get the album name too.
 
+Only an album made for a film like this one can name it. The phone's catch-all (Recents, in
+whatever language the phone speaks) holds most of every cut, so it would name every film. The app
+knows no album names; it looks at proportions Immich already reports. An album with more than twice
+as many pictures as the film had to choose from is mostly other films, and an album whose dates run
+mostly (over a quarter of its span) outside the film's window was filed around another time. A year
+in review that sits 121 of 127 pictures in a 38,000-picture catch-all gets its normal year title.
+A person film since birth covers a catch-all's whole span, so there the size bar decides on its own.
+A picture that only a catch-all holds counts as filed nowhere.
+
 Neither prompt sees the film's own reading of the period. Those readings promote names off banners
 and shopfronts (a stage banner once became "the X festival"), and a title may not invent. The only
 proper nouns a title can use are the catalogue's words, the place names, the album name and the

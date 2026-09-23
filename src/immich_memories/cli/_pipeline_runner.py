@@ -539,8 +539,12 @@ def run_pipeline_and_generate(
     from immich_memories.cli._llm_title import resolve_cli_title
 
     def album_of_the_cut() -> str | None:
+        from immich_memories.api.album_service import FilmScope
+
+        pool = len(assets) + len(photo_assets or [])
         return client.album_holding_most(
-            [asset.id for clip in selected_clips if (asset := getattr(clip, "asset", None))]
+            [asset.id for clip in selected_clips if (asset := getattr(clip, "asset", None))],
+            scope=FilmScope(start=date_range.start, end=date_range.end, pool=pool),
         )
 
     resolved_title, resolved_subtitle = resolve_cli_title(

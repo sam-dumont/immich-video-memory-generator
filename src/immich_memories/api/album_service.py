@@ -47,11 +47,64 @@ class AmbiguousAlbumError(LookupError):
 
 @dataclass(frozen=True)
 class AlbumRef:
-    """An album resolved to its ID, display name and asset count."""
+    """An album resolved to its ID, display name and asset count.
+
+    ``start`` and ``end`` are when its earliest and latest pictures were taken,
+    as Immich reports them; None when Immich did not say.
+    """
 
     id: str
     name: str
     asset_count: int
+    start: datetime | None = None
+    end: datetime | None = None
+
+
+# WHY these two bars are relative, never a fixed size or a list of names: a
+# phone's catch-all ("Recents", in whatever language the phone speaks) is 600
+# pictures in one library and 38,000 in another, and a trip album in a small
+# library can be bigger than a whole year in another. What sets a catch-all
+# apart is its proportion to the film. At most `pool` of an album's pictures
+# can belong to the film, so an album more than twice the pool's size is
+# mostly other films. And an album whose dates run mostly outside the window
+# is filed around some other time.
+_MAX_ALBUM_TO_POOL = 2.0
+_MIN_SPAN_INSIDE_WINDOW = 0.75
+
+
+@dataclass(frozen=True)
+class FilmScope:
+    """The window a film covers and how many pictures it drew from.
+
+    ``pool`` is every picture the film could have picked (the period's, or the
+    person's within it), not the cut.
+    """
+
+    start: datetime
+    end: datetime
+    pool: int
+
+    def is_curated_for(self, album: AlbumRef) -> bool:
+        """Whether this album was made for a film like this one.
+
+        A catch-all holding most of the cut is not the film's name: it holds most
+        of every cut. An album counts only when it is not out of proportion to
+        the film's pool and its own dates fall mostly inside the film's window.
+        A person film over twenty years holds a decade-long catch-all's whole
+        span, so there size alone decides.
+        """
+        if album.asset_count > _MAX_ALBUM_TO_POOL * max(self.pool, 1):
+            return False
+        if album.start is None or album.end is None:
+            return True
+        album_start, album_end = _utc(album.start), _utc(album.end)
+        span = (album_end - album_start).total_seconds()
+        inside = (
+            min(album_end, _utc(self.end)) - max(album_start, _utc(self.start))
+        ).total_seconds()
+        if span <= 0:
+            return inside >= 0
+        return inside / span >= _MIN_SPAN_INSIDE_WINDOW
 
 
 def build_upload_fields(
@@ -99,11 +152,28 @@ def _upload_media_type(file_path: Path) -> str:
         raise ValueError(f"Unsupported upload file suffix: {suffix or '<none>'}") from exc
 
 
+def _utc(moment: datetime) -> datetime:
+    # A naive window is the run's own local days; a day either way is noise at
+    # the proportions these bars judge.
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
+
+
+def _album_date(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
 def _album_ref(album: dict) -> AlbumRef:
     return AlbumRef(
         id=album["id"],
         name=album.get("albumName") or album["id"],
         asset_count=album.get("assetCount") or 0,
+        start=_album_date(album.get("startDate")),
+        end=_album_date(album.get("endDate")),
     )
 
 
@@ -159,17 +229,18 @@ class AlbumService:
         albums = data if isinstance(data, list) else []
         return [_album_ref(a) for a in albums if isinstance(a, dict) and a.get("id")]
 
-    async def album_holding_most(self, asset_ids: Sequence[str]) -> str | None:
-        """The name of the album this cut mostly sits in, if one does.
+    async def album_holding_most(self, asset_ids: Sequence[str], *, scope: FilmScope) -> str | None:
+        """The name of the album this cut mostly sits in, if one was made for it.
 
         Answers "what did this family day get called" for a title, from a name
-        somebody typed rather than anything invented. The bar comes from the
-        cut's own composition: the leading album has to hold more of the cut
-        than the pictures no album claims at all. A day filed across two albums
-        still learns the bigger one's name; two pictures out of ten in some
-        catch-all learn nothing. Between albums holding as much of the cut as
-        each other, the smaller album wins — a collection that swallows the day
-        names it less well than the day's own album.
+        somebody typed rather than anything invented. Only albums curated for a
+        film of this ``scope`` take part (see `FilmScope.is_curated_for`): a
+        picture that only the phone's catch-all holds is filed nowhere. The bar
+        comes from the cut's own composition: the leading album has to hold more
+        of the cut than the pictures no such album claims. A day filed across
+        two albums still learns the bigger one's name; two pictures out of ten
+        learn nothing. Between albums holding as much of the cut as each other,
+        the smaller album wins.
 
         One request per picture of the cut, once per film.
         """
@@ -178,16 +249,18 @@ class AlbumService:
         refs: dict[str, AlbumRef] = {}
         unfiled = 0
         for asset_id in cut:
-            albums = await self._albums_of(asset_id)
+            albums = [ref for ref in await self._albums_of(asset_id) if scope.is_curated_for(ref)]
             unfiled += not albums
             for ref in albums:
                 held[ref.id] += 1
                 refs[ref.id] = ref
         if not held:
+            logger.info("No album made for this film holds any of the cut's %d pictures", len(cut))
             return None
         leader = max(held, key=lambda album: (held[album], -refs[album].asset_count))
         logger.info(
-            "Leading album holds %d of the cut's %d pictures, %d of which sit in no album",
+            "Leading album holds %d of the cut's %d pictures, %d of which sit in no album "
+            "made for this film",
             held[leader],
             len(cut),
             unfiled,

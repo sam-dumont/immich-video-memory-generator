@@ -254,9 +254,16 @@ async def _album_of_the_cut(state: AppState) -> str | None:
     asset_ids = [
         asset.id for clip in state.get_selected_clips() if (asset := getattr(clip, "asset", None))
     ]
-    if not asset_ids:
+    if not asset_ids or state.date_range is None:
         return None
+    from immich_memories.api.album_service import FilmScope
     from immich_memories.api.immich import ImmichClient
+
+    scope = FilmScope(
+        start=state.date_range.start,
+        end=state.date_range.end,
+        pool=len(state.clips) + len(state.photo_assets),
+    )
 
     try:
         async with ImmichClient(
@@ -264,7 +271,7 @@ async def _album_of_the_cut(state: AppState) -> str | None:
             api_key=config.immich.api_key,
             api_version=config.immich.api_version,
         ) as client:
-            return await client.album_holding_most(asset_ids)
+            return await client.album_holding_most(asset_ids, scope=scope)
     except Exception:  # WHY: UI graceful degradation
         logger.debug("Album lookup failed; the title goes without it", exc_info=True)
         return None
