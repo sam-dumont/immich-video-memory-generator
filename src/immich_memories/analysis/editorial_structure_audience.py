@@ -138,6 +138,16 @@ def standing_hold(slots: Any) -> dict[str, Any] | None:
     return max(holds, key=lambda hold: _share.VERDICTS.index(hold["verdict"]), default=None)
 
 
+def library_refusals(path: Path, audience: str) -> frozenset[str]:
+    """Every picture the library's audience bank still holds back from this audience."""
+    return frozenset(
+        asset_id
+        for asset_id, slots in _section(_read_bank(path), "holds").items()
+        if (hold := standing_hold(slots)) is not None
+        and not _share.allowed(str(hold["verdict"]), audience)
+    )
+
+
 def _section(stored: dict[str, Any], name: str) -> dict[str, Any]:
     section = stored.get(name)
     return section if isinstance(section, dict) else {}

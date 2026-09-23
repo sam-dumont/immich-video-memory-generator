@@ -23,9 +23,11 @@ way the writing side named it:
   which is a nomination the rules order still has to rank: neither can admit a picture the
   current rules would refuse, and both only ever reorder or withhold within one episode.
 * Audience verdicts are recorded per picture by the gate that cast them, in the cut they belong
-  to. Only refusals are read, and only from cuts for the same audience: a stale `share` never
-  clears anything, which is the direction the owner asked for (a hold is never lifted by a
-  later read).
+  to, and the library's audience bank keeps the holds of every cut of every scope. Only
+  refusals are read, and only for the same audience: a stale `share` never clears anything,
+  which is the direction the owner asked for (a hold is never lifted by a later read). A bank
+  hold the model cast from text under an older audience prompt no longer counts, exactly as
+  the gate treats it.
 
 A favourite is never withheld by anything read here. The owner's own choice outranks a banked
 answer about it, exactly as it outranks the rules' own standing verdict.
@@ -44,6 +46,10 @@ from typing import Any, Protocol
 
 from immich_memories.analysis.editorial_block_votes import standing_row_name
 from immich_memories.analysis.editorial_shareability import allowed
+from immich_memories.analysis.editorial_structure_audience import (
+    AUDIENCE_BANK_NAME,
+    library_refusals,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +180,8 @@ def open_banked_facts(
     representatives, culls = _banked_readings(store_path, episode_cards, own_producers)
     answers = BankedAnswers(
         standing=standing,
-        refused=_refused_before(attempts_dir, audience=audience),
+        refused=_refused_before(attempts_dir, audience=audience)
+        | library_refusals(bank_dir.parent / AUDIENCE_BANK_NAME, audience),
         representatives=representatives,
         culls=culls,
     )
