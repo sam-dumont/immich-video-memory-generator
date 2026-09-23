@@ -263,8 +263,11 @@ def build_trip(start: date, end: date) -> DateRange:
 def build_special_day(
     day: date,
     window: tuple[datetime, datetime] | None,
+    run: tuple[datetime, datetime] | None = None,
 ) -> DateRange:
     """The scope of one day the library says something happened on.
+
+    Three scopes, narrowest first.
 
     A recorded window *is* the scope, not a hint at it. The catalogue only
     records one when trimming to it removes a meaningful slice of the day, which
@@ -274,15 +277,28 @@ def build_special_day(
     offset included, because they reach Immich's takenAfter/takenBefore as
     written and a window can legitimately end after midnight.
 
+    Failing that, the run: the stretch of photographs the occasion actually
+    left, which is what the scan grouped the day by in the first place. One
+    catalogued day is a long occasion that ran most of two days, and scoping
+    it to the date it began on stopped it at midnight with a quarter of its
+    379 pictures on the other side.
+
+    The calendar date is the last resort, for rows written before any run was
+    recorded.
+
     **Shrink, don't pad.** If the window yields too few usable clips the memory
-    gets shorter. It must never widen back to the whole day: that silently
-    undoes the trim, and it is padding by another name.
+    gets shorter. It must never widen back to the run or to the whole day: that
+    silently undoes the trim, and it is padding by another name. The run does
+    not pad either — it never reaches beyond its own first and last picture, so
+    a neighbouring day it merely shares a date with stays out.
 
     One range, never two. A day is one occasion, and the fetch list has no
     priority ordering to express "this window first, then the rest".
     """
     if window is not None:
         return DateRange(start=window[0], end=window[1])
+    if run is not None:
+        return DateRange(start=run[0], end=run[1])
     return DateRange(
         start=datetime(day.year, day.month, day.day, 0, 0, 0),
         end=datetime(day.year, day.month, day.day, 23, 59, 59),

@@ -361,11 +361,14 @@ def test_a_thin_story_cannot_take_more_than_it_holds():
     from immich_memories.analysis.editorial_story_slots import allocate_slots
 
     granted = allocate_slots(
-        [{"key": "birth", "weight": "dominant"}, {"key": "cafe", "weight": "minor"}],
+        [{"key": "occasion", "weight": "dominant"}, {"key": "cafe", "weight": "minor"}],
         12,
-        {"birth": 4, "cafe": 1},
+        {"occasion": 4, "cafe": 1},
     )
-    assert granted == {"birth": 4, "cafe": 1}  # the film is shorter, never refilled with variants
+    assert granted == {
+        "occasion": 4,
+        "cafe": 1,
+    }  # the film is shorter, never refilled with variants
 
 
 @pytest.mark.parametrize("already", [{}, {"stay": 2, "visit": 1}])

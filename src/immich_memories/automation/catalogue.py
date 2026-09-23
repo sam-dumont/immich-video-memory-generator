@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Container
+
     from immich_memories.automation.special_day_scan import DiscoveredDay
 
 logger = logging.getLogger(__name__)
@@ -104,6 +107,86 @@ def scope_window(entry: DiscoveredDay) -> tuple[datetime, datetime] | None:
     if entry.window is None or not entry.window_photos or not entry.photos:
         return entry.window
     return entry.window if window_holds_enough(entry.window_photos, entry.photos) else None
+
+
+# How long a stretch of photography may run and still be one occasion. A run
+# is bounded by five hours of photographic silence and by nothing else, which
+# is an honest boundary but not a short one: a library that never quite stops
+# shooting could chain date onto date into a single run. Measured on a real
+# catalogue of twenty-one judged days, twenty runs are under fifteen hours, and a
+# long occasion measured at 42.5 hours sets the cap; the module that finds runs
+# describes a labelled 45-hour one. Two full days is the first round number
+# above both, and past it the run is describing a habit rather than an
+# occasion — so the scope refuses to extend and keeps today's calendar date
+# instead of swallowing a week.
+_LONGEST_RUN_HOURS = 48
+
+SCOPE_FROM_WINDOW = "the window the catalogue recorded for this day, trimmed inside its run"
+SCOPE_FROM_RUN = "the run of photographs the day left, not the calendar date it began on"
+SCOPE_FROM_DATE = "the calendar date: the catalogue recorded no run for this day"
+SCOPE_UNCATALOGUED = "the calendar date: this day is not in the catalogue"
+SCOPE_RUN_TOO_LONG = (
+    "the calendar date: the recorded run is longer than any one occasion, so it was not used"
+)
+SCOPE_RUN_MEETS_ANOTHER_DAY = (
+    "the calendar date: the recorded run reaches into another catalogued day, so it was not used"
+)
+
+
+@dataclass(frozen=True)
+class SpecialDayScope:
+    """The bounds a film of one catalogued day is cut from, and why those.
+
+    Both bounds travel, narrowest first, because the window is a trim *inside*
+    the run and the layer that builds the fetch range needs to know what it is
+    trimming. `origin` is the sentence the run record carries, so a reader can
+    tell a 42-hour occasion from a five-hour slice of one without re-deriving
+    the decision.
+    """
+
+    window: tuple[datetime, datetime] | None
+    run: tuple[datetime, datetime] | None
+    origin: str
+
+
+def scope_of(entry: DiscoveredDay, *, other_days: Container[date] = frozenset()) -> SpecialDayScope:
+    """Which bounds this day should be filmed between, and the reason for them.
+
+    The run is the outer scope: an occasion is a stretch of photography, and
+    the calendar cuts the long ones in half. A window the scan recorded is a
+    trim inside that run and still wins when it holds enough of it — shrink,
+    don't pad.
+
+    `other_days` are the dates the rest of the catalogue already claims. A run
+    is bounded by its own first and last picture rather than by whole dates, so
+    two occasions sharing a date cannot in practice reach into each other; the
+    check is here because a catalogue is a file people merge and hand-edit, and
+    two occasions must not silently become one.
+    """
+    window = scope_window(entry)
+    run, refusal = _run_to_film(entry, other_days)
+    if window is not None:
+        return SpecialDayScope(window=window, run=run, origin=SCOPE_FROM_WINDOW)
+    return SpecialDayScope(window=None, run=run, origin=refusal or SCOPE_FROM_RUN)
+
+
+def _run_to_film(
+    entry: DiscoveredDay, other_days: Container[date]
+) -> tuple[tuple[datetime, datetime] | None, str | None]:
+    """The recorded run when it can be used as a scope, or nothing and why not."""
+    if entry.run_start is None or entry.run_end is None:
+        return None, SCOPE_FROM_DATE
+    if hours_awake(entry) > _LONGEST_RUN_HOURS:
+        return None, SCOPE_RUN_TOO_LONG
+    if any(day in other_days for day in _dates_after_the_first(entry.run_start, entry.run_end)):
+        return None, SCOPE_RUN_MEETS_ANOTHER_DAY
+    return (entry.run_start, entry.run_end), None
+
+
+def _dates_after_the_first(start: datetime, end: datetime) -> list[date]:
+    """The extra dates a run reaches into beyond the one it began on."""
+    span = (end.date() - start.date()).days
+    return [start.date() + timedelta(days=n) for n in range(1, span + 1)]
 
 
 def judged_by_this_build(entry: DiscoveredDay) -> bool:

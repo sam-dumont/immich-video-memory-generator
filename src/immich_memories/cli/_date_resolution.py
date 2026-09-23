@@ -343,7 +343,7 @@ def _trip_scope(preset_params: dict) -> DateRange | None:
 
 
 def _special_day_scope(preset_params: dict) -> DateRange:
-    """The window the catalogue recorded for one day, or the calendar day."""
+    """The window or the run the catalogue recorded for one day, or the calendar day."""
     from immich_memories.memory_types.date_builders import build_special_day
 
     day = preset_params.get("day")
@@ -352,7 +352,7 @@ def _special_day_scope(preset_params: dict) -> DateRange:
             "--day is required with --memory-type special_day. Run "
             "`immich-memories days-due` to see which days the catalogue holds."
         )
-    return build_special_day(day, preset_params.get("window"))
+    return build_special_day(day, preset_params.get("window"), preset_params.get("run"))
 
 
 def duration_from_date_range(date_range: DateRange) -> float:

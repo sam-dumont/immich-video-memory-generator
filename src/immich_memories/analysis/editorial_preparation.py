@@ -17,11 +17,14 @@ from PIL import Image
 from immich_memories.analysis.editorial_description_contract import DESCRIPTION_MODEL
 from immich_memories.analysis.editorial_description_outcomes import cached_preview
 from immich_memories.analysis.editorial_preparation_captions import prepare_captions
-from immich_memories.analysis.editorial_preparation_detectors import (
-    DETECTOR_VERSIONS,
-    prepare_detectors,
+from immich_memories.analysis.editorial_preparation_detector_frames import DetectorFrames
+from immich_memories.analysis.editorial_preparation_detectors import prepare_detectors
+from immich_memories.analysis.editorial_preparation_heads import prepare_heads
+from immich_memories.analysis.editorial_preparation_model_facts import (
+    CLIP_COMPANION,
+    acquire_clip_companions,
+    acquire_model_facts,
 )
-from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS, prepare_heads
 from immich_memories.analysis.editorial_preparation_motion import (
     MOTION_PRODUCER,
     MotionSource,
@@ -38,7 +41,7 @@ from immich_memories.analysis.editorial_preparation_pixels import (
     remember_pixel,
 )
 from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
-from immich_memories.analysis.remote_facts import RemoteFactsError, offloaded_versions
+from immich_memories.analysis.remote_facts import RemoteFactsError
 from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
@@ -88,7 +91,16 @@ class PreparationResult:
 
     @property
     def complete(self) -> bool:
-        return not self.missing_by_producer and not self.failures
+        """Whether the cut has what it was promised.
+
+        A clip whose frames could not be sampled is not part of that: the exposure head
+        read its preview instead, which is what every source was read on before there were
+        frames, and the failure is named rather than blocking the cut. Nor is an attached
+        clip Immich would not serve, which leaves its still in the film either way.
+        """
+        return not self.missing_by_producer and all(
+            key.startswith(("detector_frames:", f"{CLIP_COMPANION}:")) for key in self.failures
+        )
 
     @property
     def producer_failures(self) -> tuple[str, ...]:
@@ -101,7 +113,9 @@ class PreparationResult:
         return tuple(
             reason
             for key, reason in sorted(self.failures.items())
-            if not key.startswith(("preview:", "pixel:", "caption:", "motion:"))
+            if not key.startswith(
+                ("preview:", "pixel:", "caption:", "motion:", "detector_frames:", CLIP_COMPANION)
+            )
         )
 
     def stage_rates(self) -> dict[str, float]:
@@ -350,7 +364,10 @@ class _Acquisition:
             return False
 
     def detectors(
-        self, pending: Mapping[str, Sequence[str]], preview_paths: Mapping[str, Path]
+        self,
+        pending: Mapping[str, Sequence[str]],
+        preview_paths: Mapping[str, Path],
+        frame_paths: Mapping[str, Sequence[Path]],
     ) -> None:
         self.check()
         demanded = sum(len(ids) for ids in pending.values())
@@ -360,6 +377,7 @@ class _Acquisition:
                     pending=pending,
                     store_path=self.store_path,
                     preview_paths=preview_paths,
+                    frame_paths=frame_paths,
                     python=self.preparation_config.detector_python,
                     cache_dir=self.preparation_config.detector_cache_dir,
                     marqo_onnx=self.preparation_config.marqo_onnx_path,
@@ -516,8 +534,12 @@ def prepare_editorial_annotations(
         )
         stage.faces(connection, source, fetch_faces)
         if preparation_config.demands_models:
-            _acquire_model_facts(
-                stage, before, ids, available, pending, head_versions, preview_paths
+            frames = DetectorFrames(source, read_playback)
+            acquire_model_facts(
+                stage, before, ids, available, pending, head_versions, preview_paths, frames
+            )
+            acquire_clip_companions(
+                stage, connection, frames, cache_path, fetch_preview, head_versions
             )
         if preparation_config.demands_captions:
             _acquire_captions(
@@ -613,55 +635,6 @@ def _demanded_producers(
     return demanded
 
 
-def _acquire_model_facts(
-    stage: _Acquisition,
-    before: Mapping[str, Sequence[str]],
-    ids: Sequence[str],
-    available: set[str],
-    pending: Callable[[str], tuple[str, ...]],
-    head_versions: Mapping[str, str],
-    preview_paths: Mapping[str, Path],
-) -> None:
-    head_versions = _after_remote(stage, before, ids, available, head_versions)
-    requested_public = {
-        head: version for head, version in head_versions.items() if head in PUBLIC_HEAD_VERSIONS
-    }
-    public_ids = _public_head_ids(before, ids, available, requested_public)
-    if public_ids:
-        stage.public_heads(public_ids, requested_public)
-    detector_pending = _detector_pending(pending, head_versions)
-    if detector_pending:
-        stage.detectors(detector_pending, preview_paths)
-    _record_unpackaged_heads(pending, head_versions, stage.failures)
-
-
-def _after_remote(
-    stage: _Acquisition,
-    before: Mapping[str, Sequence[str]],
-    ids: Sequence[str],
-    available: set[str],
-    head_versions: Mapping[str, str],
-) -> Mapping[str, str]:
-    """Offload what the service answers for; return the head versions left to the local producers."""
-    if not stage.inference_config.enabled:
-        return head_versions
-    offloaded = offloaded_versions(head_versions, stage.inference_config.producers)
-    missing = {
-        head: set(before.get(f"head:{head}@{version}", ())) for head, version in offloaded.items()
-    }
-    pending = {
-        asset_id: {
-            head: version for head, version in offloaded.items() if asset_id in missing[head]
-        }
-        for asset_id in ids
-        if asset_id in available
-    }
-    served = stage.remote_facts({key: value for key, value in pending.items() if value})
-    if served or not stage.inference_config.fallback_to_local:
-        return {head: version for head, version in head_versions.items() if head not in offloaded}
-    return head_versions
-
-
 def _ensure_sharpness_threshold(connection: sqlite3.Connection, pixel_producer_key: str) -> None:
     if pixel_producer_key != PRODUCER_KEY:
         return
@@ -687,45 +660,6 @@ def _acquire_pixels(
         )
         return
     stage.pixels(connection, asset_ids)
-
-
-def _public_head_ids(
-    before: Mapping[str, Sequence[str]],
-    ids: Sequence[str],
-    available: set[str],
-    requested_public: Mapping[str, str],
-) -> tuple[str, ...]:
-    missing_public = set().union(
-        *(
-            set(before.get(f"head:{head}@{version}", ()))
-            for head, version in requested_public.items()
-        )
-    )
-    return tuple(
-        asset_id for asset_id in ids if asset_id in available and asset_id in missing_public
-    )
-
-
-def _detector_pending(
-    pending: Callable[[str], tuple[str, ...]], head_versions: Mapping[str, str]
-) -> dict[str, tuple[str, ...]]:
-    demanded = {
-        head: pending(f"head:{head}@{version}")
-        for head, version in head_versions.items()
-        if DETECTOR_VERSIONS.get(head) == version
-    }
-    return {head: values for head, values in demanded.items() if values}
-
-
-def _record_unpackaged_heads(
-    pending: Callable[[str], tuple[str, ...]],
-    head_versions: Mapping[str, str],
-    failures: dict[str, str],
-) -> None:
-    supported = PUBLIC_HEAD_VERSIONS | DETECTOR_VERSIONS
-    for head, version in head_versions.items():
-        if pending(f"head:{head}@{version}") and supported.get(head) != version:
-            failures[f"head_provider:{head}"] = f"no packaged producer for {head}@{version}"
 
 
 def _conflicting_caption_rows(

@@ -118,3 +118,54 @@ def test_a_body_hold_from_an_older_audience_prompt_stays(tmp_path, monkeypatch):
     later = cut(held, ClearingJudge(), "second-cut", observe=body_observer(set()))
 
     assert "picture-000" not in carried(later)
+
+
+def _head_flagged_still():
+    from tests.test_editorial_shareability_tiers import Annotation
+
+    return share.evidence_for_unit(
+        {"asset_id": "still", "members": ["still"]},
+        {"still": Annotation("A fully clothed family waves.", (("nsfw_marqo", "yes"),))},
+        {},
+        {},
+    )
+
+
+def test_a_banked_clearance_of_a_detector_hold_is_not_served(tmp_path):
+    """An answer banked before the ruling cleared a flagged still; the hold stands over it."""
+    from types import SimpleNamespace
+
+    from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
+
+    evidence = _head_flagged_still()
+    library = AudienceBank(tmp_path / "bank.json", answerer="reader")
+    library.keep(
+        share.audience_check_key(evidence), {"parsed": True, "verdict": "share", "finding": "none"}
+    )
+    gate = AudienceGate(
+        SimpleNamespace(calls=[]),
+        audience="sendable",
+        picture_evidence=None,
+        flag_rows={},
+        lines={},
+        bank_path=tmp_path / "shareability.json",
+        library=library,
+    )
+
+    _key, answered = gate.check(evidence)
+
+    assert answered["verdict"] == "family_only" and answered["finding"] == "exposure_evidence"
+
+
+def test_a_detector_hold_is_permanent_across_audience_prompts(tmp_path, monkeypatch):
+    from immich_memories.analysis.editorial_structure_audience import AudienceBank
+    from tests.test_editorial_shareability_tiers import ClearingReader
+
+    held = share.check_audience(ClearingReader(), _head_flagged_still(), "unit-1")
+    AudienceBank(tmp_path / "bank.json", answerer="reader").hold("still", held)
+    bump_audience_prompt(monkeypatch)
+
+    standing = AudienceBank(tmp_path / "bank.json", answerer="reader").held("still")
+
+    assert standing is not None and standing["verdict"] == "family_only"
+    assert standing["finding"] == "exposure_evidence"

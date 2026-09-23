@@ -1,6 +1,6 @@
 """A window has to hold the day it is a window on.
 
-Measured on one real catalogue: a birth over 21 active hours and 379 pictures
+Measured on one real catalogue: a long occasion over 21 active hours and 379 pictures
 carried a five-hour window holding 24 of them, so the film was cut from 6 % of
 the day and refused for insufficient material. A twelve-hour day of 114
 pictures carried a forty-minute window.
@@ -47,7 +47,7 @@ def _scanned(monkeypatch, day: list, window: tuple[datetime, datetime] | None) -
     monkeypatch.setattr(
         "immich_memories.automation.special_day_scan.ask_if_special",
         lambda *_a, **_k: SpecialDay(
-            special=True, title="A long night", subtitle="", what="a birth", window=window
+            special=True, title="A long night", subtitle="", what="a long occasion", window=window
         ),
     )
     found = scan_year(day, llm_config=None, home=None, ask=1)
@@ -100,7 +100,7 @@ def test_a_row_written_before_the_rule_keeps_its_window_until_it_is_rebuilt(
         day=date(2024, 2, 7),
         title="A long night",
         subtitle="",
-        what="a birth",
+        what="a long occasion",
         photos=379,
         window=window,
         window_photos=window_photos,
@@ -109,7 +109,7 @@ def test_a_row_written_before_the_rule_keeps_its_window_until_it_is_rebuilt(
         day=date(2024, 2, 7),
         title="A long night",
         subtitle="",
-        what="a birth",
+        what="a long occasion",
         photos=379,
         window=window,
     )

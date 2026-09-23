@@ -64,7 +64,9 @@ def test_valid_companion_no_resolves_only_its_warning_and_keeps_activity_authori
     item = evidence(records={"private-video-a": picture_record("no")})
     ordinary = Judge(activity())
     shared = share.check_audience(ordinary, item, "audience")
-    assert shared["verdict"] == "share" and len(ordinary.calls) == 1
+    # Its warning is resolved, but the still's own detector hold stands.
+    assert shared["verdict"] == "family_only" and len(ordinary.calls) == 1
+    assert shared["finding"] == "exposure_evidence"
     assert shared["companion_body_warnings"][0]["body_observation"]["record_identity"] == "1" * 64
     private = Judge(activity("bathing"))
     held = share.check_audience(private, item, "audience")
@@ -99,7 +101,8 @@ def test_owner_clear_is_member_local_and_model_clear_is_not_authority():
     owner = share.FlagRow("private-video-a", "cleared", "owner reviewed", "owner")
     item = evidence(flags={"private-video-a": (owner,)})
     assert "companion_body_warnings" not in item
-    assert share.check_audience(Judge(activity()), item, "a")["verdict"] == "share"
+    # The clip is the owner's to clear; the still's own detector hold is not cleared.
+    assert share.check_audience(Judge(activity()), item, "a")["finding"] == "exposure_evidence"
     two = evidence(flags={"private-video-a": (owner,)}, two=True)
     assert len(two["companion_body_warnings"]) == 1
     two_judge = Judge(activity())
@@ -133,7 +136,8 @@ def test_captioned_companion_still_uses_existing_activity_and_exposure_requests(
         activity(), exposure({"p1": [["person", "clothing"]], "p2": [["person", "clothing"]]})
     )
     result = share.check_audience(judge, item, "a")
-    assert result["verdict"] == "share" and len(judge.calls) == 2
+    assert result["verdict"] == "family_only" and len(judge.calls) == 2
+    assert result["finding"] == "exposure_evidence"
 
 
 def test_no_companion_warning_leaves_observed_false_positive_keys_and_requests_unchanged():

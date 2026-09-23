@@ -1,10 +1,10 @@
 {
   "worthy": {
     "F04": "A birthday celebration with two children and two cakes.",
-    "F07": "Newborn sleeps on a parent's chest in hospital.",
-    "F08": "A parent holds the newborn in hospital shortly after birth.",
-    "F09": "Parents pose with the newborn in various indoor settings.",
-    "F11": "A parent holds the baby in dim light, late at night.",
-    "F12": "Parents embrace the newborn on a couch."
+    "F07": "A child asleep on a parent's chest after a long walk.",
+    "F08": "A parent lifts a child onto a pony at a fair.",
+    "F09": "A family poses together in several rooms of a new house.",
+    "F11": "A parent reads a bedtime story in dim light, late at night.",
+    "F12": "A family shares a hug on a couch."
   }
 }
