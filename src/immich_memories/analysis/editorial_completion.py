@@ -16,8 +16,13 @@ class RetainedMotion:
     stale editorial metadata or count repeated cache reads as new measured work.
     """
 
-    def __init__(self, resolve: Callable | None) -> None:
+    def __init__(
+        self, resolve: Callable | None, bind: Callable[[dict], dict] | None = None
+    ) -> None:
         self.resolve = resolve
+        # Binds a carrier planned on an unmeasured stitch to its measured one first, so
+        # motion is resolved over, and keyed by, the rendering the film will ship.
+        self.bind = bind
         self.updates: dict[tuple, dict[str, Any]] = {}
         self.metrics: dict[str, Any] = {
             "scope": "captured motion evidence",
@@ -51,6 +56,8 @@ class RetainedMotion:
                 self.metrics[key] = value
 
     def __call__(self, carriers: list[dict]) -> list[dict]:
+        if self.bind is not None:
+            carriers = [self.bind(c) for c in carriers]
         if self.resolve is None:
             return carriers.copy()
         pending = [c for c in carriers if self._key(c) not in self.updates]

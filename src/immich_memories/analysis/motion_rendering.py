@@ -22,8 +22,19 @@ from immich_memories.api.models import Asset
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 
 # Given a burst's companion video ids in shutter order, one measured clock
-# offset per join, or None where the measurement refused to commit.
-ClockOffsetProbe = Callable[[Sequence[str]], "list[float | None]"]
+# offset per join, or None where the measurement refused to commit. A probe that
+# answers None for the whole burst has not measured it yet (see `plan_before_measuring`).
+ClockOffsetProbe = Callable[[Sequence[str]], "list[float | None] | None"]
+
+
+def plan_before_measuring(_video_ids: Sequence[str]) -> None:
+    """The probe a draft plans with: no join is measured yet, so no companion is downloaded.
+
+    Every burst is planned on its metadata windows and marked unmeasured. Only the bursts
+    the cut keeps are measured, when their carriers are resolved; a year holds over a
+    thousand companions and a film keeps a few dozen of them.
+    """
+    return None
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,8 @@ class MotionRendering:
     still_ids: tuple[str, ...]
     minimum_seconds: float
     material: LiveRenderMaterial | None = None
+    # False while the joins are planned on metadata and still owe their measurement.
+    measured: bool = True
 
     @property
     def beats_a_still(self) -> bool:
@@ -111,7 +124,7 @@ def motion_renderings(
         merge_window_seconds=window,
         clip_durations=durations,
     ):
-        material, members = _cluster_material(cluster, clock_offsets)
+        material, members, measured = _cluster_material(cluster, clock_offsets)
         if len(members) < cluster.count:
             # Removed aliases must neither trim nor connect the surviving footage.
             # Re-cluster with the same measurements so projection reproduces the cuts.
@@ -127,6 +140,7 @@ def motion_renderings(
         if material is None:
             continue
         rendering = MotionRendering(
+            measured=measured,
             video_ids=material.video_ids,
             trim_points=material.trim_points,
             shutter_timestamps=material.shutter_timestamps,
@@ -164,7 +178,7 @@ def _companion_durations(
 
 def _cluster_material(
     cluster: Any, clock_offsets: ClockOffsetProbe | None = None
-) -> tuple[LiveRenderMaterial | None, list[Any]]:
+) -> tuple[LiveRenderMaterial | None, list[Any], bool]:
     """The stitchable material of one burst, or ``None`` when it offers none.
 
     One picture, two files: a shared album can hold a second still of the same Live Photo,
@@ -176,9 +190,9 @@ def _cluster_material(
     midpoint estimate is not good enough to stitch with, so the stills stay
     photographs rather than showing a stitch that rewinds or skips (#1012).
     """
-    trims = _measured_trims(cluster, clock_offsets)
+    trims, measured = _measured_trims(cluster, clock_offsets)
     if trims is None:
-        return None, list(cluster.assets)
+        return None, list(cluster.assets), measured
     entries: list[LiveSourceEntry] = []
     offered_videos: set[str] = set()
     members: list[Any] = []
@@ -197,15 +211,18 @@ def _cluster_material(
         entries.append(entry)
         members.append(a)
     try:
-        return LiveRenderMaterial(tuple(entries)), members
+        return LiveRenderMaterial(tuple(entries)), members, measured
     except ValueError:
-        return None, members
+        return None, members, measured
 
 
 def _measured_trims(
     cluster: Any, clock_offsets: ClockOffsetProbe | None
-) -> list[tuple[float, float]] | None:
+) -> tuple[list[tuple[float, float]] | None, bool]:
     """Windows re-placed by measured content clocks, or ``None`` to refuse the burst.
+
+    The flag says whether the windows are final: a probe that has not measured the burst
+    yet leaves it on the metadata windows, owing its measurement.
 
     Every production path injects the engine, so a multi-member burst is
     always stitched from measurement — and refused entirely when a join cannot
@@ -215,9 +232,9 @@ def _measured_trims(
     production runtime.
     """
     if clock_offsets is None:
-        return cluster.trim_points()
+        return cluster.trim_points(), True
     if cluster.count < 2 or cluster.clip_durations is None:
-        return cluster.trim_points()
+        return cluster.trim_points(), True
     from immich_memories.processing.stitch_alignment import aligned_trims
 
     video_ids = [cast(str, asset.live_photo_video_id) for asset in cluster.assets]
@@ -227,17 +244,20 @@ def _measured_trims(
         # against itself, at an offset that is ~0 by construction. The burst keeps
         # the metadata plan; the material guard below still offers the video once,
         # by its earliest still.
-        return cluster.trim_points()
-    measured = list(clock_offsets(video_ids))
+        return cluster.trim_points(), True
+    answered = clock_offsets(video_ids)
+    if answered is None:
+        return cluster.trim_points(), False
+    measured = list(answered)
     if len(measured) != len(video_ids) - 1:
-        return None
+        return None, True
     deltas: list[float] = []
     for value in measured:
         if value is None:
-            return None
+            return None, True
         deltas.append(value)
     durations = cluster.source_durations()
     aligned = aligned_trims(cluster.trim_points(), durations, deltas)
     # An alignment that cannot place every member of a genuinely short burst
     # is the same refusal: better a photograph than a stutter.
-    return aligned
+    return aligned, True

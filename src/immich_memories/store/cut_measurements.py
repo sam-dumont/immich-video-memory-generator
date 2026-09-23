@@ -1,7 +1,8 @@
-"""The two facts a cut measures: a Live Photo's motion residual, and a clip's speech.
+"""The facts a cut measures: a Live Photo's motion residual, a clip's speech, and how two
+Live companions' clocks relate.
 
-A row belongs to one picture, one producer and the exact source metadata it was measured
-from, like a caption or a motion line. A changed source is a different digest, so its old
+A row belongs to one picture (or one pair of companions), one producer and the exact source
+metadata it was measured from, like a caption or a motion line. A changed source is a different digest, so its old
 row stops being an answer. No row means nobody measured, never "measured nothing": a clip
 with no speech in it is an empty region list under a row that exists.
 """
@@ -19,14 +20,19 @@ from immich_memories.store.editorial_preparation import now, private_database_pa
 
 MOTION_RESIDUALS = "motion_residuals"
 SPEECH_REGIONS = "speech_regions"
+LIVE_CLOCK_OFFSETS = "live_clock_offsets"
 
 T = TypeVar("T")
+K = TypeVar("K")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS motion_residuals (
  asset_id TEXT NOT NULL, producer TEXT NOT NULL, source_digest TEXT NOT NULL,
  measured TEXT NOT NULL, written_at TEXT NOT NULL, PRIMARY KEY(asset_id, producer));
 CREATE TABLE IF NOT EXISTS speech_regions (
+ asset_id TEXT NOT NULL, producer TEXT NOT NULL, source_digest TEXT NOT NULL,
+ measured TEXT NOT NULL, written_at TEXT NOT NULL, PRIMARY KEY(asset_id, producer));
+CREATE TABLE IF NOT EXISTS live_clock_offsets (
  asset_id TEXT NOT NULL, producer TEXT NOT NULL, source_digest TEXT NOT NULL,
  measured TEXT NOT NULL, written_at TEXT NOT NULL, PRIMARY KEY(asset_id, producer));
 """
@@ -143,9 +149,52 @@ def banked_speech_regions(
     }
 
 
+def _pair_key(pair: tuple[str, str]) -> str:
+    # A join belongs to both companions, in shutter order; ids never hold a newline.
+    return f"{pair[0]}\n{pair[1]}"
+
+
+def remember_clock_offset(
+    connection: sqlite3.Connection,
+    *,
+    pair: tuple[str, str],
+    producer: str,
+    source_digest: str,
+    seconds: float | None,
+) -> None:
+    """None is an answer: the files share no content this measurement can trust."""
+    _remember(
+        connection,
+        LIVE_CLOCK_OFFSETS,
+        asset_id=_pair_key(pair),
+        producer=producer,
+        source_digest=source_digest,
+        measured={"seconds": seconds},
+    )
+
+
+def banked_clock_offsets(
+    connection: sqlite3.Connection, digests: Mapping[tuple[str, str], str], producer: str
+) -> dict[tuple[str, str], float | None]:
+    """The joins already measured between these companions as they are now."""
+    pairs = {_pair_key(pair): pair for pair in digests}
+    rows = _banked(
+        connection,
+        LIVE_CLOCK_OFFSETS,
+        {key: digests[pair] for key, pair in pairs.items()},
+        producer,
+    )
+    return {
+        pairs[key]: (float(seconds) if seconds is not None else None)
+        for key, measured in rows.items()
+        if isinstance(measured, dict) and "seconds" in measured
+        for seconds in (measured["seconds"],)
+    }
+
+
 def reading_cut_measurements(
-    store_path: Path, read: Callable[[sqlite3.Connection], dict[str, T]]
-) -> dict[str, T]:
+    store_path: Path, read: Callable[[sqlite3.Connection], dict[K, T]]
+) -> dict[K, T]:
     """Apply a bank reader to the store without writing it; an unreachable store answers nobody."""
     if not Path(store_path).exists():
         return {}

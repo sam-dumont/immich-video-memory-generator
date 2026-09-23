@@ -129,21 +129,23 @@ sqlite3 ~/.immich-memories/cache/annotations.sqlite \
 
 The next cut over those pictures asks the cull again.
 
-### The two facts a cut measures
+### The facts a cut measures
 
-Two facts about a picture can only be measured once a cut has chosen it: a Live Photo's motion
-residual, and where the speech sits in a clip. Both are banked per picture in `annotations.sqlite`,
-beside the captions and the motion sentences.
+Three facts can only be measured once a cut has chosen a picture: a Live Photo's motion residual,
+where the speech sits in a clip, and how the clocks of a Live burst's companion videos line up. All
+three are banked in `annotations.sqlite`, beside the captions and the motion sentences.
 
 | Table | What it holds | Written when |
 |---|---|---|
 | `motion_residuals` | the optical flow measured on one Live Photo's companion video, the residual the 1.5 discriminant reads included | a cut measures a chosen Live carrier |
 | `speech_regions` | the utterances a clip holds, in its own seconds. An empty list is an answer: the detector listened and heard none | a cut measures a retained video or a playing Live Photo |
+| `live_clock_offsets` | how much later one companion's clock starts than the previous one's, per pair of companions in a burst. An empty answer is an answer: the two files share no content the stitch can trust, so the burst ships as its photograph | a cut keeps a burst of two or more Live Photos |
 
 Each row is keyed by the picture, the exact source metadata it was measured from, and a producer
 version carrying what produced it: `motion-residual-v1@median-flow-v1-12frames-320x240` for the
-residual, `speech-regions-v1@firered-aed-utterances-v1/` plus a digest of the detector settings for
-the speech, which is where `speech.vad_threshold` and `speech.min_silence_ms` land. Change the
+residual, `live-clock-offset-v1@motion-diff-v1-15fps-36px` for the offsets (keyed by both
+companions of the pair), `speech-regions-v1@firered-aed-utterances-v1/` plus a digest of the
+detector settings for the speech, which is where `speech.vad_threshold` and `speech.min_silence_ms` land. Change the
 picture in Immich, the method, or those settings, and the old row stops being an answer: the next
 cut measures again and writes the new one in its place.
 

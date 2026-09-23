@@ -239,9 +239,9 @@ class StructurePlannerPorts:
     # builds the draft with no model and this reads the finished cut once.
     thin: ThinPolish | None = None
     # Measured Live companion clock offsets for content-aligned stitch joins
-    # (#1012); None keeps the metadata plan. Lazy in production: it fetches
-    # companions only for bursts it is actually asked about.
-    clock_offsets: Callable[[Sequence[str]], list[float | None]] | None = None
+    # (#1012); None keeps the metadata plan. The draft never asks it: only the
+    # bursts the cut keeps are measured, and production banks every answer.
+    clock_offsets: Callable[[Sequence[str]], list[float | None] | None] | None = None
 
 
 @dataclass(frozen=True)

@@ -274,7 +274,10 @@ def plan_structure(
     prior_assets = (
         {c["asset_id"] for c in source.prior_plan["carriers"]} if source.prior_plan else set()
     )
-    run = PlanRun(final_content_cap=source.case.target_seconds - CONTENT_RESERVE_SECONDS)
+    run = PlanRun(
+        final_content_cap=source.case.target_seconds - CONTENT_RESERVE_SECONDS,
+        bind_stitch=material.builder.measured_stitch,
+    )
     with llm_metrics.collecting() as counters:
         outcome = _select(
             source,

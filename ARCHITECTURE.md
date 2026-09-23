@@ -306,9 +306,13 @@ src/immich_memories/
 │   ├── llm_preparation_usage.py # Caption/control/motion usage, including unmetered failed attempts
 │   ├── llm_usage_record.py     # Atomic usage checkpoints, split per model/stage, with unknown usage
 │   ├── live_photo_pipeline.py  # Keep a Live Photo's video half out of the video pool
+│   ├── live_clock_offsets.py   # BankedClockOffsets: a burst's companion clock offsets, measured
+│   │                           # once per pair (each companion fetched and decoded once) and banked
 │   └── motion_rendering.py     # What a photograph could show as motion, if the memory wants it;
 │                               # may_play: a join earns its length, a lone Live Photo is put to
-│                               # the motion discriminant instead
+│                               # the motion discriminant instead. The draft plans every burst on
+│                               # metadata (plan_before_measuring); UnitBuilder.measured_stitch
+│                               # measures only the bursts the cut keeps, when motion is resolved
 │
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 5 services)
@@ -521,9 +525,10 @@ src/immich_memories/
 │   │                           # with what produced it (question, keyframes, admitting residual)
 │   ├── library_overviews.py    # Read-only: the library's own account of a period, written by cataloguing
 │   ├── library_catalogue.py    # The only writer of that table: content-addressed period accounts
-│   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual and a
-│                               # clip's speech regions, keyed the same way (a missing row is
-│                               # "not measured", never "measured as nothing")
+│   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual, a
+│                               # clip's speech regions and a Live burst's companion clock offsets,
+│                               # keyed the same way (a missing row is "not measured", never
+│                               # "measured as nothing")
 │                               # (annotations.sqlite; see docs/research for the design)
 │
 ├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads

@@ -64,6 +64,8 @@ class PlanRun:
             "reason": "sampled comparison ports absent",
         }
     )
+    # Binds a kept carrier's unmeasured Live stitch to its measurement (`measured_stitch`).
+    bind_stitch: Callable[[dict], dict] | None = None
 
 
 def resolve_motion_and_timing(
@@ -71,7 +73,7 @@ def resolve_motion_and_timing(
 ) -> None:
     # Reviews must see the rendering that ordinary motion measurement resolved.
     # Completion reuses this instance for survivors and newly retained additions.
-    retained_motion = RetainedMotion(ports.resolve_motion)
+    retained_motion = RetainedMotion(ports.resolve_motion, run.bind_stitch)
     run.carriers = retained_motion(run.carriers)
     run.selection_stages["before_picture_review"] = len(run.carriers)
     announce_count(len(run.carriers), "going into the picture review")
@@ -209,7 +211,7 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
     if not added:
         return
     filled = set(added)
-    retained = RetainedMotion(ports.resolve_motion)
+    retained = RetainedMotion(ports.resolve_motion, run.bind_stitch)
     resolved = {
         c["asset_id"]: c for c in retained([c for c in run.carriers if c["asset_id"] in filled])
     }

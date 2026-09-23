@@ -7,7 +7,7 @@ bursts, videos and stills, deduplicated — and the anchor row the memory-worthy
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -43,7 +43,11 @@ from immich_memories.analysis.editorial_structure_lines import (
     UnitLines,
     metadata_life,
 )
-from immich_memories.analysis.motion_rendering import motion_renderings
+from immich_memories.analysis.motion_rendering import (
+    MotionRendering,
+    motion_renderings,
+    plan_before_measuring,
+)
 from immich_memories.api.models import AssetType
 from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
 from immich_memories.speech.cuts import set_duration
@@ -175,6 +179,7 @@ class UnitBuilder:
         renderings: dict,
         never_auto,
         document_sources,
+        measure: Callable[[list[str]], Mapping[str, MotionRendering]] | None = None,
     ) -> None:
         self._assets = source.assets
         self._residuals = source.motion_residuals
@@ -184,6 +189,8 @@ class UnitBuilder:
         self._event_assets = wall.event_assets
         self._moment_of_asset = wall.moment_of_asset
         self._renderings = renderings
+        self._measure = measure
+        self._bound: dict[tuple, dict] = {}
         self._resolve_motion = ports.resolve_motion
         self._thumbnail_hash = ports.thumbnail_hash
         self._window = source.config.photos.burst_window_seconds
@@ -226,8 +233,9 @@ class UnitBuilder:
         ]
         return max(vals) if vals else None
 
-    def _live_unit(self, asset_id: str, base: dict, ids: list[str]) -> dict:
-        r = self._renderings[asset_id]
+    def _live_unit(self, r: MotionRendering, asset_id: str, base: dict, ids: list[str]) -> dict:
+        if r.material is None:
+            raise ValueError("Live rendering lacks canonical source material")
         members = [s for s in r.still_ids if s in ids] or [asset_id]
         residual = self._family_residual(members)
         motion = r.may_play and (
@@ -295,12 +303,10 @@ class UnitBuilder:
             # video pretend to be Live material.
             if a in self._renderings and asset.type is AssetType.IMAGE:
                 r = self._renderings[a]
-                if r.material is None:
-                    raise ValueError("Live rendering lacks canonical source material")
                 if r.still_ids in seen_families:
                     continue
                 seen_families.add(r.still_ids)
-                units.append(self._live_unit(a, base, ids))
+                units.append(self._live_unit(r, a, base, ids))
                 continue
             unit = (
                 self._video_unit(a, base)
@@ -310,6 +316,41 @@ class UnitBuilder:
             if unit is not None:
                 units.append(unit)
         return [self._with_banked_speech(unit) for unit in units]
+
+    def measured_stitch(self, carrier: dict) -> dict:
+        """A carrier the draft planned on an unmeasured stitch, bound to its measured one.
+
+        The draft plans every burst on its metadata windows so that no companion is
+        downloaded for a burst the film never keeps. A kept burst is measured here, with
+        the probe the render projection re-derives it with, so the film ships exactly the
+        trims measuring every burst up front gave it. A burst the measurement refuses
+        ships as its photograph, as it always has.
+        """
+        rendering = self._renderings.get(carrier["asset_id"])
+        if (
+            self._measure is None
+            or rendering is None
+            or rendering.measured
+            or not str(carrier.get("kind", "")).startswith("live")
+        ):
+            return carrier
+        key = (carrier["asset_id"], tuple(carrier["members"]))
+        if key not in self._bound:
+            measured = self._measure(carrier["members"]).get(carrier["asset_id"])
+            self._bound[key] = self._measured_unit(
+                measured, carrier["asset_id"], carrier["members"]
+            )
+        stale = _RENDERED_FIELDS - self._bound[key].keys()
+        return {k: v for k, v in carrier.items() if k not in stale} | self._bound[key]
+
+    def _measured_unit(
+        self, measured: MotionRendering | None, asset_id: str, members: list[str]
+    ) -> dict:
+        if measured is None or set(measured.still_ids) != set(members):
+            unit = self._still_unit(asset_id, {})
+        else:
+            unit = self._live_unit(measured, asset_id, {}, members)
+        return {k: v for k, v in self._with_banked_speech(unit).items() if k in _RENDERED_FIELDS}
 
     def _with_banked_speech(self, unit: dict) -> dict:
         """A unit whose speech a cut has already measured knows where its sentences end."""
@@ -359,6 +400,24 @@ class UnitBuilder:
         return self._distinct(scene_units)
 
 
+# What a unit's rendering decides, as opposed to where the story put it.
+_RENDERED_FIELDS = frozenset(
+    {
+        "kind",
+        "motion_candidate",
+        "motion_assessed",
+        "members",
+        "video_ids",
+        "trim_points",
+        "live_material",
+        "seconds",
+        "raw_seconds",
+        "residual",
+        "speech_regions",
+    }
+)
+
+
 @dataclass
 class Material:
     """Everything the selection reads about the period's pictures."""
@@ -380,6 +439,8 @@ def _live_renderings(
     renderings: dict = {}
     if not source.allow_live_motion:
         return renderings
+    # A measuring engine is asked only about the bursts the cut keeps (`measured_stitch`).
+    probe = None if ports.clock_offsets is None else plan_before_measuring
     for ids in wall.event_assets.values():
         # The motion manifest must use the same material the event can select
         # and review, rather than borrow nearby footage from source context.
@@ -389,10 +450,27 @@ def _live_renderings(
                 material,
                 source.config,
                 companion_assets=source.companion_assets,
-                clock_offsets=ports.clock_offsets,
+                clock_offsets=probe,
             )
         )
     return renderings
+
+
+def _stitch_measurer(source: StructurePlanningInput, ports: StructurePlannerPorts):
+    """Re-derive one kept burst with the measuring probe, as the render projection will."""
+    probe = ports.clock_offsets
+    if probe is None or not source.allow_live_motion:
+        return None
+
+    def measure(members: list[str]) -> Mapping[str, MotionRendering]:
+        return motion_renderings(
+            [source.assets[m] for m in members],
+            source.config,
+            companion_assets=source.companion_assets,
+            clock_offsets=probe,
+        )
+
+    return measure
 
 
 def build_material(
@@ -410,6 +488,7 @@ def build_material(
         renderings=_live_renderings(source, wall, ports),
         never_auto=_share.never_auto_ids(source.shareability_flags),
         document_sources=document_sources,
+        measure=_stitch_measurer(source, ports),
     )
     units = {f: builder.units_of(f) for f in wall.fam_ids}
     text = UnitLines(

@@ -41,6 +41,9 @@ _MAX_MATCH_ERROR = 12.0
 # A member displaying less than this is not worth a join at all; such a burst
 # keeps the metadata plan rather than a degenerate aligned one.
 _MIN_MEMBER_SECONDS = 0.3
+# Names the measurement a banked offset came from. Change it with anything above or in
+# `pairwise_clock_offset` that can move an answer, so older answers retire themselves.
+OFFSET_METHOD = f"motion-diff-v1-{PROBE_FPS:g}fps-{_PROBE_HEIGHT}px"
 
 
 class CompanionUndecodable(ValueError):

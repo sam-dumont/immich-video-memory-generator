@@ -78,6 +78,13 @@ asset that has already won its place.
 5. **One carrier per burst**: a burst collapses to a single unit before the editor ever chooses. One
    photograph carries it, the favourite if there is one and otherwise the sharpest, best-exposed,
    and the siblings are not separately selectable
+6. **Measured joins, only for the bursts the film keeps**: the draft plans every burst on its
+   metadata, which puts each companion's shutter at the file's middle. Before a kept burst plays,
+   its companions are downloaded once and cross-correlated to find where their content really
+   lines up, and the stitch is cut there. If the files share no content to line up on, the burst
+   ships as its photograph. The answer is banked per pair of companions, so the next film over the
+   same pictures downloads nothing. A 2024 year holds about 1,300 companions in bursts; measuring
+   all of them before the draft cost six and a half minutes on every run
 
 Why 3.5 seconds, and why only for a join: two or more recordings cut together have to be worth their
 cuts, and a stitch under 3.5 s is more cut than footage. A lone Live Photo is not a join. It is the
