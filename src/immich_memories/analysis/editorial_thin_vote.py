@@ -13,9 +13,9 @@ import math
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from typing import Any
 
-from immich_memories.analysis.editorial_block_votes import vote_blocks
+from immich_memories.analysis.editorial_block_votes import vote_blocks, weak_example
 
-THESIS_FIT_VERSION = "thesis-fit-v2"
+THESIS_FIT_VERSION = "thesis-fit-v3-own-label-example"
 THESIS_FIT_CRITERION = (
     "Name the shots that add nothing to THIS film: filler, a lone everyday object or appliance, "
     "a meaningless interior, an accidental frame, or a view that merely repeats its neighbour "
@@ -72,7 +72,7 @@ def judge_thesis_fit(
             f"{contract}\n\nTHE THESIS THIS FILM IS BUILT ON\n{thesis}\n\n"
             "Below are the shots currently in this film, one line each: when each was taken and "
             f"what it shows. Text only.\n\n{THESIS_FIT_CRITERION}\n\n"
-            'Answer with one JSON object only, on one line: {"weak":{"P03":"why","P07":"why"}}'
+            f"Answer with one JSON object only, on one line: {weak_example(listing)}"
             f"\n\nSHOTS\n{listing}"
         )
 
