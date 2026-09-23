@@ -473,7 +473,8 @@ src/immich_memories/
 │
 ├── store/                      # The annotation store: every banked fact and reading
 │   ├── caption_provenance.py   # What served each caption (served /models row + control digest), grouped
-│   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest
+│   ├── motion_lines.py         # The motion line per video, keyed by picture, producer and source digest,
+│   │                           # with what produced it (question, keyframes, admitting residual)
 │   ├── library_overviews.py    # Read-only: the library's own account of a period, written by cataloguing
 │   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual and a
 │                               # clip's speech regions, keyed the same way (a missing row is

@@ -171,6 +171,11 @@ cannot read are banked as settled; timeouts and transport failures stay missing 
 like a missing caption. `caption_concurrency` bounds the requests in flight; keyframe reads run
 four at a time.
 
+Each row also records what produced it: a digest of the question asked, the keyframe times it
+read, and what made the source owe a line (`video`, or the Live Photo's residual and the
+measurement that produced it). Rows banked before this existed have no record and still answer;
+the cut counts how many of those it read as `unrecorded` in its motion metrics.
+
 `no_captions` and `metadata_only` ask for no motion line. The pick then reads the video's plain
 facts instead: its length, and the measured motion of a Live Photo that has one.
 

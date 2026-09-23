@@ -292,6 +292,8 @@ def test_a_miss_or_a_tier_without_captions_reads_the_plain_facts(store):
         "requested": 2,
         "banked": 0,
         "plain_facts": 2,
+        "unsupported": 0,
+        "unrecorded": 0,
     }
 
 

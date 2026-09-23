@@ -219,6 +219,13 @@ A video or moving Live Photo needs at least one standing approval. Two weak vote
 clip even from an important story or an occasion fallback. Approved scenery and action remain
 eligible; a clip does not need to show people to earn its place.
 
+A motion sentence counts only where the motion is measured. A 500M captioner reading three small
+keyframes can describe somebody dancing in an empty room. A Live Photo's sentence therefore reaches
+the gate and the pick only once its companion measured at least 1.5. Until then the Live Photo is
+judged as the photograph it is: its media kind is not evidence that anyone is in it. A Live Photo
+whose action differs from its still keeps its sentence once the measurement backs it. A true video
+always plays and keeps its sentence, because no residual is measured for videos.
+
 Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
 cached as an empty vote. A valid empty mapping still means the reader chose none of the offered items.
