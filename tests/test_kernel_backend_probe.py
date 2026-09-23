@@ -16,13 +16,22 @@ from immich_memories.operations import bounded_process
 
 
 @pytest.fixture(autouse=True)
-def _forget_probed_backends() -> Iterator[None]:
-    """The probe answer is cached for the life of a process, which here is the session."""
-    from immich_memories.titles.kernel_backend_probe import probe_backend_dispatch
+def _forget_probed_backends(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[None]:
+    """The probe answer is cached for the life of a process, which here is the session.
 
+    So is the kernel cache directory, which lives under HOME: a test must not
+    create one in the home of whoever runs the suite.
+    """
+    from immich_memories.titles.kernel_backend_probe import kernel_cache_dir, probe_backend_dispatch
+
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
     probe_backend_dispatch.cache_clear()
+    kernel_cache_dir.cache_clear()
     yield
     probe_backend_dispatch.cache_clear()
+    kernel_cache_dir.cache_clear()
 
 
 class _RecordedRun:
@@ -96,8 +105,12 @@ def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeKernelLibrary) ->
     return kernel_backend_probe._probe_worker("metal")
 
 
-def test_worker_reports_success_when_the_kernel_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_worker_reports_success_when_the_kernel_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome
+
+    monkeypatch.setenv("HOME", str(tmp_path))
 
     def increments(values) -> None:
         values[0] += 1
@@ -107,7 +120,13 @@ def test_worker_reports_success_when_the_kernel_runs(monkeypatch: pytest.MonkeyP
     result = _run_worker(monkeypatch, fake_ti)
 
     assert result.outcome is KernelProbeOutcome.SUCCESS
-    assert fake_ti.init_calls == [{"arch": fake_ti.metal, "offline_cache": True}]
+    assert fake_ti.init_calls == [
+        {
+            "arch": fake_ti.metal,
+            "offline_cache": True,
+            "offline_cache_file_path": str(tmp_path / ".immich-memories" / "cache" / "kernels"),
+        }
+    ]
 
 
 def test_worker_rejects_a_backend_that_dispatches_nothing(
@@ -580,11 +599,11 @@ def test_a_probe_that_times_out_says_so_without_naming_a_signal(
 
     _install_runner(
         monkeypatch,
-        _RecordedRun(payload=None, error=subprocess.TimeoutExpired("probe", 10.0)),
+        _RecordedRun(payload=None, error=subprocess.TimeoutExpired("probe", 30.0)),
     )
 
     reason = kernel_dispatch_failure()
 
     assert reason is not None
-    assert reason.startswith("kernel backend did not start within 10s")
+    assert reason.startswith("kernel backend did not start within 30s")
     assert reason.endswith("titles fall back to the PIL renderer")

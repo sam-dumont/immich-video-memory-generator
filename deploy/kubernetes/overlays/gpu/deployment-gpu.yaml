@@ -1,6 +1,10 @@
-# Strategic-merge patch: NVENC encoding, CUDA analysis and GPU title rendering.
-# The app auto-detects the GPU; no config change is needed. Copy these fields
-# into job.yaml pods if you run the CLI jobs on GPU nodes too.
+# Strategic-merge patch: NVENC encoding, CUDA analysis and the title kernels on CUDA.
+# The app auto-detects the GPU; no config change is needed. If the card cannot
+# start the title kernels, titles render on the CPU and the log says why in one
+# warning line; `preflight` shows it too. The kernel compile cache lives on the
+# `data` volume (~/.immich-memories/cache/kernels) because the root filesystem is
+# read-only. Copy these fields into job.yaml pods if you run the CLI jobs on GPU
+# nodes too.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

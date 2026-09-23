@@ -28,4 +28,5 @@ def test_a_birthday_title_logs_neither_the_name_nor_the_age(tmp_path: Path, capl
     )
     assert "TITLE SCREEN GENERATION" in logged
     assert "Zephyrine" not in logged
-    assert "37" not in logged
+    # The output path is logged too, and pytest numbers its temp dirs: pytest-3743 is not an age.
+    assert "37" not in logged.replace(str(tmp_path), "")

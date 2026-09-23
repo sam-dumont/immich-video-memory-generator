@@ -33,7 +33,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_PROBE_TIMEOUT_SECONDS = 10.0
+# A warm start takes under a second. A fresh install's first one pays for loading
+# native libraries nobody has loaded yet: 4.6 s on an idle M5 Max, 23 s seen with
+# the old child on a busy one (#1171). The budget is for a hung driver, not for that.
+_PROBE_TIMEOUT_SECONDS = 30.0
 
 CPU_PROBE_NAME = "cpu"
 
@@ -54,6 +57,46 @@ def kernel_library_installed() -> bool:
     return importlib.util.find_spec(KERNEL_LIBRARY) is not None
 
 
+def _writable_dir(path: Path) -> bool:
+    """Create `path` if needed and prove a file can be written in it."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path):
+            return True
+    except (OSError, RuntimeError):
+        return False
+
+
+@functools.cache
+def kernel_cache_dir() -> Path | None:
+    """Where the kernel library may keep compiled kernels, or None when nowhere can.
+
+    Left to itself the library writes its compile cache under ~/.cache when the
+    runtime shuts down, and a directory it cannot create there is an uncaught C++
+    exception: the process aborts with SIGABRT after the kernel has already run,
+    and `offline_cache=False` does not stop it (#1171). A pod with a read-only root
+    filesystem is exactly that. ~/.immich-memories is the one directory every
+    deployment keeps writable; the temp dir is the floor under it.
+    """
+    try:
+        preferred = Path.home() / ".immich-memories" / "cache" / "kernels"
+    except RuntimeError:
+        preferred = None
+    fallback = Path(tempfile.gettempdir()) / "immich-memories-kernels"
+    return next(
+        (path for path in (preferred, fallback) if path is not None and _writable_dir(path)),
+        None,
+    )
+
+
+def _init_arguments(arch: object) -> dict[str, object]:
+    """The init() arguments every kernel runtime here starts with, probe child or parent."""
+    cache = kernel_cache_dir()
+    if cache is None:
+        raise OSError("no writable directory for the kernel cache")
+    return {"arch": arch, "offline_cache": True, "offline_cache_file_path": str(cache)}
+
+
 def _kernel_library():
     """The kernel library itself, imported on first use rather than at import.
 
@@ -61,11 +104,13 @@ def _kernel_library():
     `kernel_dispatch_failure()` has come back None.
     """
     global ti
-    if ti is None:
-        # WHY absolute, in a module that otherwise uses relative imports: the
-        # dispatch probe runs this file as its own program in a child
-        # interpreter, where it is `__main__` with no package and a relative
-        # import cannot resolve.
+    if ti is None and __name__ == "__main__":
+        # WHY: the probe child needs the library and nothing else. Reaching it
+        # through the application cost a cold first start 4.5 s of pydantic,
+        # config and the titles package before the first kernel, and put a fresh
+        # install past the probe's budget (#1171).
+        ti = importlib.import_module(KERNEL_LIBRARY)
+    elif ti is None:
         from immich_memories.titles.gpu_kernel_backend import ti as library
 
         ti = library
@@ -113,7 +158,7 @@ def _silence_output_fds():
         os.close(devnull_fd)
 
 
-def _silent_init(**kwargs) -> None:
+def _silent_init(*, arch: object, **kwargs) -> None:
     """Call ti.init() with stdout/stderr silenced at the OS file descriptor level.
 
     WHY: the C++ runtime prints "Starting on arch=metal" directly to file
@@ -121,8 +166,9 @@ def _silent_init(**kwargs) -> None:
     every Python API flag (verbose=False, log_level). The ONLY way to suppress
     it is to redirect the raw OS file descriptors during the call.
     """
+    arguments = _init_arguments(arch) | kwargs
     with _silence_output_fds():
-        _kernel_library().init(**kwargs)
+        _kernel_library().init(**arguments)
 
 
 def _probe_worker(backend_name: str) -> KernelProbeResult:
@@ -131,7 +177,7 @@ def _probe_worker(backend_name: str) -> KernelProbeResult:
         with _silence_output_fds():
             library = _kernel_library()
             backend = getattr(library, backend_name)
-            library.init(arch=backend, offline_cache=True)
+            library.init(**_init_arguments(backend))
 
             @library.kernel
             def increment(values: library.types.ndarray(dtype=library.i32, ndim=1)):
@@ -251,9 +297,8 @@ def _probe_backend(
                 # with no cache written, so every attempt stays cold (#1014).
                 timeout_error = error
                 if attempt == 1:
-                    logger.warning(
-                        "Kernel %s probe timed out after %.0fs; retrying once before "
-                        "falling back to the PIL renderer",
+                    logger.debug(
+                        "Kernel %s probe timed out after %.0fs; retrying once",
                         backend_name,
                         timeout,
                     )
@@ -328,6 +373,15 @@ def _candidate_backends(*, force_cpu: bool, operating_system: str) -> list[tuple
     ]
 
 
+def probe_failure_wording(probe: KernelProbeResult) -> str:
+    """One probe failure as a reader of the log would want it: what happened, and the detail."""
+    wording = {
+        KernelProbeOutcome.CHILD_SIGNALLED: f"crashed ({_signal_wording(probe.detail)})",
+        KernelProbeOutcome.TIMED_OUT: f"did not start within {_PROBE_TIMEOUT_SECONDS:.0f}s",
+    }.get(probe.outcome)
+    return wording or f"could not dispatch a kernel ({probe.detail or probe.outcome.value})"
+
+
 def _backend_dispatches(name: str, probe_name: str) -> bool:
     """Prove a backend can dispatch a kernel, CPU included.
 
@@ -351,6 +405,10 @@ def _backend_dispatches(name: str, probe_name: str) -> bool:
 
 
 if __name__ == "__main__":
+    # WHY: running this file by path puts titles/ first on sys.path, where its
+    # modules (colors, fonts, encoding...) would shadow any top-level namesake
+    # the kernel library imports.
+    sys.path.pop(0)
     _result = _probe_worker(sys.argv[1])
     Path(sys.argv[2]).write_text(
         json.dumps({"outcome": _result.outcome.value, "detail": _result.detail})

@@ -235,7 +235,16 @@ Title kernels: quadrants 1.3.0 on the Metal backend
 ```
 
 Metal on Apple Silicon, CUDA on an NVIDIA card, Vulkan on an integrated GPU, and a CPU backend
-everywhere else. `IMMICH_FORCE_CPU=1` keeps the GPU renderer but forces it onto the processor, for a
+everywhere else. Each backend is tried in a throwaway child process first, with 30 seconds to
+dispatch one kernel: a warm start takes under a second, a fresh install's first one about five. A
+GPU backend that fails that test is skipped and the log says so once, naming it and why:
+
+```
+Title rendering on CPU: CUDA: crashed (sigabrt); the kernel renderer runs on CPU instead.
+```
+
+Compiled kernels are cached in `~/.immich-memories/cache/kernels`, or in the temp directory when
+that is not writable. `IMMICH_FORCE_CPU=1` keeps the GPU renderer but forces it onto the processor, for a
 broken driver or a timing comparison.
 
 Where there is no wheel there are no kernels. Quadrants 1.3.0 publishes none for Intel macOS and

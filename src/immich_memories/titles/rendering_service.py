@@ -30,11 +30,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class KernelRenderer:
-    """The three entry points the kernel renderer is used through."""
+    """The entry points the kernel renderer is used through."""
 
     create_video: Callable[..., Path]
     config_type: type[KernelTitleConfig]
     init_kernels: Callable[[], str | None]
+    gpu_failures: Callable[[], tuple[str, ...]] = tuple
 
 
 def load_kernel_renderer() -> KernelRenderer | None:
@@ -52,9 +53,12 @@ def load_kernel_renderer() -> KernelRenderer | None:
     if kernel_dispatch_failure() is not None:
         return None
     from .kernel_video import create_title_video_gpu
+    from .kernels import gpu_startup_failures
     from .renderer_kernels import KernelTitleConfig, init_kernels
 
-    return KernelRenderer(create_title_video_gpu, KernelTitleConfig, init_kernels)
+    return KernelRenderer(
+        create_title_video_gpu, KernelTitleConfig, init_kernels, gpu_startup_failures
+    )
 
 
 # Kernel backends that are actually a GPU. "CPU" is a legitimate return from
@@ -92,9 +96,11 @@ class RenderingService:
         elif self.backend in _GPU_BACKENDS:
             logger.info("Title rendering on GPU: %s", self.backend)
         else:
+            failures = self._kernels.gpu_failures() if self._kernels is not None else ()
             logger.warning(
-                "Title rendering on CPU: the kernel library found no GPU backend and fell back to %s. "
+                "Title rendering on CPU: %s; the kernel renderer runs on %s instead. "
                 "Titles will be markedly slower than the footage around them.",
+                "; ".join(failures) or "the kernel library found no GPU backend",
                 self.backend,
             )
 

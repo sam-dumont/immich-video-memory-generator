@@ -160,8 +160,10 @@ Preflight follows the reader and tier the Deployment sets, so run it after the c
 
 `overlays/gpu/deployment-gpu.yaml` patches the Deployment with `runtimeClassName: nvidia`, one
 `nvidia.com/gpu`, the two `NVIDIA_*` env vars, the `nvidia.com/gpu.present=true` node selector and
-the matching toleration. The app uses that card for NVENC encoding and GPU title rendering and
-nothing else: the editor's models are separate services, each with its own CUDA image.
+the matching toleration. The app uses that card for NVENC encoding and the title kernels and
+nothing else: the editor's models are separate services, each with its own CUDA image. When the card
+cannot start the title kernels, titles still render, on the CPU, and the log says why in one warning
+line.
 
 ## The two model services
 

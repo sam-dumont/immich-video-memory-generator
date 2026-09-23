@@ -20,9 +20,12 @@ from .fonts import FontWeight, bundled_font_path
 # rest of the package asks whether there is a GPU renderer at all.
 from .gpu_kernel_backend import KERNEL_LIBRARY, KERNELS_AVAILABLE, ti
 from .kernel_backend_probe import (
+    CPU_PROBE_NAME,
     _backend_dispatches,
     _candidate_backends,
     _silent_init,
+    probe_backend_dispatch,
+    probe_failure_wording,
 )
 
 try:
@@ -43,6 +46,8 @@ logger = logging.getLogger(__name__)
 _kernels_initialized = False
 _kernel_arch = None
 _kernels_compiled = False
+# Why each GPU backend init_kernels() passed over could not start, for the log.
+_gpu_failures: list[str] = []
 
 
 def init_kernels() -> str | None:
@@ -62,12 +67,16 @@ def init_kernels() -> str | None:
     force_cpu = os.environ.get("IMMICH_FORCE_CPU", "").lower() in ("1", "true", "yes")
 
     last_error = None
+    _gpu_failures.clear()
     backends = _candidate_backends(
         force_cpu=force_cpu,
         operating_system=platform.system(),
     )
     for backend, name, probe_name in backends:
         if not _backend_dispatches(name, probe_name):
+            _note_gpu_failure(
+                name, probe_name, probe_failure_wording(probe_backend_dispatch(probe_name))
+            )
             continue
         try:
             _silent_init(arch=backend, offline_cache=True)
@@ -87,6 +96,7 @@ def init_kernels() -> str | None:
             return name
         except (RuntimeError, OSError) as e:
             last_error = e
+            _note_gpu_failure(name, probe_name, str(e))
             logger.debug(f"Failed to init {KERNEL_LIBRARY} with {name}: {e}")
             continue
 
@@ -94,6 +104,16 @@ def init_kernels() -> str | None:
         f"Failed to initialize {KERNEL_LIBRARY} with any backend. Last error: {last_error}"
     )
     return None
+
+
+def _note_gpu_failure(name: str, probe_name: str, reason: str) -> None:
+    if probe_name != CPU_PROBE_NAME:
+        _gpu_failures.append(f"{name}: {reason}")
+
+
+def gpu_startup_failures() -> tuple[str, ...]:
+    """Why each GPU backend was passed over, one "<backend>: <reason>" per backend."""
+    return tuple(_gpu_failures)
 
 
 def initialized_kernel_backend() -> str | None:
