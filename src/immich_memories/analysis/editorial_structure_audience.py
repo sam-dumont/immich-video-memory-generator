@@ -200,6 +200,9 @@ class AudienceGate:
         key = _share.audience_check_key(evidence)
         if key not in self.bank:
             banked = self._library.answer(key)
+            if banked is not None:
+                # An answer banked before a floor existed must not reach past it.
+                banked = _share.floors_under(evidence, banked)
             first_call = len(self._judge.calls)
             self.bank[key] = (
                 terminal

@@ -488,10 +488,10 @@ def _observed_body(
 
 def check_audience(judge: Any, evidence: Mapping[str, Any], stage: str) -> dict[str, Any]:
     """Private activities have final authority; exposure review can only tighten a share."""
-    return _floors_under(evidence, _read_audience(judge, evidence, stage))
+    return floors_under(evidence, _read_audience(judge, evidence, stage))
 
 
-def _floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+def floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     """Holds no reading can lift: a model reading only ever adds holds.
 
     A detector that flagged a still, a video's frames or a Live Photo's clip keeps the unit

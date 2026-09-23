@@ -648,7 +648,9 @@ it and the exact evidence it read, prompt version included, so the next cut over
 asks no audience question it already answered (15 questions to 0 on a repeated test cut), and a new
 reader or a new prompt asks again. A refusal is also kept per picture, and what happens to it
 depends on what cast it. One cast by the nsfw head, a direct body observation or a rule is
-permanent: not a new prompt, not a different reader, not a caption that changed lifts it. One cast
+permanent: not a new prompt, not a different reader, not a caption that changed lifts it. That
+includes the nsfw head's hold on a video's frames and on a Live Photo's clip, and an answer banked
+before a hold existed is never served past it. One cast
 by the model reading a caption (a bath, an identifying record) is stamped with the audience prompt
 version it was given under. Under that version no later read lifts it either; after a release
 changes the prompt, the picture is asked once more and the new answer replaces the old hold, clear
