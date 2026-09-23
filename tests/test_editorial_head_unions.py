@@ -21,12 +21,13 @@ from immich_memories.analysis.editorial_shareability_audience import exposure_fl
 from immich_memories.analysis.editorial_source_gate import screen_document_rejections
 
 
-def reader(*, favourite=False, people=(), product="month", line="", **heads):
+def reader(*, favourite=False, people=(), product="month", line="", audience="sendable", **heads):
     source = SimpleNamespace(
         assets={"a": SimpleNamespace(is_favorite=favourite, people=people)},
         audience_annotations={"a": SimpleNamespace(heads=tuple(heads.items()))},
         annotations={"a": line},
         intent=SimpleNamespace(product=product),
+        audience=audience,
     )
     return RuleStructureReader(source)
 

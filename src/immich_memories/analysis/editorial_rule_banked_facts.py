@@ -347,8 +347,8 @@ def standing_with_bank(
 ) -> Callable[[str], int]:
     """The rules' own standing answer, tightened by a banked one where a model gave it.
 
-    Tightened, never loosened. The rules answer zero for a document, a photographed screen, a
-    sensitive-content or exposure flag and a frame the head calls empty: those are eligibility,
+    Tightened, never loosened. The rules answer zero for a document, a photographed screen, an
+    exposure flag in a film for outside the family, and a frame the head calls empty: those are eligibility,
     not an opinion about whether the picture stands, and a model's vote on the same row cannot
     clear one. The direction that is allowed is the useful one anyway: the model saying a
     picture the rules liked does not in fact stand.

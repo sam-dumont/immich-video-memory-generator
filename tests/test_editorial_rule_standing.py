@@ -68,3 +68,27 @@ def test_people_an_activity_or_an_outdoor_place_stands(heads):
 
 def test_a_picture_the_heads_say_nothing_about_is_context():
     assert standing() == 1
+
+
+def _flagged_reader(audience: str) -> RuleStructureReader:
+    from types import SimpleNamespace
+
+    heads = (("nsfw_marqo", "yes"), ("people", "two"))
+    source = SimpleNamespace(
+        assets={"a": SimpleNamespace(is_favorite=False, people=())},
+        audience_annotations={"a": SimpleNamespace(heads=heads)},
+        annotations={"a": ""},
+        intent=SimpleNamespace(product="month"),
+        audience=audience,
+    )
+    return RuleStructureReader(source)
+
+
+def test_a_family_film_judges_an_exposure_flagged_picture_like_any_other():
+    """The exposure hold says who may see the picture, and the household may; whether it stands
+    is a separate question the heads answer the same way as for every other picture."""
+    assert _flagged_reader("family").standing("a") == 2
+
+
+def test_a_film_sent_outside_the_family_still_scores_an_exposure_flagged_picture_zero():
+    assert _flagged_reader("sendable").standing("a") == 0

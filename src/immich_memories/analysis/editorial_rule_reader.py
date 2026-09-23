@@ -283,10 +283,13 @@ class RuleStructureReader:
         record = self.source.audience_annotations.get(asset_id)
         heads = dict(record.heads) if record else {}
         line = self.source.annotations.get(asset_id, "")
+        # An exposure hold says who may see a picture, not whether it stands. The household may
+        # see it, so a family film judges it like any other; a film sent further keeps the zero.
+        exposure_zero = exposure_flagged(heads) and self.source.audience != "family"
         if (
             heads.get("doc_docling", "photograph") != "photograph"
             or screen_flagged(heads)
-            or exposure_flagged(heads)
+            or exposure_zero
             or heads.get("frame_kind") in NOTHING_KINDS
         ):
             return 0
