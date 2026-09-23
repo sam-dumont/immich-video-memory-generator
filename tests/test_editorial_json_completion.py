@@ -222,7 +222,10 @@ def test_short_malformed_fields_get_one_format_correction_and_only_valid_result_
         first = asyncio.run(requester.request(request))
         warm = asyncio.run(requester.request(request))
     assert first.raw == warm.raw == valid
-    assert seen == [(request.prompt, 400), (json_format_repair_prompt(request.prompt), 800)]
+    assert seen == [
+        (request.prompt, 400),
+        (json_format_repair_prompt(request.prompt, failures[0]["error"]), 800),
+    ]
     assert warm.cache_hit
     assert len(failures) == 1
     assert failures[0]["raw"] == broken
@@ -278,3 +281,28 @@ def test_json_recovery_policy_splits_only_json_request_identity(tmp_path, monkey
     monkeypatch.setattr(editorial_json_completion, "JSON_RECOVERY_POLICY", "complete-final-json-v1")
     assert request.judgment_key != current
     assert plain.judgment_key == unchanged
+
+
+def test_the_repair_request_names_the_field_the_reply_left_out(tmp_path):
+    prompts = []
+
+    async def query(prompt, _config, **_kwargs):
+        prompts.append(prompt)
+        return '{"last":true,"extra":1}' if len(prompts) == 1 else '{"first":1,"last":true}'
+
+    request = TextRequest(
+        "schema",
+        LLMConfig(model="synthetic"),
+        tmp_path / "bank.sqlite",
+        400,
+        30,
+        json_object=True,
+        json_fields=("first", "last"),
+    )
+    # WHY: the model provider is the external boundary; the scripted reply drives the parser under test
+    with patch("immich_memories.analysis.editorial_text_gateway.query_llm", query):
+        answer = asyncio.run(QueryTextRequester().request(request))
+    assert answer.raw == '{"first":1,"last":true}'
+    repair = prompts[1].removeprefix(request.prompt)
+    assert 'missing ["first"]' in repair
+    assert 'unexpected ["extra"]' in repair

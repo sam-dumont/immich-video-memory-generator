@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from immich_memories.analysis.strict_json import named_keys
+
 JSON_RECOVERY_POLICY = "complete-final-json-v2-format-repair"
 JSON_FIELDS_POLICY = "exact-fields-v2-complete-sequence"
 JSON_EMPTY_ARRAY_POLICY = "explicit-empty-array-pairs-v1"
@@ -17,10 +19,12 @@ class JSONDecisionError(ValueError):
         self.raw = raw
 
 
-def json_format_repair_prompt(prompt: str) -> str:
+def json_format_repair_prompt(prompt: str, error: str) -> str:
+    """The same question with the parser's reason appended, so a reply that left out a
+    field is told which one instead of being asked again for "every required field"."""
     return (
         prompt
-        + "\n\nThe previous answer was not one complete valid JSON object. Answer again using "
+        + f"\n\nThe previous answer was not one complete valid JSON object ({error}). Answer again using "
         "the original evidence and requested schema. Use ONE outer pair of braces for the "
         "complete object. Separate its properties with commas; do not close the outer object "
         "between properties. Include every required field, and return only the complete JSON object."
@@ -111,13 +115,26 @@ def _merged_sequence(
     return _unique_object([item for piece in pieces for item in piece.items()])
 
 
+def _require_exact_fields(value: dict[str, object], fields: tuple[str, ...]) -> None:
+    missing, unexpected = set(fields) - set(value), set(value) - set(fields)
+    if missing or unexpected:
+        named = [
+            f"{label} {named_keys(keys)}"
+            for label, keys in (("missing", missing), ("unexpected", unexpected))
+            if keys
+        ]
+        raise ValueError(
+            "final JSON decision does not contain exactly the requested fields: " + ", ".join(named)
+        )
+
+
 def _fill_empty_arrays(
     value: dict[str, object],
     fields: tuple[str, ...],
     empty_array_pairs: tuple[tuple[str, str], ...],
 ) -> bool:
     if set(value) - set(fields):
-        raise ValueError("final JSON decision does not contain exactly the requested fields")
+        _require_exact_fields(value, fields)
     added = False
     for claim, anchors in sorted(empty_array_pairs):
         if anchors not in value and value.get(claim) == "":
@@ -141,8 +158,7 @@ def _declared_fields_object(
     added = False
     if empty_array_pairs:
         added = _fill_empty_arrays(value, fields, empty_array_pairs)
-    if set(value) != set(fields):
-        raise ValueError("final JSON decision does not contain exactly the requested fields")
+    _require_exact_fields(value, fields)
     if len(pieces) > 1 or added:
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     return found

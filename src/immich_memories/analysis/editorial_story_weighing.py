@@ -26,6 +26,7 @@ from immich_memories.analysis.editorial_story_weight_contract import (
     ask_complete_weights,
 )
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
+from immich_memories.analysis.strict_json import named_keys
 
 _FAMILY_WORD = re.compile(
     r"\b(mother|father|parent|grand|sibling|brother|sister|uncle|aunt|nibling|niece|nephew|in-law|twin|son|daughter|godfather|godmother|partner|spouse)\b",
@@ -247,9 +248,15 @@ def _read_central_candidates(raw, candidates):
         or any(not isinstance(key, str) or key not in candidates for key in about)
         or len(set(about)) != len(about)
     ):
+        unoffered = (
+            {k for k in about if isinstance(k, str)} - set(candidates)
+            if isinstance(about, list)
+            else set()
+        )
         raise ValueError(
             '"about" must be a list of at most two distinct keys from the candidate table; '
             "use [] if none deserves central emphasis"
+            + (f"; keys not in the candidate table: {named_keys(unoffered)}" if unoffered else "")
         )
     return about
 

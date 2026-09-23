@@ -20,6 +20,7 @@ from typing import NamedTuple
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_structure_json import _first_object
+from immich_memories.analysis.strict_json import named_keys
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +119,12 @@ def _picks(raw: str, answer_key: str, allowed: set[str]) -> tuple[dict[str, str]
             raise ValueError("vote lists must contain only offered labels")
         value = dict.fromkeys(value, "")
     if not isinstance(value, Mapping) or not allowed.issuperset(value):
+        unoffered = set(value) - allowed if isinstance(value, Mapping) else set()
         raise ValueError(
             f"Return a {answer_key!r} mapping using only these exact labels: "
             + ", ".join(sorted(allowed))
             + "; context such as '(near home)' is not part of a label"
+            + (f"; labels nobody offered: {named_keys(unoffered)}" if unoffered else "")
         )
     return (
         {k: " ".join(str(v).split()[:12]) for k, v in value.items()},

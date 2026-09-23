@@ -253,3 +253,29 @@ def test_the_standing_sibling_reads_a_flat_rejection_list_too(reply):
     )
     assert votes["second"][0] == 0, "named by both orders is a firm rejection"
     assert {votes[a][0] for a in ("first", "third")} == {2}
+
+
+def test_the_repair_request_names_the_label_the_block_never_offered():
+    class RepairedJudge(RecordedJudge):
+        def __init__(self):
+            super().__init__('{"weak": {"P01": "a screen"}}')
+            self.prompts = []
+
+        def ask(self, stage, prompt, **kwargs):
+            self.prompts.append(prompt)
+            if len(self.prompts) < 3:
+                return '{"weak": {"P01 (near home)": "a screen"}}'
+            return super().ask(stage, prompt, **kwargs)
+
+    # WHY: two unreadable labels then a valid answer walk the bounded page recovery to its repair.
+    judge = RepairedJudge()
+    judge_standing(
+        judge,
+        pictures=["photo"],
+        line_of=lambda _: "a screen",
+        contract="contract",
+        period_label="one month",
+        bank={},
+    )
+    repair = judge.prompts[2].removeprefix(judge.prompts[0])
+    assert 'labels nobody offered: ["P01 (near home)"]' in repair

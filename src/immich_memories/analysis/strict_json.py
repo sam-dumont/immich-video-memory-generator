@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from typing import Any, TypeGuard
 
 # A curly double quote standing exactly where a JSON string terminator belongs:
@@ -108,3 +109,19 @@ def model_text_rows(value: object) -> list[Any] | None:
     if isinstance(value, str):
         return [value] if value.strip() else []
     return value if isinstance(value, list) else None
+
+
+_NAMED_KEYS = 12
+_NAMED_KEY_CHARS = 80
+
+
+def named_keys(keys: Iterable[str]) -> str:
+    """The keys a repair request names, as a JSON list: sorted, at most twelve, each cut to
+    eighty characters, with a count of the rest. A reply that invents two hundred keys must
+    not turn the repair request into a copy of itself."""
+    ordered = sorted(set(keys))
+    shown = json.dumps(
+        [key[:_NAMED_KEY_CHARS] for key in ordered[:_NAMED_KEYS]], ensure_ascii=False
+    )
+    rest = len(ordered) - _NAMED_KEYS
+    return shown + (f" and {rest} more" if rest > 0 else "")

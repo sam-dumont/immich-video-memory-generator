@@ -361,3 +361,39 @@ def test_truncated_weighing_replies_recover_in_smaller_complete_groups(truncated
             if order in stage and "K89" in keys and len(keys) <= 32
         ]
         assert recovered and all({"K89", "K90"} <= keys for keys in recovered)
+
+
+def test_the_central_confirmation_repair_names_the_key_nobody_offered():
+    model = YearJudge()
+    candidates = {f"S{i:04d}" for i in range(1, 61)}
+    asked = {}
+
+    def reply(stage, prompt):
+        asked[stage] = prompt
+        answer = json.loads(model.ask(stage, prompt))
+        if stage.startswith("story-understanding"):
+            answer["about"] = [
+                episode
+                for story in answer["stories"]
+                for episode in story["episodes"]
+                if episode in candidates
+            ]
+        elif stage.startswith("story-weighing-source-candidate-context") and "repair" not in stage:
+            return '{"about": ["K01", "K999"]}'
+        elif "-candidate-context" in stage:
+            return '{"about": ["K01"]}'
+        return json.dumps(answer)
+
+    read_period_story(
+        ScriptedJudge(reply),
+        evidence=[_row(i, date(2030, 1, 1) + timedelta(days=i * 2)) for i in range(130)],
+        contract="The whole year.",
+        prior={},
+        enrich=lambda episodes: {
+            e.key: {"day": e.facts[0]["taken"][:10], "moments": 2} for e in episodes
+        },
+    )
+
+    source = "story-weighing-source-candidate-context"
+    repair = asked[f"{source}-repair"].removeprefix(asked[source])
+    assert 'keys not in the candidate table: ["K999"]' in repair

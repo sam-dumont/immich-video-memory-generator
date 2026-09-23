@@ -199,7 +199,9 @@ class QueryTextRequester:
                         raise failure from exc
                     raise
                 if isinstance(exc, JSONDecisionError):
-                    current = replace(request, prompt=json_format_repair_prompt(request.prompt))
+                    current = replace(
+                        request, prompt=json_format_repair_prompt(request.prompt, str(exc))
+                    )
         raise AssertionError("bounded completion must return or raise")
 
     @staticmethod

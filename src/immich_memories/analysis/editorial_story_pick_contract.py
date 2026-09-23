@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from immich_memories.analysis.editorial_numbers import exact_number
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
-from immich_memories.analysis.strict_json import final_json_object, model_text_rows
+from immich_memories.analysis.strict_json import final_json_object, model_text_rows, named_keys
 
 MOVING_KINDS = frozenset({"video", "live-motion"})
 
@@ -139,8 +139,8 @@ def _read_pick(
     unused = count - len(kept)
     if unused and not allow_fewer:
         raise ValueError(f"keep must contain exactly {count} distinct labels")
-    if set(kept) - labels:
-        raise ValueError("keep contains labels absent from the offered rows")
+    if absent := set(kept) - labels:
+        raise ValueError(f"keep contains labels absent from the offered rows: {named_keys(absent)}")
     declared = answer.get("unused_slots", 0)
     if type(declared) is not int or declared != unused:
         raise ValueError(

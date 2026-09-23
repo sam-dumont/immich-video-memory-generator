@@ -278,4 +278,4 @@ def test_a_repair_round_keeps_the_head_it_was_asked_with():
     from immich_memories.analysis.editorial_json_completion import json_format_repair_prompt
 
     original = _grouping_prompts()[0]
-    assert json_format_repair_prompt(original).startswith(original)
+    assert json_format_repair_prompt(original, "unreadable").startswith(original)

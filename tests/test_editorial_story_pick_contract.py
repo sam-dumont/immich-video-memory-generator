@@ -356,3 +356,13 @@ def test_an_overrun_that_never_parsed_still_fails():
             count=2,
             allow_fewer=True,
         )
+
+
+def test_the_repair_request_names_the_label_nobody_offered():
+    judge = Answers(['{"keep":["M01","M07 (near home)"]}', '{"keep":["M01","M02"]}'])
+    assert ask_moment_pick(judge, "pick", "Choose.", labels={"M01", "M02", "M03"}, count=2) == [
+        "M01",
+        "M02",
+    ]
+    repair = judge.calls[1][1].removeprefix("Choose.")
+    assert 'keep contains labels absent from the offered rows: ["M07 (near home)"]' in repair
