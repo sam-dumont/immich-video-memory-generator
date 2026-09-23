@@ -5,7 +5,7 @@ title: Inference service
 
 # The inference service
 
-The encoder, the six public heads and the two detectors behind one HTTP port, in their own
+The encoder, the eight public heads and the two detectors behind one HTTP port, in their own
 container, with their own device variant. It is modelled on `immich-machine-learning`: one image
 per backend, weights in a cache volume, weights dropped when idle.
 
@@ -26,7 +26,7 @@ It answers on port `8092`, which is also where `caption_base_url` looks for the
 `openvino`, `armnn` and `rocm` are not shipped. Quick Sync, VAAPI and NVENC decode, scale and
 encode; they run no inference.
 
-The card accelerates the DINOv2 encoder, its six heads and both detectors. All three are ONNX
+The card accelerates the DINOv2 encoder, its eight heads and both detectors. All three are ONNX
 graphs and all three open on the provider the deployment chose, so the `-cuda` image moves every
 producer onto the GPU. A graph the card turns down falls back to the CPU.
 

@@ -84,7 +84,7 @@ src/immich_memories/
   api/          # Immich API client
   analysis/     # Story-first selection (the editorial route)
   store/        # The annotation store: every banked fact and reading
-  triage/       # The pinned ONNX encoder and its six context heads
+  triage/       # The pinned ONNX encoder and its eight context heads
   people/       # The people graph and the companion file
   photos/       # Photo-to-video animation
   processing/   # Video assembly (FFmpeg)

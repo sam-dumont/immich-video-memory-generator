@@ -22,7 +22,7 @@ loses is on [Running modes](./running-modes.md).
 | The reader (skip with `reader: rules`) | Reads the period as a story, weighs it, and is sent an 800 px tile of the few dozen candidates whose facts the edit asks about | wherever you serve it; oMLX defaults to `8000` | about 17 GB at 4-bit |
 | The caption server (`full` tier only) | One 140-token description per picture, once, then banked | `8092` by default | 1 to 2 GB |
 
-On the app's disk: the pinned 88 MB DINOv2-small ONNX encoder behind the six context heads, and
+On the app's disk: the pinned 88 MB DINOv2-small ONNX encoder behind the eight context heads, and
 two CPU detectors (about 400 MB). One command fetches all of it.
 
 The reader must take images. Point a text-only model at it and you do not get a loud failure:

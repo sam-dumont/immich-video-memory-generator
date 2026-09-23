@@ -46,7 +46,7 @@ the CPU request. The table above is still the one to quote.
 
 Two things off the render move more than the encoder does:
 
-**The classifiers.** The ONNX encoder, its six context heads and both detectors open on whatever
+**The classifiers.** The ONNX encoder, its eight context heads and both detectors open on whatever
 provider ONNX Runtime has. Put them on a card behind the
 [inference service](./installation/inference-service.md) and preparation changes shape: on the
 fixture month the same cluster pod paid **0.1863 s a picture** to a GPU-backed service, measured on
@@ -289,7 +289,7 @@ effects and the hardware encoder, not a step of the pipeline.
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265, about 15 % slower overall |
 | Video scaling | scale_cuda, scale_vaapi, scale_qsv | FFmpeg swscale |
 
-Clip discovery, the six context heads and two detectors, burst collapsing, audio ducking, assembly
+Clip discovery, the eight context heads and two detectors, burst collapsing, audio ducking, assembly
 and the whole UI run identically. Title cost scales with title duration and resolution, not with
 clip count: a 12-clip memory and a 40-clip memory pay nearly the same title bill.
 

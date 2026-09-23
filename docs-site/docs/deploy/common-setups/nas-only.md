@@ -26,7 +26,7 @@ advanced:
 All ten memory types work, albums and person memories included; only custom free-text subjects
 need a model. The rules cut can skip an occasion or spend a slot on a mundane object, so look at it
 before you share it. Move to `no_captions` once `models fetch` has run (below): the detectors and
-the six context heads then give the family-viewing gate real evidence.
+the eight context heads then give the family-viewing gate real evidence.
 
 Set `trips.homebase_latitude` and `trips.homebase_longitude`. Without a homebase the rules editor
 cannot tell a trip from a week at home, so it cuts every run of photographed days on the calendar
@@ -46,7 +46,7 @@ week and a three-week holiday arrives as three stories instead of one.
 endpoint, so the config block above states the tier it wants rather than relying on that.
 
 Measured per picture on that box on 17 September 2026: 1.4813 s for every producer except the
-caption, of which the two detectors are 0.7180 s and the DINOv2 encoder with its six context heads
+caption, of which the two detectors are 0.7180 s and the DINOv2 encoder with its eight context heads
 0.5990 s, against 30.9 s for one caption. The whole cell, preparation through render, peaked at
 2,633 MB resident. Every producer banks its answer, so these are first-pass costs.
 

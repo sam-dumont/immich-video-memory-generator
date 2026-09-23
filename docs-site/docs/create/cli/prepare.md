@@ -13,7 +13,7 @@ remembering, and a handful of small ones answer questions before you generate an
 ## `prepare`
 
 Preparation is the part of a cut that looks at pixels: a preview for every eligible picture, its
-measurements, the encoder and six context heads, both detectors, and on the `full` tier a caption.
+measurements, the encoder and eight context heads, both detectors, and on the `full` tier a caption.
 Everything after it (grouping, reading, selection, render) is text and arithmetic.
 
 It is banked per picture, so a picture prepared today is free for every later cut until a producer's

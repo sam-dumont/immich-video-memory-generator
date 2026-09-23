@@ -79,7 +79,7 @@ write there. The alternatives are on [Docker install](../installation/docker.md)
 ## What the card is for
 
 NVENC encoding, CUDA scaling and the GPU title renderer, all three probed and used automatically.
-Preparation, the six heads and the two detectors are CPU work here, and the reader and the caption
+Preparation, the eight heads and the two detectors are CPU work here, and the reader and the caption
 server are their own services. All ten memory types work, same as anywhere else.
 
 ## Pointing the reader at this box

@@ -451,9 +451,12 @@ editorial:
     activity: public-v1
     children: public-v1
     doc_docling: det-v2
+    frame_kind: public-v1
     location: public-v1
     nsfw_marqo: det-v2
     people: public-v1
+    screen: public-v1-strict
+    uncovered_person: public-v1
     venue: oi-v3
   preparation:
     tier: full                   # full | no_captions | metadata_only
@@ -490,6 +493,13 @@ Docling uses `det-v2`, because ONNX layout optimization mislabels documents on t
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts
 and refreshes dependent readings; other head facts stay reusable.
 
+`frame_kind`, `screen` and `uncovered_person` were distilled from a typed picture reader onto the
+same encoder the other five heads run on, so a library prepared before they existed is owed only
+their three rows and keeps everything else it banked. `public-v1-strict` says `screen` ships at one
+strict band, baked into its coefficients because the bundle schema holds no threshold: at that band
+it answered `yes` on 37 of 3,564 photographs and every one of them was a screen. Each of the three
+only adds to a rule another producer already answered, and none of them can clear anything.
+
 `reader: auto` uses the model when `llm.model` is set and rules when it is blank. `reader: model`
 requires a model; `reader: rules` skips model editing and reranking even when a model is
 configured. Rules cover the ten standard memory products, including albums and recurring dates,
@@ -521,8 +531,8 @@ fallback: a producer the tier demands and cannot reach still stops the run.
 
 | `tier` | What runs | First pass over about ten thousand pictures on a Celeron J4125 NAS |
 | --- | --- | --- |
-| `full` | pixels, encoder + six heads, both detectors, captions | 4 days |
-| `no_captions` | pixels, encoder + six heads, both detectors | about 4 h |
+| `full` | pixels, encoder + eight heads, both detectors, captions | 4 days |
+| `no_captions` | pixels, encoder + eight heads, both detectors | about 4 h |
 | `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
 
 `no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the
@@ -537,7 +547,7 @@ child-in-swimwear hold, fired on 515 of those and was right about 5. That hold n
 from the picture reader's own coverage row, so a library prepared without the reader has no
 swimwear hold: on this tier every unit stays at family viewing regardless.
 
-`metadata_only` also drops the six heads and both detectors, so the gate loses its evidence.
+`metadata_only` also drops the eight heads and both detectors, so the gate loses its evidence.
 It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.
 Use it only on a machine that cannot run ONNX at all.
 
@@ -573,7 +583,7 @@ write: same head, version, label and encoder key, because the service runs the a
 producers and the key is computed over the model artifact, never over where it ran. Change the
 provider or the host and nothing is re-derived.
 
-`producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the six context heads
+`producers` narrows what is offloaded. `[heads]` sends the DINOv2 encoder and the eight context heads
 and keeps the two cheaper detectors in the app.
 
 `facts_concurrency` is how many pictures are in the air at once. One at a time, measured on a

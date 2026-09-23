@@ -73,7 +73,7 @@ error: an unmounted music share should not stop a cut.
 | `advanced.editorial.annotation_database` | every banked fact and reading |
 | `advanced.triage.encoder` | the pinned DINOv2 ONNX export |
 | `advanced.triage.bundle` | a head bundle of your own |
-| `advanced.editorial.preparation.head_bundle` | the same, for the six context heads |
+| `advanced.editorial.preparation.head_bundle` | the same, for the eight context heads |
 | `advanced.editorial.preparation.marqo_onnx` | the pinned sensitive-content export |
 | `advanced.editorial.preparation.detector_cache_dir` | the Hugging Face cache the detectors read |
 | `advanced.editorial.preparation.detector_python` | an interpreter for the detector worker |

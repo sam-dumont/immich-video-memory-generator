@@ -24,9 +24,9 @@ the audience gate, which may only ever tighten.
 
 ```mermaid
 flowchart TB
-    full["full<br/>previews, pixel facts, the encoder and its six heads,<br/>the two detectors, one caption per picture that has none,<br/>one motion line per video that has none"]
+    full["full<br/>previews, pixel facts, the encoder and its eight heads,<br/>the two detectors, one caption per picture that has none,<br/>one motion line per video that has none"]
     full -->|"stop the captions: nothing is sent to the caption server"| nocap
-    nocap["no_captions<br/>previews, pixel facts, the encoder and its six heads, the two detectors"]
+    nocap["no_captions<br/>previews, pixel facts, the encoder and its eight heads, the two detectors"]
     nocap -->|"stop the ONNX models too: nothing looks at the picture"| meta
     meta["metadata_only<br/>previews and pixel measurements"]
 
@@ -49,7 +49,7 @@ pip install "immich-memories[editorial-cuda]" # instead of editorial, on a CUDA 
 `onnxruntime-gpu` already contains the CPU provider, the two distributions own the same import
 name, and whichever pip wrote last is the one that answers.
 
-The encoder, its six heads and both detectors are ONNX sessions on whatever provider ONNX Runtime
+The encoder, its eight heads and both detectors are ONNX sessions on whatever provider ONNX Runtime
 has, so `editorial-cuda` puts every seat on the card and plain `editorial` puts every seat on the
 CPU, inside the CUDA inference image as well.
 

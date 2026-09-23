@@ -56,8 +56,22 @@ no endpoint at all asked nothing.
 | `tier` | What runs on every picture in scope | What the editor and the gate are handed |
 |---|---|---|
 | `metadata_only` | Previews and pixel measurements. No ONNX, no captions | Dates, places, favourites, known people, pixel facts. No content evidence at all: every unit stays at family viewing and a `sendable` export is refused outright |
-| `no_captions` | The above plus the DINOv2 encoder with six context heads, the sensitive-content and document detectors | The same, plus a classifier line under every picture. The gate refuses what it would refuse on `full` and can never clear: eight findings (bathing, toileting, medical procedures, identifying records and the rest) are only named by a description, so a clean picture still comes back family-only |
+| `no_captions` | The above plus the DINOv2 encoder with eight context heads, the sensitive-content and document detectors | The same, plus a classifier line under every picture. The gate refuses what it would refuse on `full` and can never clear: eight findings (bathing, toileting, medical procedures, identifying records and the rest) are only named by a description, so a clean picture still comes back family-only |
 | `full` | All of the above plus one caption per picture from a 500M vision model | A sentence under each picture instead of the facts that funded it. Everything the gate can do |
+
+Five of the eight heads name the scene: where it is, how many people, whether a child is in
+it, what is happening, what kind of place. The other three were distilled from a typed picture
+reader on the same public corpus and each one adds to a rule a detector already answered, never
+replacing it:
+
+| head | what it answers | what it adds |
+|---|---|---|
+| `frame_kind` | which of seven kinds of frame this is | a picture it calls an empty room, a lone everyday object or a body-part close-up does not stand on its own in the no-model cut. Nothing shipped answered this before |
+| `screen` | is this a photo of a screen | a screen refusal beside the document head's. It ships at one strict band: over 3,564 photographs it said yes 37 times and every one was a screen, so it catches nine more screens for no extra wrong refusal |
+| `uncovered_person` | is somebody uncovered | a second opinion beside the sensitive-content detector, which stays the floor. It can add a hold and it can never lift one: a `no` from it is silence, not a clearance |
+
+They cost 0.0013 ms a picture, because the encoder pass the other five already pay for is where
+the time goes.
 
 The default is `full`. An install that configures neither `advanced.llm.model` nor a caption
 endpoint gets `no_captions` instead, and says so once in the log: a blank `llm.model`
@@ -328,7 +342,7 @@ stopwatch over the whole thing. The totals are in
 each one's time went.
 
 **Mac, local reader, `full` tier.** 64 % of the preparation is captions, one 400 px tile per picture
-to the caption server. The two detectors took 1,020 s of the rest, the encoder and its six heads
+to the caption server. The two detectors took 1,020 s of the rest, the encoder and its eight heads
 720 s, previews 480 s, pixels 240 s. Every second of that is a one-off: the second memory over the
 same year prepares in 2 s, so a repeat run is almost all reader.
 
@@ -464,7 +478,7 @@ flowchart LR
         direction TB
         r1["the app, in a Kubernetes Job"] ~~~ r2["no reader at all"]
         r2 ~~~ r3["no captions: the no_captions tier"] ~~~ r4["encode: CPU.<br/>Title kernels: GPU"]
-        r4 ~~~ r5[["facts on the inference service, on a card:<br/>the encoder, its six heads, the two detectors"]]
+        r4 ~~~ r5[["facts on the inference service, on a card:<br/>the encoder, its eight heads, the two detectors"]]
     end
 
     subgraph hosted["Cluster, hosted reader"]

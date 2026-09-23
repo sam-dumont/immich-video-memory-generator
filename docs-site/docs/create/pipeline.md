@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph prep["Preparation: once per picture, then banked"]
         direction LR
-        previews["previews"] ~~~ pixels["pixel facts"] ~~~ heads["encoder + six heads"]
+        previews["previews"] ~~~ pixels["pixel facts"] ~~~ heads["encoder + eight heads"]
         heads ~~~ detectors["two detectors"] ~~~ caption["caption<br/>(full tier only)"]
     end
 
@@ -368,9 +368,9 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | What is the story called? | Templated from facts: the activity at the place, or the place, or the date. Never retitled, never joined |
 | How much does a story weigh? | From the gate: remarkable seeds `minor`, maybe seeds `glimpse`, background gets nothing; three favourites raise a story to `major`. `dominant` comes from the thesis pass that names a central story, the same one the model path uses |
 | Which pictures show a moment? | A capture group is a moment. Which picture carries it is one readable order over facts a CPU-only install already has: the owner's favourite, then a frame that moves (a video, or a Live Photo whose measured motion clears the threshold), then Immich's named people (more of them first), then the frame that shows the named person over the frame he is a speck in, then the absence of a `SOFT`/`DARK`/`BLOWN OUT` pixel warning, then whether the people head saw anybody, then the middle of the burst rather than its ends, and only then the clock. The episode card names the same picture. Thumbnail hashes collapse near-identical frames inside a group; they never merge two groups into one moment |
-| Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a sensitive-content hit, a blurry, dark or blown-out frame is weak. Otherwise: nobody, nothing happening and a private or utility interior (`bedroom`, `medical`, `private_facility`) does not stand on its own; people, an activity, or an outdoor or public place does; an unlabelled indoor scene is context. Every label named there is one the shipped head bundle can emit, which a test asserts against the bundle itself |
+| Does a picture stand on its own? | From the facts on its line: a favourite stands; a document, a screen, a sensitive-content hit or a second-opinion exposure hit, a frame the `frame_kind` head calls an empty room, a lone everyday object or a body-part close-up, and a blurry, dark or blown-out frame are all weak. Otherwise: nobody, nothing happening and a private or utility interior (`bedroom`, `medical`, `private_facility`) does not stand on its own; people, an activity, or an outdoor or public place does; an unlabelled indoor scene is context. Every label named there is one the shipped head bundle can emit, which a test asserts against the bundle itself |
 | Does a picture show somebody? | From the caption where there is one. Where there is none, from Immich's own named faces first and the `people` head second, so a picture on a `no_captions` install is not reduced to "is it a video, a burst or a favourite". This one is not the rules reader's: a line with no prose on it is read this way whatever the reader, because a blank line is not evidence that nobody is in the picture, and on a captioned tier it only ever answers for the pictures the captioner could not describe |
-| Who may see it? | Any flag from the detectors keeps a picture at family-only viewing. Nothing clears a flag except you, on the pool page |
+| Who may see it? | Any flag from the detectors keeps a picture at family-only viewing, and the distilled `uncovered_person` head is a second opinion that can add one. A `no` from it lifts nothing: nothing clears a flag except you, on the pool page |
 | How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it. The ends are not the rules reader's: on every tier the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back when the target leaves no room |
 
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
@@ -387,7 +387,7 @@ people, 67 % for a trip, and between 43 % and 62 % for a month, a season or a ye
 table is on [Running modes](../deploy/running-modes.md#what-the-rules-cut-keeps-per-memory-type).
 
 Rules need nothing beyond the app on `tier: metadata_only`. With `tier: no_captions` and
-`immich-memories models fetch`, the two detectors and six context heads give the standing and
+`immich-memories models fetch`, the two detectors and eight context heads give the standing and
 audience rules something to read. The Memory page's note under the title is keyed to the tier rather
 than the reader, so a rules cut on `full` gets none; on `no_captions` it reads *Edited without
 descriptions: picture content was classified, not read.*
@@ -429,7 +429,7 @@ the episode readings used for the cut.
 
 | Stage | What runs | Where it can run |
 |---|---|---|
-| **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with six context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
+| **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with eight context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. Banked per group and evidence key | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
 | **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
