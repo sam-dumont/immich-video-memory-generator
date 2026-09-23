@@ -384,9 +384,9 @@ def _frames(tmp_path, widths):
 def test_a_clip_is_held_when_any_one_of_its_eight_frames_is(monkeypatch, tmp_path):
     """A hold anywhere in a clip holds the clip: the head keeps the strongest frame."""
     database, job = _job(tmp_path, {detectors.MARQO_HEAD: ["a"]})
-    widths = [80 + step for step in range(8)]
+    widths = [80 + step for step in range(1, 9)]
     job["frames"] = {"a": _frames(tmp_path, widths)}
-    scores = dict.fromkeys(widths, 0.02)
+    scores = dict.fromkeys([*widths, 80], 0.02)
     scores[widths[6]] = 0.93
     # WHY: the real seat loads a 384px ONNX export from a digest-pinned file on disk.
     monkeypatch.setattr(detectors, "Marqo", lambda **_: FakeMarqo(scores))
@@ -409,4 +409,22 @@ def test_a_still_keeps_its_one_preview_read(monkeypatch, tmp_path):
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT label,confidence FROM head_facts").fetchall() == [
             ("no", 0.04)
+        ]
+
+
+def test_a_clip_the_preview_alone_holds_stays_held(monkeypatch, tmp_path):
+    """Immich renders the preview rather than serving a keyframe, so the sampler never
+    sees it. A version that reads more frames must never hold fewer clips."""
+    database, job = _job(tmp_path, {detectors.MARQO_HEAD: ["a"]})
+    widths = [80 + step for step in range(1, 9)]
+    job["frames"] = {"a": _frames(tmp_path, widths)}
+    scores = dict.fromkeys(widths, 0.02) | {80: 0.61}
+    # WHY: the real seat loads a 384px ONNX export from a digest-pinned file on disk.
+    monkeypatch.setattr(detectors, "Marqo", lambda **_: FakeMarqo(scores))
+
+    assert detectors._worker(job) == {}
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT label,confidence FROM head_facts").fetchall() == [
+            ("yes", 0.61)
         ]

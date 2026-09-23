@@ -129,8 +129,8 @@ replacement a refusal pulls in from the same moment.
 frame near its beginning, and the exposure detector used to decide the whole clip on it. It now
 reads up to eight frames spread over the clip (the keyframes nearest eight evenly spaced moments,
 fetched by byte range from the same playback index the motion line reads, so a clip costs a few
-hundred kilobytes rather than the whole rendition) and keeps the strongest answer: a hold anywhere
-in a clip holds the clip. Measured on four test clips, the preview alone held two of them (0.30,
+hundred kilobytes rather than the whole rendition), plus that preview, and keeps the strongest
+answer: a hold anywhere in a clip holds the clip, and a clip only the preview holds stays held. Measured on four test clips, the preview alone held two of them (0.30,
 0.28); eight frames held all four (0.93-0.95). This is a new producer version (`nsfw_marqo` moves
 from `det-v2` to `det-v3`), so an existing annotation store re-reads that head for **every** source,
 pictures included: the banked row does not record which kind of source it came from. Nothing else

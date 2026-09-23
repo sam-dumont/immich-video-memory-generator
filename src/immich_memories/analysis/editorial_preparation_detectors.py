@@ -444,9 +444,13 @@ def _run_head(
         if images:
             _bank(connection, progress, _decided_rows(detector, keep, detector.batch(images)))
     for asset_id in sampled:
-        # One clip at a time: eight frames already fill a batch, and a clip whose frames
-        # cannot be opened must not take the rest of a chunk down with it.
-        images = _open_frames(frames[asset_id], asset_id, detector.head, failures)
+        # One clip at a time: nine pictures already fill a batch, and a clip whose frames
+        # cannot be opened must not take the rest of a chunk down with it. The preview is
+        # one of them: Immich renders it rather than serving a keyframe, so it is a
+        # picture the sampler never sees, and measured over 152 clips it was the only
+        # read that held two of them. A version that reads more must never hold less.
+        paths = [*frames[asset_id], *([p] if (p := job["previews"].get(asset_id)) else [])]
+        images = _open_frames(paths, asset_id, detector.head, failures)
         if images:
             decided = _strictest(detector.batch(images))
             _bank(connection, progress, _decided_rows(detector, [asset_id], [decided]))
