@@ -40,6 +40,7 @@ class _EpisodePageReading:
     what_happened: str
     representatives: tuple[EpisodeRepresentative, ...]
     cull_decisions: tuple[EpisodeCullDecision, ...]
+    notable_moments: tuple[EpisodeRepresentative, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -184,10 +185,18 @@ def _one_reading(
             None,
             discarded_invalid_representative_rows=discarded_representatives,
         )
+    # A page may name a record on any of its own pictures, so this list is not capped at
+    # three the way the representatives are: it is not a choice of which frames to show.
+    notable_moments, _discarded = _representatives(
+        value.get("notable_moments"), scope.page_asset_ids, limit=len(scope.page_asset_ids)
+    )
     cull_decisions, discarded_invalid, discarded_conflicting = _cull_decisions(
         value.get("cull"),
         scope.page_asset_ids,
-        representative_ids=frozenset(item.asset_id for item in representatives),
+        # A picture the reading calls a record of something cannot also be a Cull reject.
+        representative_ids=frozenset(
+            item.asset_id for item in (*representatives, *notable_moments)
+        ),
     )
     return _EpisodePageParse(
         _EpisodePageReading(
@@ -195,6 +204,7 @@ def _one_reading(
             what_happened=what_happened,
             representatives=representatives,
             cull_decisions=cull_decisions,
+            notable_moments=notable_moments,
         ),
         discarded_invalid_representative_rows=discarded_representatives,
         discarded_invalid_cull_rows=discarded_invalid,
@@ -223,6 +233,8 @@ def _representative_named(item: object, asset_ids: tuple[str, ...]) -> tuple[str
 def _representatives(
     value: object,
     asset_ids: tuple[str, ...],
+    *,
+    limit: int = 3,
 ) -> tuple[tuple[EpisodeRepresentative, ...], int]:
     if not isinstance(value, list):
         return (), 1
@@ -231,7 +243,7 @@ def _representatives(
     discarded = 0
     for item in value:
         named = _representative_named(item, asset_ids)
-        if named is None or named[0] in seen or len(representatives) == 3:
+        if named is None or named[0] in seen or len(representatives) == limit:
             discarded += 1
             continue
         seen.add(named[0])

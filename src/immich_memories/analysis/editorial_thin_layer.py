@@ -15,7 +15,7 @@ from __future__ import annotations
 import calendar
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from operator import itemgetter
 from pathlib import Path
 from typing import Any
@@ -58,6 +58,10 @@ class ThinPolish:
 
     account: str
     bank_dir: Path
+    # What the period's own episode readings named as worth a record, by picture. A picture
+    # carrying one keeps its place whatever the vote says, and a story holding one the cut
+    # never gave a voice is the first seat the refill offers.
+    records: Mapping[str, str] = field(default_factory=dict)
 
     def catalogue_of(
         self,
@@ -71,7 +75,7 @@ class ThinPolish:
             story_rows=story.stories,
             hints=story.audit.get("hints") or {},
             asset_ids_of=_story_asset_ids(story.episodes, story.stories, moment_assets),
-            records=records,
+            records=self.records if records is None else records,
         )
 
     def polish(

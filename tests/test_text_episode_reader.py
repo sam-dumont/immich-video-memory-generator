@@ -260,7 +260,7 @@ def test_cold_episodes_are_packed_below_the_serialized_prompt_limit(
             producer=producer,
             annotations=lines,
             requester=requester,
-            limits=TextEpisodeRequestLimits(max_prompt_chars=1_645),
+            limits=TextEpisodeRequestLimits(max_prompt_chars=2_246),
         ).read(projections)
 
     assert len(prompts) > 1
@@ -270,7 +270,7 @@ def test_cold_episodes_are_packed_below_the_serialized_prompt_limit(
         (index, len(prompts)) for index in range(1, len(prompts) + 1)
     ]
     assert announced[0].stage_label == f"Reading event evidence: 1/{len(prompts)}"
-    assert all(len(prompt) <= 1_645 for prompt in prompts)
+    assert all(len(prompt) <= 2_246 for prompt in prompts)
     assert all(asset_id not in "".join(prompts) for asset_id in prepared.candidate_ids)
     assert all(episode.reading is not None for episode in first.episodes)
     assert first.actual_calls == len(prompts)
@@ -282,7 +282,7 @@ def test_cold_episodes_are_packed_below_the_serialized_prompt_limit(
         requester=lambda _prompt: (_ for _ in ()).throw(
             AssertionError("packed episode readings should be independently reusable")
         ),
-        limits=TextEpisodeRequestLimits(max_prompt_chars=1_645),
+        limits=TextEpisodeRequestLimits(max_prompt_chars=2_246),
     ).read(projections)
 
     assert warm.actual_calls == 0
@@ -434,13 +434,13 @@ def test_episode_pages_shrink_to_the_serialized_prompt_limit(tmp_path: Path) -> 
         annotations=lines,
         requester=requester,
         limits=TextEpisodeRequestLimits(
-            max_prompt_chars=1_645,
+            max_prompt_chars=2_246,
             max_assets_per_page=90,
         ),
     ).read(projections)
 
     assert len(prompts) > 1
-    assert all(len(prompt) <= 1_645 for prompt in prompts)
+    assert all(len(prompt) <= 2_246 for prompt in prompts)
     assert result.actual_calls == len(prompts)
     assert result.episodes[0].reading is not None
     assert result.episodes[0].reading.full_asset_ids == prepared.candidate_ids
@@ -1113,7 +1113,7 @@ def test_a_swallowed_provider_failure_names_the_rejecting_check_once_in_the_log(
             requester=lambda _prompt: (_ for _ in ()).throw(
                 ValueError("LLM provider returned no choices: ['code', 'msg']")
             ),
-            limits=TextEpisodeRequestLimits(max_prompt_chars=1600),
+            limits=TextEpisodeRequestLimits(max_prompt_chars=2201),
         ).read(projections)
 
     assert all(episode.reading is None for episode in result.episodes)
@@ -1228,3 +1228,63 @@ def test_a_cold_episode_can_be_read_from_a_provider_batch(tmp_path: Path) -> Non
     assert len(queued) == 1
     assert result.episodes[0].reading is not None
     assert result.episodes[0].reading.what_happened == "A friend joins a family birthday party."
+
+
+def test_a_reading_names_the_moment_worth_a_record_and_it_survives_the_cull(
+    tmp_path: Path,
+) -> None:
+    """A picture the reading calls a record cannot also be thrown out as a Cull reject."""
+    from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
+
+    noon = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: (
+                make_asset("the-room", file_created_at=noon),
+                make_asset("first-steps", file_created_at=noon + timedelta(minutes=5)),
+            )
+        ),
+    )
+    projections = project_episode_groups(prepared, prepared.candidate_ids)
+    lines = _AnnotationLines(
+        {
+            "the-room": "the-room | the living room",
+            "first-steps": "first-steps | a toddler walking unaided",
+        }
+    )
+    producer = EpisodeReadingProducer(
+        model_id="a-model",
+        prompt_version="episode-prompt-v3",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+
+    def answer(_prompt: str) -> str:
+        return json.dumps(
+            {
+                "schema_version": "episode-reading-text-v1",
+                "episodes": [
+                    {
+                        "episode": 1,
+                        "what_happened": "An afternoon in the living room.",
+                        "representatives": [{"asset": 1, "reason": "Shows the room."}],
+                        "notable_moments": [{"asset": 2, "reason": "walking unaided"}],
+                        "cull": [{"asset": 2, "bucket": "failed"}],
+                    }
+                ],
+            }
+        )
+
+    store = EpisodeReadingStore(tmp_path / "annotations.sqlite")
+    reading = (
+        CachedTextEpisodeReader(store=store, producer=producer, annotations=lines, requester=answer)
+        .read(projections)
+        .episodes[0]
+        .reading
+    )
+
+    assert reading is not None
+    assert reading.notable_moments == (EpisodeRepresentative("first-steps", "walking unaided"),)
+    assert reading.cull_decisions == ()

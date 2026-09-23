@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 
 from immich_memories.analysis.text_episode_answers import _EpisodeRequestScope
 
-TEXT_EPISODE_PROMPT_VERSION = "episode-prompt-v2-names-from-facts"
+_PROMPT_NAME = "episode-prompt-v3-notable-moments"
 
 AlbumNames = Callable[[Sequence[str]], tuple[str, ...]]
 
@@ -25,12 +26,25 @@ video, or qualifying Live Photo when it earns the place. Cull buckets are notes 
 documents, receipts), failed (the picture did not come out), and foreign (saved imagery not
 from this life). Similar or merely ordinary pictures are not Cull rejects.
 
+Also return notable_moments, separately from the account and its representatives: the moments
+of this episode a family would remember on their own, and that a 25-word summary of the episode
+would lose. A discovery, a milestone, a change, a once-only record. Name the asset and the
+observable reason it is one. A small object or a quiet detail can carry one. Do not infer a
+first, a relationship, a diagnosis or a feeling from the order things happened in. Return []
+when nothing in the lines supports one; most episodes have none.
+
 Return JSON only:
 {{"schema_version":"episode-reading-text-v1","episodes":[{{"episode":1,
 "what_happened":"plain factual sentence","representatives":[{{"asset":1,
-"reason":"short reason"}}],"cull":[{{"asset":2,"bucket":"notes"}}]}}]}}
+"reason":"short reason"}}],"cull":[{{"asset":2,"bucket":"notes"}}],
+"notable_moments":[{{"asset":1,"reason":"what this is a record of"}}]}}]}}
 
 {episodes}"""
+
+# A banked answer is ground truth for the question that was asked. Hashing the prompt into the
+# producer expires every reading the moment its wording changes, whether or not the name above
+# was bumped with it.
+TEXT_EPISODE_PROMPT_VERSION = f"{_PROMPT_NAME}/{sha256(_PROMPT.encode()).hexdigest()[:16]}"
 
 
 @dataclass(frozen=True, slots=True)

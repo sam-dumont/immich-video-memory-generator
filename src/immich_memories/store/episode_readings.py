@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS editorial_episode_readings (
     what_happened TEXT NOT NULL,
     representatives TEXT NOT NULL,
     cull_decisions TEXT NOT NULL,
+    notable_moments TEXT NOT NULL DEFAULT '[]',
     answered_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (group_id, producer_key, evidence_key)
 )
@@ -110,7 +111,10 @@ class EpisodeReadingIdentity:
 
 @dataclass(frozen=True)
 class EpisodeRepresentative:
-    """An episode member that carries one distinct part of its meaning."""
+    """An episode member that carries one distinct part of its meaning.
+
+    The same row shape carries a notable moment: which picture, and what it is a record of.
+    """
 
     asset_id: str
     reason: str
@@ -141,6 +145,9 @@ class BankedEpisodeReading:
     what_happened: str
     representatives: tuple[EpisodeRepresentative, ...]
     cull_decisions: tuple[EpisodeCullDecision, ...]
+    # What the reading says is worth a record of its own, and why. A reading that named
+    # none is an episode nothing stood out in, not an unread one.
+    notable_moments: tuple[EpisodeRepresentative, ...] = ()
 
     def __post_init__(self) -> None:
         members = set(self.full_asset_ids)
@@ -151,6 +158,7 @@ class BankedEpisodeReading:
         referenced = {
             *(representative.asset_id for representative in self.representatives),
             *(decision.asset_id for decision in self.cull_decisions),
+            *(moment.asset_id for moment in self.notable_moments),
         }
         if not referenced.issubset(members):
             raise ValueError("episode reading may reference only full episode members")
@@ -170,11 +178,12 @@ class EpisodeReadingStore:
             return
         try:
             with self._connections.connection() as connection:
+                _migrate_notable_moments(connection)
                 connection.executemany(
                     "INSERT INTO editorial_episode_readings ("
                     "group_id, producer_key, evidence_key, full_asset_ids, what_happened, "
-                    "representatives, cull_decisions"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "representatives, cull_decisions, notable_moments"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(group_id, producer_key, evidence_key) DO NOTHING",
                     rows,
                 )
@@ -198,9 +207,11 @@ class EpisodeReadingStore:
         )
         try:
             with self._connections.connection() as connection:
+                _migrate_notable_moments(connection)
                 query = (
                     "SELECT group_id, producer_key, evidence_key, full_asset_ids, what_happened, "  # noqa: S608 -- generated placeholders; bound values.
-                    "representatives, cull_decisions FROM editorial_episode_readings "
+                    "representatives, cull_decisions, notable_moments "
+                    "FROM editorial_episode_readings "
                     f"WHERE (group_id, producer_key, evidence_key) IN ({placeholders})"
                 )
                 rows = connection.execute(query, parameters).fetchall()
@@ -243,6 +254,13 @@ def _row_for(reading: BankedEpisodeReading) -> tuple[str, ...]:
             ],
             separators=(",", ":"),
         ),
+        json.dumps(
+            [
+                {"asset_id": moment.asset_id, "reason": moment.reason}
+                for moment in reading.notable_moments
+            ],
+            separators=(",", ":"),
+        ),
     )
 
 
@@ -265,4 +283,28 @@ def _reading_from(row: Sequence[object]) -> BankedEpisodeReading:
             EpisodeCullDecision(asset_id=str(item["asset_id"]), bucket=str(item["bucket"]))
             for item in cull_decisions
         ),
+        notable_moments=tuple(
+            EpisodeRepresentative(asset_id=str(item["asset_id"]), reason=str(item["reason"]))
+            for item in json.loads(str(row[7]))
+        ),
     )
+
+
+def _columns(connection: sqlite3.Connection) -> set[str]:
+    return {row[1] for row in connection.execute("PRAGMA table_info(editorial_episode_readings)")}
+
+
+def _migrate_notable_moments(connection: sqlite3.Connection) -> None:
+    """A bank written before notable moments existed reads back with an explicitly empty lane."""
+    if "notable_moments" in _columns(connection):
+        return
+    try:
+        connection.execute(
+            "ALTER TABLE editorial_episode_readings "
+            "ADD COLUMN notable_moments TEXT NOT NULL DEFAULT '[]'"
+        )
+        connection.commit()
+    except sqlite3.OperationalError:
+        # Another thread's connection may have added it between the check and here.
+        if "notable_moments" not in _columns(connection):
+            raise

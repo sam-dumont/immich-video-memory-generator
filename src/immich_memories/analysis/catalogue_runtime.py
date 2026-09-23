@@ -114,6 +114,23 @@ def catalogue_banked_episodes(
         )
 
 
+def banked_notable_records(
+    identities: Sequence[EpisodeReadingIdentity], *, store_path: Path
+) -> dict[str, str]:
+    """What these readings recorded as a moment worth a place of its own, by picture.
+
+    A reading that named none is an episode nothing stood out in. A bank written before the
+    reading was asked the question has an empty lane and reads the same way.
+    """
+    with closing(EpisodeReadingStore(store_path)) as bank:
+        readings = bank.readings_for(tuple(identities))
+    return {
+        moment.asset_id: moment.reason
+        for reading in readings.values()
+        for moment in reading.notable_moments
+    }
+
+
 def _earliest(asset_ids: Sequence[str], capture_dates: Mapping[str, datetime]) -> datetime | None:
     """The episode's own first capture, or nothing when a member is outside this corpus."""
     dates = [capture_dates[asset_id] for asset_id in asset_ids if asset_id in capture_dates]

@@ -250,7 +250,8 @@ src/immich_memories/
 │   │                               # _detector_frames.py samples a video's eight frames for the
 │   │                               # exposure head, through the motion line's keyframe reader
 │   ├── selection_source*.py    # The canonical source model: admission, provenance, groups, invariants
-│   ├── text_episode_reader.py  # Reading event evidence (paged, banked)
+│   ├── text_episode_reader.py  # Reading event evidence (paged, banked); the same reading names
+│   │                           # each episode's notable moments, which the polish layer seats and protects
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner

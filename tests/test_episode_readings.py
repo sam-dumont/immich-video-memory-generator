@@ -180,3 +180,82 @@ def test_typed_store_coexists_with_the_legacy_probe_episode_table(tmp_path: Path
         assert connection.execute(
             "SELECT what_happened FROM episode_readings WHERE episode_key = 'legacy-key'"
         ).fetchone() == ("Legacy meaning.",)
+
+
+def test_a_reading_keeps_the_moments_it_said_are_worth_a_record(tmp_path: Path) -> None:
+    from immich_memories.store.episode_readings import (
+        BankedEpisodeReading,
+        EpisodeReadingIdentity,
+        EpisodeReadingStore,
+        EpisodeRepresentative,
+    )
+
+    identity = EpisodeReadingIdentity.from_annotations(
+        group_id="episode-with-a-record",
+        producer_key="producer-v3",
+        annotation_lines={"wide": "wide | the room", "steps": "steps | walking unaided"},
+    )
+    reading = BankedEpisodeReading(
+        identity=identity,
+        full_asset_ids=("wide", "steps"),
+        what_happened="An afternoon at home.",
+        representatives=(EpisodeRepresentative("wide", "Shows the room."),),
+        cull_decisions=(),
+        notable_moments=(EpisodeRepresentative("steps", "walking unaided for the first time"),),
+    )
+    path = tmp_path / "annotations.sqlite"
+    store = EpisodeReadingStore(path)
+    store.remember((reading,))
+    store.close()
+
+    assert EpisodeReadingStore(path).readings_for((identity,)) == {identity.group_id: reading}
+
+
+def test_a_bank_written_before_records_existed_reads_back_with_none(tmp_path: Path) -> None:
+    """The column is added in place; every row already in the bank keeps its meaning."""
+    from immich_memories.store.episode_readings import (
+        BankedEpisodeReading,
+        EpisodeReadingIdentity,
+        EpisodeReadingStore,
+        EpisodeRepresentative,
+    )
+
+    path = tmp_path / "annotations.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE editorial_episode_readings ("
+            "group_id TEXT NOT NULL, producer_key TEXT NOT NULL, evidence_key TEXT NOT NULL, "
+            "full_asset_ids TEXT NOT NULL, what_happened TEXT NOT NULL, "
+            "representatives TEXT NOT NULL, cull_decisions TEXT NOT NULL, "
+            "answered_at TEXT NOT NULL DEFAULT (datetime('now')), "
+            "PRIMARY KEY (group_id, producer_key, evidence_key))"
+        )
+        connection.execute(
+            "INSERT INTO editorial_episode_readings (group_id, producer_key, evidence_key, "
+            "full_asset_ids, what_happened, representatives, cull_decisions) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                "old-episode",
+                "producer-v2",
+                "evidence-a",
+                '["wide"]',
+                "An afternoon at home.",
+                '[{"asset_id": "wide", "reason": "Shows the room."}]',
+                "[]",
+            ),
+        )
+
+    identity = EpisodeReadingIdentity(
+        group_id="old-episode", producer_key="producer-v2", evidence_key="evidence-a"
+    )
+
+    assert EpisodeReadingStore(path).readings_for((identity,)) == {
+        "old-episode": BankedEpisodeReading(
+            identity=identity,
+            full_asset_ids=("wide",),
+            what_happened="An afternoon at home.",
+            representatives=(EpisodeRepresentative("wide", "Shows the room."),),
+            cull_decisions=(),
+            notable_moments=(),
+        )
+    }
