@@ -56,6 +56,8 @@ class ModelFactStage(Protocol):
 
     def remote_facts(self, pending: Mapping[str, Mapping[str, str]]) -> bool: ...
 
+    def clip_frames(self, frame_paths: Mapping[str, Sequence[Path]]) -> None: ...
+
     def previews(
         self, ids: Sequence[str], cache_path: Path, fetch_preview: Any
     ) -> tuple[dict[str, Path], list[str]]: ...
@@ -124,7 +126,10 @@ def acquire_model_facts(
     head_versions: Mapping[str, str],
     preview_paths: Mapping[str, Path],
     frames: DetectorFrames,
+    clips: Sequence[str] = (),
 ) -> None:
+    """``clips`` are the videos that owe their frame reading; they share the exposure head's
+    sampled frames, so a clip is read off Immich once for both."""
     head_versions, offloaded_exposure = _after_remote(
         stage, before, ids, available, head_versions, frames.video_ids
     )
@@ -135,15 +140,19 @@ def acquire_model_facts(
     if public_ids:
         stage.public_heads(public_ids, requested_public)
     detector_pending = _detector_pending(pending, head_versions, offloaded_exposure)
-    if detector_pending:
+    if detector_pending or clips:
+        exposure = detector_pending.get(MARQO_HEAD, ())
         with frames.sampled(
-            detector_pending.get(MARQO_HEAD, ()),
+            tuple(dict.fromkeys((*exposure, *clips))),
             check=stage.check,
             report=stage.report,
             failures=stage.failures,
             timed=stage.timed,
         ) as sampled:
-            stage.detectors(detector_pending, preview_paths, sampled)
+            if detector_pending:
+                stage.detectors(detector_pending, preview_paths, sampled)
+            if owed := {clip: sampled[clip] for clip in clips if clip in sampled}:
+                stage.clip_frames(owed)
     _record_unpackaged_heads(pending, head_versions, stage.failures)
 
 

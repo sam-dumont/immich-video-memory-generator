@@ -152,6 +152,19 @@ playback cannot be read falls back to its preview, and `preparation.private.json
 inference service is answering for your heads, videos keep this head in process, because the service
 is handed one picture per source and cannot be handed eight.
 
+**A video stands on what its frames show, not on its preview.** The same frames go through the
+`frame_kind` head, one frame at a time, and the clip banks one fact (`clip_frames`): the share of
+its frames that show a people moment, a place, a record or a screen. A clip that shows its moment
+in fewer than three frames of four, like a clip that is mostly wall with the subject at the edge,
+reads `frames=subject_often_missing` on its line and does not stand on its own: the no-model cut
+scores it 0 unless it is a favourite, and a model cut refuses it on standing whatever the text
+vote says, where it used to depend on which film asked. Measured on 33 real clips: the two a
+reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
+or more. The frames are sampled once for this and the exposure head together; a clip already
+prepared is sampled again once. A clip whose frames cannot be read, or an install without the
+encoder, keeps its preview's reading and is named in `preparation.private.json`; it never blocks a
+cut.
+
 **A Live Photo's clip is read too, and a held clip holds its still.** The clip is not a candidate:
 nothing selects it, it plays inside its still's shot, so nothing ever prepared it and the gate's
 companion evidence was empty for every Live Photo in the library. Now every Live Photo in scope has

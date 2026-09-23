@@ -3,10 +3,15 @@
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
+import numpy as np
+from PIL import UnidentifiedImageError
+
+from immich_memories.analysis.editorial_clip_frames import clip_frames_fact
 from immich_memories.cache.embedding_cache import HeadFactStore
 from immich_memories.triage.encoder import DinoEncoder
 from immich_memories.triage.engine import TriageEngine
 from immich_memories.triage.heads import HeadBundle
+from immich_memories.triage.preprocess import preprocess_image_bytes
 
 PUBLIC_HEAD_VERSIONS = {
     "activity": "public-v1",
@@ -59,3 +64,40 @@ def prepare_heads(
             progress("public_heads", start + len(chunk), len(asset_ids))
     finally:
         store.close()
+
+
+def prepare_clip_frames(
+    *,
+    frame_paths: Mapping[str, Sequence[Path]],
+    store_path: Path,
+    bundle_path: Path,
+    encoder_path: Path,
+    check_cancelled: Callable[[], None],
+    provider: str = "auto",
+    open_encoder: Callable[..., DinoEncoder] = DinoEncoder.open,
+) -> dict[str, str]:
+    """Bank each clip's `clip_frames` fact from the frame head's reading of its sampled frames.
+
+    Returns the clips whose frames could not be read, with why; they keep the reading of their
+    preview, which is all any clip had before.
+    """
+    bundle = HeadBundle.load(bundle_path)
+    encoder = open_encoder(encoder_path, provider=provider)
+    if bundle.encoder_key != encoder.key:
+        raise ValueError("head bundle was trained on another encoder")
+    store = HeadFactStore(store_path)
+    failures: dict[str, str] = {}
+    try:
+        for asset_id, paths in frame_paths.items():
+            check_cancelled()
+            try:
+                pixels = np.stack([preprocess_image_bytes(Path(p).read_bytes()) for p in paths])
+            except (OSError, ValueError, UnidentifiedImageError) as exc:
+                failures[asset_id] = f"{type(exc).__name__}: {exc}"
+                continue
+            kinds = [fact.label for fact in bundle.decide(encoder.embed(pixels))["frame_kind"]]
+            if fact := clip_frames_fact(kinds):
+                store.remember_facts(asset_id, [fact], encoder_key=encoder.key)
+    finally:
+        store.close()
+    return failures

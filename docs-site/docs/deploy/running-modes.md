@@ -66,7 +66,7 @@ replacing it:
 
 | head | what it answers | what it adds |
 |---|---|---|
-| `frame_kind` | which of seven kinds of frame this is | a picture it calls an empty room, a lone everyday object or a body-part close-up does not stand on its own in the no-model cut. Nothing shipped answered this before |
+| `frame_kind` | which of seven kinds of frame this is | a picture it calls an empty room, a lone everyday object or a body-part close-up does not stand on its own in the no-model cut. Nothing shipped answered this before. A video is also read on eight frames across its length: one that shows its moment in fewer than three frames of four does not stand on its own either, unless it is a favourite |
 | `screen` | is this a photo of a screen | a screen refusal beside the document head's. It ships at one strict band: over 3,564 photographs it said yes 37 times and every one was a screen, so it catches nine more screens for no extra wrong refusal |
 | `uncovered_person` | is somebody uncovered | a second opinion beside the sensitive-content detector, which stays the floor. It can add a hold and it can never lift one: a `no` from it is silence, not a clearance |
 

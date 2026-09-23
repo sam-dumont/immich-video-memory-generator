@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from immich_memories.analysis.editorial_carrier_eligibility import NOTHING_KINDS, screen_flagged
+from immich_memories.analysis.editorial_clip_frames import CLIP_FRAMES_HEAD, SUBJECT_OFTEN_MISSING
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
@@ -347,6 +348,7 @@ class RuleStructureReader:
             or screen_flagged(heads)
             or exposure_zero
             or heads.get("frame_kind") in NOTHING_KINDS
+            or heads.get(CLIP_FRAMES_HEAD) == SUBJECT_OFTEN_MISSING
         ):
             return 0
         if any(marker in line for marker in ("SOFT (blurry)", "DARK", "BLOWN OUT")):

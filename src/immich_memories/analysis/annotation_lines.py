@@ -11,6 +11,12 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from immich_memories.analysis.editorial_carrier_eligibility import CARRYING_KINDS
+from immich_memories.analysis.editorial_clip_frames import (
+    CLIP_FRAMES_HEAD,
+    CLIP_FRAMES_VERSION,
+    LINE_NAME,
+    SHOWS_ITS_MOMENT,
+)
 from immich_memories.analysis.subject_framing import framing_annotation, subject_framing
 from immich_memories.store.asset_annotations import (
     AssetAnnotationFactBatch,
@@ -40,8 +46,14 @@ _HEAD_SILENCE = {
     "uncovered_person": frozenset({"no"}),
     # A frame kind is only worth a reader's attention when it says the frame carries nothing.
     "frame_kind": CARRYING_KINDS,
+    CLIP_FRAMES_HEAD: frozenset({SHOWS_ITS_MOMENT}),
 }
-_HEAD_RENAMES = {"doc_docling": "document", "nsfw_marqo": "nsfw", "frame_kind": "frame"}
+_HEAD_RENAMES = {
+    "doc_docling": "document",
+    "nsfw_marqo": "nsfw",
+    "frame_kind": "frame",
+    CLIP_FRAMES_HEAD: LINE_NAME,
+}
 
 
 @dataclass(frozen=True)
@@ -173,7 +185,10 @@ class StoredAnnotationLineReader:
         if len(candidate_by_id) != len(candidates):
             raise ValueError("annotation reader needs unique candidate IDs")
         self._candidate_by_id = candidate_by_id
-        self._head_versions = dict(head_versions)
+        # A clip's frame reading is banked only for clips, so no picture is ever owed it and
+        # it is not a configured head; every line reads it where it exists.
+        head_versions = {**head_versions, CLIP_FRAMES_HEAD: CLIP_FRAMES_VERSION}
+        self._head_versions = head_versions
         self._people_context = dict(people_context or {})
         self._subjects = frozenset(_clean(subject) for subject in subjects if _clean(subject))
         self._fact_repository = fact_repository or AssetAnnotationFactRepository(

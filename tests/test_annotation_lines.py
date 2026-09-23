@@ -143,6 +143,7 @@ def test_a_line_renders_every_available_fact_without_stable_asset_ids(tmp_path: 
         "description:student-v1",
         "flags:all-except-exposure-v2",
         "head:activity:public-v1",
+        "head:clip_frames:frame_kind-public-v1/8-frames",
         "motion-bursts:legacy-v1",
         "people:immich-live+owner-context-v1",
         "pixel:pixel-v1",
@@ -360,3 +361,29 @@ def test_a_box_banked_before_identities_is_nobody_in_particular_to_a_memory_abou
     )
 
     assert "subject-framing" not in line.text
+
+
+def test_a_clip_whose_frames_often_miss_its_subject_says_so_on_its_line(tmp_path: Path) -> None:
+    """Whatever head versions a caller asks for, the clip's own frame reading is read too."""
+    from immich_memories.analysis.editorial_clip_frames import (
+        CLIP_FRAMES_HEAD,
+        CLIP_FRAMES_VERSION,
+        SHOWS_ITS_MOMENT,
+        SUBJECT_OFTEN_MISSING,
+        subject_often_missing,
+    )
+
+    store_path = store_with(
+        tmp_path,
+        head_facts=(
+            ("clip-a", CLIP_FRAMES_HEAD, CLIP_FRAMES_VERSION, SUBJECT_OFTEN_MISSING),
+            ("clip-b", CLIP_FRAMES_HEAD, CLIP_FRAMES_VERSION, SHOWS_ITS_MOMENT),
+        ),
+    )
+    batch = reader(
+        store_path, candidate("clip-a", media_kind="video"), candidate("clip-b", media_kind="video")
+    ).lines_for(("clip-a", "clip-b"))
+    text = {line.asset_id: line.text for line in batch.lines}
+
+    assert subject_often_missing(text["clip-a"])
+    assert "frames=" not in text["clip-b"]

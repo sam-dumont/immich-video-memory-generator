@@ -230,3 +230,86 @@ def test_a_clip_with_no_preview_is_still_read_on_its_frames(tmp_path):
         ).fetchone()
     connection.close()
     assert banked
+
+
+@requires_ffmpeg
+def test_a_videos_frames_are_sampled_once_for_the_exposure_head_and_its_frame_reading(tmp_path):
+    import sqlite3
+
+    from immich_memories.analysis.editorial_clip_frames import (
+        CLIP_FRAMES_HEAD,
+        CLIP_FRAMES_VERSION,
+    )
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+    from tests.test_editorial_preparation_motion import prepared_video
+    from tests.test_playback_keyframes import encode
+
+    data = encode(tmp_path / "clip.mp4", gop=30)
+    read = []
+
+    def clip_frames(**kwargs):
+        read.append({key: len(paths) for key, paths in kwargs["frame_paths"].items()})
+        with sqlite3.connect(kwargs["store_path"]) as connection:
+            for asset_id in kwargs["frame_paths"]:
+                connection.execute(
+                    "INSERT OR REPLACE INTO head_facts VALUES (?,?,?,?,?,?,?)",
+                    (
+                        asset_id,
+                        CLIP_FRAMES_HEAD,
+                        CLIP_FRAMES_VERSION,
+                        "shows_its_moment",
+                        1.0,
+                        "t",
+                        "now",
+                    ),
+                )
+        return {}
+
+    def once():
+        return run(
+            tmp_path,
+            assets=[asset("aa1"), prepared_video("vv1")],
+            ports=replace(successful_ports([]), clip_frames=clip_frames),
+            preparation_config=EditorialPreparationConfig(tier="no_captions"),
+            fetch_preview=lambda _: preview(),
+            # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+            read_playback=lambda _id, start, length: (data[start : start + length], len(data)),
+        )
+
+    cold = once()
+    warm = once()
+
+    assert cold.complete and warm.complete
+    # The still is never read on frames, and the clip's frames are sampled once for both.
+    assert len(read) == 1 and set(read[0]) == {"vv1"} and read[0]["vv1"] >= 2
+    assert cold.pictures_by_stage["detector_frames"] == 1
+    assert "detector_frames" not in warm.pictures_by_stage
+
+
+@requires_ffmpeg
+def test_a_frame_reading_that_fails_never_blocks_the_cut(tmp_path):
+    from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+    from tests.test_editorial_preparation import asset, preview, run, successful_ports
+    from tests.test_editorial_preparation_motion import prepared_video
+    from tests.test_playback_keyframes import encode
+
+    data = encode(tmp_path / "clip.mp4", gop=30)
+
+    def clip_frames(**_kwargs):
+        raise FileNotFoundError("no encoder")
+
+    result = run(
+        tmp_path,
+        assets=[asset("aa1"), prepared_video("vv1")],
+        ports=replace(successful_ports([]), clip_frames=clip_frames),
+        preparation_config=EditorialPreparationConfig(tier="no_captions"),
+        fetch_preview=lambda _: preview(),
+        # WHY: the Immich playback endpoint; the sampler and FFmpeg past it are real.
+        read_playback=lambda _id, start, length: (data[start : start + length], len(data)),
+    )
+
+    assert result.complete
+    assert result.failures == {"clip_frames": "FileNotFoundError: no encoder"}
+    # A producer that could not run is named, so a report says why clips kept their preview.
+    assert result.producer_failures == ("FileNotFoundError: no encoder",)

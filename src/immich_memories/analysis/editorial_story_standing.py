@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_clip_frames import subject_often_missing
 from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     moving_picture_row,
@@ -173,7 +174,7 @@ class StandingGate:
         """
         if asset not in self._unit_by_asset:
             return 1
-        if not self._context_allowed(asset, weight, story_key):
+        if not self._context_allowed(asset, weight, story_key) or self._frames_miss(asset):
             return 0
         moving = carries_motion(self._unit_by_asset[asset][1])
         return 0 if self._ordered_only(asset, weight, story_key) and not moving else 1
@@ -183,8 +184,16 @@ class StandingGate:
         return self._pictures_of.get(story_key, 0) <= 2
 
     def rejected_motion(self, asset: str) -> bool:
-        """Playing motion cannot override missing or unanimously weak standing evidence."""
-        return carries_motion(self._unit_by_asset[asset][1]) and self.scores.get(asset, 0) == 0
+        """Playing motion cannot override missing or unanimously weak standing evidence, nor
+        frames that often miss the subject: a clip is judged on what it shows across its
+        length, not on the one frame its preview and its row were read from."""
+        moving = carries_motion(self._unit_by_asset[asset][1])
+        return moving and (self.scores.get(asset, 0) == 0 or self._frames_miss(asset))
+
+    def _frames_miss(self, asset: str) -> bool:
+        return carries_motion(self._unit_by_asset[asset][1]) and subject_often_missing(
+            self._line_of(asset)
+        )
 
     def _context_allowed(self, asset: str, weight: str, story_key: str) -> bool:
         starred = bool(self._unit_by_asset[asset][1].get("favourite"))

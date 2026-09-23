@@ -53,7 +53,11 @@ head for every source, and videos stay out of an inference-service offload for i
 clip is read the same way: it is no candidate, so `acquire_clip_companions`
 (`editorial_preparation_model_facts.py`) reads it for the exposure head alone and banks it under the
 clip's own id, and `load_detector_heads` puts those rows in the gate's `companion_detectors`, which
-had been empty for every Live Photo. A flagged clip holds its still. No detector hold is ever lifted
+had been empty for every Live Photo. A flagged clip holds its still. The same sampled frames of a video
+go through the `frame_kind` head (`prepare_clip_frames` in `editorial_preparation_heads.py`), and
+`editorial_clip_frames.py` banks the clip's `clip_frames` fact: a clip that shows its moment in
+fewer than three frames of four reads `frames=subject_often_missing` on its line, which the rules
+reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model. No detector hold is ever lifted
 by a later reading (`_head_hold` in `editorial_shareability.py`); only the owner's clearance does.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
 flagged with at least three flagged captures in it, under the reason `exposure_chain`; a Live

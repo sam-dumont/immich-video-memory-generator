@@ -14,12 +14,16 @@ from pathlib import Path
 
 from PIL import Image
 
+from immich_memories.analysis.editorial_clip_frames import (
+    CLIP_FRAMES_HEAD,
+    CLIP_FRAMES_VERSION,
+)
 from immich_memories.analysis.editorial_description_contract import DESCRIPTION_MODEL
 from immich_memories.analysis.editorial_description_outcomes import cached_preview
 from immich_memories.analysis.editorial_preparation_captions import prepare_captions
 from immich_memories.analysis.editorial_preparation_detector_frames import DetectorFrames
 from immich_memories.analysis.editorial_preparation_detectors import prepare_detectors
-from immich_memories.analysis.editorial_preparation_heads import prepare_heads
+from immich_memories.analysis.editorial_preparation_heads import prepare_clip_frames, prepare_heads
 from immich_memories.analysis.editorial_preparation_model_facts import (
     CLIP_COMPANION,
     acquire_clip_companions,
@@ -51,6 +55,7 @@ from immich_memories.operations.cancellation import check_cancelled as current_c
 from immich_memories.store.caption_provenance import origins_for
 from immich_memories.store.editorial_preparation import (
     faces_unread,
+    heads_missing_for,
     initialize,
     missing_facts,
     private_database_path,
@@ -99,7 +104,8 @@ class PreparationResult:
         clip Immich would not serve, which leaves its still in the film either way.
         """
         return not self.missing_by_producer and all(
-            key.startswith(("detector_frames:", f"{CLIP_COMPANION}:")) for key in self.failures
+            key.startswith(("detector_frames:", f"{CLIP_COMPANION}:", CLIP_FRAMES_HEAD))
+            for key in self.failures
         )
 
     @property
@@ -114,7 +120,15 @@ class PreparationResult:
             reason
             for key, reason in sorted(self.failures.items())
             if not key.startswith(
-                ("preview:", "pixel:", "caption:", "motion:", "detector_frames:", CLIP_COMPANION)
+                (
+                    "preview:",
+                    "pixel:",
+                    "caption:",
+                    "motion:",
+                    "detector_frames:",
+                    CLIP_COMPANION,
+                    f"{CLIP_FRAMES_HEAD}:",
+                )
             )
         )
 
@@ -148,6 +162,7 @@ class PreparationPorts:
     heads: Callable = prepare_heads
     detectors: Callable = prepare_detectors
     motion: Callable = prepare_motion_lines
+    clip_frames: Callable = prepare_clip_frames
 
 
 PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
@@ -390,6 +405,24 @@ class _Acquisition:
         except Exception as exc:
             self.failures["detectors"] = f"{type(exc).__name__}: {exc}"
 
+    def clip_frames(self, frame_paths: Mapping[str, Sequence[Path]]) -> None:
+        """Read each clip's sampled frames with the frame head; a clip it cannot read, or a
+        producer that cannot run, leaves the clip on its preview's reading and never the cut."""
+        self.check()
+        try:
+            with self.timed(CLIP_FRAMES_HEAD, len(frame_paths)):
+                errors = self.providers.clip_frames(
+                    frame_paths=frame_paths,
+                    store_path=self.store_path,
+                    bundle_path=self.preparation_config.head_bundle_path,
+                    encoder_path=self.triage_config.encoder_path,
+                    check_cancelled=self.check,
+                    provider=self.triage_config.provider,
+                )
+            self.failures.update({f"{CLIP_FRAMES_HEAD}:{k}": v for k, v in errors.items()})
+        except Exception as exc:
+            self.failures[CLIP_FRAMES_HEAD] = f"{type(exc).__name__}: {exc}"
+
     def captions(self, connection: sqlite3.Connection, asset_ids: Sequence[str]) -> None:
         self.check()
         try:
@@ -535,8 +568,12 @@ def prepare_editorial_annotations(
         stage.faces(connection, source, fetch_faces)
         if preparation_config.demands_models:
             frames = DetectorFrames(source, read_playback)
+            clips = heads_missing_for(
+                connection, sorted(frames.video_ids), CLIP_FRAMES_HEAD, CLIP_FRAMES_VERSION
+            )
+            connection.commit()
             acquire_model_facts(
-                stage, before, ids, available, pending, head_versions, preview_paths, frames
+                stage, before, ids, available, pending, head_versions, preview_paths, frames, clips
             )
             acquire_clip_companions(
                 stage, connection, frames, cache_path, fetch_preview, head_versions
