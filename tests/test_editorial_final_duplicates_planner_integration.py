@@ -200,3 +200,32 @@ def test_a_film_with_a_model_loses_its_hash_twin_free_and_still_gets_its_sampled
     assert [row["asset_id"] for row in review["hash_review"]["removals"]] == ["picture-001"]
     assert review["policy"].startswith("final-displayed-sampled-duplicates")
     assert plan["cut_carriers"][0]["asset_id"] == "picture-001"
+
+
+def test_the_finished_film_drops_a_scene_it_already_shows_when_it_has_room(tmp_path):
+    """Two differently framed shots of one scene hash as strangers; their scene prints agree."""
+    import numpy as np
+
+    captured = source(tmp_path, seconds=12, pictures=4)
+    prints = {
+        "picture-000": np.array([1.0, 0.0, 0.0]),
+        "picture-001": np.array([0.95, 0.3, 0.0]),
+        "picture-002": np.array([0.0, 1.0, 0.0]),
+        "picture-003": np.array([0.0, 0.0, 1.0]),
+    }
+
+    plan = plan_structure(
+        captured,
+        StructurePlannerPorts(
+            judge=ControlledStoryJudge(),
+            thumbnail_hash=_distinct_preview,
+            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
+            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
+            scene_print=prints.get,
+        ),
+    ).plan
+
+    review = plan["final_duplicate_review"]
+    assert [row["asset_id"] for row in review["removals"]] == ["picture-001"]
+    assert review["scene"]["pairs_compared"] > 0
+    assert "picture-001" not in [c["asset_id"] for c in plan["carriers"]]

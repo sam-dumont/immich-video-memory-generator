@@ -29,6 +29,7 @@ from immich_memories.analysis.editorial_runtime_ports import (
     production_speech_resolver,
     production_story_motion,
 )
+from immich_memories.analysis.editorial_scene_prints import CachedScenePrints, pinned_encoder
 from immich_memories.analysis.editorial_structure_contract import (
     StructurePlannerPorts,
     StructurePlanningInput,
@@ -216,6 +217,14 @@ class ProductionPostCardBackend:
             source.bank_dir.parent / "thumbnail-hashes.sqlite", read_preview
         )
         resources.callback(thumbnail_hasher.close)
+        scene_prints = CachedScenePrints(
+            source.bank_dir.parent / "scene-prints.sqlite",
+            read_preview,
+            open_encoder=pinned_encoder(
+                self._config.triage.encoder_path, self._config.triage.provider
+            ),
+        )
+        resources.callback(scene_prints.close)
         if rules:
             from immich_memories.analysis.editorial_rule_reader import (
                 NoModelJudge,
@@ -225,6 +234,7 @@ class ProductionPostCardBackend:
             return StructurePlannerPorts(
                 judge=NoModelJudge(),
                 thumbnail_hash=thumbnail_hasher,
+                scene_print=scene_prints,
                 thumbnail_metrics=thumbnail_hasher.metrics,
                 rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 0.0),
                 reranker_identity={"model": "rules-v1", "endpoint": "none"},
@@ -256,6 +266,7 @@ class ProductionPostCardBackend:
                 self._config, source.artifact_dir, cache_path=self._store_path
             ),
             thumbnail_hash=thumbnail_hasher,
+            scene_print=scene_prints,
             thumbnail_metrics=thumbnail_hasher.metrics,
             rank=ranker,
             reranker_identity=ranker.identity,

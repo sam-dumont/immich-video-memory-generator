@@ -381,6 +381,25 @@ episode, within the 90-minute window, are compared. Matching hashes or similar c
 unrelated episodes do not buy a model call. Within an episode, a hash distance of at most 10 bits
 can corroborate the same-picture question from step 2.
 
+**The same scene, not only the same frame.** A hash only agrees about one framing. The same path at
+dusk shot twice twenty minutes apart, the same couple's selfie a week later, the same stage filmed
+twice in one evening, or four weekend rides down the same kind of farm road all hash as strangers,
+and a viewer still sees the film say one thing twice. So the free pass also reads each frame's scene
+print: the pooled DINOv2 features of its preview, from the same pinned encoder the public heads
+already run, banked per preview in `scene-prints.sqlite` next to the hash bank. No model call, no
+download beyond the previews the cut already reads. Two frames whose prints agree at a cosine of
+0.65 or more are one scene when they sit within 14 days of each other, across stories. Two
+favourites are one scene only on the same day: across days you starred two moments. A favourite is
+never refused for a picture you did not star, and a frame that plays is never refused for a still.
+The frame that stays follows the same order as below, with a true video before a Live Photo's clip.
+
+A scene repeat is less certain than a hash repeat, so it leaves only when its slot can be spent
+elsewhere: a replacement from its moment or story takes it, or the film still reaches its target
+within the 15 % shortfall it already accepts. A film that is already short of material keeps its
+repeats. Measured on five recorded cells, 0.65 caught every repeat the owner named (0.65 to 0.85)
+and nothing else in the year film; the closest pair of same-day favourites the owner kept as two
+moments sat at 0.63.
+
 Audience-safe replacements must also respect the existing five-minute capture spacing. The gate
 reserves all surviving pictures first, then checks each replacement against those survivors and
 earlier replacements. It skips a conflicting candidate before asking for an audience verdict.

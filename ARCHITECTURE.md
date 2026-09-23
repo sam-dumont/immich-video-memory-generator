@@ -228,7 +228,8 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context; StandingBankFile: the library's standing answers
-│   ├── editorial_final_hash_review.py # The final duplicate review a no-model cut runs, on cached preview hashes
+│   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
+│   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
