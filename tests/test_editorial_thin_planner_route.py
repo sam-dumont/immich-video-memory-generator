@@ -46,7 +46,10 @@ def run(source, judge, *, account):
             rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
             reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             rules=RuleStructureReader(source),
-            thin=ThinPolish(account=account, bank_dir=source.bank_dir),
+            thin=ThinPolish(
+                bank_dir=source.bank_dir,
+                read_period=lambda _stories: (account, {}),
+            ),
         ),
     ).plan
 

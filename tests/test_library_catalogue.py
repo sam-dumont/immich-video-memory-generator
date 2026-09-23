@@ -25,7 +25,7 @@ from immich_memories.store.episode_readings import (
     EpisodeReadingStore,
     EpisodeRepresentative,
 )
-from immich_memories.store.library_catalogue import CatalogueStore
+from immich_memories.store.library_catalogue import CatalogueStore, LibraryAccount
 from immich_memories.store.library_overviews import library_period_account
 
 PRODUCER = "producer-key-a"
@@ -296,3 +296,33 @@ def test_an_episode_the_reader_cannot_read_is_asked_once_across_two_runs(tmp_pat
         )
 
     assert library_period_account(bank, "2024-02")
+
+
+def test_a_cut_s_account_reads_the_facts_of_the_episodes_it_did_not_read(tmp_path) -> None:
+    """The rest of the month is told from what the no-model reader already knows, for free."""
+    bank = tmp_path / "annotations.sqlite"
+    asked = Reader()
+    facts = LibraryAccount("facts-e2", "episode-facts", "2024-02", "a quiet day in the park", ())
+
+    with closing(CatalogueStore(bank)) as store:
+        months = bank_month_accounts(
+            FEBRUARY[:1], store=store, requester=asked, producer="model-a", unread_facts=(facts,)
+        )
+
+    assert len(asked.prompts) == 1
+    assert "a quiet day in the park" in asked.prompts[0]
+    # The account indexes what was read; the facts shape it without joining its children.
+    assert months["2024-02"].children == (FEBRUARY[0].key,)
+
+
+def test_a_reading_of_the_whole_month_replaces_a_cut_s_account_over_facts(tmp_path) -> None:
+    bank = tmp_path / "annotations.sqlite"
+    facts = LibraryAccount("facts-e2", "episode-facts", "2024-02", "a quiet day in the park", ())
+    with closing(CatalogueStore(bank)) as store:
+        bank_month_accounts(
+            FEBRUARY[:1], store=store, requester=Reader(), producer="model-a", unread_facts=(facts,)
+        )
+
+    whole = catalogued(bank, FEBRUARY, Reader())
+
+    assert library_period_account(bank, "2024-02") == whole["2024-02"].account

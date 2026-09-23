@@ -90,11 +90,15 @@ def catalogue_banked_episodes(
     capture_dates: Mapping[str, datetime],
     config: Config,
     requester: Callable[[str], str] | None = None,
+    unread_facts: Sequence[LibraryAccount] = (),
+    with_years: bool = False,
 ) -> dict[str, LibraryAccount]:
-    """Bank the month accounts of readings a run has already paid for.
+    """Bank the month accounts of readings a run has already paid for, by period.
 
-    The identities come from the run's own event pass, so nothing is re-read here and the
-    only request is the account itself -- one per month the readings span.
+    Nothing is re-read here: the only request is the account itself, one per month the
+    readings or the `unread_facts` span. `with_years` also banks each year over those months, for a film of a
+    whole year; a month's film leaves the year alone, so one month's reading never stands
+    in for its year.
     """
     with closing(EpisodeReadingStore(store_path)) as bank:
         readings = bank.readings_for(tuple(identities))
@@ -103,15 +107,18 @@ def catalogue_banked_episodes(
         for reading in readings.values()
         if (taken := _earliest(reading.full_asset_ids, capture_dates)) is not None
     ]
-    if not episodes:
+    if not episodes and not unread_facts:
         return {}
+    options: dict[str, Any] = {
+        "requester": requester or catalogue_requester(config),
+        "producer": semantic_text_model_identity(config.llm, thinking=False),
+        "unread_facts": unread_facts,
+    }
     with closing(CatalogueStore(store_path)) as store:
-        return bank_month_accounts(
-            episodes,
-            store=store,
-            requester=requester or catalogue_requester(config),
-            producer=semantic_text_model_identity(config.llm, thinking=False),
-        )
+        if not with_years:
+            return bank_month_accounts(episodes, store=store, **options)
+        catalogue = build_catalogue(episodes, store=store, **options)
+    return {**catalogue.months, **catalogue.years}
 
 
 def banked_notable_records(

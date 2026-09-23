@@ -510,14 +510,18 @@ the frame you starred wins. Every replacement goes through the same gates and is
 the company of the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
 
-It needs a period the library holds an account of: what the month itself was about, read once off
-the banked episode readings and reused by every later cut of that month. `immich-memories prepare
---year 2024 --month 6 --overviews` writes it ahead of time, month by month. A run over a whole
-calendar month or year that finds none writes its own, from the readings its event pass has just
-paid for, so the layer works without ever having run `prepare --overviews`. Either way it is paid
-for once: the account is keyed by the exact readings it summarises and by the model that wrote
-them, so a second cut of the same month asks nothing. The no-model reader writes no account at all,
-because there is no thesis without a reader.
+It needs a period the library holds an account of: what the month or year itself was about,
+read once and reused by every later cut of it. Nothing is read in advance. The draft is built from
+facts alone, with no model call at all. Then only the episodes the draft's shots sit in are read,
+so a film pays for what it shows: a month cut of 17 shots reads at most 17 episodes, not every
+episode of every story it touched. The account is written from those readings plus what the
+no-model reader already says about every other episode of the period, one request per month (and
+one more over the months, for a film of a whole year). `immich-memories prepare --year 2024 --month
+6 --overviews` reads the whole period ahead of time instead; its account sits over every episode,
+so a film prefers it to one a cut wrote. Either way each reading and each account is paid for
+once: both are keyed by exactly what they summarise and by the model that wrote them, so a second
+cut of the same draft asks nothing. The no-model reader writes no account at all, because there is
+no thesis without a reader.
 
 A span that is not a whole calendar month or year has no account: a film over a fortnight, a trip,
 a person. Those plan the film with the story-first planner exactly as they always have, so a

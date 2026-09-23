@@ -13,6 +13,11 @@ from immich_memories.config_models_llm import LLMConfig
 from immich_memories.timeperiod import DateRange
 
 
+def period(account):
+    """What reading this period returns, stated by the test instead of paid for."""
+    return lambda _stories: (account, {})
+
+
 class FitJudge:
     def __init__(self) -> None:
         self.config = SimpleNamespace(llm=LLMConfig(model="model-a"))
@@ -79,7 +84,7 @@ def run(polish, carriers, judge, lines, *, gates=None, record=lambda _n, _p: Non
         carriers,
         judge=judge,
         gates=gates or ThinGates(Standing(), Audience(), thumbnail_hash=lambda _a: None),
-        catalogue=polish.catalogue_of(STORY, MOMENTS),
+        catalogue=polish.catalogue_of(STORY, MOMENTS, drafted=carriers),
         contract="contract",
         line_of=lines.get,
         record=record,
@@ -88,7 +93,7 @@ def run(polish, carriers, judge, lines, *, gates=None, record=lambda _n, _p: Non
 
 def test_a_period_the_library_has_no_account_of_is_not_polished(tmp_path):
     judge = FitJudge()
-    polish = ThinPolish(account="", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period(""))
     cut = [carrier("a1", "S001"), carrier("a2", "S002")]
     assert run(polish, cut, judge, {"a1": "filler", "a2": "the afternoon"}) == cut
     assert judge.calls == []
@@ -96,7 +101,7 @@ def test_a_period_the_library_has_no_account_of_is_not_polished(tmp_path):
 
 def test_only_the_shot_the_vote_named_leaves_the_cut(tmp_path):
     judge = FitJudge()
-    polish = ThinPolish(account="the month a family moved", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
     cut = [carrier("a1", "S001"), carrier("a2", "S002"), carrier("a3", "S002")]
     kept = run(polish, cut, judge, {"a1": "filler", "a2": "the afternoon", "a3": "the evening"})
     assert [c["asset_id"] for c in kept] == ["a2", "a3"]
@@ -104,7 +109,7 @@ def test_only_the_shot_the_vote_named_leaves_the_cut(tmp_path):
 
 def test_a_starred_shot_the_vote_named_keeps_its_place(tmp_path):
     judge = FitJudge()
-    polish = ThinPolish(account="the month a family moved", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
     cut = [carrier("a1", "S001", favourite=True), carrier("a2", "S002")]
     kept = run(polish, cut, judge, {"a1": "filler", "a2": "the afternoon"})
     assert [c["asset_id"] for c in kept] == ["a1", "a2"]
@@ -112,7 +117,7 @@ def test_a_starred_shot_the_vote_named_keeps_its_place(tmp_path):
 
 def test_a_shot_the_gates_refuse_never_reaches_the_vote(tmp_path):
     judge = FitJudge()
-    polish = ThinPolish(account="the month a family moved", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
     written: dict[str, dict] = {}
     cut = [carrier("a1", "S001"), carrier("a2", "S002")]
     kept = run(
@@ -132,7 +137,7 @@ def test_a_shot_the_gates_refuse_never_reaches_the_vote(tmp_path):
 
 def test_the_polish_records_what_it_asked_and_what_it_held(tmp_path):
     judge = FitJudge()
-    polish = ThinPolish(account="the month a family moved", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
     written: dict[str, dict] = {}
     cut = [carrier("a1", "S001", favourite=True), carrier("a2", "S002")]
     run(
@@ -150,7 +155,7 @@ def test_the_polish_records_what_it_asked_and_what_it_held(tmp_path):
 
 
 def test_a_second_run_over_the_same_bank_asks_the_model_nothing(tmp_path):
-    polish = ThinPolish(account="the month a family moved", bank_dir=tmp_path)
+    polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
     cut = [carrier("a1", "S001"), carrier("a2", "S002")]
     lines = {"a1": "filler", "a2": "the afternoon"}
     first = FitJudge()
@@ -162,7 +167,9 @@ def test_a_second_run_over_the_same_bank_asks_the_model_nothing(tmp_path):
 
 
 def test_story_membership_follows_the_episodes_own_moments(tmp_path):
-    catalogue = ThinPolish(account="an account", bank_dir=tmp_path).catalogue_of(STORY, MOMENTS)
+    catalogue = ThinPolish(bank_dir=tmp_path, read_period=period("an account")).catalogue_of(
+        STORY, MOMENTS, drafted=[]
+    )
     assert catalogue is not None
     assert {story.key: story.asset_ids for story in catalogue.stories} == {
         "S001": ("a1",),

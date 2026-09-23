@@ -15,8 +15,11 @@ logger = logging.getLogger(__name__)
 
 _QUERY = (
     "SELECT node_key, kind, account, children FROM library_overviews "
-    "WHERE period = ? AND kind IN ('month', 'month-part')"
+    "WHERE period = ? AND kind IN ('month', 'month-part', 'year', 'year-part')"
 )
+
+# A month's key is "2024-02" and a year's "2024", so one period never holds both kinds.
+_WHOLE = frozenset({"month", "year"})
 
 
 def library_period_account(db_path: Path, period: str) -> str:
@@ -27,10 +30,10 @@ def library_period_account(db_path: Path, period: str) -> str:
     key order, which is the only order the table records between them.
     """
     rows = _rows(db_path, period)
-    whole = [(key, account, children) for key, kind, account, children in rows if kind == "month"]
+    whole = [(key, account, children) for key, kind, account, children in rows if kind in _WHOLE]
     if whole:
         return max(whole, key=lambda row: (len(row[2]), len(row[1]), row[0]))[1]
-    parts = sorted(row for row in rows if row[1] == "month-part")
+    parts = sorted(row for row in rows if row[1] not in _WHOLE)
     return "\n\n".join(account for _key, _kind, account, _children in parts)
 
 

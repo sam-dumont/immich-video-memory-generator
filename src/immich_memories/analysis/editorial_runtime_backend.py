@@ -7,6 +7,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import replace
+from hashlib import sha256
 from itertools import chain
 from operator import itemgetter
 from pathlib import Path
@@ -37,11 +38,12 @@ from immich_memories.analysis.editorial_structure_io import StructureReranker, S
 from immich_memories.analysis.editorial_structure_source import capture_structure_input
 from immich_memories.analysis.editorial_thin_layer import ThinPolish, catalogued_period
 from immich_memories.analysis.editorial_thumbnail_hashes import CachedThumbnailHasher
+from immich_memories.analysis.episode_demand import DemandEpisodeReadings
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.security import write_secret_file
-from immich_memories.store.episode_readings import EpisodeReadingIdentity
+from immich_memories.store.library_catalogue import LibraryAccount
 from immich_memories.store.library_overviews import library_period_account
 
 if TYPE_CHECKING:
@@ -66,7 +68,9 @@ class ProductionPostCardBackend:
         ports: EditorialRuntimePorts,
         fetch_preview: Callable[[str], bytes | None] | None = None,
         attached_sources: Callable[[], Sequence[Asset | VideoClipInfo]] | None = None,
+        episode_demand: DemandEpisodeReadings | None = None,
     ) -> None:
+        self._episode_demand = episode_demand
         self._fetch_preview = fetch_preview
         self._attached_sources = attached_sources
         self._config = config
@@ -284,57 +288,71 @@ class ProductionPostCardBackend:
     def _thin_polish(self, source: StructurePlanningInput) -> dict[str, Any]:
         """Build the draft with the no-model reader and let the model polish it, when asked.
 
-        Only for a period the library holds an account of. `prepare --overviews` banks one
-        ahead of time; a run that finds none banks it here from the readings its own event
-        pass has just paid for, so a library nobody catalogued still gets the layer.
+        Nothing is read here. The draft is built from facts alone, and the period is read when
+        the layer asks for its account -- by then the draft has chosen its stories, and only
+        those stories' episodes are ever read.
         """
         if not self._config.editorial.thin_model_layer or source.store_path is None:
             return {}
         period = catalogued_period(source.case.ranges)
-        if not period:
+        config = self._config
+        if not period or config.editorial.resolve_reader(config.llm.model) == "rules":
             return {}
-        identities = _episode_identities(source.lineage)
-        account = library_period_account(source.store_path, period)
-        if not account:
-            self._bank_period_account(source, identities)
-            account = library_period_account(source.store_path, period)
-        if not account:
-            return {}
-        from immich_memories.analysis.catalogue_runtime import banked_notable_records
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
         return {
             "rules": RuleStructureReader(source),
             "thin": ThinPolish(
-                account=account,
                 bank_dir=source.bank_dir,
-                records=banked_notable_records(identities, store_path=source.store_path),
+                read_period=lambda asset_ids_of: self._read_period(source, period, asset_ids_of),
             ),
         }
 
-    def _bank_period_account(self, source: StructurePlanningInput, identities) -> None:
-        """Write the account this period has never had, from this run's own readings.
+    def _read_period(
+        self, source: StructurePlanningInput, period: str, asset_ids_of: Mapping[str, Sequence[str]]
+    ) -> tuple[str, Mapping[str, str]]:
+        """The account of this period and its records, read from the episodes of the draft's shots.
 
-        The no-model reader writes nothing: there is no thesis without a reader, and the
-        layer is meant to fall back for it. A failure here is not a failed film -- the run
-        simply plans the way it always has.
+        A failure here is not a failed film: with no account the layer does not run and the
+        run plans the way it always has.
         """
-        from immich_memories.analysis.catalogue_runtime import catalogue_banked_episodes
-
-        config = self._config
-        if not identities or config.editorial.resolve_reader(config.llm.model) == "rules":
-            return
-        assert source.store_path is not None
         try:
+            return self._demanded_period(source, period, asset_ids_of)
+        except (OSError, ValueError, RuntimeError) as exc:
+            logger.warning("Could not read an account of this period (%s); planning as before", exc)
+            return "", {}
+
+    def _demanded_period(
+        self, source: StructurePlanningInput, period: str, asset_ids_of: Mapping[str, Sequence[str]]
+    ) -> tuple[str, Mapping[str, str]]:
+        from immich_memories.analysis.catalogue_runtime import (
+            banked_notable_records,
+            catalogue_banked_episodes,
+        )
+
+        assert source.store_path is not None
+        readings = self._demand_readings(asset_ids_of)
+        identities = [reading.identity for reading in readings.values()]
+        account = library_period_account(source.store_path, period)
+        facts = _unread_facts(source, set(readings))
+        if not account and (identities or facts):
             catalogue_banked_episodes(
                 identities,
                 store_path=source.store_path,
                 capture_dates={key: asset.file_created_at for key, asset in source.assets.items()},
-                config=config,
-                requester=self._ports.catalogue_requester_factory(config),
+                config=self._config,
+                requester=self._ports.catalogue_requester_factory(self._config),
+                unread_facts=facts,
+                with_years=len(period) == 4,
             )
-        except (OSError, ValueError, RuntimeError) as exc:
-            logger.warning("Could not bank an account of this period (%s); planning as before", exc)
+            account = library_period_account(source.store_path, period)
+        return account, banked_notable_records(identities, store_path=source.store_path)
+
+    def _demand_readings(self, asset_ids_of: Mapping[str, Sequence[str]]) -> dict[str, Any]:
+        """Read the episodes the draft's shots sit in, and nothing else."""
+        if self._episode_demand is None:
+            return {}
+        return self._episode_demand.readings_for(list(chain.from_iterable(asset_ids_of.values())))
 
     def _adopt(
         self, result: StructurePlanningResult, artifact_dir: Path, allowed_ids: set[str]
@@ -351,16 +369,33 @@ class ProductionPostCardBackend:
         return plan
 
 
-def _episode_identities(lineage: Mapping[str, Any]) -> list[EpisodeReadingIdentity]:
-    """The readings this run's own event pass produced, as the bank keys them."""
-    return [
-        EpisodeReadingIdentity(
-            group_id=str(row["group_id"]),
-            producer_key=str(row["producer_key"]),
-            evidence_key=str(row["evidence_key"]),
+def _unread_facts(source: StructurePlanningInput, read: set[str]) -> list[LibraryAccount]:
+    """What the draft's own cards say about each episode this cut did not read.
+
+    The no-model reader wrote them to build the draft, so passing them on costs nothing, and
+    the account then speaks for the whole period rather than for the shots alone.
+    """
+    cards = {card.episode_id: card for card in source.episode_readings.values()}
+    facts = []
+    for episode_id, card in sorted(cards.items()):
+        dates = [
+            source.assets[asset].file_created_at
+            for asset in card.representative_asset_ids
+            if asset in source.assets
+        ]
+        if episode_id in read or not dates or not card.what_happened.strip():
+            continue
+        material = f"{episode_id}\n{card.evidence_key}\n{card.what_happened}"
+        facts.append(
+            LibraryAccount(
+                sha256(material.encode()).hexdigest(),
+                "episode-facts",
+                min(dates).strftime("%Y-%m"),
+                card.what_happened,
+                (),
+            )
         )
-        for row in lineage.get("episode_readings") or ()
-    ]
+    return facts
 
 
 def _moment_members(source: StructurePlanningInput) -> set[str]:

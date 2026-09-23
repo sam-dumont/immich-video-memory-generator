@@ -15,7 +15,7 @@ from __future__ import annotations
 import calendar
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from operator import itemgetter
 from pathlib import Path
 from typing import Any
@@ -54,28 +54,42 @@ def catalogued_period(ranges: Sequence[Any]) -> str:
 
 @dataclass(frozen=True)
 class ThinPolish:
-    """The model polish of a rules draft, for a period the library holds an account of."""
+    """The model polish of a rules draft, over an account of the period it is a cut of."""
 
-    account: str
     bank_dir: Path
-    # What the period's own episode readings named as worth a record, by picture. A picture
-    # carrying one keeps its place whatever the vote says, and a story holding one the cut
-    # never gave a voice is the first seat the refill offers.
-    records: Mapping[str, str] = field(default_factory=dict)
+    # The account of the period, and what its readings named as worth a record, given the
+    # shots this draft chose, by story. Both arrive together, because both come from the same
+    # readings and neither is worth paying for before the draft exists.
+    read_period: Callable[[Mapping[str, Sequence[str]]], tuple[str, Mapping[str, str]]] = (
+        lambda _stories: ("", {})
+    )
 
     def catalogue_of(
         self,
         story,
         moment_assets: Mapping[str, Sequence[str]],
         records: Mapping[str, str] | None = None,
+        *,
+        drafted: Sequence[Mapping[str, Any]],
     ) -> BankedCatalogue | None:
-        """The catalogued period behind this run's own story reading, or None for no account."""
+        """The catalogued period behind this run's own story reading, or None for no account.
+
+        Every story of the period is listed, because the layer needs to know what the period
+        holds. Only the draft's own shots are READ, by the episode each one sits in: the
+        account is the thesis of THIS cut. A story is not the unit here, because one story can
+        hold most of a month: on one measured month the longest story spanned 10 episodes to
+        give the film 5 shots, and reading every story the draft touched read 44 of the
+        month's 50 episodes. The rest of the period is filled in later, by `prepare
+        --overviews` or by another cut.
+        """
+        asset_ids_of = _story_asset_ids(story.episodes, story.stories, moment_assets)
+        account, banked_records = self.read_period(_drafted_shots(asset_ids_of, drafted))
         return banked_catalogue(
-            account=self.account,
+            account=account,
             story_rows=story.stories,
             hints=story.audit.get("hints") or {},
-            asset_ids_of=_story_asset_ids(story.episodes, story.stories, moment_assets),
-            records=self.records if records is None else records,
+            asset_ids_of=asset_ids_of,
+            records=banked_records if records is None else records,
         )
 
     def polish(
@@ -224,6 +238,15 @@ class ThinPolish:
             bank=bank,
             save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
+
+
+def _drafted_shots(
+    asset_ids_of: Mapping[str, Sequence[str]], drafted: Sequence[Mapping[str, Any]]
+) -> dict[str, list[str]]:
+    """The draft's shots, by the story each one belongs to. No draft reads nothing."""
+    shots = {row["asset_id"] for row in drafted}
+    chosen = {key: [a for a in assets if a in shots] for key, assets in asset_ids_of.items()}
+    return {key: assets for key, assets in chosen.items() if assets}
 
 
 def _refusal_row(refusal: GateRefusal) -> dict[str, str]:

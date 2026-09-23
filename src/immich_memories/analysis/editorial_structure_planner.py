@@ -783,7 +783,7 @@ def _thin_polish(
             thumbnail_hash=ports.thumbnail_hash,
             audience_name=source.audience,
         ),
-        catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets),
+        catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets, drafted=carriers),
         contract=contract,
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         record=record,

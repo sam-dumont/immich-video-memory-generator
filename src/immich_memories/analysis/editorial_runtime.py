@@ -40,6 +40,8 @@ from immich_memories.analysis.editorial_text_gateway import (
     SyncTextPromptRequester,
     semantic_text_model_identity,
 )
+from immich_memories.analysis.editorial_thin_layer import catalogued_period
+from immich_memories.analysis.episode_demand import demand_reader_factory
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -677,10 +679,11 @@ def build_editorial_planner(
         record=lambda index: record_album_index(index, backend._context.artifact_dir),
     )
 
-    def episode_reader_factory(prepared: Any) -> EpisodeReader:
+    def rule_episode_reader(prepared: Any) -> EpisodeReader:
+        return RuleEpisodeReader(readings.reader(prepared), by_quality=True)
+
+    def text_episode_reader(prepared: Any) -> EpisodeReader:
         annotations = readings.reader(prepared)
-        if reader_mode == "rules":
-            return RuleEpisodeReader(annotations, by_quality=True)
         assert episode_requester is not None
         contract = annotations.contract
         producer = EpisodeReadingProducer(
@@ -701,6 +704,14 @@ def build_editorial_planner(
             albums=album_names,
         )
 
+    episode_reader_factory, demand = demand_reader_factory(
+        rule_episode_reader,
+        text_episode_reader,
+        mode=reader_mode,
+        on_demand=config.editorial.thin_model_layer
+        and bool(catalogued_period(context.date_ranges)),
+    )
+
     backend = ProductionPostCardBackend(
         config=config,
         context=context,
@@ -710,6 +721,7 @@ def build_editorial_planner(
         ports=runtime_ports,
         fetch_preview=lambda asset_id: runtime_ports.fetch_preview(client, asset_id),
         attached_sources=lambda: source_snapshot or (),
+        episode_demand=demand,
     )
 
     def attempt_directory() -> Path:

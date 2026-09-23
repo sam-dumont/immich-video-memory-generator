@@ -13,6 +13,7 @@ from immich_memories.analysis.editorial_thin_gates import ThinGates
 from immich_memories.analysis.editorial_thin_layer import ThinPolish
 from immich_memories.config_models_llm import LLMConfig
 
+ACCOUNT = "The month a family found its feet."
 JUNK = "an empty worktop"
 DOUBTED = "a plain corridor"
 UNSTEADY = "a blurred wall"
@@ -149,12 +150,12 @@ def polish_once(tmp_path, judge, standing_bank=None):
         save=None,
         calls={"standing_rounds": 0},
     )
-    layer = ThinPolish(account="The month a family found its feet.", bank_dir=tmp_path)
+    layer = ThinPolish(bank_dir=tmp_path, read_period=lambda _stories: (ACCOUNT, {}))
     return layer.polish(
         DRAFT,
         judge=judge,
         gates=ThinGates(standing=standing, audience=Audience(), thumbnail_hash=lambda _a: None),
-        catalogue=layer.catalogue_of(STORY, MOMENTS, {"n1": "the first of them"}),
+        catalogue=layer.catalogue_of(STORY, MOMENTS, {"n1": "the first of them"}, drafted=DRAFT),
         contract="contract",
         line_of=LINES.get,
         record=lambda _name, _payload: None,
@@ -248,17 +249,14 @@ def test_a_story_the_bank_records_something_about_is_seated_from_the_bank(tmp_pa
         save=None,
         calls={"standing_rounds": 0},
     )
-    layer = ThinPolish(
-        account="The month a family found its feet.",
-        bank_dir=tmp_path,
-        records=banked_records(tmp_path),
-    )
+    records = banked_records(tmp_path)
+    layer = ThinPolish(bank_dir=tmp_path, read_period=lambda _stories: (ACCOUNT, records))
 
     cut = layer.polish(
         DRAFT,
         judge=judge,
         gates=ThinGates(standing=standing, audience=Audience(), thumbnail_hash=lambda _a: None),
-        catalogue=layer.catalogue_of(STORY, MOMENTS),
+        catalogue=layer.catalogue_of(STORY, MOMENTS, drafted=DRAFT),
         contract="contract",
         line_of=LINES.get,
         record=lambda _name, _payload: None,

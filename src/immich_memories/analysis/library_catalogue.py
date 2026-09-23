@@ -90,19 +90,30 @@ def bank_month_accounts(
     requester: Callable[[str], str],
     producer: str,
     max_prompt_chars: int = 24_000,
+    unread_facts: Sequence[LibraryAccount] = (),
 ) -> dict[str, LibraryAccount]:
     """Bank one account per calendar month these episodes fall in, and return them.
 
     Only an account the bank does not already hold is asked for, so a second call over the same
     readings and the same producer makes no request at all. This is what a film reads back.
+
+    `unread_facts` is what the no-model reader already says about the episodes nobody read: a cut
+    reads only the episodes its shots sit in, and the rest of its month is told from those
+    facts, for free. They shape the account and its key, never its child index, so the
+    account `prepare --overviews` writes over every reading has more children, and a film
+    reads that one instead.
     """
     leaves = _leaves(events, producer=producer, max_prompt_chars=max_prompt_chars)
     bank = _AccountBuilder(store, requester, producer, max_prompt_chars)
+    periods = sorted({event.period for event in leaves} | {fact.period for fact in unread_facts})
     return {
         period: bank.parent(
-            "month", period, [e.overview_leaf() for e in leaves if e.period == period]
+            "month",
+            period,
+            [e.overview_leaf() for e in leaves if e.period == period],
+            facts=[fact for fact in unread_facts if fact.period == period],
         )
-        for period in sorted({event.period for event in leaves})
+        for period in periods
     }
 
 
@@ -113,6 +124,7 @@ def build_catalogue(
     requester: Callable[[str], str],
     producer: str,
     max_prompt_chars: int = 24_000,
+    unread_facts: Sequence[LibraryAccount] = (),
 ) -> LibraryCatalogue:
     """The whole navigation a library scope earns: its month accounts and a year over them."""
     months = bank_month_accounts(
@@ -121,6 +133,7 @@ def build_catalogue(
         requester=requester,
         producer=producer,
         max_prompt_chars=max_prompt_chars,
+        unread_facts=unread_facts,
     )
     bank = _AccountBuilder(store, requester, producer, max_prompt_chars)
     years = {
@@ -152,15 +165,17 @@ class _AccountBuilder:
         # Reserve the exact-key contract repeated above each batch, including repairs.
         self.max_prompt_chars = max_prompt_chars - 1000
 
-    def parent(self, kind, period, children):
+    def parent(self, kind, period, children, facts=()):
         members = tuple(node.key for node in children)
         rows = [{"key": n.key, "account": n.account, "period": n.period} for n in children]
+        rows += [{"key": f.key, "facts": f.account, "period": f.period} for f in facts]
         # Parts are transport nodes, not admission decisions. Every child survives.
         while len(_encode(rows)) + len(_OVERVIEW_INSTRUCTIONS) + 250 > self.max_prompt_chars:
             rows = self._parts(kind, period, rows)
         spec = self.spec(kind, period, rows, members)
         if len(rows) == 1:
-            return self._copied(spec[0]["key"], kind, period, rows[0]["account"], members)
+            lone = rows[0].get("account") or rows[0]["facts"]
+            return self._copied(spec[0]["key"], kind, period, lone, members)
         return self.read_many([spec])[0]
 
     def _parts(self, kind, period, rows):
@@ -187,7 +202,14 @@ class _AccountBuilder:
 
     def spec(self, kind, period, content, children):
         material = json.dumps(
-            [_OVERVIEW_VERSION, _OVERVIEW_INSTRUCTIONS, self.producer, kind, period, content],
+            [
+                _OVERVIEW_VERSION,
+                _OVERVIEW_INSTRUCTIONS,
+                self.producer,
+                kind,
+                period,
+                content,
+            ],
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),

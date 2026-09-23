@@ -234,9 +234,12 @@ src/immich_memories/
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
 │   ├── editorial_thin_refill.py    # Which seats open, and the transaction that fills one
 │   ├── library_catalogue.py    # The account of a month/year, written over banked episode readings
-│   │                           # and keyed by them plus the model that wrote them
+│   │                           # (plus the no-model facts of episodes a cut did not read), keyed by
+│   │                           # them plus the model that wrote them
 │   ├── catalogue_runtime.py    # Who writes one: `prepare --overviews` over a window, and a film run
-│   │                           # over a month the library has no account of yet
+│   │                           # over a month or year the library has no account of yet
+│   ├── episode_demand.py      # The draft reads the period from facts; only the episodes its shots
+│   │                          # sit in are read by the model, when the polish layer asks for the account
 │   ├── editorial_home_radius.py    # Where home is, and whether captures sit inside its radius
 │   ├── editorial_shareability_tiers.py  # Audience evidence policy for reduced preparation tiers
 │   ├── editorial_review_list.py    # The finished cut's shots in the detector's 0.2-0.5 grey zone that
