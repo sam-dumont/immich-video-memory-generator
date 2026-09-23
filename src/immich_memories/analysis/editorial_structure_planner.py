@@ -760,6 +760,7 @@ def _thin_polish(
         candidates_of=story_candidates(selection, wall, pool, material.units),
         content_cap=run.final_content_cap,
         protected=source.owner_required_asset_ids,
+        subject=source.intent.subject or "",
     )
 
 

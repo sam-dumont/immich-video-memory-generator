@@ -238,6 +238,7 @@ src/immich_memories/
 │   ├── editorial_thin_gates.py     # Every draft shot put to standing, audience, spacing and the hash review
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
 │   │                               # source order first, the hashed order only where it decides
+│   │                               # rows carry close family relations; a relative's only shot is held
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
 │   │                               # meet the gates, and a refused pick is picked once more

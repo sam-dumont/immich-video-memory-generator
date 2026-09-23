@@ -540,7 +540,11 @@ answers flip with the order of the rows at about half the named set, so one orde
 a verdict. A shot both orders name leaves; a shot one order names is offered a replacement from
 its own story and keeps its place until one passes. A picture you starred, or one the period's
 readings recorded as worth a record, keeps its place whatever the vote said; only a gate takes it
-out, and a block made only of such pictures is not asked at all.
+out, and a block made only of such pictures is not asked at all. The same holds for the only shot
+of a close family member (your partner, a child, a parent, from `people.yaml`): the vote cannot
+remove the one shot that puts them in the film. The vote is told whose film it is and who the film
+is about, and each shot carries its people's relation to you, so a partner in a month about a
+newborn is not read as "unrelated to the main subject".
 
 Before the vote, every shot of the draft faces the gates a model install can ask: the standing
 gate, the family-viewing gate, the five-minute capture spacing and the cached-hash duplicate
