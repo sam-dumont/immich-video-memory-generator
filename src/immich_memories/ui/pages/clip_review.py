@@ -469,7 +469,7 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
             if asset_id in state.selected_clip_ids
         )
 
-    target_duration = state.target_duration * 60
+    target_duration = state.target_duration_seconds
 
     summary_container = ui.row().classes("w-full gap-4 mb-2")
 

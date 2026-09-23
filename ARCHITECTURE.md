@@ -521,7 +521,7 @@ src/immich_memories/
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
 │
 ├── planning/                   # Media-aware duration planning
-│   └── auto_duration.py        # resolve_trip_auto_duration(): trip auto-duration heuristics
+│   └── auto_duration.py        # decide_memory_duration(): Auto length fitted to discovered media, CLI and UI
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic

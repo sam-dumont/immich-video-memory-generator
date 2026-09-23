@@ -34,16 +34,6 @@ _TRIP_CURVE_TYPES = ("trip", "album")
 
 
 @dataclass(frozen=True, slots=True)
-class AutoDurationResult:
-    """Resolved automatic runtime and the evidence used to choose it."""
-
-    total_seconds: float
-    active_days: int
-    editorial_seconds: float
-    diverse_capacity_seconds: float
-
-
-@dataclass(frozen=True, slots=True)
 class DurationDecision:
     """How long a film runs, and what decided it.
 
@@ -163,38 +153,6 @@ class _Material:
                 self.video_seconds_by_day[day] + photo_seconds,
             )
         return content + title_seconds
-
-
-def resolve_trip_auto_duration(
-    clips: Sequence[VideoClipInfo],
-    photos: Sequence[Asset],
-    *,
-    avg_clip_duration: float,
-    photo_duration: float,
-    title_duration: float,
-    ending_duration: float,
-) -> AutoDurationResult:
-    """Resolve a trip runtime from active days and diverse usable excerpts.
-
-    The editorial curve stays intentionally modest. Capacity is computed from
-    final excerpt lengths, not raw source lengths, and one dense day cannot
-    inflate the recommendation beyond thirty seconds.
-    """
-    material = _Material.of(clips, photos, clip_limit=max(0.0, avg_clip_duration))
-    if material.photographed_days == 0:
-        return AutoDurationResult(0.0, 0, 0.0, 0.0)
-
-    editorial_seconds = trip_editorial_duration_seconds(material.photographed_days)
-    capacity_seconds = material.diverse_capacity_seconds(
-        still_duration=max(0.0, photo_duration),
-        title_seconds=max(0.0, title_duration) + max(0.0, ending_duration),
-    )
-    return AutoDurationResult(
-        total_seconds=_rounded_down(min(editorial_seconds, capacity_seconds)),
-        active_days=material.photographed_days,
-        editorial_seconds=editorial_seconds,
-        diverse_capacity_seconds=capacity_seconds,
-    )
 
 
 def decide_memory_duration(
