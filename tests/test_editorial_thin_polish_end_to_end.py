@@ -137,7 +137,7 @@ MOMENTS = {
 }
 
 
-def polish_once(tmp_path, judge):
+def polish_once(tmp_path, judge, standing_bank=None):
     unit_by_asset = {row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows}
     standing = StandingGate(
         judge,
@@ -145,7 +145,7 @@ def polish_once(tmp_path, judge):
         life=lambda _asset: True,
         unit_by_asset=unit_by_asset,
         pictures_of={"S1": 3, "S2": 3, "S3": 3},
-        bank={},
+        bank={} if standing_bank is None else standing_bank,
         save=None,
         calls={"standing_rounds": 0},
     )
@@ -267,3 +267,42 @@ def test_a_story_the_bank_records_something_about_is_seated_from_the_bank(tmp_pa
     )
 
     assert "n1" in [row["asset_id"] for row in cut]
+
+
+def test_every_vote_including_the_newcomers_re_check_is_banked_for_the_next_run(tmp_path):
+    """The re-check over a refilled cut is a paid answer like any other, so it is read back.
+
+    Both runs get their own judge with an empty bank of its own, so the only thing that can
+    keep the second one from voting again is the layer's own `thesis-fit.private.json`. The
+    picks that remain are the judgment cache's to answer, which production keeps in SQLite and
+    this fixture's judge stands in for.
+    """
+    standing = {}
+    cold = polish_once(tmp_path, PolishJudge(), standing_bank=standing)
+    second = PolishJudge()
+
+    warm = polish_once(tmp_path, second, standing_bank=standing)
+
+    assert [stage for stage in second.calls if stage.startswith("thesis-fit-")] == []
+    assert [row["asset_id"] for row in warm] == [row["asset_id"] for row in cold]
+
+
+def test_a_shot_is_never_voted_on_alone_when_the_bank_holds_its_neighbours(tmp_path):
+    """A reject-only vote names whatever it is shown when it has nothing to compare against."""
+    asked = []
+
+    class Watching(PolishJudge):
+        def ask(self, stage, prompt, max_tokens=260, **options):
+            if stage.startswith("thesis-fit-"):
+                asked.append(prompt.count("\nP"))
+            return super().ask(stage, prompt, max_tokens, **options)
+
+    standing = {}
+    polish_once(tmp_path, Watching(), standing_bank=standing)
+    first_round = list(asked)
+    asked.clear()
+
+    polish_once(tmp_path, Watching(), standing_bank=standing)
+
+    assert first_round and min(first_round) > 1
+    assert asked == []

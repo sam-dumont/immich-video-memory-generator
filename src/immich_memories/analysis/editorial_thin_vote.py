@@ -61,8 +61,14 @@ def judge_thesis_fit(
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Does each shot earn its place in THIS film? Named by both orders is a firm no.
 
-    The thesis sits inside the question and therefore inside every row's bank key, so a film
+    The thesis sits inside the question and therefore inside the block's bank key, so a film
     built on a different account of the period never replays these answers.
+
+    Banked by the block, never by the row. This vote judges a shot against the company it is
+    actually in, so a row's verdict cannot be lifted out of that company: with row reuse a
+    second run re-packs only the rows the bank does not hold, and a leftover row is then asked
+    on its own -- which a reject-only vote answers by naming it. Measured on June 2023, where
+    the second run asked one shot alone and moved two of the film's ten.
     """
     label_of = {asset: f"P{number + 1:02d}" for number, asset in enumerate(pictures)}
 
@@ -81,7 +87,6 @@ def judge_thesis_fit(
         # chronological order; the story alias is added so a repeat of a neighbour is visible.
         return f"{label_of[asset]}: [{story_of(asset) or '-'}] {line_of(asset)}"
 
-    question = THESIS_FIT_VERSION + "|" + prompt_of("") + "|"
     votes, rounds = vote_blocks(
         judge,
         stage="thesis-fit",
@@ -96,7 +101,6 @@ def judge_thesis_fit(
         bank=bank,
         save=save,
         max_tokens=700,
-        row_key=lambda asset: hashlib.sha256((question + row_of(asset)).encode()).hexdigest(),
         rows_version=THESIS_FIT_VERSION,
     )
     if any(record["envelope"] in {"failed", "unreadable"} for record in rounds):

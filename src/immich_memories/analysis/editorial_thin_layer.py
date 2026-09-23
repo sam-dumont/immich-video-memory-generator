@@ -163,15 +163,16 @@ class ThinPolish:
     ) -> tuple[list[dict[str, Any]], set[str]]:
         """Every newcomer, judged again in the company of the whole cut it would join.
 
-        The check is unbanked, so a newcomer is never the only row in its block and its verdict
-        is cast against the film it would actually be part of. A revoked newcomer does not take
-        the shot it replaced with it: that shot comes back and the film is where it started.
+        Banked by the block, never by the row: the answer to this exact cut, asked in both
+        orders, replays whole on a second run, and a newcomer is still never the only row left
+        to ask. A revoked newcomer does not take the shot it replaced with it: that shot comes
+        back and the film is where it started.
         """
         held = {row["asset_id"] for row in before}
         fresh = [row for row in filled if row["asset_id"] not in held]
         if not fresh:
             return filled, set()
-        votes, _rounds = self._ask(filled, judge, catalogue, contract, line_of, bank=None)
+        votes, _rounds = self._ask(filled, judge, catalogue, contract, line_of)
         verdicts = classify_fit(fresh, votes)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
@@ -195,15 +196,21 @@ class ThinPolish:
         contract: str,
         line_of: Callable[[str], str],
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
-        bank_path = self.bank_dir / "thesis-fit.private.json"
-        bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
-        votes, rounds = self._ask(carriers, judge, catalogue, contract, line_of, bank=bank)
+        votes, rounds = self._ask(carriers, judge, catalogue, contract, line_of)
         verdicts = classify_fit(carriers, votes)
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
         return kept, verdicts, rounds
 
-    def _ask(self, carriers, judge, catalogue, contract, line_of, *, bank):
-        bank_path = self.bank_dir / "thesis-fit.private.json"
+    def _bank(self) -> dict:
+        """Both votes read and write one file, so neither is paid for twice."""
+        path = self._bank_path()
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def _bank_path(self) -> Path:
+        return self.bank_dir / "thesis-fit.private.json"
+
+    def _ask(self, carriers, judge, catalogue, contract, line_of):
+        bank = self._bank()
         story_of = {
             asset: story.key for story in catalogue.stories for asset in story.asset_ids
         }.get
@@ -215,9 +222,7 @@ class ThinPolish:
             contract=contract,
             story_of=lambda asset: story_of(asset, "") or "",
             bank=bank,
-            save=None
-            if bank is None
-            else (lambda: write_secret_file(bank_path, json.dumps(bank, indent=1))),
+            save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
 
 
