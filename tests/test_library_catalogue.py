@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import closing
 from datetime import UTC, datetime
 
@@ -68,6 +69,30 @@ def episode(group: str, assets: tuple[str, ...], *, evidence: str = "v1") -> Lib
 
 
 FEBRUARY = (episode("e1", ("a1", "a2")), episode("e2", ("b1",)))
+
+
+def _two_episodes():
+    """Two canonical episodes of February, with complete annotation lines for both."""
+    from immich_memories.analysis.selection_source import (
+        EditorialDependencies,
+        EditorialSelectionRequest,
+        SourceScope,
+        prepare_editorial_source,
+    )
+    from immich_memories.analysis.selection_source_groups import project_episode_groups
+    from tests.conftest import make_asset
+    from tests.test_text_episode_reader import _AnnotationLines
+
+    prepared = prepare_editorial_source(
+        EditorialSelectionRequest(scope=SourceScope()),
+        EditorialDependencies(
+            source_fetcher=lambda _scope: tuple(
+                make_asset(asset, file_created_at=DATES[asset]) for asset in ("a1", "b1")
+            )
+        ),
+    )
+    lines = _AnnotationLines({asset: f"{asset} | one complete line" for asset in ("a1", "b1")})
+    return prepared, project_episode_groups(prepared, prepared.candidate_ids), lines
 
 
 def catalogued(bank, events, asked, *, producer: str = "model-a") -> dict:
@@ -196,3 +221,78 @@ def test_the_no_model_reader_writes_no_account(tmp_path) -> None:
         )
 
     assert library_period_account(bank, "2024-02") == ""
+
+
+class OneEpisodeRefuses:
+    """A reader that answers every episode but one, and counts what it was asked."""
+
+    def __init__(self, refuses: str) -> None:
+        self.refuses = refuses
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        aliases = re.findall(r"^episode (\d+)$", prompt, re.MULTILINE)
+        if "Return an account for EACH" in prompt:
+            return Reader()(prompt)
+        return json.dumps(
+            {
+                "schema_version": "episode-reading-text-v1",
+                "episodes": [
+                    {
+                        "episode": int(alias),
+                        "what_happened": "Something happened.",
+                        "representatives": [{"asset": 1, "reason": "it carries the day"}],
+                        "cull": [],
+                    }
+                    for alias in aliases
+                    if self.refuses not in _assets_of(prompt, alias)
+                ],
+            }
+        )
+
+
+def _assets_of(prompt: str, alias: str) -> str:
+    block = prompt.split(f"episode {alias}\n")[-1].split("\n\nepisode ")[0]
+    return block
+
+
+def test_an_episode_the_reader_cannot_read_is_asked_once_across_two_runs(tmp_path) -> None:
+    """And the month is still written, from the episodes that did read."""
+    from immich_memories.analysis.text_episode_reader import CachedTextEpisodeReader
+    from immich_memories.store.episode_readings import EpisodeReadingProducer
+
+    bank = tmp_path / "annotations.sqlite"
+    producer = EpisodeReadingProducer(
+        model_id="a-model",
+        prompt_version="episode-prompt-v3",
+        schema_version="episode-schema-v1",
+        annotation_renderer_version="annotation-line-v1",
+        annotation_versions=("description:student-v1",),
+    )
+    prepared, projections, lines = _two_episodes()
+    asked = OneEpisodeRefuses(refuses="b1")
+
+    for _run in range(2):
+        with closing(EpisodeReadingStore(bank)) as store:
+            result = CachedTextEpisodeReader(
+                store=store, producer=producer, annotations=lines, requester=asked
+            ).read(projections)
+
+    readable = [e.reading for e in result.episodes if e.reading is not None]
+    # Three rounds on the first run, and nothing at all on the second.
+    assert len(asked.prompts) == 3
+    assert len(readable) == 1
+
+    with closing(CatalogueStore(bank)) as store:
+        bank_month_accounts(
+            [
+                LibraryEpisode(reading=reading, taken_at=DATES[reading.full_asset_ids[0]])
+                for reading in readable
+            ],
+            store=store,
+            requester=Reader(),
+            producer="model-a",
+        )
+
+    assert library_period_account(bank, "2024-02")

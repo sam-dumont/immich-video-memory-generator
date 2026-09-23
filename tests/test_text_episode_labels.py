@@ -81,12 +81,15 @@ def test_numeric_representative_labels_are_read_once_then_banked(tmp_path, alias
     [True, 1.0, 0, "0", "2", "asset 2", "01", "1.0", "１", "asset 1 or 2", "9" * 5000],
 )
 def test_invalid_or_unoffered_labels_do_not_become_banked_readings(tmp_path, alias):
+    """No reading is banked, and the refusal is, so the same question is not bought twice."""
     reader, projections, calls = _reader_case(tmp_path, alias)
 
     first = reader.read(projections)
+    asked_once = len(calls)
     second = reader.read(projections)
 
     assert first.episodes[0].reading is None
     assert second.episodes[0].reading is None
     assert not second.episodes[0].cache_hit
-    assert len(calls) > 1
+    assert asked_once > 1
+    assert len(calls) == asked_once

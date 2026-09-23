@@ -259,3 +259,24 @@ def test_a_bank_written_before_records_existed_reads_back_with_none(tmp_path: Pa
             notable_moments=(),
         )
     }
+
+
+def test_a_refusal_is_kept_under_the_exact_question_that_earned_it(tmp_path: Path) -> None:
+    from immich_memories.store.episode_readings import (
+        EpisodeReadingIdentity,
+        EpisodeReadingStore,
+    )
+
+    identity = EpisodeReadingIdentity(
+        group_id="unreadable", producer_key="producer-v3", evidence_key="evidence-a"
+    )
+    path = tmp_path / "annotations.sqlite"
+    store = EpisodeReadingStore(path)
+    store.remember_refusals([(identity, "the answer named no offered asset")])
+    store.close()
+
+    reopened = EpisodeReadingStore(path)
+
+    assert reopened.refusals_for((identity,)) == {"unreadable": "the answer named no offered asset"}
+    assert reopened.refusals_for((replace(identity, producer_key="producer-v4"),)) == {}
+    assert reopened.refusals_for((replace(identity, evidence_key="evidence-b"),)) == {}

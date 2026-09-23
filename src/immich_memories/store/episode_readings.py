@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS editorial_episode_readings (
     PRIMARY KEY (group_id, producer_key, evidence_key)
 )
 """
+# Its own pool: one connection runs one CREATE, which is the contract upstream offers.
+_REFUSAL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS editorial_episode_refusals (
+    group_id TEXT NOT NULL,
+    producer_key TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    answered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (group_id, producer_key, evidence_key)
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -170,6 +181,7 @@ class EpisodeReadingStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
         self._connections = ThreadOwnedConnections(self.db_path, _SCHEMA)
+        self._refusals = ThreadOwnedConnections(self.db_path, _REFUSAL_SCHEMA)
 
     def remember(self, readings: Iterable[BankedEpisodeReading]) -> None:
         """Keep complete readings; an existing identity is never rerolled."""
@@ -228,9 +240,60 @@ class EpisodeReadingStore:
             recalled[reading.identity.group_id] = reading
         return recalled
 
+    def remember_refusals(self, refusals: Iterable[tuple[EpisodeReadingIdentity, str]]) -> None:
+        """Keep "this exact question could not be read" so it is asked once, not every run.
+
+        Only a refusal the same question would earn again belongs here: a reader that answered
+        and whose answer could not be used, or evidence too large to ask about. A provider that
+        was unreachable has refused nothing, and the caller keeps those out.
+        """
+        rows = [
+            (identity.group_id, identity.producer_key, identity.evidence_key, reason)
+            for identity, reason in refusals
+            if reason.strip()
+        ]
+        if not rows:
+            return
+        try:
+            with self._refusals.connection() as connection:
+                connection.executemany(
+                    "INSERT INTO editorial_episode_refusals ("
+                    "group_id, producer_key, evidence_key, reason"
+                    ") VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(group_id, producer_key, evidence_key) DO NOTHING",
+                    rows,
+                )
+                connection.commit()
+        except (OSError, sqlite3.Error) as exc:
+            logger.debug("Episode refusal store unwritable (%s): refusal not kept", exc)
+
+    def refusals_for(self, identities: Sequence[EpisodeReadingIdentity]) -> dict[str, str]:
+        """The episodes this exact contract already failed to read, and why."""
+        ordered = tuple(dict.fromkeys(identities))
+        if not ordered:
+            return {}
+        placeholders = ",".join("(?, ?, ?)" for _ in ordered)
+        parameters = tuple(
+            part
+            for identity in ordered
+            for part in (identity.group_id, identity.producer_key, identity.evidence_key)
+        )
+        try:
+            with self._refusals.connection() as connection:
+                rows = connection.execute(
+                    "SELECT group_id, reason FROM editorial_episode_refusals "  # noqa: S608 -- generated placeholders; bound values.
+                    f"WHERE (group_id, producer_key, evidence_key) IN ({placeholders})",
+                    parameters,
+                ).fetchall()
+        except (OSError, sqlite3.Error) as exc:
+            logger.debug("Episode refusal store unreadable (%s): treating as cold", exc)
+            return {}
+        return {str(group_id): str(reason) for group_id, reason in rows}
+
     def close(self) -> None:
         """Release every thread-owned connection."""
         self._connections.close()
+        self._refusals.close()
 
 
 def _row_for(reading: BankedEpisodeReading) -> tuple[str, ...]:

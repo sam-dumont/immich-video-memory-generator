@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -563,26 +564,35 @@ def test_an_invalid_episode_answer_retains_full_membership_and_is_not_banked(
     assert invalid.episodes[0].reading is None
     assert "invalid" in (invalid.episodes[0].unavailable_reason or "")
 
-    retried = CachedTextEpisodeReader(
-        store=store,
-        producer=producer,
-        annotations=lines,
-        requester=lambda _prompt: (
-            """{
-          "schema_version": "episode-reading-text-v1",
-          "episodes": [{
-            "episode": 1,
-            "what_happened": "A friend joins a family gathering.",
-            "representatives": [{"asset": 2, "reason": "Shows the friend arriving."}],
-            "cull": []
-          }]
-        }"""
-        ),
+    valid = """{
+      "schema_version": "episode-reading-text-v1",
+      "episodes": [{
+        "episode": 1,
+        "what_happened": "A friend joins a family gathering.",
+        "representatives": [{"asset": 2, "reason": "Shows the friend arriving."}],
+        "cull": []
+      }]
+    }"""
+
+    # The refusal is banked under this exact question, so the next run does not buy it again.
+    again = CachedTextEpisodeReader(
+        store=store, producer=producer, annotations=lines, requester=lambda _p: valid
     ).read(projections)
 
-    assert retried.actual_calls == 1
-    assert retried.episodes[0].reading is not None
-    assert retried.episodes[0].cache_hit is False
+    assert again.actual_calls == 0
+    assert again.episodes[0].reading is None
+    assert again.episodes[0].cache_hit is False
+
+    # A changed prompt is a changed question, so it is asked once more.
+    bumped = CachedTextEpisodeReader(
+        store=store,
+        producer=replace(producer, prompt_version="episode-prompt-v2"),
+        annotations=lines,
+        requester=lambda _p: valid,
+    ).read(projections)
+
+    assert bumped.actual_calls == 1
+    assert bumped.episodes[0].reading is not None
 
 
 def test_one_schema_envelope_remains_usable_when_followed_by_model_prose(
@@ -865,26 +875,24 @@ def test_a_provider_failure_retains_the_episode_and_leaves_the_bank_cold(
     assert failed.episodes[0].reading is None
     assert "provider timed out" in (failed.episodes[0].unavailable_reason or "")
 
-    retried = CachedTextEpisodeReader(
-        store=store,
-        producer=producer,
-        annotations=lines,
-        requester=lambda _prompt: (
-            """{
-          "schema_version": "episode-reading-text-v1",
-          "episodes": [{
-            "episode": 1,
-            "what_happened": "A friend joins a family gathering.",
-            "representatives": [{"asset": 2, "reason": "Shows the friend arriving."}],
-            "cull": []
-          }]
-        }"""
-        ),
+    valid = """{
+      "schema_version": "episode-reading-text-v1",
+      "episodes": [{
+        "episode": 1,
+        "what_happened": "A friend joins a family gathering.",
+        "representatives": [{"asset": 2, "reason": "Shows the friend arriving."}],
+        "cull": []
+      }]
+    }"""
+
+    # A provider that never answered has refused nothing, so the next run asks again.
+    again = CachedTextEpisodeReader(
+        store=store, producer=producer, annotations=lines, requester=lambda _p: valid
     ).read(projections)
 
-    assert retried.actual_calls == 1
-    assert retried.episodes[0].reading is not None
-    assert retried.episodes[0].cache_hit is False
+    assert again.actual_calls == 1
+    assert again.episodes[0].reading is not None
+    assert again.episodes[0].cache_hit is False
 
 
 def test_an_episode_with_incomplete_annotations_is_retained_without_being_sent(

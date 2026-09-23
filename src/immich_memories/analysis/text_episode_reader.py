@@ -50,6 +50,8 @@ _DEFAULT_MIN_OUTPUT_TOKENS = 512
 _DEFAULT_OUTPUT_BASE_TOKENS = 200
 _DEFAULT_OUTPUT_TOKENS_PER_ROW = 128
 _DEFAULT_OUTPUT_TOKENS_PER_ASSET = 12
+_PROVIDER_FAILED = "text episode provider failed"
+_UNUSABLE = "text episode response was missing or invalid; full membership retained"
 
 
 class AnnotationLineReader(Protocol):
@@ -97,18 +99,27 @@ class EpisodeCacheRequestPlan:
     initial_page_count: int
     initial_pack_count: int
     oversized_page_count: int
+    # Asked before and refused: neither answered nor owed, and never asked again under this key.
+    refused_identities: tuple[EpisodeReadingIdentity, ...] = ()
 
     def __post_init__(self) -> None:
         requested = frozenset(self.requested_identities)
-        cache_hits = frozenset(self.cache_hit_identities)
-        missing = frozenset(self.missing_identities)
+        parts = (
+            frozenset(self.cache_hit_identities),
+            frozenset(self.missing_identities),
+            frozenset(self.refused_identities),
+        )
+        sizes = (
+            len(self.cache_hit_identities),
+            len(self.missing_identities),
+            len(self.refused_identities),
+        )
         if len(requested) != len(self.requested_identities):
             raise ValueError("episode request plan identities must be unique")
         if (
-            len(cache_hits) != len(self.cache_hit_identities)
-            or len(missing) != len(self.missing_identities)
-            or cache_hits & missing
-            or cache_hits | missing != requested
+            [len(part) for part in parts] != list(sizes)
+            or sum(sizes) != len(requested)
+            or frozenset.union(*parts) != requested
         ):
             raise ValueError("episode request plan must exactly partition cache hits and misses")
         if (
@@ -269,11 +280,16 @@ class CachedTextEpisodeReader:
         identities = tuple(identities_by_group.values())
         banked = self._store.readings_for(identities)
         cache_hits = frozenset(banked)
+        # An episode this exact question already failed to read is not asked again: the answer
+        # would be the same until the prompt, the evidence or the reader changes, and all three
+        # are in the key this refusal is filed under.
+        refused = self._store.refusals_for(identities)
+        unavailable_by_group.update(refused)
         missing = tuple(
             (identity, projection.group.candidate_ids)
             for projection in projections
             if (identity := identities_by_group.get(projection.group.group_id)) is not None
-            if identity.group_id not in banked
+            if identity.group_id not in banked and identity.group_id not in refused
         )
         request_scopes = tuple(
             page
@@ -291,9 +307,14 @@ class CachedTextEpisodeReader:
         request_plan = EpisodeCacheRequestPlan(
             requested_identities=identities,
             cache_hit_identities=tuple(
-                identity for identity in identities if identity.group_id in banked
+                identity
+                for identity in identities
+                if identity.group_id in banked and identity.group_id not in refused
             ),
             missing_identities=tuple(identity for identity, _membership in missing),
+            refused_identities=tuple(
+                identity for identity in identities if identity.group_id in refused
+            ),
             initial_page_count=len(request_scopes),
             initial_pack_count=len(packs),
             oversized_page_count=len(oversized),
@@ -312,6 +333,7 @@ class CachedTextEpisodeReader:
                 unavailable_by_group=unavailable_by_group,
                 diagnostics=response_diagnostics,
             )
+            self._bank_refusals(missing, banked, unavailable_by_group)
         episodes = _evidence(
             projections, identities_by_group, banked, cache_hits, unavailable_by_group
         )
@@ -469,6 +491,31 @@ class CachedTextEpisodeReader:
             self._verify_readback(completed)
         banked.update({reading.identity.group_id: reading for reading in completed})
 
+    def _bank_refusals(self, missing, banked, unavailable_by_group) -> None:
+        """File what this contract could not read, once its retries are spent.
+
+        A provider that never answered has refused nothing: the next run may reach it, so its
+        failure is not banked. Everything else is a verdict on this exact question -- a reply
+        that could not be used, or evidence that will not fit a request -- and asking it again
+        every run costs the same and answers the same.
+        """
+        refusals = [
+            (identity, reason)
+            for identity, _membership in missing
+            if identity.group_id not in banked
+            if not (reason := unavailable_by_group.get(identity.group_id, _UNUSABLE)).startswith(
+                _PROVIDER_FAILED
+            )
+        ]
+        if not refusals:
+            return
+        logger.warning(
+            "%d episode(s) could not be read and will not be asked again until the prompt, "
+            "the evidence or the reader changes",
+            len(refusals),
+        )
+        self._store.remember_refusals(refusals)
+
     def _verify_readback(self, completed: tuple[BankedEpisodeReading, ...]) -> None:
         recalled = self._store.readings_for(tuple(reading.identity for reading in completed))
         matched = sum(recalled.get(reading.identity.group_id) == reading for reading in completed)
@@ -518,10 +565,7 @@ def _evidence(
             unavailable_reason=(
                 None
                 if projection.group.group_id in banked
-                else unavailable_by_group.get(
-                    projection.group.group_id,
-                    "text episode response was missing or invalid; full membership retained",
-                )
+                else unavailable_by_group.get(projection.group.group_id, _UNUSABLE)
             ),
         )
         for projection in projections
