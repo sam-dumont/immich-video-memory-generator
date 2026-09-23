@@ -162,13 +162,20 @@ class StoredAnnotationLineReader:
         pixel_producer_key: str,
         people_context: Mapping[str, _PersonContext] | None = None,
         fact_repository: AnnotationFactReader | None = None,
+        subjects: Sequence[str] = (),
     ) -> None:
+        """``subjects`` are the people the memory is about, by name or Immich id.
+
+        A line's subject framing then reads only their faces; with none, any
+        named face in the picture is its subject.
+        """
         candidate_by_id = {candidate.asset_id: candidate for candidate in candidates}
         if len(candidate_by_id) != len(candidates):
             raise ValueError("annotation reader needs unique candidate IDs")
         self._candidate_by_id = candidate_by_id
         self._head_versions = dict(head_versions)
         self._people_context = dict(people_context or {})
+        self._subjects = frozenset(_clean(subject) for subject in subjects if _clean(subject))
         self._fact_repository = fact_repository or AssetAnnotationFactRepository(
             Path(store_path),
             description_model=description_model,
@@ -225,6 +232,7 @@ class StoredAnnotationLineReader:
                     facts[asset_id],
                     people_context=self._people_context,
                     head_versions=self._head_versions,
+                    subjects=self._subjects,
                 ),
                 description=facts[asset_id].description,
                 heads=facts[asset_id].heads,
@@ -263,6 +271,7 @@ def _render_line(
     *,
     people_context: Mapping[str, _PersonContext],
     head_versions: Mapping[str, str],
+    subjects: frozenset[str] = frozenset(),
 ) -> str:
     parts = [candidate.taken_at.isoformat(timespec="minutes").replace("T", " ")]
     _append_media(parts, candidate, facts)
@@ -278,7 +287,7 @@ def _render_line(
     people = _people(candidate, facts)
     if people:
         parts.append(_render_people(people, candidate, people_context))
-    framing = subject_framing(facts.faces)
+    framing = subject_framing(facts.faces, _subject_ids(people, subjects))
     if framing is not None:
         parts.append(framing_annotation(framing))
     head_bits = _head_bits(facts, head_versions)
@@ -294,6 +303,17 @@ def _render_line(
         if not annotation.startswith(("live-photo-rendering-family:", "live-photo-stitch-members:"))
     )
     return " | ".join(parts)
+
+
+def _subject_ids(people: Sequence[_ObservedPerson], subjects: frozenset[str]) -> set[str] | None:
+    """The ids of the memory's subjects this picture names; None when it has no subject."""
+    if not subjects:
+        return None
+    return {
+        person.person_id
+        for person in people
+        if person.person_id and (person.name in subjects or person.person_id in subjects)
+    }
 
 
 def _render_people(

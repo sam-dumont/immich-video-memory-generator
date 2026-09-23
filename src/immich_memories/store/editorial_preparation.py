@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS pixel_facts (
 CREATE TABLE IF NOT EXISTS pixel_facts_thresholds (
  name TEXT PRIMARY KEY, value REAL, producer_key TEXT, n INTEGER, computed_at TEXT);
 CREATE TABLE IF NOT EXISTS face_boxes (
- asset_id TEXT, named INTEGER, x1 REAL, y1 REAL, x2 REAL, y2 REAL);
+ asset_id TEXT, named INTEGER, x1 REAL, y1 REAL, x2 REAL, y2 REAL, person_id TEXT);
 CREATE INDEX IF NOT EXISTS face_boxes_asset ON face_boxes (asset_id);
 CREATE TABLE IF NOT EXISTS face_reads (
  asset_id TEXT, producer TEXT, read_at TEXT, PRIMARY KEY(asset_id,producer));
@@ -92,6 +92,10 @@ def initialize(connection: sqlite3.Connection) -> None:
     for name, sql_type in ASSET_COLUMNS.items():
         if name not in existing:
             connection.execute(f"ALTER TABLE assets ADD COLUMN {name} {sql_type}")  # noqa: S608
+    # Boxes banked before identities were keep a NULL person: unknown, never guessed.
+    # FACE_PRODUCER moved on with the column, so those pictures are read again.
+    if "person_id" not in {row[1] for row in connection.execute("PRAGMA table_info(face_boxes)")}:
+        connection.execute("ALTER TABLE face_boxes ADD COLUMN person_id TEXT")
     connection.commit()
 
 
@@ -144,19 +148,19 @@ def remember_assets(connection: sqlite3.Connection, assets: Sequence[Asset]) -> 
     connection.commit()
 
 
-FACE_PRODUCER = "immich-faces-v1"
+FACE_PRODUCER = "immich-faces-v2"
 
 
 def remember_faces(connection: sqlite3.Connection, asset_id: str, boxes: Sequence[FaceBox]) -> None:
     """Bank one picture's face geometry; a picture with no face is banked as read.
 
-    The boxes carry no identity, only whether Immich matched a name to each, which
-    is all any framing question needs and less than the store already holds.
+    Each box keeps the Immich person id matched to it, never the name: a memory
+    about one person has to find that person's face among the other named ones.
     """
     connection.execute("DELETE FROM face_boxes WHERE asset_id=?", (asset_id,))
     connection.executemany(
-        "INSERT INTO face_boxes (asset_id,named,x1,y1,x2,y2) VALUES (?,?,?,?,?,?)",
-        [(asset_id, int(b.named), b.x1, b.y1, b.x2, b.y2) for b in boxes],
+        "INSERT INTO face_boxes (asset_id,named,x1,y1,x2,y2,person_id) VALUES (?,?,?,?,?,?,?)",
+        [(asset_id, int(b.named), b.x1, b.y1, b.x2, b.y2, b.person_id) for b in boxes],
     )
     connection.execute(
         "INSERT OR REPLACE INTO face_reads (asset_id,producer,read_at) VALUES (?,?,?)",

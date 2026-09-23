@@ -48,6 +48,7 @@ async def test_the_faces_of_an_asset_are_asked_for_by_id_and_come_back_with_thei
             x2=pytest.approx(0.0745, abs=1e-4),
             y2=pytest.approx(0.3688, abs=1e-4),
             named=True,
+            person_id="p1",
         ),
         FaceBox(
             x1=pytest.approx(0.4688, abs=1e-4),

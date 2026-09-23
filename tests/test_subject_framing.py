@@ -99,7 +99,7 @@ def test_immich_boxes_are_normalized_by_the_rendition_they_were_found_on():
     ]
 
     assert face_boxes_of(faces) == (
-        FaceBox(x1=0.8, y1=0.2, x2=0.88, y2=0.3, named=True),
+        FaceBox(x1=0.8, y1=0.2, x2=0.88, y2=0.3, named=True, person_id="p1"),
         FaceBox(x1=0.1, y1=0.125, x2=0.2, y2=0.325, named=False),
     )
 

@@ -651,7 +651,7 @@ def _face(client_calls):
     def fetch(asset_id):
         client_calls.append(asset_id)
         return (
-            FaceBox(x1=0.90, y1=0.40, x2=0.95, y2=0.48, named=True),
+            FaceBox(x1=0.90, y1=0.40, x2=0.95, y2=0.48, named=True, person_id="person-banked"),
             FaceBox(x1=0.20, y1=0.20, x2=0.50, y2=0.60, named=False),
         )
 
@@ -668,6 +668,28 @@ def test_the_faces_of_a_picture_that_names_somebody_are_banked_once(tmp_path):
     assert calls == ["aa1"]  # never the picture naming nobody, never twice
     with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
         assert connection.execute("SELECT count(*) FROM face_boxes").fetchone()[0] == 2
+
+
+def test_a_picture_whose_faces_were_banked_without_identities_is_read_again(tmp_path):
+    """Old boxes say a name was matched, not whose: they are re-read, never guessed."""
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        connection.executescript(
+            "CREATE TABLE face_boxes (asset_id TEXT, named INTEGER, x1 REAL, y1 REAL, x2 REAL, y2 REAL);"
+            "CREATE TABLE face_reads (asset_id TEXT, producer TEXT, read_at TEXT,"
+            " PRIMARY KEY(asset_id,producer));"
+            "INSERT INTO face_boxes VALUES ('aa1', 1, 0.1, 0.1, 0.2, 0.2);"
+            "INSERT INTO face_reads VALUES ('aa1', 'immich-faces-v1', '2030-01-01T00:00:00+00:00');"
+        )
+    calls = []
+
+    run(
+        tmp_path, assets=[_named_asset("aa1")], ports=successful_ports([]), fetch_faces=_face(calls)
+    )
+
+    assert calls == ["aa1"]
+    with sqlite3.connect(tmp_path / "annotations.sqlite") as connection:
+        rows = connection.execute("SELECT named, person_id FROM face_boxes ORDER BY x1").fetchall()
+    assert rows == [(0, None), (1, "person-banked")]
 
 
 def test_a_run_without_a_face_reader_banks_nothing_and_leaves_the_rest_alone(tmp_path):

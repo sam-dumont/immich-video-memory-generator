@@ -199,8 +199,13 @@ he has a face's width of air between him and every border, and whether he is the
 in the picture or one of the small ones. Inside a capture group the frame that shows him wins
 over the frame he is lost in, and between two frames that both show him the one showing more of
 him wins. A favourite still takes its own moment, a video still beats a still of the same
-instant, and a picture naming nobody is ordered exactly as before. The boxes carry no identity,
-only whether a name was matched to each, and they are read once per picture and banked.
+instant, and a picture naming nobody is ordered exactly as before. Each box keeps the Immich id
+of the person matched to it (never the name), because in a memory about one person the framing
+has to be that person's: a frame where they are a speck beside a large, well-framed relative is
+not a frame of them. A memory about several people reads the best-shown of them, and a picture
+naming none of them reads like a picture naming nobody. A memory with no one in particular
+reads any named face, as before. The boxes are read once per picture and banked; boxes banked
+before they carried an id are read again on the next preparation.
 
 **The standing gate reads a video as a video.** The gate asks, of each candidate picture, whether it
 would stand on its own. A video used to arrive on that list looking like a still, described by

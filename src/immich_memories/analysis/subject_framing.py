@@ -22,7 +22,7 @@ two frames of one moment can see which of them shows the person.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -40,6 +40,10 @@ class FaceBox:
     x2: float
     y2: float
     named: bool
+    # The Immich person matched to this face, so a memory about one person reads
+    # that person's face. None when nobody named is matched, or when the box was
+    # banked before identities were, which no framing question may guess past.
+    person_id: str | None = None
 
     @property
     def area(self) -> float:
@@ -83,9 +87,20 @@ def _has_air(low: float, high: float) -> bool:
     return low >= size and (1 - high) >= size
 
 
-def subject_framing(boxes: Sequence[FaceBox]) -> SubjectFraming | None:
-    """How the best-shown named face sits in its frame, or None if none is named."""
-    named = [face for face in boxes if face.named and face.area > 0]
+def subject_framing(
+    boxes: Sequence[FaceBox], subjects: Collection[str] | None = None
+) -> SubjectFraming | None:
+    """How the best-shown subject face sits in its frame, or None if it shows none.
+
+    ``subjects`` are the person ids a memory is about. Without them any named face
+    is a subject; with them only those people's faces are, so a larger face of
+    somebody else in the frame counts against the subject instead of for it.
+    """
+    named = [
+        face
+        for face in boxes
+        if face.area > 0 and (face.person_id in subjects if subjects is not None else face.named)
+    ]
     if not named:
         return None
     subject = max(named, key=lambda face: face.area)
@@ -132,10 +147,12 @@ def _normalized(face: Any) -> FaceBox | None:
     if width <= 0 or height <= 0:
         return None
     person = getattr(face, "person", None)
+    named = bool(person and person.name.strip())
     return FaceBox(
         x1=max(0.0, min(1.0, face.bounding_box_x1 / width)),
         y1=max(0.0, min(1.0, face.bounding_box_y1 / height)),
         x2=max(0.0, min(1.0, face.bounding_box_x2 / width)),
         y2=max(0.0, min(1.0, face.bounding_box_y2 / height)),
-        named=bool(person and person.name.strip()),
+        named=named,
+        person_id=person.id if named and person is not None else None,
     )
