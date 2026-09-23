@@ -14,8 +14,11 @@ class Standing:
         self.thin_stories = set(thin_stories)
         self.ensured: list[str] = []
 
-    def ensure(self, assets):
+    def ensure(self, assets, needs=None):
         self.ensured.extend(assets)
+
+    def needs(self, asset, weight, story_key=""):
+        return 2
 
     def stands(self, asset, weight, story_key=""):
         needed = 2 if weight == "glimpse" or story_key in self.thin_stories else 1

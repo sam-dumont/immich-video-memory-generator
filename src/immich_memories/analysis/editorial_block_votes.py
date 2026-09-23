@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from functools import partial
@@ -26,6 +27,13 @@ logger = logging.getLogger(__name__)
 
 BLOCK_SIZE = 12
 BLOCK_CACHE_VERSION = "block-votes-v3-validated-labels"
+# Rows whose block was asked in one order only. They answer a caller whose rule one order
+# settles and nobody else: a reader of the whole-answer store never sees them.
+ONE_ORDER_ROWS = "rows-one-order"
+
+# Which rows one order's answer already decides, given the row and whether that order named
+# it. A caller that passes none asks both orders of every block, as the vote always has.
+Settled = Callable[[str, bool], bool]
 
 WORTH_PROMPT_VERSION = "memory-worthy-v2-contract"
 WORTH_CRITERION_V44 = (
@@ -93,6 +101,24 @@ def worth_criterion_v44(product: str, subject: str | None) -> tuple[str, str]:
         # domestic life") read ten of thirteen travel days as background and the film came out at a fifth.
         return TRIP_WORTH_CRITERION, "trip-journey-v1"
     return WORTH_CRITERION_V44, ""
+
+
+def balanced_groups(items: Sequence[str], size: int = 12, minimum: int = 4) -> list[list[str]]:
+    """Blocks of at most twelve, never leaving a block of one or two behind.
+
+    The block vote cuts its items into fixed twelves. A reject-only vote whose last block holds a
+    single row has no company to judge it against, and both orders then name that lone row.
+    Rebalancing the same items into equal blocks keeps the production question and gives every
+    row neighbours to be compared with.
+    """
+    items = list(items)
+    if len(items) <= size:
+        return [items] if items else []
+    count = math.ceil(len(items) / size)
+    if len(items) % size and len(items) % size < minimum:
+        count = max(count, math.ceil(len(items) / (size - 1)))
+    step = math.ceil(len(items) / count)
+    return [items[index : index + step] for index in range(0, len(items), step)]
 
 
 def _answer_map(obj: object, answer_key: str, allowed: set[str]) -> tuple[object, str]:
@@ -266,6 +292,28 @@ def _rows_from_bank(
     }
 
 
+def _one_order_rows(
+    bank: MutableMapping[str, dict] | None, rows: dict[str, dict] | None, settled: Settled | None
+) -> dict[str, dict] | None:
+    """The store of rows answered in one order, when this caller can use such an answer."""
+    if bank is None or rows is None or settled is None:
+        return None
+    partial = bank.setdefault(ONE_ORDER_ROWS, {})
+    return partial if isinstance(partial, dict) else None
+
+
+def _settled_from_bank(
+    partial: Mapping[str, dict], names_of: Mapping[str, str], settled: Settled
+) -> dict[str, tuple[int, str]]:
+    """The one-order answers this caller's rule accepts as final, under each row's own name.
+
+    A row whose first answer settled it for one film may matter more to another: there it is
+    not taken from here, and is asked again in a block of its own company.
+    """
+    held = _rows_from_bank(partial, names_of)
+    return {x: vote for x, vote in held.items() if settled(x, vote[0] > 0)}
+
+
 def _pack_blocks(
     items: Sequence[str],
     *,
@@ -277,9 +325,17 @@ def _pack_blocks(
     max_tokens: int,
     answer_key: str,
     rows_version: str = "",
+    balanced: bool = False,
 ) -> list[_Block]:
-    """The rows still to ask, cut into twelves, each block with its two prompts and cache key."""
-    blocks = [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
+    """The rows still to ask, cut into twelves, each block with its two prompts and cache key.
+
+    `balanced` spreads the rows over equal blocks instead, so none is left with one or two rows.
+    """
+    blocks = (
+        balanced_groups(list(items))
+        if balanced
+        else [list(items[i : i + BLOCK_SIZE]) for i in range(0, len(items), BLOCK_SIZE)]
+    )
     packed = []
     for index, block in enumerate(blocks):
         orders = _block_orders(block, bank_key(block))
@@ -312,21 +368,30 @@ def vote_blocks(
     model_identity: str | None = None,
     row_key: Callable[[str], str] | None = None,
     rows_version: str = "",
+    settled: Settled | None = None,
+    balanced: bool = False,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Votes per item (0, 1 or 2) with the first reason given, and one record per asked round.
     `row_of` renders the whole listing row including its label; `prompt_of` wraps a listing.
     `bank_key` seeds the established order; the separate cache key covers the exact two questions
     and their model identity. `row_key` names one row's own question: rows already answered under
-    that name are taken from the bank and never packed into a block."""
+    that name are taken from the bank and never packed into a block.
+
+    With `settled`, a block is asked in its source order first and in its hashed order only when
+    one of its rows is not settled by that first answer; such a row's count is then out of one.
+    """
     identity = _judge_model_identity(judge, model_identity) if bank is not None else None
     reusable = bank if identity is not None else None
     rows = _banked_rows(reusable, row_key)
+    partial = _one_order_rows(reusable, rows, settled)
     names_of = (
         _row_names(items, row_key, identity, max_tokens, answer_key, rows_version)
         if rows is not None
         else {}
     )
-    banked = _rows_from_bank(rows, names_of) if rows else {}
+    banked = (
+        _settled_from_bank(partial, names_of, settled) if partial and settled is not None else {}
+    ) | (_rows_from_bank(rows, names_of) if rows else {})
     pending = _pack_blocks(
         [x for x in items if x not in banked],
         stage=stage,
@@ -337,31 +402,50 @@ def vote_blocks(
         max_tokens=max_tokens,
         answer_key=answer_key,
         rows_version=rows_version,
+        balanced=balanced,
     )
 
-    def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
-        if reusable is not None and asked.key in reusable:
-            return reusable[asked.key]
+    def ask(child: object, asked: _Block, orders, votes) -> dict[str, dict[str, str]]:
+        missing = tuple(order for order in orders if order[0] not in votes)
+        if not missing:
+            return {}
         return _ask_orders(
             child,
             stage=asked.stage,
-            orders=asked.orders,
+            orders=missing,
             prompts=asked.prompts,
             answer_key=answer_key,
             label_of=label_of,
             max_tokens=max_tokens,
         )
 
+    def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
+        votes = dict(reusable.get(asked.key) or {}) if reusable is not None else {}
+        votes |= ask(child, asked, asked.orders if settled is None else asked.orders[:1], votes)
+        if settled is not None and not _decided(asked, votes, label_of, settled):
+            votes |= ask(child, asked, asked.orders[1:], votes)
+        return votes
+
     votes_of, rounds = _harvest(
         pending,
         reader_map(judge, read, pending),
         label_of=label_of,
         reusable=reusable,
-        rows=rows,
+        stores=(rows, partial),
         names_of=names_of,
         save=save,
     )
     return banked | votes_of, rounds
+
+
+def _decided(
+    asked: _Block, votes: Mapping[str, dict[str, str]], label_of: Mapping[str, str], settled
+) -> bool:
+    """Whether the block's first order has already answered everything its rows need."""
+    first = asked.orders[0][0]
+    if first not in votes or f"{first}_failed" in votes:
+        return False
+    return all(settled(x, label_of[x] in votes[first]) for x in asked.items)
 
 
 def _harvest(
@@ -370,23 +454,30 @@ def _harvest(
     *,
     label_of: Mapping[str, str],
     reusable: MutableMapping[str, dict] | None,
-    rows: dict[str, dict] | None,
+    stores: tuple[dict[str, dict] | None, dict[str, dict] | None],
     names_of: Mapping[str, str],
     save: Callable[[], None] | None,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
-    """Tally each answered block, write what it settled back into the bank, and record the round."""
+    """Tally each answered block, write what it settled back into the bank, and record the round.
+
+    A row goes to the whole-answer store only when every order of its block answered; a row one
+    order settled goes to the one-order store, which only a caller with the same rule reads.
+    """
     votes_of: dict[str, tuple[int, str]] = {}
     rounds: list[dict] = []
     for asked, votes in zip(pending, answers, strict=True):
         fresh = False
-        if reusable is not None and asked.key not in reusable:
+        if reusable is not None and reusable.get(asked.key) != votes:
             reusable[asked.key] = votes
             fresh = True
-        tallied = _tally(asked.items, label_of, votes, [name for name, _o in asked.orders])
+        names = [name for name, _o in asked.orders]
+        tallied = _tally(asked.items, label_of, votes, names)
         votes_of.update(tallied)
-        if rows is not None:
-            rows.update({names_of[x]: {"votes": n, "why": w} for x, (n, w) in tallied.items()})
-        if save is not None and (fresh or rows is not None):
+        answered = sum(1 for name in names if name in votes and f"{name}_failed" not in votes)
+        store = stores[0] if answered == len(names) else stores[1]
+        if store is not None:
+            store.update({names_of[x]: {"votes": n, "why": w} for x, (n, w) in tallied.items()})
+        if save is not None and (fresh or store is not None):
             save()
         rounds.extend(_round_records(asked.stage, asked.orders, votes))
     return votes_of, rounds
@@ -414,6 +505,7 @@ def _round_records(
             ),
         }
         for name, order in orders
+        if name in votes or f"{name}_failed" in votes
     ]
 
 
@@ -590,6 +682,7 @@ def judge_standing(
     save: Callable[[], None] | None = None,
     model_identity: str | None = None,
     motion_identity: str = "",
+    settled: Settled | None = None,
 ) -> dict[str, tuple[int, str]]:
     """Does each picture stand by itself? Reject-only: the model names the weak ones. Score per asset
     id: 2 = named by neither order, 1 = by one, 0 = by both. `motion_identity` names the seat
@@ -623,5 +716,7 @@ def judge_standing(
         model_identity=model_identity,
         row_key=row_key,
         rows_version=version,
+        settled=settled,
+        balanced=True,
     )
     return {a: (2 - n, why) for a, (n, why) in rejections.items()}

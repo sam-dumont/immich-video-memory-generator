@@ -27,7 +27,9 @@ WEIGHT_OF_TIER = {"remarkable": "major", "maybe": "minor", "background": "glimps
 class StandsAlone(Protocol):
     """The production standing gate, as this pass uses it."""
 
-    def ensure(self, assets: Sequence[str]) -> None: ...
+    def ensure(self, assets: Sequence[str], needs: Mapping[str, int] | None = None) -> None: ...
+
+    def needs(self, asset: str, weight: str, story_key: str = "") -> int: ...
 
     def stands(self, asset: str, weight: str, story_key: str = "") -> bool: ...
 
@@ -67,7 +69,7 @@ class ThinGates:
     ) -> tuple[list[dict[str, Any]], list[GateRefusal]]:
         """The shots the gates keep, and the ones they refuse with the gate that refused them."""
         shots = sorted(carriers, key=itemgetter("taken", "asset_id"))
-        self.standing.ensure([c["asset_id"] for c in shots])
+        self.settle(shots, tier_of)
         kept: list[dict[str, Any]] = []
         refused: list[GateRefusal] = []
         for shot in shots:
@@ -99,7 +101,7 @@ class ThinGates:
         The cut is protected, exactly as the draft pass protects what the film already holds, so
         a newcomer that repeats a shot already in the film is the one that leaves.
         """
-        self.standing.ensure([candidate["asset_id"]])
+        self.settle([candidate], tier_of)
         refusal = self._refusal(candidate, list(cut), tier_of)
         if refusal is not None:
             return refusal
@@ -116,9 +118,21 @@ class ThinGates:
         )
         return _repeat_refusal(candidate, keeper)
 
-    def settle(self, shots: Sequence[Mapping[str, Any]]) -> None:
-        """Put these shots to the standing gate together, so their answers share blocks."""
-        self.standing.ensure([shot["asset_id"] for shot in shots])
+    def settle(self, shots: Sequence[Mapping[str, Any]], tier_of: Mapping[str, str]) -> None:
+        """Put these shots to the standing gate together, asking only what can change an outcome.
+
+        A starred shot the catalogue records is not refused on standing at all, so nothing is
+        asked about it; the gate says what each other shot's standing turns on.
+        """
+        needs = {}
+        for shot in shots:
+            story = str(shot.get("story_episode") or "")
+            needs[shot["asset_id"]] = (
+                0
+                if _owner_and_record(shot)
+                else self.standing.needs(shot["asset_id"], _weight(story, tier_of), story)
+            )
+        self.standing.ensure(list(needs), needs)
 
     def stands_alone(self, shot: Mapping[str, Any], tier_of: Mapping[str, str]) -> bool:
         """The standing gate's answer for this shot as its story's weight reads it."""

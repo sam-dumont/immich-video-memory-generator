@@ -27,7 +27,11 @@ from immich_memories.analysis.editorial_thin_catalogue import (
 )
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
 from immich_memories.analysis.editorial_thin_refill import ThinRefill, ThinSlot, plan_slots
-from immich_memories.analysis.editorial_thin_vote import classify_fit, vote_thesis_fit
+from immich_memories.analysis.editorial_thin_vote import (
+    classify_fit,
+    is_protected,
+    vote_thesis_fit,
+)
 from immich_memories.security import write_secret_file
 
 THIN_VERSION = "thin-polish-v1"
@@ -240,6 +244,7 @@ class ThinPolish:
         return vote_thesis_fit(
             judge,
             pictures=[c["asset_id"] for c in carriers],
+            protected=[c["asset_id"] for c in carriers if is_protected(c)],
             line_of=line_of,
             thesis=catalogue.thesis,
             contract=contract,

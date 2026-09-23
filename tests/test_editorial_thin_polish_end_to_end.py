@@ -184,12 +184,13 @@ def test_the_polish_spends_one_standing_round_one_vote_one_pick_and_one_check(tm
     judge = PolishJudge()
     polish_once(tmp_path, judge)
 
-    # every question is asked in both orders: the draft's standing, then every candidate's in one
-    # block, then the vote over the cut, one pick for the only contested page, and the re-check
-    assert sum(1 for stage in judge.calls if stage.startswith("standing-")) == 4
-    assert sum(1 for stage in judge.calls if stage.startswith("thesis-fit-")) == 4
-    assert sum(1 for stage in judge.calls if stage.startswith("story-pick-")) == 2
-    assert len(judge.calls) == 10
+    # the draft's standing and the vote each named a shot, so each asked its second order; the
+    # one contested page is picked in one order, its pick is asked once whether it stands, and
+    # the re-check named nobody in its first order
+    assert sum(1 for stage in judge.calls if stage.startswith("standing-")) == 3
+    assert sum(1 for stage in judge.calls if stage.startswith("thesis-fit-")) == 3
+    assert sum(1 for stage in judge.calls if stage.startswith("story-pick-")) == 1
+    assert len(judge.calls) == 7
 
 
 def test_a_second_run_over_the_same_bank_asks_nothing_and_cuts_the_same_film(tmp_path):

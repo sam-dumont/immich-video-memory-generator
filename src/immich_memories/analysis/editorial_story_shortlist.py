@@ -438,9 +438,11 @@ def _vote_both_orders(
     sampled_motion: bool,
     vote_records: list,
     suffix: str = "",
+    orders: int = 2,
 ) -> list[list[str]]:
     kept_by_order = []
-    for order_name, order in (("source", list(rows)), ("reversed", list(reversed(rows)))):
+    both = (("source", list(rows)), ("reversed", list(reversed(rows))))
+    for order_name, order in both[:orders]:
         prompt = _pick_prompt(
             contract,
             story,
@@ -459,7 +461,8 @@ def _vote_both_orders(
             record=vote_records.append,
         )
         kept_by_order.append([by_label[m] for m in found])
-    return kept_by_order
+    # One order asked is one answer, read as both orders agreeing on it.
+    return kept_by_order if len(kept_by_order) == 2 else [kept_by_order[0], kept_by_order[0]]
 
 
 @dataclass
@@ -478,6 +481,7 @@ class _PickRequest:
     allow_fewer: bool
     sampled_motion: bool
     paged: bool
+    orders: int = 2
 
 
 def _vote_every_page(
@@ -512,6 +516,7 @@ def _vote_every_page(
                 sampled_motion=request.sampled_motion,
                 vote_records=vote_records,
                 suffix=f"-page-{number}" if request.paged else "",
+                orders=request.orders,
             )
         kept_by_order[0].extend(votes[0])
         kept_by_order[1].extend(votes[1])
@@ -551,6 +556,7 @@ def _vote_the_shortlist(
     plays: Callable[[DepictedChoice], bool],
     contract: str,
     vote_records: list,
+    orders: int = 2,
 ) -> tuple[list[list[str]], list[dict]]:
     """Ask the shortlist in as few requests as the budget carries, splitting the grant between them.
 
@@ -586,6 +592,7 @@ def _vote_the_shortlist(
         allow_fewer=allow_fewer,
         sampled_motion=sampled_motion,
         paged=len(groups) > 1,
+        orders=orders,
     )
     return _vote_every_page(judge, request, groups, shares, vote_records=vote_records)
 
@@ -728,11 +735,13 @@ def pick_story_moments(
     ),
     motion_of: Callable[[DepictedChoice], str] | None = None,
     plays: Callable[[DepictedChoice], bool] = lambda _c: False,
+    orders: int = 2,
 ) -> list[DepictedChoice]:
     """Compare contributions within a ceiling; only one offered moment leaves nothing to ask.
 
     Both orders may explicitly decline repetitive depth. Their larger complete
     vote caps the result; disagreement about identity cannot manufacture depth.
+    `orders=1` asks the source order alone, for a caller whose pick the gates check afterwards.
     """
     # A grant that reaches the only moment offered has nothing to ask. Everything else is a
     # question: which moments tell the story, and whether a further view earns a slot at all.
@@ -758,6 +767,7 @@ def pick_story_moments(
         plays=plays,
         contract=contract,
         vote_records=vote_records,
+        orders=orders,
     )
     # Respect the larger complete vote, never more.
     # Disagreement over *which* one view wins cannot turn two one-view votes into two slots.

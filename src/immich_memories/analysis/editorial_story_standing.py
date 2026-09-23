@@ -131,8 +131,18 @@ class StandingGate:
             self._line_of(asset), None if entry is None else entry[1], self._motion_line
         )
 
-    def ensure(self, assets: Sequence[str]) -> None:
-        unknown = [a for a in dict.fromkeys(assets) if a not in self.scores and self._line_of(a)]
+    def ensure(self, assets: Sequence[str], needs: Mapping[str, int] | None = None) -> None:
+        """Score every picture not yet scored.
+
+        With `needs` (from `needs()`), a picture no answer can move is not asked at all, and one
+        that turns on a single approval is asked in a second order only when the first names it
+        weak: its score is then out of one order, which decides it exactly as two would.
+        """
+        unknown = [
+            a
+            for a in dict.fromkeys(assets)
+            if a not in self.scores and self._line_of(a) and (needs is None or needs.get(a, 2))
+        ]
         if not unknown:
             return
         if self._score_of is not None:
@@ -147,11 +157,31 @@ class StandingGate:
             bank=self._bank,
             save=self._save,
             motion_identity=self._motion_identity,
+            settled=None if needs is None else _settled_by(needs),
         )
         for a, (n, _why) in votes.items():
             self.scores[a] = n
         for a in unknown:
             self.scores.setdefault(a, 0)
+
+    def needs(self, asset: str, weight: str, story_key: str = "") -> int:
+        """How many orders' approval this picture's standing turns on, as `stands` reads it.
+
+        0 when no answer changes whether it stands (it has no context to serve, or it is a still
+        with life in a dominant or major story); 1 when one approval decides it; 2 when it must
+        stand by both orders.
+        """
+        if asset not in self._unit_by_asset:
+            return 2
+        if not self._context_allowed(asset, weight, story_key):
+            return 0
+        lively, starred = self._life(asset), self._starred(asset)
+        if weight == "glimpse" or self.thin(story_key):
+            return 2
+        if not lively and not starred and weight == "minor":
+            return 2
+        moving = carries_motion(self._unit_by_asset[asset][1])
+        return 0 if lively and weight in ("dominant", "major") and not moving else 1
 
     def _starred(self, asset: str) -> bool:
         return (
@@ -168,14 +198,17 @@ class StandingGate:
         """Playing motion cannot override missing or unanimously weak standing evidence."""
         return carries_motion(self._unit_by_asset[asset][1]) and self.scores.get(asset, 0) == 0
 
-    def has_required_context(self, asset: str, weight: str, story_key: str) -> bool:
-        """The existing context requirement is eligibility, not a recoverable weak vote."""
+    def _context_allowed(self, asset: str, weight: str, story_key: str) -> bool:
         starred = bool(self._unit_by_asset[asset][1].get("favourite"))
-        allowed = (
+        return (
             self._life(asset)
             or starred
             or (weight in WEIGHED_STORY_WEIGHTS and self._pictures_of.get(story_key, 0) > 2)
         )
+
+    def has_required_context(self, asset: str, weight: str, story_key: str) -> bool:
+        """The existing context requirement is eligibility, not a recoverable weak vote."""
+        allowed = self._context_allowed(asset, weight, story_key)
         if not allowed:
             self.context_rejected.add((story_key, asset))
         return allowed
@@ -202,3 +235,12 @@ class StandingGate:
         if weight in ("dominant", "major"):
             return lively or score >= 1
         return score >= 1
+
+
+def _settled_by(needs: Mapping[str, int]) -> Callable[[str, bool], bool]:
+    """One order settles a picture that turns on one approval and was not named weak by it.
+
+    A picture one order named is always asked again: the reader's reject-only answers flip with
+    the order of the rows, so one order's doubt never refuses a picture on its own.
+    """
+    return lambda asset, named: needs.get(asset, 2) == 1 and not named

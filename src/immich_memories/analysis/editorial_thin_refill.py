@@ -256,7 +256,7 @@ class ThinRefill:
         pending = list(range(len(slots)))
         for _round in range(PICK_ROUNDS):
             picks = self._pick_round(slots, pending, taken)
-            self.gates.settle(list(picks.values()))
+            self.gates.settle(list(picks.values()), self.tier_of)
             pending = []
             for index, pick in picks.items():
                 if self.gates.stands_alone(pick, self.tier_of):
@@ -307,5 +307,8 @@ class ThinRefill:
             contract=self.contract,
             record=self.record,
             plays=lambda choice: by_asset[choice.primary].get("kind") in MOTION_KINDS,
+            # The pick's order bias is cheap to live with here: the standing and audience gates
+            # judge the chosen row, and a refused one is picked again.
+            orders=1,
         )
         return by_asset[picked[0].primary] if picked else None

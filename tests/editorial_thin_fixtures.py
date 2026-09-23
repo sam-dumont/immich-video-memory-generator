@@ -19,6 +19,8 @@ JUNK = "an empty worktop"
 DOUBTFUL = "a plain corridor"
 UNSTEADY = "a blurred wall"
 PRIVATE = "a child in the bath"
+# The standing gate's source order names this row and its hashed order does not.
+ONE_ORDER = "a half-open door"
 START = datetime(2024, 1, 1, 9, 0)
 
 
@@ -38,7 +40,10 @@ class CountingJudge:
         self.calls.append(stage)
         self.prompts.append((stage, prompt))
         if stage.startswith("standing-"):
-            return _named(prompt, UNSTEADY)
+            doubted = _labels(prompt, UNSTEADY)
+            if "-source" in stage:
+                doubted += _labels(prompt, ONE_ORDER)
+            return json.dumps({"weak": dict.fromkeys(doubted, "nothing stands")})
         if stage.startswith("thesis-fit-"):
             doubted = _labels(prompt, JUNK)
             if stage.endswith("-source"):
@@ -53,10 +58,6 @@ class CountingJudge:
 
 def _labels(prompt: str, marker: str) -> list[str]:
     return re.findall(rf"^(P\d+): .*{marker}", prompt, re.MULTILINE)
-
-
-def _named(prompt: str, marker: str) -> str:
-    return json.dumps({"weak": dict.fromkeys(_labels(prompt, marker), "nothing stands")})
 
 
 def _audience(prompt: str) -> str:

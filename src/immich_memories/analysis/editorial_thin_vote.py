@@ -9,11 +9,14 @@ rather than against one story.
 from __future__ import annotations
 
 import hashlib
-import math
-from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Collection, Mapping, MutableMapping, Sequence
 from typing import Any
 
-from immich_memories.analysis.editorial_block_votes import vote_blocks, weak_example
+from immich_memories.analysis.editorial_block_votes import (
+    balanced_groups,
+    vote_blocks,
+    weak_example,
+)
 
 THESIS_FIT_VERSION = "thesis-fit-v3-own-label-example"
 THESIS_FIT_CRITERION = (
@@ -30,24 +33,6 @@ THESIS_FIT_CRITERION = (
 HELD_BY_THE_OWNER = "the owner starred it or the catalogue records it; the vote does not move it"
 
 
-def balanced_groups(items: Sequence[str], size: int = 12, minimum: int = 4) -> list[list[str]]:
-    """Blocks of at most twelve, never leaving a block of one or two behind.
-
-    The block vote cuts its items into fixed twelves. A reject-only vote whose last block holds a
-    single row has no company to judge it against, and both orders then name that lone row.
-    Rebalancing the same items into equal blocks keeps the production question and gives every
-    row neighbours to be compared with.
-    """
-    items = list(items)
-    if len(items) <= size:
-        return [items]
-    count = math.ceil(len(items) / size)
-    if len(items) % size and len(items) % size < minimum:
-        count = max(count, math.ceil(len(items) / (size - 1)))
-    step = math.ceil(len(items) / count)
-    return [items[index : index + step] for index in range(0, len(items), step)]
-
-
 def judge_thesis_fit(
     judge,
     *,
@@ -58,6 +43,7 @@ def judge_thesis_fit(
     story_of: Callable[[str], str] = lambda _asset: "",
     bank: MutableMapping[str, dict] | None = None,
     save: Callable[[], None] | None = None,
+    settled: Callable[[str, bool], bool] | None = None,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Does each shot earn its place in THIS film? Named by both orders is a firm no.
 
@@ -102,21 +88,43 @@ def judge_thesis_fit(
         save=save,
         max_tokens=700,
         rows_version=THESIS_FIT_VERSION,
+        settled=settled,
     )
     if any(record["envelope"] in {"failed", "unreadable"} for record in rounds):
         raise ValueError("Thesis fit is incomplete; an unanswered vote is not a verdict")
     return votes, rounds
 
 
-def vote_thesis_fit(judge, *, pictures: Sequence[str], **asked) -> tuple[dict, list[dict]]:
-    """The thesis-fit vote over balanced blocks; votes and rounds merged across them."""
+def vote_thesis_fit(
+    judge, *, pictures: Sequence[str], protected: Collection[str] = (), **asked
+) -> tuple[dict, list[dict]]:
+    """The thesis-fit vote over balanced blocks; votes and rounds merged across them.
+
+    Each block is asked in its source order, and in its hashed order only when the first named
+    a shot the vote may move: one order's doubt is never a verdict (the reader's answers flip
+    with the order of the rows), and an unnamed shot or a protected one is already decided. A
+    block whose every shot the owner or the catalogue protects is not asked at all.
+    """
+    held = frozenset(protected)
     votes: dict[str, tuple[int, str]] = {}
     rounds: list[dict] = []
     for group in balanced_groups(list(pictures)):
-        block_votes, block_rounds = judge_thesis_fit(judge, pictures=group, **asked)
+        if held.issuperset(group):
+            continue
+        block_votes, block_rounds = judge_thesis_fit(
+            judge,
+            pictures=group,
+            settled=lambda asset, named: asset in held or not named,
+            **asked,
+        )
         votes.update(block_votes)
         rounds.extend(block_rounds)
     return votes, rounds
+
+
+def is_protected(shot: Mapping[str, Any]) -> bool:
+    """A star the owner put on it, or a record the catalogue holds: no vote moves the shot."""
+    return bool(shot.get("favourite") or shot.get("notable_record"))
 
 
 def classify_fit(
@@ -137,7 +145,7 @@ def classify_fit(
     for shot in cut:
         asset = shot["asset_id"]
         named, why = votes.get(asset, (0, ""))
-        protected = bool(shot.get("favourite") or shot.get("notable_record"))
+        protected = is_protected(shot)
         verdicts[asset] = {
             "state": _state(named, protected=protected),
             "named_by": named,

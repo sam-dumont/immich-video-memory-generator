@@ -6,11 +6,8 @@ import json
 import re
 from types import SimpleNamespace
 
-from immich_memories.analysis.editorial_thin_vote import (
-    balanced_groups,
-    classify_fit,
-    vote_thesis_fit,
-)
+from immich_memories.analysis.editorial_block_votes import balanced_groups
+from immich_memories.analysis.editorial_thin_vote import classify_fit, vote_thesis_fit
 from immich_memories.config_models_llm import LLMConfig
 
 
@@ -72,8 +69,9 @@ def test_the_thesis_is_inside_the_question_and_therefore_inside_every_row_key():
                 bank=bank,
             )
         asked[thesis] = len(judge.calls)
-    # the second run of the same film replays; a different account is a different question
-    assert asked == {"one account": 2, "a different account": 2}
+    # one order, since nothing was named; the second run of the same film replays; a different
+    # account is a different question
+    assert asked == {"one account": 1, "a different account": 1}
 
 
 def test_a_favourite_is_never_moved_by_the_vote_whatever_the_orders_said():

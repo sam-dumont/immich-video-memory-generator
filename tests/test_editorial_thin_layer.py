@@ -36,8 +36,11 @@ class Standing:
     def __init__(self, scores=None) -> None:
         self.scores = scores or {}
 
-    def ensure(self, assets):
+    def ensure(self, assets, needs=None):
         return None
+
+    def needs(self, asset, weight, story_key=""):
+        return 2
 
     def stands(self, asset, weight, story_key=""):
         return self.scores.get(asset, 2) > 0
