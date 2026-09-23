@@ -79,6 +79,11 @@ model that wrote them, so running it twice over an unchanged month asks nothing,
 episode reopens that month and no other. A month holding a single episode is copied up with no call
 at all.
 
+The episode readings it banks are the ones every later cut of that scope reads, so `--overviews`
+also pays that cost up front. A banked answer is only ground truth for the question that was
+asked, so a change to the episode prompt expires every reading it produced and the next run over
+that scope reads its episodes once more.
+
 ```text
 ✓ Banked 37 episode readings, 1 month and 1 year account(s).
 ```

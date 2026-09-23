@@ -722,12 +722,14 @@ def _complete_reading(identity, full_asset_ids, ordered) -> BankedEpisodeReading
     cull_decisions = _first_per_asset(
         decision for reading in ordered for decision in reading.cull_decisions
     )
+    notable_moments = _first_per_asset(
+        moment for reading in ordered for moment in reading.notable_moments
+    )
+    kept = {item.asset_id for item in (*representatives, *notable_moments)}
     if (
         what_happened is None
         or not representatives
-        or {item.asset_id for item in representatives}.intersection(
-            decision.asset_id for decision in cull_decisions
-        )
+        or kept.intersection(decision.asset_id for decision in cull_decisions)
     ):
         return None
     return BankedEpisodeReading(
@@ -736,6 +738,7 @@ def _complete_reading(identity, full_asset_ids, ordered) -> BankedEpisodeReading
         what_happened=what_happened,
         representatives=representatives,
         cull_decisions=cull_decisions,
+        notable_moments=notable_moments,
     )
 
 

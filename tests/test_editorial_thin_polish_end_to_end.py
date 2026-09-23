@@ -200,3 +200,70 @@ def test_a_second_run_over_the_same_bank_asks_nothing_and_cuts_the_same_film(tmp
 
     assert [row["asset_id"] for row in warm] == [row["asset_id"] for row in cold]
     assert len(bank) == asked_cold
+
+
+def banked_records(tmp_path):
+    """The record the reading of S3's episode left behind, read back the way a run reads it."""
+    from contextlib import closing
+
+    from immich_memories.analysis.catalogue_runtime import banked_notable_records
+    from immich_memories.store.episode_readings import (
+        BankedEpisodeReading,
+        EpisodeReadingIdentity,
+        EpisodeReadingStore,
+        EpisodeRepresentative,
+    )
+
+    bank = tmp_path / "annotations.sqlite"
+    identity = EpisodeReadingIdentity(
+        group_id="e3", producer_key="producer-a", evidence_key="evidence-a"
+    )
+    with closing(EpisodeReadingStore(bank)) as store:
+        store.remember(
+            [
+                BankedEpisodeReading(
+                    identity=identity,
+                    full_asset_ids=("n1",),
+                    what_happened="A first.",
+                    representatives=(EpisodeRepresentative("n1", "the only frame"),),
+                    cull_decisions=(),
+                    notable_moments=(EpisodeRepresentative("n1", "the first of them"),),
+                )
+            ]
+        )
+    return banked_notable_records([identity], store_path=bank)
+
+
+def test_a_story_the_bank_records_something_about_is_seated_from_the_bank(tmp_path):
+    """No caller hands the records in: the layer reads them off the period's own readings."""
+    judge = PolishJudge()
+    unit_by_asset = {row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows}
+    standing = StandingGate(
+        judge,
+        line_of=LINES.get,
+        life=lambda _asset: True,
+        unit_by_asset=unit_by_asset,
+        pictures_of={"S1": 3, "S2": 3, "S3": 3},
+        bank={},
+        save=None,
+        calls={"standing_rounds": 0},
+    )
+    layer = ThinPolish(
+        account="The month a family found its feet.",
+        bank_dir=tmp_path,
+        records=banked_records(tmp_path),
+    )
+
+    cut = layer.polish(
+        DRAFT,
+        judge=judge,
+        gates=ThinGates(standing=standing, audience=Audience(), thumbnail_hash=lambda _a: None),
+        catalogue=layer.catalogue_of(STORY, MOMENTS),
+        contract="contract",
+        line_of=LINES.get,
+        record=lambda _name, _payload: None,
+        candidates_of=lambda key: POOL.get(key, []),
+        content_cap=52.5,
+    )
+
+    assert "n1" in [row["asset_id"] for row in cut]

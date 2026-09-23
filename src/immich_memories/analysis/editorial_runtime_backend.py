@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import replace
 from itertools import chain
@@ -41,6 +41,7 @@ from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.security import write_secret_file
+from immich_memories.store.episode_readings import EpisodeReadingIdentity
 from immich_memories.store.library_overviews import library_period_account
 
 if TYPE_CHECKING:
@@ -292,20 +293,26 @@ class ProductionPostCardBackend:
         period = catalogued_period(source.case.ranges)
         if not period:
             return {}
+        identities = _episode_identities(source.lineage)
         account = library_period_account(source.store_path, period)
         if not account:
-            self._bank_period_account(source)
+            self._bank_period_account(source, identities)
             account = library_period_account(source.store_path, period)
         if not account:
             return {}
+        from immich_memories.analysis.catalogue_runtime import banked_notable_records
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
         return {
             "rules": RuleStructureReader(source),
-            "thin": ThinPolish(account=account, bank_dir=source.bank_dir),
+            "thin": ThinPolish(
+                account=account,
+                bank_dir=source.bank_dir,
+                records=banked_notable_records(identities, store_path=source.store_path),
+            ),
         }
 
-    def _bank_period_account(self, source: StructurePlanningInput) -> None:
+    def _bank_period_account(self, source: StructurePlanningInput, identities) -> None:
         """Write the account this period has never had, from this run's own readings.
 
         The no-model reader writes nothing: there is no thesis without a reader, and the
@@ -313,21 +320,11 @@ class ProductionPostCardBackend:
         simply plans the way it always has.
         """
         from immich_memories.analysis.catalogue_runtime import catalogue_banked_episodes
-        from immich_memories.store.episode_readings import EpisodeReadingIdentity
 
         config = self._config
-        if config.editorial.resolve_reader(config.llm.model) == "rules":
+        if not identities or config.editorial.resolve_reader(config.llm.model) == "rules":
             return
-        identities = [
-            EpisodeReadingIdentity(
-                group_id=str(row["group_id"]),
-                producer_key=str(row["producer_key"]),
-                evidence_key=str(row["evidence_key"]),
-            )
-            for row in source.lineage.get("episode_readings") or ()
-        ]
-        if not identities or source.store_path is None:
-            return
+        assert source.store_path is not None
         try:
             catalogue_banked_episodes(
                 identities,
@@ -336,7 +333,7 @@ class ProductionPostCardBackend:
                 config=config,
                 requester=self._ports.catalogue_requester_factory(config),
             )
-        except (OSError, ValueError, RuntimeError) as exc:  # noqa: BLE001 - see docstring
+        except (OSError, ValueError, RuntimeError) as exc:
             logger.warning("Could not bank an account of this period (%s); planning as before", exc)
 
     def _adopt(
@@ -352,6 +349,18 @@ class ProductionPostCardBackend:
         result.write(artifact_dir)
         self.last_structure_result = result
         return plan
+
+
+def _episode_identities(lineage: Mapping[str, Any]) -> list[EpisodeReadingIdentity]:
+    """The readings this run's own event pass produced, as the bank keys them."""
+    return [
+        EpisodeReadingIdentity(
+            group_id=str(row["group_id"]),
+            producer_key=str(row["producer_key"]),
+            evidence_key=str(row["evidence_key"]),
+        )
+        for row in lineage.get("episode_readings") or ()
+    ]
 
 
 def _moment_members(source: StructurePlanningInput) -> set[str]:
