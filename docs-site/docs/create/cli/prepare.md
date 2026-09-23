@@ -27,7 +27,9 @@ That prepares the month and stops. No selection, no video. The scope flags are `
 (`--year`, `--year --month`, `--start --end`, `--start --period`) and it prepares exactly the
 pictures a cut over that scope would: no archived or hidden assets, no forwarded or re-encoded
 media, none of the films this app already uploaded, Live Photo components handled the same way.
-Both ask one function for the scope, so they cannot drift apart. "Free for every later cut" still
+Both ask one function for the scope, so they cannot drift apart. A person film over the same scope
+prepares less than that at film time: only the pictures it can select, their capture runs and their
+Live Photo families, so `prepare` is the way to fill the rest of the window ahead. "Free for every later cut" still
 holds only until a producer's version changes: a store prepared before a new head shipped pays that
 head at the next cut. Each run resumes where the last stopped, so a
 `for month in 1 2 3 …` loop works through a year.

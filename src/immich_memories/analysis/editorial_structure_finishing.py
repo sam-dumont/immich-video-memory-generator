@@ -9,12 +9,16 @@ that build one.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
-from immich_memories.analysis.editorial_completion import RetainedMotion
+from immich_memories.analysis.editorial_completion import (
+    ACCEPTED_SHORTFALL_FRACTION,
+    RetainedMotion,
+)
 from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
 from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
 from immich_memories.analysis.editorial_final_sampled_duplicates import (
@@ -266,6 +270,12 @@ def final_duplicate_review(
         thumbnail_hash=ports.thumbnail_hash,
         protected_asset_ids=protected,
         replacements_for=replacements_for,
+        scene_print=ports.scene_print,
+        # A scene repeat nothing replaces leaves only while the film still reaches its target
+        # within the shortfall the owner accepts: a film short of material keeps it.
+        content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
+        if run.final_content_cap > 0
+        else math.inf,
     )
     known = {carrier["asset_id"] for carrier in before_duplicates}
     refilled = [c for c in run.carriers if c["asset_id"] not in known]

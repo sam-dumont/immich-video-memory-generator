@@ -12,10 +12,10 @@ from immich_memories.analysis.editorial_planner import EditorialPlan
 from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
 from immich_memories.analysis.editorial_preparation_captions import _remember_caption
 from immich_memories.analysis.editorial_runtime import (
-    EditorialInputsRequired,
     EditorialRunContext,
     build_editorial_planner,
 )
+from immich_memories.analysis.editorial_runtime_evidence import EditorialInputsRequired
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.api.immich import ImmichAPIError, ImmichNotFoundError
@@ -201,7 +201,9 @@ def test_a_source_immich_cannot_preview_leaves_the_film_by_name(tmp_path, monkey
         return EditorialPlan()
 
     monkeypatch.setattr(planner._planner, "plan_prepared", editor)
-    with caplog.at_level(logging.WARNING, logger="immich_memories.analysis.editorial_runtime"):
+    with caplog.at_level(
+        logging.WARNING, logger="immich_memories.analysis.editorial_runtime_evidence"
+    ):
         planner.plan_source(sources, trace=Trace())
 
     prepared, trace = observed[0]
@@ -216,7 +218,7 @@ def test_a_source_immich_cannot_preview_leaves_the_film_by_name(tmp_path, monkey
     assert [
         record.getMessage()
         for record in caplog.records
-        if record.name == "immich_memories.analysis.editorial_runtime"
+        if record.name == "immich_memories.analysis.editorial_runtime_evidence"
         and record.levelno == logging.WARNING
     ] == [f"2 of 10 sources leave the film: {PREVIEW_404}"]
     report = json.loads((planner.last_attempt_directory / "preparation.private.json").read_text())
@@ -279,7 +281,7 @@ def test_the_no_captions_tier_cuts_without_a_caption_server_and_says_so(
     planner, sources, _ = build(tmp_path, providers=providers, fetched=[], tier="no_captions")
     monkeypatch.setattr(planner._planner, "plan_prepared", lambda *_, **__: EditorialPlan())
 
-    with caplog.at_level("INFO", logger="immich_memories.analysis.editorial_runtime"):
+    with caplog.at_level("INFO", logger="immich_memories.analysis.editorial_runtime_evidence"):
         planner.plan_source(sources, trace=Trace())
 
     report = json.loads((planner.last_attempt_directory / "preparation.private.json").read_text())

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from immich_memories.analysis.editorial_exposure_chains import held_chains
+from immich_memories.analysis.editorial_exposure_chains import held_chains, runs_holding
 
 
 def _rows(*offsets_and_flags):
@@ -119,3 +119,14 @@ def test_clean_clips_leave_a_run_of_clean_stills_alone():
     stills, lines, heads = _captures(4, clip_flagged=0)
 
     assert chain_holds_for(stills, lines, heads) == {}
+
+
+def test_a_picture_reaches_its_whole_run_however_long_and_no_further():
+    """A run is chained gap by gap, so a picture twelve minutes away can still decide its hold."""
+    rows = [
+        (asset_id, taken) for asset_id, taken, _ in _rows((0, 0), (4, 0), (8, 0), (12, 0), (20, 0))
+    ]
+
+    assert runs_holding(rows, {"a0"}) == {"a0", "a1", "a2", "a3"}
+    assert runs_holding(rows, {"a4"}) == {"a4"}
+    assert runs_holding(rows, set()) == set()

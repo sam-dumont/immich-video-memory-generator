@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,9 +22,11 @@ def test_a_birthday_title_logs_neither_the_name_nor_the_age(tmp_path: Path, capl
                 selection_type=SelectionType.BIRTHDAY_YEAR,
             )
 
-    logged = "\n".join(record.getMessage() for record in caplog.records)
+    # The output path is pytest's numbered temp dir, which can hold the digits of any age.
+    logged = "\n".join(record.getMessage() for record in caplog.records).replace(
+        str(tmp_path), "<out>"
+    )
     assert "TITLE SCREEN GENERATION" in logged
     assert "Zephyrine" not in logged
-    # The output path is logged and pytest's temp counter can hold the digits, so only the age
-    # itself, as a number of its own, counts.
-    assert not re.search(r"\b37\b", logged.replace(str(tmp_path), ""))
+    # The output path is logged too, and pytest numbers its temp dirs: pytest-3743 is not an age.
+    assert "37" not in logged.replace(str(tmp_path), "")

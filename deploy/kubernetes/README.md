@@ -105,7 +105,9 @@ pod has to land on the same node, so use
 `overlays/gpu/deployment-gpu.yaml` is a strategic-merge patch on the Deployment: `runtimeClassName:
 nvidia`, one `nvidia.com/gpu`, `NVIDIA_*` env, `nodeSelector` on `nvidia.com/gpu.present=true`
 and a toleration for the `nvidia.com/gpu` taint. Edit the label or GPU count there. The app
-auto-detects the GPU (NVENC encoding, CUDA analysis, GPU title rendering).
+auto-detects the GPU (NVENC encoding, CUDA analysis, the title kernels on CUDA). A card that cannot
+start the title kernels costs speed, not titles: they render on the CPU and the log says why in one
+warning line. Their compile cache lives on the `data` volume, since the root filesystem is read-only.
 
 `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` in that patch is required, not decoration.
 Asking for `nvidia.com/gpu` gets you `compute,utility`, which is enough for CUDA and not for the

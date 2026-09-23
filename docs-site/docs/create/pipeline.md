@@ -381,6 +381,25 @@ episode, within the 90-minute window, are compared. Matching hashes or similar c
 unrelated episodes do not buy a model call. Within an episode, a hash distance of at most 10 bits
 can corroborate the same-picture question from step 2.
 
+**The same scene, not only the same frame.** A hash only agrees about one framing. The same path at
+dusk shot twice twenty minutes apart, the same couple's selfie a week later, the same stage filmed
+twice in one evening, or four weekend rides down the same kind of farm road all hash as strangers,
+and a viewer still sees the film say one thing twice. So the free pass also reads each frame's scene
+print: the pooled DINOv2 features of its preview, from the same pinned encoder the public heads
+already run, banked per preview in `scene-prints.sqlite` next to the hash bank. No model call, no
+download beyond the previews the cut already reads. Two frames whose prints agree at a cosine of
+0.65 or more are one scene when they sit within 14 days of each other, across stories. Two
+favourites are one scene only on the same day: across days you starred two moments. A favourite is
+never refused for a picture you did not star, and a frame that plays is never refused for a still.
+The frame that stays follows the same order as below, with a true video before a Live Photo's clip.
+
+A scene repeat is less certain than a hash repeat, so it leaves only when its slot can be spent
+elsewhere: a replacement from its moment or story takes it, or the film still reaches its target
+within the 15 % shortfall it already accepts. A film that is already short of material keeps its
+repeats. Measured on five recorded cells, 0.65 caught every repeat the owner named (0.65 to 0.85)
+and nothing else in the year film; the closest pair of same-day favourites the owner kept as two
+moments sat at 0.63.
+
 Audience-safe replacements must also respect the existing five-minute capture spacing. The gate
 reserves all surviving pictures first, then checks each replacement against those survivors and
 earlier replacements. It skips a conflicting candidate before asking for an audience verdict.
@@ -521,7 +540,11 @@ answers flip with the order of the rows at about half the named set, so one orde
 a verdict. A shot both orders name leaves; a shot one order names is offered a replacement from
 its own story and keeps its place until one passes. A picture you starred, or one the period's
 readings recorded as worth a record, keeps its place whatever the vote said; only a gate takes it
-out, and a block made only of such pictures is not asked at all.
+out, and a block made only of such pictures is not asked at all. The same holds for the only shot
+of a close family member (your partner, a child, a parent, from `people.yaml`): the vote cannot
+remove the one shot that puts them in the film. The vote is told whose film it is and who the film
+is about, and each shot carries its people's relation to you, so a partner in a month about a
+newborn is not read as "unrelated to the main subject".
 
 Before the vote, every shot of the draft faces the gates a model install can ask: the standing
 gate, the family-viewing gate, the five-minute capture spacing and the cached-hash duplicate
@@ -567,7 +590,11 @@ It needs a period the library holds an account of: what the month or year itself
 read once and reused by every later cut of it. Nothing is read in advance. The draft is built from
 facts alone, with no model call at all. Then only the episodes the draft's shots sit in are read,
 so a film pays for what it shows: a month cut of 17 shots reads at most 17 episodes, not every
-episode of every story it touched. The account is written from those readings plus what the
+episode of every story it touched. Those readings ask only what the film reads back: what
+happened, one representative and the moments worth a record. They leave out the Cull rejects
+and the extra representatives the full reading asks for, which were 62 % of the reader's output on
+a measured cold year. A full reading already in the library, from `prepare --overviews` or an
+earlier film, answers them for free. The account is written from those readings plus what the
 no-model reader already says about every other episode of the period, one request per month (and
 one more over the months, for a film of a whole year). A film over several years, such as a person
 film from a birth date to today, gets one account per year it touches and one over those years,
@@ -616,8 +643,14 @@ February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm; a 1
 13,500 assets cost about 990 calls and about 70 minutes cold, and 11 minutes warm. A warm run asks
 the model nothing at all, and what is left of it is the video work after the cut, playback
 downloads, motion measurement and picture review. There is no depth knob and no shortlist at the
-source: every eligible picture is prepared, because a picture the editor never saw is one it cannot
-weigh.
+source: every picture the film can select is prepared, because a picture the editor never saw is one
+it cannot weigh. A film prepares only those, though, not the whole window around them. A person film
+over her lifetime selects from the pictures where she is recognised, so those are prepared, plus the
+five-minute capture run each one sits in (the exposure rule reads the whole run's flags) and the
+other stills of its Live Photo family. The rest of the window is read as Immich metadata, because
+episodes and moments are cut from the whole library, and gets no preview, head, detector or face
+read. A cut that somehow selected an unprepared picture stops rather than shipping it. Preparing the
+whole library is what [`prepare`](./cli/prepare.md) is for.
 The levers are putting the caption server and the reader where they are fast, preparing a library
 ahead with [`prepare`](./cli/prepare.md), and keeping the cache. If the render is
 the slow part none of that helps: that is decode, scale, blend and encode, and the levers are a

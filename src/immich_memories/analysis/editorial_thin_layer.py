@@ -47,6 +47,7 @@ from immich_memories.analysis.editorial_thin_short import (
 from immich_memories.analysis.editorial_thin_vote import (
     classify_fit,
     is_protected,
+    sole_family_shots,
     vote_thesis_fit,
 )
 from immich_memories.security import write_secret_file
@@ -138,11 +139,13 @@ class ThinPolish:
         candidates_of: Callable[[str], Sequence[Mapping[str, Any]]] = lambda _key: (),
         content_cap: float = 0.0,
         protected: Sequence[str] = (),
+        subject: str = "",
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
         A period the library has no account of is not polished at all: the film is the one the
         planner already built, which is the fallback this layer is switched on in front of.
+        `subject` is who the film is about, which the vote reads beside the account.
         """
         if catalogue is None or not carriers:
             reason = "no catalogued account of this period" if catalogue is None else "no draft"
@@ -152,7 +155,8 @@ class ThinPolish:
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
-        kept, verdicts, rounds = self._voted(admitted, judge, catalogue, contract, line_of)
+        fit = _FitQuestion(judge, catalogue, contract, line_of, subject)
+        kept, verdicts, rounds = self._voted(admitted, fit)
         slots = plan_slots(
             kept,
             catalogue=catalogue,
@@ -174,9 +178,7 @@ class ThinPolish:
         )
         filled, outcomes = refill.fill(kept, slots)
         partition = balanced_groups([c["asset_id"] for c in admitted])
-        final, revoked = self._checked(
-            filled, kept, outcomes, partition, judge, catalogue, contract, line_of
-        )
+        final, revoked = self._checked(filled, kept, outcomes, partition, fit)
         seen = {c["asset_id"] for c in carriers} | {c["asset_id"] for c in final}
         topped, short_slots, short = self._short_reads(
             final,
@@ -187,9 +189,7 @@ class ThinPolish:
             line_of=line_of,
         )
         if short_slots:
-            final, late = self._checked(
-                topped, final, short_slots, partition, judge, catalogue, contract, line_of
-            )
+            final, late = self._checked(topped, final, short_slots, partition, fit)
             revoked |= late
         record(
             "thin-polish",
@@ -277,10 +277,7 @@ class ThinPolish:
         before: Sequence[Mapping[str, Any]],
         outcomes: Sequence[ThinSlot],
         partition: Sequence[Sequence[str]],
-        judge,
-        catalogue: ThinCatalogue,
-        contract: str,
-        line_of: Callable[[str], str],
+        fit: _FitQuestion,
     ) -> tuple[list[dict[str, Any]], set[str]]:
         """Every newcomer, judged again in the company of the block it joined.
 
@@ -297,14 +294,13 @@ class ThinPolish:
             return filled, set()
         newcomers = {row["asset_id"] for row in fresh}
         by_asset = {row["asset_id"]: row for row in filled}
+        family = sole_family_shots(filled, fit.line_of)
         votes: dict[str, tuple[int, str]] = {}
         for group in rejoined_blocks(partition, filled, newcomers, outcomes):
             block = [by_asset[asset] for asset in group]
-            block_votes, _rounds = self._ask(
-                block, judge, catalogue, contract, line_of, moving=newcomers
-            )
+            block_votes, _rounds = self._ask(block, fit, family, moving=newcomers)
             votes.update(block_votes)
-        verdicts = classify_fit(fresh, votes)
+        verdicts = classify_fit(fresh, votes, family)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
             return filled, set()
@@ -320,15 +316,11 @@ class ThinPolish:
         return sorted([*kept, *restored], key=itemgetter("taken", "asset_id")), revoked
 
     def _voted(
-        self,
-        carriers: list[dict[str, Any]],
-        judge,
-        catalogue: ThinCatalogue,
-        contract: str,
-        line_of: Callable[[str], str],
+        self, carriers: list[dict[str, Any]], fit: _FitQuestion
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
-        votes, rounds = self._ask(carriers, judge, catalogue, contract, line_of)
-        verdicts = classify_fit(carriers, votes)
+        family = sole_family_shots(carriers, fit.line_of)
+        votes, rounds = self._ask(carriers, fit, family)
+        verdicts = classify_fit(carriers, votes, family)
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
         return kept, verdicts, rounds
 
@@ -340,27 +332,45 @@ class ThinPolish:
     def _bank_path(self) -> Path:
         return self.bank_dir / "thesis-fit.private.json"
 
-    def _ask(self, carriers, judge, catalogue, contract, line_of, moving=None):
-        """The vote over these shots; with `moving`, only those shots' answers are read."""
+    def _ask(self, carriers, fit: _FitQuestion, family: Mapping[str, str], moving=None):
+        """The vote over these shots; with `moving`, only those shots' answers are read.
+
+        A shot the vote may not move (a star, a record, a close family member's only shot) is
+        not asked about in a second order, and a block of nothing else is not asked at all.
+        """
         bank = self._bank()
         story_of = {
-            asset: story.key for story in catalogue.stories for asset in story.asset_ids
+            asset: story.key for story in fit.catalogue.stories for asset in story.asset_ids
         }.get
         return vote_thesis_fit(
-            judge,
+            fit.judge,
             pictures=[c["asset_id"] for c in carriers],
             protected=[
                 c["asset_id"]
                 for c in carriers
-                if is_protected(c) or (moving is not None and c["asset_id"] not in moving)
+                if is_protected(c)
+                or c["asset_id"] in family
+                or (moving is not None and c["asset_id"] not in moving)
             ],
-            line_of=line_of,
-            thesis=catalogue.thesis,
-            contract=contract,
+            line_of=fit.line_of,
+            thesis=fit.catalogue.thesis,
+            contract=fit.contract,
+            subject=fit.subject,
             story_of=lambda asset: story_of(asset, "") or "",
             bank=bank,
             save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
         )
+
+
+@dataclass(frozen=True)
+class _FitQuestion:
+    """What every thesis-fit question of one polish reads: the same judge, account and lines."""
+
+    judge: Any
+    catalogue: ThinCatalogue
+    contract: str
+    line_of: Callable[[str], str]
+    subject: str
 
 
 def thin_budget(draft: int, seats: int) -> int:

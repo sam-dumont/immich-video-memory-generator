@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # of rejects only can never withdraw one, and because no row at all means the
 # pass never looked, which is a different answer. No Cull bucket uses this word.
 KEPT_VERDICT = "kept"
+_RECALL_BATCH = 900
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS editorial_verdicts (
@@ -73,15 +74,21 @@ class EditorialVerdicts:
         """The standing verdicts for these assets under this definition."""
         if not asset_ids:
             return {}
-        # Only the number of placeholders is interpolated; every value is bound.
-        placeholders = ",".join("?" for _ in asset_ids)
+        recalled: dict[str, str] = {}
+        # A lifetime window holds more pictures than one statement may bind.
         with self._open() as connection:
-            rows = connection.execute(
-                "SELECT asset_id, bucket FROM editorial_verdicts "  # noqa: S608
-                f"WHERE pass_version = ? AND asset_id IN ({placeholders})",
-                (pass_version, *asset_ids),
-            ).fetchall()
-        return dict(rows)
+            for start in range(0, len(asset_ids), _RECALL_BATCH):
+                chunk = asset_ids[start : start + _RECALL_BATCH]
+                # Only the number of placeholders is interpolated; every value is bound.
+                placeholders = ",".join("?" for _ in chunk)
+                recalled.update(
+                    connection.execute(
+                        "SELECT asset_id, bucket FROM editorial_verdicts "  # noqa: S608
+                        f"WHERE pass_version = ? AND asset_id IN ({placeholders})",
+                        (pass_version, *chunk),
+                    ).fetchall()
+                )
+        return recalled
 
     def _open(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)

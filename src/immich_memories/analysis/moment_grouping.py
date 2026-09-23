@@ -102,19 +102,32 @@ def _group_by_time_and_place(
     parallel, their photographs interleave in time, and a scan that only ever
     looked at the immediately preceding asset would start a new moment on every
     alternation.
+
+    Only moments still open are scanned. In time order, a moment whose last asset
+    is more than the window behind this one can take nothing later either, so a
+    lifetime window no longer compares every asset with every earlier moment.
     """
     ordered = sorted(
         (a for a in assets if _taken_at(a) is not None),
         key=lambda a: (_taken_at(a), str(getattr(a, "asset_id", getattr(a, "id", "")))),
     )
+    window_seconds = window_minutes * 60
     moments: list[list[Any]] = []
+    open_moments: list[list[Any]] = []
     for asset in ordered:
-        for moment in reversed(moments):
+        when = _taken_at(asset)
+        open_moments = [
+            moment
+            for moment in open_moments
+            if (when - _taken_at(moment[-1])).total_seconds() <= window_seconds
+        ]
+        for moment in reversed(open_moments):
             if _belongs_with(asset, moment, window_minutes, radius_metres):
                 moment.append(asset)
                 break
         else:
             moments.append([asset])
+            open_moments.append(moments[-1])
     return moments
 
 

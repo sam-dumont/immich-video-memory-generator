@@ -17,8 +17,9 @@ from immich_memories.analysis.editorial_block_votes import (
     vote_blocks,
     weak_example,
 )
+from immich_memories.analysis.editorial_story_replies import close_family_on
 
-THESIS_FIT_VERSION = "thesis-fit-v3-own-label-example"
+THESIS_FIT_VERSION = "thesis-fit-v4-owner-relations"
 THESIS_FIT_CRITERION = (
     "Name the shots that add nothing to THIS film: filler, a lone everyday object or appliance, "
     "a meaningless interior, an accidental frame, or a view that merely repeats its neighbour "
@@ -31,6 +32,15 @@ THESIS_FIT_CRITERION = (
     "Name only the weak ones; say for each in at most 12 words why."
 )
 HELD_BY_THE_OWNER = "the owner starred it or the catalogue records it; the vote does not move it"
+# The vote read a partner in a month centred on a newborn as "unrelated to the main subject" and
+# removed her only shot: a relation on a line said nothing about whose relation it was.
+WHOSE_FILM = (
+    "This is the library owner's film. Each person on a shot is named with their relation to "
+    "the owner. The owner's close family (partner, child, parent) is part of the owner's life in "
+    "every period: a shot of one of them is never unrelated to this film, even when the thesis "
+    "centres on someone else."
+)
+NO_SUBJECT = "the owner's own life over this period, and the people in it"
 
 
 def judge_thesis_fit(
@@ -44,6 +54,7 @@ def judge_thesis_fit(
     bank: MutableMapping[str, dict] | None = None,
     save: Callable[[], None] | None = None,
     settled: Callable[[str, bool], bool] | None = None,
+    subject: str = "",
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Does each shot earn its place in THIS film? Named by both orders is a firm no.
 
@@ -62,6 +73,7 @@ def judge_thesis_fit(
         # The block is last; everything above it is byte-identical for the run.
         return (
             f"{contract}\n\nTHE THESIS THIS FILM IS BUILT ON\n{thesis}\n\n"
+            f"THE FILM'S SUBJECT\n{subject or NO_SUBJECT}\n\n{WHOSE_FILM}\n\n"
             "Below are the shots currently in this film, one line each: when each was taken and "
             f"what it shows. Text only.\n\n{THESIS_FIT_CRITERION}\n\n"
             f"Answer with one JSON object only, on one line: {weak_example(listing)}"
@@ -71,7 +83,8 @@ def judge_thesis_fit(
     def row_of(asset: str) -> str:
         # The row already opens with the shot's date and time and the cut is offered in its own
         # chronological order; the story alias is added so a repeat of a neighbour is visible.
-        return f"{label_of[asset]}: [{story_of(asset) or '-'}] {line_of(asset)}"
+        family = _family_note(line_of(asset))
+        return f"{label_of[asset]}: [{story_of(asset) or '-'}]{family} {line_of(asset)}"
 
     votes, rounds = vote_blocks(
         judge,
@@ -122,13 +135,41 @@ def vote_thesis_fit(
     return votes, rounds
 
 
+def _family_note(line: str) -> str:
+    relations = list(dict.fromkeys(close_family_on(line).values()))
+    return f" (the owner's close family: {', '.join(relations)})" if relations else ""
+
+
+def sole_family_shots(
+    cut: Sequence[Mapping[str, Any]], line_of: Callable[[str], str]
+) -> dict[str, str]:
+    """The shots that are the only one in the cut of some close family member, with the relation.
+
+    Such a shot is how that person is in the film at all, so a vote alone never removes it; a gate
+    still can. The names only tell two people of the same relation apart inside this call.
+    """
+    shots_of: dict[str, list[str]] = {}
+    relation_of: dict[str, str] = {}
+    for shot in cut:
+        for name, relation in close_family_on(line_of(shot["asset_id"])).items():
+            shots_of.setdefault(name, []).append(shot["asset_id"])
+            relation_of[name] = relation
+    sole: dict[str, str] = {}
+    for name, assets in shots_of.items():
+        if len(assets) == 1:
+            sole.setdefault(assets[0], relation_of[name])
+    return sole
+
+
 def is_protected(shot: Mapping[str, Any]) -> bool:
     """A star the owner put on it, or a record the catalogue holds: no vote moves the shot."""
     return bool(shot.get("favourite") or shot.get("notable_record"))
 
 
 def classify_fit(
-    cut: Sequence[Mapping[str, Any]], votes: Mapping[str, tuple[int, str]]
+    cut: Sequence[Mapping[str, Any]],
+    votes: Mapping[str, tuple[int, str]],
+    family_held: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Bad, weak or kept.
 
@@ -139,22 +180,30 @@ def classify_fit(
 
     Everything else: an unprotected shot named by both orders is `bad` and leaves; by one order
     it is `weak` and is offered a same-story replacement whose place it gives up only once a
-    candidate has passed.
+    candidate has passed. `family_held` maps a close family member's only shot to their relation:
+    it is held the same way.
     """
+    held = family_held or {}
     verdicts = {}
     for shot in cut:
         asset = shot["asset_id"]
         named, why = votes.get(asset, (0, ""))
-        protected = is_protected(shot)
+        protected = is_protected(shot) or asset in held
         verdicts[asset] = {
             "state": _state(named, protected=protected),
             "named_by": named,
             "why": why,
             "protected": protected,
-            "held_by": HELD_BY_THE_OWNER if protected and named else "",
+            "held_by": _held_by(shot, held) if protected and named else "",
             "rule": "thesis-fit vote" if named else "",
         }
     return verdicts
+
+
+def _held_by(shot: Mapping[str, Any], family_held: Mapping[str, str]) -> str:
+    if is_protected(shot):
+        return HELD_BY_THE_OWNER
+    return f"the only shot of the owner's {family_held[shot['asset_id']]} in the film; the vote does not move it"
 
 
 def _state(named: int, *, protected: bool) -> str:

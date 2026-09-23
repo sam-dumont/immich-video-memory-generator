@@ -221,12 +221,15 @@ src/immich_memories/
 ├── analysis/                   # Selection: the story-first editorial route
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
+│   ├── editorial_runtime_evidence.py # The film-time preparation a cut waits on, and the annotation store it reads
+│   ├── editorial_film_reach.py # What a film prepares: its demanded pictures, their Live families and capture runs
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context; StandingBankFile: the library's standing answers
-│   ├── editorial_final_hash_review.py # The final duplicate review a no-model cut runs, on cached preview hashes
+│   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
+│   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
@@ -235,6 +238,7 @@ src/immich_memories/
 │   ├── editorial_thin_gates.py     # Every draft shot put to standing, audience, spacing and the hash review
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
 │   │                               # source order first, the hashed order only where it decides
+│   │                               # rows carry close family relations; a relative's only shot is held
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
 │   ├── editorial_thin_short.py     # A short cut reads ≤2·⌈S/3.5⌉ unread episodes of shot-less stories;
 │   │                               # only a story whose reading records a moment gets a seat
@@ -267,6 +271,7 @@ src/immich_memories/
 │   ├── text_episode_reader.py  # Reading event evidence (paged, banked); the same reading names
 │   │                           # each episode's notable moments, which the polish layer seats and protects
 │   ├── text_episode_prompt.py  # What that reading is asked, and what it may take a name from
+│   │                           # (a film's on-demand reading asks the lean form: no Cull, one representative)
 │   ├── text_episode_paging.py  # Its request limits: an episode cut into pages, pages packed into prompts
 │   ├── editorial_album_index.py # Album names by asset, one listing + one read per album, once per run
 │   ├── editorial_story_*.py    # Story reading, weighing, slots, shortlist, carriers: the story planner

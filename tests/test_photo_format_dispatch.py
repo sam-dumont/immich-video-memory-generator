@@ -112,3 +112,41 @@ def test_unreadable_source_is_not_treated_as_a_supported_photo(tmp_path):
 
     with pytest.raises(UnidentifiedImageError):
         animator.prepare_photo_source(source, tmp_path)
+
+
+def _rotated_ultrahdr_jpeg(path: Path) -> None:
+    """A gain-mapped JPEG stored landscape with an EXIF tag saying it displays portrait.
+
+    The stored left half is red and the gain map brightens only that half, so the
+    output shows whether the base image and its gain map were turned together.
+    """
+    import io
+
+    stored = Image.new("RGB", (64, 32), "blue")
+    stored.paste((255, 0, 0), (0, 0, 32, 32))
+    exif = Image.Exif()
+    exif[274] = 6  # WHY: 6 = rotate 90 degrees clockwise to display
+    primary = io.BytesIO()
+    stored.save(primary, "JPEG", quality=95, exif=exif, comment=b"hdrgm:Version=1.0")
+    gain = Image.new("L", (64, 32), 0)
+    gain.paste(255, (0, 0, 32, 32))
+    gain_bytes = io.BytesIO()
+    gain.save(gain_bytes, "JPEG", quality=95)
+    path.write_bytes(primary.getvalue() + gain_bytes.getvalue())
+
+
+def test_ultrahdr_jpeg_is_turned_upright_with_its_gain_map(tmp_path):
+    import cv2
+
+    source = tmp_path / "rotated.jpg"
+    _rotated_ultrahdr_jpeg(source)
+
+    prepared = animator.prepare_photo_source(source, tmp_path)
+
+    assert prepared.has_gain_map
+    assert (prepared.width, prepared.height) == (32, 64)
+    pixels = cv2.cvtColor(cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
+    top, bottom = pixels[8, 16], pixels[56, 16]
+    assert top[0] > top[2], "the stored left (red) half displays on top"
+    assert bottom[2] > bottom[0], "the stored right (blue) half displays at the bottom"
+    assert top[0] > bottom[2], "the gain map brightened the same half it was stored with"

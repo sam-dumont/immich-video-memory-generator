@@ -124,7 +124,15 @@ returns the same JSON but always with HTTP `200`.
 ## What the card does here
 
 NVENC encoding and the GPU title kernels, same as [Linux + NVIDIA](./linux-nvidia.md), and nothing
-else in this pod. So do not size the cluster around the encoder: once NVENC has the encode, what
+else in this pod. The title kernels try CUDA first. If the card cannot start them, the pod does not
+fail: one warning line names the backend and the reason (`Title rendering on CPU: CUDA: ...`) and the
+same kernels draw the titles on the processor, slower. `preflight` shows the same thing in its
+`Title rendering` row, so check it once after the first deploy.
+
+The kernels keep their compile cache in `~/.immich-memories/cache/kernels`, which is the `data`
+volume here. That matters on this root filesystem: it is read-only, and the kernel library used to
+write its cache under `~/.cache` and abort (`sigabrt` in preflight) when it could not, which left
+every pod on PIL titles whatever card it had. So do not size the cluster around the encoder: once NVENC has the encode, what
 you wait for is preparation and the editor's readings, and neither touches this card unless you put
 the picture facts behind the [inference service](../installation/inference-service.md). That is how
 the measured cluster ran its classifiers on a GPU: [Running modes](../running-modes.md).

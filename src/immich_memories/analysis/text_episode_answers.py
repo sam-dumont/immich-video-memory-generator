@@ -269,6 +269,9 @@ def _cull_decisions(
     *,
     representative_ids: frozenset[str],
 ) -> tuple[tuple[EpisodeCullDecision, ...], int, int]:
+    if value is None:
+        # The lean question asks for no Cull at all; an absent list is no rejects, not a bad row.
+        return (), 0, 0
     if not isinstance(value, list):
         return (), 1, 0
     decisions: list[EpisodeCullDecision] = []
