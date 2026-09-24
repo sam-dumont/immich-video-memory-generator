@@ -17,7 +17,13 @@ from immich_memories.analysis.preparation_report import (
     rate_report,
     total_seconds_per_picture,
 )
-from immich_memories.cli._helpers import console, print_error, print_info, print_success
+from immich_memories.cli._helpers import (
+    console,
+    print_error,
+    print_info,
+    print_success,
+    refuse_blocked_host,
+)
 from immich_memories.config_loader import Config
 from immich_memories.timeperiod import DateRange
 
@@ -194,6 +200,7 @@ def register_prepare_commands(cli_group: click.Group) -> None:
             raise click.UsageError("--overviews needs a configured model reader")
 
         windows = _windows(year=year, month=month, start=start, end=end, period=period)
+        refuse_blocked_host(config, output_directory=None)
         with SyncImmichClient(
             base_url=config.immich.url,
             api_key=config.immich.api_key,

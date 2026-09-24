@@ -200,6 +200,7 @@ scale and encode; none of them runs inference.
 | `caption endpoint failed the compact-v3 schema control` | It does not honour the JSON schema, or it is the wrong model |
 | `public heads need the pinned DINOv2 ONNX export at …` | Step 2, or `triage.encoder` points at the wrong path |
 | `nsfw_marqo has no model: …` or `doc_docling has no model: …` | Run `models fetch`; the message names the model and the fix |
+| `Output directory is not writable: …` | The run stops before it starts. On Docker the container (uid 1000) cannot write `./output`: create it before `up`, or `sudo chown 1000:1000 output` |
 | `Story-first selection needs prepared annotations at …` | The annotation store moved. Point `editorial.annotation_database` at it |
 
 ## Next
