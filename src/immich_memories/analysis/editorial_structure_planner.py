@@ -22,7 +22,11 @@ from immich_memories.analysis.editorial_block_votes import judge_worthiness, wor
 from immich_memories.analysis.editorial_carrier_eligibility import people_moment
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
-from immich_memories.analysis.editorial_family_seat import FilmSeatSource, seat_in_film
+from immich_memories.analysis.editorial_family_seat import (
+    FilmSeatSource,
+    film_close_family,
+    seat_in_film,
+)
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
@@ -45,7 +49,6 @@ from immich_memories.analysis.editorial_story_lookalike import (
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
-from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_story_standing import (
     StandingBankFile,
     StandingGate,
@@ -499,6 +502,8 @@ def _select(
     attached, observed = observe_attached(
         run, ports, gate, material.picture_evidence, attached_relation_records, share_log
     )
+    # The review protects the same people the seat counts: in a person film, the subject's own.
+    close_of = film_close_family(source)
     final_duplicate_review(
         run,
         ports,
@@ -514,7 +519,7 @@ def _select(
         quality=material.builder.quality,
         pixel_facts=source.pixel_facts,
         owner_required=source.owner_required_asset_ids,
-        close_family_of=lambda asset_id: close_family_on(selection.lines.get(asset_id, "")),
+        close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")

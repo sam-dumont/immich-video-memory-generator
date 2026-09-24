@@ -316,7 +316,7 @@ class TestCLIGenerate:
 
         assert result.exit_code == 0, result.output
         assert run_pipeline.call_args.kwargs["output_format"] is None
-        assert run_pipeline.call_args.kwargs["output_orientation"] == "landscape"
+        assert run_pipeline.call_args.kwargs["output_orientation"] == "auto"
 
     def test_explicit_prores_normalizes_conflicting_output_suffix(self, tmp_path) -> None:
         """The resolved MOV container is authoritative over a typed .mp4 suffix."""
@@ -880,7 +880,6 @@ class TestPipelineRunner:
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
-        mock_config = MagicMock()
         mock_progress = MagicMock()
 
         asset1 = MagicMock(id="a1")
@@ -892,17 +891,14 @@ class TestPipelineRunner:
             start=datetime(2025, 1, 1),
             end=datetime(2025, 1, 31, 23, 59, 59),
         )
-        assets, live = fetch_videos(
+        assets = fetch_videos(
             client=mock_client,
-            config=mock_config,
             progress=mock_progress,
             date_ranges=[dr],
             person_ids=[],
-            use_live_photos=False,
         )
         # Deduplication: a1 appears twice but kept once
         assert len(assets) == 2
-        assert live == []
 
     def test_fetch_videos_person_filter(self, tmp_path):
         """fetch with single person_id calls person-specific API."""
@@ -910,7 +906,6 @@ class TestPipelineRunner:
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
-        mock_config = MagicMock()
         mock_progress = MagicMock()
         mock_client.get_videos_for_person_and_date_range.return_value = []
 
@@ -920,11 +915,9 @@ class TestPipelineRunner:
         )
         fetch_videos(
             client=mock_client,
-            config=mock_config,
             progress=mock_progress,
             date_ranges=[dr],
             person_ids=["person-123"],
-            use_live_photos=False,
         )
         mock_client.get_videos_for_person_and_date_range.assert_called_once()
 
@@ -934,7 +927,6 @@ class TestPipelineRunner:
         from immich_memories.timeperiod import DateRange
 
         mock_client = MagicMock()
-        mock_config = MagicMock()
         mock_progress = MagicMock()
         mock_client.get_videos_for_all_persons.return_value = []
 
@@ -944,11 +936,9 @@ class TestPipelineRunner:
         )
         fetch_videos(
             client=mock_client,
-            config=mock_config,
             progress=mock_progress,
             date_ranges=[dr],
             person_ids=["p1", "p2"],
-            use_live_photos=False,
         )
         mock_client.get_videos_for_all_persons.assert_called_once()
 
@@ -968,19 +958,25 @@ class TestPipelineRunner:
         assets = [c.asset for c in clips]
         dr = DateRange(start=datetime(2025, 1, 1), end=datetime(2025, 12, 31, 23, 59, 59))
 
-        mock_pipeline_result = MagicMock()
-        mock_pipeline_result.selected_clips = clips
-        mock_pipeline_result.clip_segments = {}
+        from immich_memories.analysis.smart_pipeline import PipelineResult
+
+        pipeline_result = PipelineResult(
+            selected_clips=clips,
+            clip_segments={clip.asset.id: (0.0, 3.0) for clip in clips},
+            errors=[],
+        )
 
         with (
             # WHY: mock assets_to_clips — real one needs Asset.duration from Immich metadata
             patch("immich_memories.generate.assets_to_clips", return_value=clips),
-            # WHY: mock at source — lazy imports inside function body
-            patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as MockPipeline,
+            # WHY: replaces the editorial planner, which reads the owner's annotation store
+            patch(
+                "immich_memories.analysis.editorial_runtime.build_smart_pipeline"
+            ) as build_pipeline,
             # WHY: mock generate_memory — real one acquires lock + runs FFmpeg
             patch("immich_memories.generate.generate_memory", return_value=output) as mock_gen,
         ):
-            MockPipeline.return_value.run.return_value = mock_pipeline_result
+            build_pipeline.return_value.run_editorial_source.return_value = ([], pipeline_result)
             result_path, should_upload, _ = run_pipeline_and_generate(
                 assets=assets,
                 client=mock_client,
@@ -1021,13 +1017,12 @@ class TestPipelineRunner:
         assert gen_params.timeline_plan.content_budget >= 48.0
         assert gen_params.output_canvas.width == 1280
         assert gen_params.output_canvas.height == 720
-        pipeline_config = MockPipeline.call_args.kwargs["config"]
-        assert pipeline_config.target_duration_seconds == gen_params.timeline_plan.content_budget
-        assert pipeline_config.output_resolution == 720
+        assert gen_params.clip_segments == pipeline_result.clip_segments
 
-    def test_dry_run_selects_and_writes_no_artifact(self, tmp_path, fixture_mp4, capsys):
-        """Planning uses cached/metadata analysis and stops before generation."""
-        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+    def test_dry_run_describes_the_inputs_and_neither_selects_nor_renders(
+        self, tmp_path, fixture_mp4, capsys
+    ):
+        """A dry run reports what it found; selection is --no-render's job, not this one's."""
         from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
         from immich_memories.config_loader import Config
         from immich_memories.timeperiod import DateRange
@@ -1036,24 +1031,20 @@ class TestPipelineRunner:
             cache={"database": str(tmp_path / "analysis.db"), "directory": str(tmp_path / "cache")}
         )
         clips = [_make_fake_clip(f"asset{i}", tmp_path, fixture_mp4) for i in range(3)]
-        analyzed = [
-            ClipWithSegment(clip=clip, start_time=0.0, end_time=3.0, score=0.5) for clip in clips
-        ]
-        result = PipelineResult(
-            selected_clips=clips,
-            clip_segments={clip.asset.id: (0.0, 3.0) for clip in clips},
-            errors=[],
-        )
         output = tmp_path / "preview.mp4"
 
         with (
+            # WHY: mock assets_to_clips — real one needs Asset.duration from Immich metadata
             patch("immich_memories.generate.assets_to_clips", return_value=clips),
-            patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
+            # WHY: a dry run must never reach the planner; failing loudly proves it
+            patch(
+                "immich_memories.analysis.editorial_runtime.build_smart_pipeline",
+                side_effect=AssertionError("dry run built a pipeline"),
+            ),
+            # WHY: mock generate_memory — real one acquires lock + runs FFmpeg
             patch("immich_memories.generate.generate_memory") as generate,
         ):
-            pipeline_type.return_value.run_planning_analysis.return_value = analyzed
-            pipeline_type.return_value.run_selection.return_value = result
-            actual, should_upload, _ = run_pipeline_and_generate(
+            actual, should_upload, album = run_pipeline_and_generate(
                 assets=[clip.asset for clip in clips],
                 client=MagicMock(),
                 config=config,
@@ -1073,76 +1064,13 @@ class TestPipelineRunner:
                 dry_run=True,
             )
 
-        assert actual == output
-        assert should_upload is True
-        pipeline_type.return_value.run_planning_analysis.assert_called_once()
+        printed = capsys.readouterr().out
+        assert (actual, should_upload, album) == (output, True, "Memories")
         generate.assert_not_called()
-        assert "Selected: 3" in capsys.readouterr().out
+        assert "selection was not run" in printed
+        assert "Candidates: 3 video, 0 photo" in printed
+        assert "Music: disabled" in printed
         assert not output.exists()
-
-    def test_dry_run_reports_all_selected_month_dividers(
-        self, tmp_path, fixture_mp4, capsys
-    ) -> None:
-        """Dry-run reports the complete post-selection month-divider decision."""
-        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
-        from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
-        from immich_memories.config_loader import Config
-        from immich_memories.timeperiod import DateRange
-
-        config = Config(
-            cache={"database": str(tmp_path / "analysis.db"), "directory": str(tmp_path / "cache")},
-            title_screens={"ending_duration": 4.0},
-        )
-        clips = [
-            _make_fake_clip(f"asset-{month}", tmp_path, fixture_mp4, duration=8.0)
-            for month in range(2, 8)
-        ]
-        for month, clip in zip(range(2, 8), clips, strict=True):
-            clip.asset.file_created_at = datetime(2026, month, 5, tzinfo=UTC)
-        analyzed = [
-            ClipWithSegment(clip=clip, start_time=0.0, end_time=8.0, score=0.5) for clip in clips
-        ]
-        result = PipelineResult(
-            selected_clips=clips,
-            clip_segments={clip.asset.id: (0.0, 8.0) for clip in clips},
-            errors=[],
-        )
-        output_path = tmp_path / "noah-preview.mp4"
-
-        with (
-            patch("immich_memories.generate.assets_to_clips", return_value=clips),
-            patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
-            patch("immich_memories.generate.generate_memory") as generate,
-        ):
-            pipeline_type.return_value.run_planning_analysis.return_value = analyzed
-            pipeline_type.return_value.run_selection.return_value = result
-            run_pipeline_and_generate(
-                assets=[clip.asset for clip in clips],
-                client=MagicMock(),
-                config=config,
-                progress=MagicMock(),
-                duration=60.0,
-                transition="crossfade",
-                music=None,
-                no_music=True,
-                output_path=output_path,
-                memory_type="person_spotlight",
-                person_names=["Noah"],
-                date_range=DateRange(
-                    start=datetime(2026, 1, 1), end=datetime(2026, 12, 31, 23, 59, 59)
-                ),
-                upload_to_immich=False,
-                album=None,
-                dry_run=True,
-            )
-
-        output = capsys.readouterr().out
-        assert "Month dividers: all 5 selected month changes" in output
-        assert "Title cards: 7 (17.5s)" in output
-        assert "Estimated final duration: 59.5s" in output
-        assert "Music: disabled" in output
-        assert not output_path.exists()
-        generate.assert_not_called()
 
 
 class TestTripGenerationFlow:
@@ -1205,6 +1133,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format=None,
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1259,6 +1188,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format=None,
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1336,6 +1266,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format="prores",
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1416,6 +1347,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format=None,
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1476,6 +1408,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format=None,
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1618,6 +1551,7 @@ class TestTripGenerationFlow:
                 scale_mode=None,
                 output_format=None,
                 add_date=False,
+                add_place=False,
                 keep_intermediates=False,
                 privacy_mode=False,
                 title_override=None,
@@ -1897,7 +1831,7 @@ class TestCLIFlexibleFiltering:
         assert result.exit_code in (0, 1), f"Unexpected: {result.output}"
 
     def test_birthday_manual_override(self, tmp_path):
-        """--birthday 07/21/2000 with --person still works as manual override."""
+        """--birthday 2000-07-21 with --person still works as manual override."""
         from click.testing import CliRunner
 
         from immich_memories.cli import main
@@ -1911,7 +1845,7 @@ class TestCLIFlexibleFiltering:
                     "--year",
                     "2025",
                     "--birthday",
-                    "07/21/2000",
+                    "2000-07-21",
                     "--person",
                     "FakePersonForTest",
                     "--no-music",

@@ -53,24 +53,29 @@ def relations_on(line: str) -> list[str]:
 
 
 _WITH_PEOPLE = re.compile(r"\| with ([^|]+)")
-_PERSON_NOTE = re.compile(r"([^;()]+?)\s*\(([^()]*)\)")
+# A note may nest one parenthesis: the owner renders as "library owner (inferred)".
+_PERSON_NOTE = re.compile(r"([^;()]+?)\s*\(((?:[^()]|\([^()]*\))*)\)")
 
 
-def close_family_on(line: str) -> dict[str, str]:
-    """Each close family member an annotation line names, mapped to their relation.
+def people_on(line: str) -> dict[str, str]:
+    """Each person an annotation line names with a note, mapped to the relation it states.
 
-    The name only tells two people of the same relation apart inside this run; nothing
-    recorded from here carries it.
+    The name only tells two people apart inside this run; nothing recorded from here carries it.
     """
     match = _WITH_PEOPLE.search(line)
     if not match:
         return {}
-    people: dict[str, str] = {}
-    for name, detail in _PERSON_NOTE.findall(match.group(1)):
-        relation = detail.split(";")[0].strip()
-        if is_close_family(relation):
-            people[name.strip(" ;")] = relation
-    return people
+    return {
+        name.strip(" ;"): detail.split(";")[0].strip()
+        for name, detail in _PERSON_NOTE.findall(match.group(1))
+    }
+
+
+def close_family_on(line: str) -> dict[str, str]:
+    """Each close family member of the owner an annotation line names, mapped to their relation."""
+    return {
+        name: relation for name, relation in people_on(line).items() if is_close_family(relation)
+    }
 
 
 def _text(value, name, *, empty=False):

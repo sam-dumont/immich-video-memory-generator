@@ -252,3 +252,98 @@ def test_a_frame_the_audience_gate_holds_gives_the_seat_to_her_next_best():
 
     assert _shows_partner(lines, seated) == ["p-00"]
     assert asked == ["p-12", "p-00"]
+
+
+_PEOPLE_FILE = """
+version: 1
+owner: {person_id: owner-id, identified: confirmed}
+people:
+  - {ids: [owner-id], name: Owner}
+  - name: Subject
+    ids: [subject-id]
+    confirmed:
+      role: partner
+      links:
+        - {kind: partner-of, with: owner-id}
+        - {kind: child-of, with: her-father-id}
+  - {ids: [her-father-id], name: Her Father}
+  - name: Her Mother
+    ids: [her-mother-id]
+    confirmed: {links: [{kind: mother-of, with: subject-id}]}
+"""
+
+
+def _planned_person_film(tmp_path, *, product: str):
+    """A rules-read period of the owner's partner. Every moment's starred frame shows her alone,
+    and her father and mother are on the other pictures of her first week, so every moment they
+    are in goes to a favourite. The people file links her parents to her, not to the owner."""
+    from dataclasses import replace
+    from datetime import date
+
+    from immich_memories.analysis.editorial_people import adapt_editorial_people
+    from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
+    from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
+    from immich_memories.analysis.editorial_structure_planner import plan_structure
+    from immich_memories.people.context import load_people_prompt_context
+    from tests.editorial_film_fixtures import film_source, home_days
+
+    people_file = tmp_path / "people.yaml"
+    people_file.parent.mkdir(parents=True, exist_ok=True)
+    people_file.write_text(_PEOPLE_FILE)
+    context = load_people_prompt_context(people_file, include_derived=True)
+    relation = {c.name: c.relationship for c in context.values()}
+    days = [*home_days(date(2030, 2, 3), 5), *home_days(date(2030, 2, 12), 5)]
+    days = [replace(day, moments=3) for day in days]
+    source = film_source(
+        tmp_path,
+        days,
+        seconds=60,
+        span=(date(2030, 2, 1), date(2030, 2, 28)),
+        pictures=6,
+        product=product,
+    )
+    subject = f"Subject ({relation['Subject']})"
+    parents = "; ".join(f"{name} ({relation[name]})" for name in ("Her Father", "Her Mother"))
+    for asset_id, line in list(source.annotations.items()):
+        day, moment, picture = (int(part[1:]) for part in asset_id.split("-"))
+        with_parents = day < 5 and moment < 2 and picture > 0
+        company = f"{parents}; {subject}" if with_parents else subject
+        source.annotations[asset_id] = line.replace(
+            " | activity=", f" | with {company} | activity="
+        )
+        source.assets[asset_id].is_favorite = moment < 2 and picture == 0
+    source = replace(
+        source,
+        case=replace(source.case, people=("Subject",)),
+        people=adapt_editorial_people(context),
+    )
+    plan = plan_structure(
+        source,
+        StructurePlannerPorts(
+            judge=NoModelJudge(),
+            thumbnail_hash=lambda _asset: None,
+            rules=RuleStructureReader(source),
+        ),
+    ).plan
+    shots = [c["asset_id"] for c in plan["carriers"]]
+    return [a for a in shots if "Her Father" in source.annotations[a]]
+
+
+def test_a_person_film_seats_its_subjects_parents_though_the_owner_calls_them_in_laws(tmp_path):
+    assert len(_planned_person_film(tmp_path / "person", product="person_spotlight")) == 1
+
+
+def test_a_month_film_keeps_close_family_relative_to_the_owner(tmp_path):
+    assert _planned_person_film(tmp_path / "month", product="monthly_highlights") == []
+
+
+def test_the_owner_whose_note_nests_a_parenthesis_is_read_as_a_person():
+    from immich_memories.analysis.editorial_story_replies import people_on
+
+    line = (
+        "2030-02-03 | with Owner (library owner (inferred); aged 38; inner circle); "
+        "Person B (son; 3 months old)"
+    )
+
+    assert people_on(line) == {"Owner": "library owner (inferred)", "Person B": "son"}
+    assert close_family_on(line) == {"Person B": "son"}

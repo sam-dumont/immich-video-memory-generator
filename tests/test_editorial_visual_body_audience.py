@@ -68,13 +68,17 @@ def test_complete_visual_no_answers_without_a_second_call_and_lifts_no_detector_
     ],
 )
 def test_visual_body_no_never_clears_an_independent_sensitive_activity(finding, verdict):
-    # These four categories need a stated fact under them (#1124, #1205); the others stand alone.
+    # Every category needs a stated fact under it (#1124, #1205, #1255).
     caption = {
         "identifying_record": "A person in a top and shorts holds a passport open.",
         "adult_changing": "An adult undresses, private body parts exposed.",
         "breastfeeding_or_expressing_milk": "A person in a top and shorts nurses a baby.",
         "bathing": "A person in a top and shorts sits in a bathtub.",
-    }.get(finding, "A person wears a top and shorts.")
+        "toileting_or_changing": "A person in a top and shorts sits on a toilet.",
+        "intimate_hygiene": "A person in a top and shorts wipes a baby's bottom.",
+        "graphic_medical_procedure": "A person in a top and shorts has a deep bleeding wound.",
+        "sexual_content": "Two people in tops and shorts are having sex.",
+    }[finding]
     judge = Judge(activity(finding))
     result = share.check_audience(judge, item(nsfw="yes", caption=caption), "test")
     assert result["verdict"] == verdict and result["finding"] == "private_activity"

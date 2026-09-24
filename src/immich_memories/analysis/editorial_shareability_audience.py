@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 
@@ -181,6 +181,10 @@ _UNSUPPORTED_VERDICT = {
     "breastfeeding_or_expressing_milk": "share",
     "bathing": "share",
     "nudity_shirtless_or_underwear": "share",
+    "sexual_content": "share",
+    "intimate_hygiene": "share",
+    "graphic_medical_procedure": "share",
+    "toileting_or_changing": "share",
 }
 _NOT_A_RECORD_LABELS = frozenset({"photograph", "logo", "icon"})
 _RECORD_TEXT = re.compile(
@@ -200,13 +204,8 @@ _UNDRESSING_TEXT = re.compile(
 )
 # The 30B read "a woman holding a baby close to her chest" as breastfeeding, a mother owl nursing
 # her owlets too, and a baby in a paddling pool, a river or an empty bathroom as bathing (09-24).
-# Breastfeeding needs the feeding and a person; bathing needs a person in a bath or shower. A
+# Breastfeeding needs a breast word and a person; bathing needs a person in a bath or shower. A
 # nsfw head still holds on its own.
-_FEEDING_TEXT = re.compile(
-    r"\b(?:breast\s*-?\s*fe\w*|breasts?|feed\w*|fed|nurs(?:e|es|ed|ing)|latch\w*|"
-    r"pump\w*|express\w* (?:\w+ )?milk|breast milk)\b",
-    re.IGNORECASE,
-)
 _ANIMAL = (
     r"(?:gorillas?|monkeys?|apes?|owls?|owlets?|birds?|chicks?|hens?|ducks?|swans?|cats?|kittens?|"
     r"dogs?|pupp(?:y|ies)|cows?|calf|calves|goats?|sheep|lambs?|pigs?|piglets?|horses?|foals?|"
@@ -217,7 +216,7 @@ _ANIMAL = (
 _PERSON_TEXT = re.compile(
     r"\b(?:person|people|man|men|woman|women|adults?|parents?|mother|mom|mum|father|dad|"
     r"bab(?:y|ies)|infants?|newborns?|child|children|kids?|toddlers?|boys?|girls?|sons?|"
-    r"daughters?|someone)\b(?!\s+" + _ANIMAL + r"\b)",
+    r"daughters?|patients?|surgeons?|doctors?|someone)\b(?!\s+" + _ANIMAL + r"\b)",
     re.IGNORECASE,
 )
 # A sleeveless top, a tank top, a vest or a dress is clothing (09-24): nudity needs the body.
@@ -228,34 +227,75 @@ _UNCOVERED_TEXT = re.compile(
     r"expos(?:ed|ing)(?:\s+\w+){0,2}\s+(?:chest|breasts?|torso|genitals?|bottom|buttocks|body|skin))\b",
     re.IGNORECASE,
 )
-_BOTTLE_TEXT = re.compile(r"\bbottles?\b", re.IGNORECASE)
-_BREAST_TEXT = re.compile(r"\b(?:breast\w*|nurs\w*|latch\w*|pump\w*|express\w*)\b", re.IGNORECASE)
-_BATH_TEXT = re.compile(r"\b(?:bath\w*|tubs?|shower\w*|sinks?|basins?)\b", re.IGNORECASE)
+# "Feeding a child" at a table is a spoon or a hand (09-24): only a breast, nursing, latching or
+# pumping word describes breastfeeding.
+_BREAST_TEXT = re.compile(
+    r"\b(?:breast\w*|nurs(?:es|ed|ing)|latch\w*|pump(?:s|ed|ing)?|express\w* (?:\w+ )?milk)\b",
+    re.IGNORECASE,
+)
+# "Bathroom" is a room, not a bath; a pool, the sea, a lake or a river is never bathing (09-24).
+_BATH_TEXT = re.compile(
+    r"\b(?:bath(?!rooms?\b)\w*|bathe\w*|tubs?|shower\w*|sinks?|basins?)\b", re.IGNORECASE
+)
+_OPEN_WATER_TEXT = re.compile(
+    r"\b(?:pools?|paddling|sea|seaside|ocean|lakes?|rivers?|streams?|ponds?|beach\w*|swim\w*)\b",
+    re.IGNORECASE,
+)
+# The 30B read kisses, a wedding, dancing and costumes as sexual content (09-24): only a sexual
+# act or an exposed intimate body part described in the caption supports it.
+_SEXUAL_TEXT = re.compile(
+    r"\b(?:sex|sexual\w*|intercourse|masturbat\w*|oral sex|porn\w*|erotic\w*|explicit\w*|"
+    r"genitals?|genitalia|penis|vagina|vulva|naked|nude|topless|lingerie)\b",
+    re.IGNORECASE,
+)
+# Hand washing, tooth brushing and a face cloth were read as intimate hygiene (09-24): the care
+# has to reach a private body part, a nappy, or be wiping or toilet use.
+_INTIMATE_TEXT = re.compile(
+    r"\b(?:genital\w*|private (?:body )?parts?|bottoms?|buttocks|groin|vulva|penis|"
+    r"wip(?:e|es|ed|ing)|(?:nappy|nappies|diapers?) chang\w*|chang\w* (?:[\w']+ ){0,2}(?:nappy|nappies|diapers?)|"
+    r"on (?:the|a) (?:toilet|potty))\b",
+    re.IGNORECASE,
+)
+# A coffin, molten lava, a blood-stained race number and a newborn in a hospital bed were read as
+# graphic medical content (09-24): an injury, a wound, surgery or blood on a person has to be named.
+_MEDICAL_TEXT = re.compile(
+    r"\b(?:surg(?:ery|eries|ical)|operat\w* on|incisions?|stitch(?:es|ed|ing)|sutur\w*|"
+    r"wounds?|wounded|injur(?:y|ies|ed)|bleed\w*|gash(?:es)?|fractures?|"
+    r"covered in blood|blood (?:on|from|pour\w*|drip\w*|runs?|running)|bloody|"
+    r"giving birth|deliver\w* (?:a|the|her) baby)\b",
+    re.IGNORECASE,
+)
+# An empty toilet, urinals and a MEN sign were read as toileting (09-24): somebody has to be on
+# the toilet or potty, using it, or having a nappy changed.
+_TOILETING_TEXT = re.compile(
+    r"\b(?:(?:(?:sits?|sitting|sat|seated|squat\w*) )?on (?:the |a |an |his |her |their )?"
+    r"(?:\w+ )?(?:toilet|potty|loo)|us(?:es|ing|ed) (?:the |a )?(?:toilet|potty|loo)|"
+    r"potty[\s-]training|pee(?:s|ing)?|poo(?:p|ping|ped)?|urinat\w*|"
+    r"(?:nappy|nappies|diapers?) chang\w*|chang\w* (?:[\w']+ ){0,2}(?:nappy|nappies|diapers?))\b",
+    re.IGNORECASE,
+)
 _NEGATION = re.compile(r"\b(?:no|not|none|without|nor|never)\b", re.IGNORECASE)
 
 
 def _finding_supported(finding: str, evidence: Mapping[str, Any]) -> bool:
-    members = evidence.get("members", ())
-    if finding == "identifying_record":
-        return any(_document_label(member) or _states(_RECORD_TEXT, member) for member in members)
-    if finding == "adult_changing":
-        return any(_states(_UNDRESSING_TEXT, member) for member in members)
-    if finding == "breastfeeding_or_expressing_milk":
-        return any(_breastfeeding(member) for member in members)
-    if finding == "nudity_shirtless_or_underwear":
-        return any(_states(_UNCOVERED_TEXT, member) for member in members)
-    if finding == "bathing":
-        return any(
-            _states(_BATH_TEXT, member) and _states(_PERSON_TEXT, member) for member in members
-        )
-    return True
+    supports = _SUPPORT.get(finding)
+    if supports is None:
+        return True
+    return any(supports(member) for member in evidence.get("members", ()))
 
 
-def _breastfeeding(member: Mapping[str, Any]) -> bool:
-    """Feeding and a person are described, and a bottle is not the whole of the feeding."""
-    if not (_states(_FEEDING_TEXT, member) and _states(_PERSON_TEXT, member)):
-        return False
-    return not _BOTTLE_TEXT.search(str(member.get("caption", ""))) or _states(_BREAST_TEXT, member)
+def _with_person(pattern: re.Pattern[str]) -> Callable[[Mapping[str, Any]], bool]:
+    return lambda member: _states(pattern, member) and _states(_PERSON_TEXT, member)
+
+
+def _bathing(member: Mapping[str, Any]) -> bool:
+    """A person in a bath, tub, sink or shower, and no open water in the caption."""
+    caption = str(member.get("caption", ""))
+    return (
+        _states(_BATH_TEXT, member)
+        and _states(_PERSON_TEXT, member)
+        and not _OPEN_WATER_TEXT.search(caption)
+    )
 
 
 def _document_label(member: Mapping[str, Any]) -> bool:
@@ -271,6 +311,19 @@ def _states(pattern: re.Pattern[str], member: Mapping[str, Any]) -> bool:
         if not _NEGATION.search(" ".join(clause.split()[-4:])):
             return True
     return False
+
+
+_SUPPORT: dict[str, Callable[[Mapping[str, Any]], bool]] = {
+    "identifying_record": lambda m: _document_label(m) or _states(_RECORD_TEXT, m),
+    "adult_changing": lambda m: _states(_UNDRESSING_TEXT, m),
+    "breastfeeding_or_expressing_milk": _with_person(_BREAST_TEXT),
+    "nudity_shirtless_or_underwear": lambda m: _states(_UNCOVERED_TEXT, m),
+    "sexual_content": lambda m: _states(_SEXUAL_TEXT, m),
+    "intimate_hygiene": _with_person(_INTIMATE_TEXT),
+    "graphic_medical_procedure": _with_person(_MEDICAL_TEXT),
+    "toileting_or_changing": _with_person(_TOILETING_TEXT),
+    "bathing": _bathing,
+}
 
 
 PERSON_COVERAGE_PROMPT = """Extract the humans mentioned in each caption and record the clothing or body covering described for each human separately. Use one row per person or plural group. A person referred to through a hand or arm is still a human mention.

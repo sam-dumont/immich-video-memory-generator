@@ -20,6 +20,9 @@ class _Recorder:
     async def trash_assets(self, asset_ids: list[str]) -> None:
         self.trashed.append(asset_ids)
 
+    async def generated_asset_ids(self) -> frozenset[str]:
+        return frozenset()
+
 
 @pytest.mark.asyncio
 async def test_a_matching_filename_does_not_authorize_trashing_an_original() -> None:
@@ -28,7 +31,7 @@ async def test_a_matching_filename_does_not_authorize_trashing_an_original() -> 
     client = _Recorder(
         [
             {"id": "original", "originalFileName": "holiday.mp4", "deviceId": "phone"},
-            # A V3 upload: no device identity, so authorship cannot be proven.
+            # No device identity and no provenance tag: authorship cannot be proven.
             {"id": "unknown-origin", "originalFileName": "holiday.mp4"},
             {"id": "new", "originalFileName": "holiday.mp4"},
         ]

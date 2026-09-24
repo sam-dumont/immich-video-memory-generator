@@ -22,12 +22,14 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
-from immich_memories.analysis.editorial_story_replies import close_family_on
+from immich_memories.analysis.editorial_story_replies import close_family_on, people_on
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
+from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 from immich_memories.speech.cuts import minimum_duration
 
 FAMILY_SEAT_VERSION = "family-seat-v1"
+PERSON_FILMS = frozenset({"person_spotlight", "multi_person"})
 
 
 @dataclass(frozen=True)
@@ -49,9 +51,10 @@ def _never(_asset_id: str) -> bool:
 class FamilySeatInputs:
     """What the seat reads. `candidates_of(story_key)` is every picture of a story as a carrier
     row; `stands(asset, story)` is the story's standing bar, `score_of` the rule standing that
-    ranks a person's frames, `refused` every hold that applies to this film, and `has_room`
-    whether the film can take one more carrier without dropping one. `held` is a costlier
-    check (the audience gate's own verdict), asked only of the frames about to be seated."""
+    ranks a person's frames, `refused` every hold that applies to this film, `has_room`
+    whether the film can take one more carrier without dropping one, and `close_family` who on
+    a line counts as close family in this film. `held` is a costlier check (the audience
+    gate's own verdict), asked only of the frames about to be seated."""
 
     stories: Sequence[Mapping[str, Any]]
     candidates_of: Callable[[str], list[dict]]
@@ -62,6 +65,7 @@ class FamilySeatInputs:
     refused: Callable[[str], bool]
     has_room: Callable[[list[dict]], bool]
     policy: FamilySeatPolicy = FamilySeatPolicy()
+    close_family: Callable[[str], Mapping[str, str]] = close_family_on
     held: Callable[[str], bool] = _never
 
 
@@ -75,13 +79,15 @@ def seat_close_family(
     member. A person with no frame that clears the story's bar, or no seat to take, stays out,
     and the record says so.
     """
-    on = {asset: close_family_on(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)}
+    on = {
+        asset: inputs.close_family(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)
+    }
     counts = Counter(chain.from_iterable(on.values()))
     relation = {name: rel for people in on.values() for name, rel in people.items()}
     film = carriers.copy()
     seats: list[dict[str, Any]] = []
     for name, pictures in counts.most_common():
-        if not inputs.policy.owed(pictures, len(on)) or _shots_of(name, film, inputs.line_of):
+        if not inputs.policy.owed(pictures, len(on)) or _shots_of(name, film, inputs):
             continue
         seats.append(
             {"relation": relation[name], "pictures": pictures} | _seat_one(name, film, on, inputs)
@@ -95,8 +101,8 @@ def seat_close_family(
     }
 
 
-def _shots_of(name: str, film: Sequence[dict], line_of: Callable[[str], str]) -> int:
-    return sum(name in close_family_on(line_of(c["asset_id"])) for c in film)
+def _shots_of(name: str, film: Sequence[dict], inputs: FamilySeatInputs) -> int:
+    return sum(name in inputs.close_family(inputs.line_of(c["asset_id"])) for c in film)
 
 
 def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str, Any]:
@@ -147,13 +153,34 @@ def _weakest_replaceable(key: str, film: list[dict], inputs: FamilySeatInputs) -
         and not c.get("favourite")
         and not c.get("family_seat")
         and not any(
-            _shots_of(other, film, inputs.line_of) == 1
-            for other in close_family_on(inputs.line_of(c["asset_id"]))
+            _shots_of(other, film, inputs) == 1
+            for other in inputs.close_family(inputs.line_of(c["asset_id"]))
         )
     ]
     if not victims:
         return None
     return min(victims, key=lambda c: (inputs.score_of(c["asset_id"]), c.get("taken") or ""))
+
+
+def film_close_family(source: StructurePlanningInput) -> Callable[[str], Mapping[str, str]]:
+    """Who on a line counts as close family in this film.
+
+    The owner's partner, children and parents always do. A film about people adds each
+    subject's own partner, children and parents, as the people file links them: in a film of
+    the owner's partner, their parents are close family though the owner calls them in-laws.
+    """
+    if source.case.product not in PERSON_FILMS or source.people is None or not source.case.people:
+        return close_family_on
+    theirs = source.people.close_family_of(source.case.people)
+
+    def close_family(line: str) -> Mapping[str, str]:
+        found = close_family_on(line)
+        for name in people_on(line):
+            if name in theirs:
+                found[name] = f"{theirs[name]} of the film's subject"
+        return found
+
+    return close_family
 
 
 @dataclass(frozen=True)
@@ -236,6 +263,7 @@ def seat_in_film(
             refused=refused,
             has_room=has_room,
             policy=FamilySeatPolicy(policy.seat_min_pictures, policy.seat_min_share),
+            close_family=film_close_family(source),
             held=held,
         ),
     )
