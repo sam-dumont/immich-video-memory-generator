@@ -205,7 +205,6 @@ class StructurePlannerPorts:
     resolve_speech: Callable[[list[dict]], list[dict]] | None = None
     thumbnail_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_story_motion: Callable[[Mapping[str, Any]], str] | None = None
-    story_motion_identity: str = ""
     story_motion_metrics: Callable[[], Mapping[str, Any]] | None = None
     rules: RuleStructureReader | None = None
     # Set when the model polishes a rules draft instead of planning the film: the reader above

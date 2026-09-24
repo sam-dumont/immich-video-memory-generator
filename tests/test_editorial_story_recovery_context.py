@@ -1,4 +1,4 @@
-"""Occasion recovery may relax standing votes, never the carrier's context requirement."""
+"""Occasion recovery may relax standing, never the carrier's context requirement."""
 
 import json
 import re
@@ -11,10 +11,6 @@ from tests.test_editorial_story_first_planner import StoryJudge, make_source
 
 
 class RecoveryJudge(StoryJudge):
-    def __init__(self, *, weak=False):
-        super().__init__()
-        self.weak = weak
-
     def answer(self, stage, prompt):
         if stage.startswith("story-episodes"):
             result = json.loads(super().answer(stage, prompt))
@@ -24,11 +20,11 @@ class RecoveryJudge(StoryJudge):
         if stage.startswith("story-weighing"):
             labels = re.findall(r"^(K\d+) \|", prompt, re.MULTILINE)
             return json.dumps({"about": [], "weights": dict.fromkeys(labels, "major")})
-        if stage.startswith("standing-") and self.weak:
-            labels = re.findall(r"^(P\d+):", prompt, re.MULTILINE)
-            assert labels
-            return json.dumps({"weak": dict.fromkeys(labels, "A weak picture")})
         return super().answer(stage, prompt)
+
+
+# The frame head reads the object-only pictures as a lone object: the facts refuse them.
+LONE_OBJECT = (("nsfw_marqo", "no"), ("frame_kind", "lone_everyday_object"), ("people", "one"))
 
 
 def recovery_source(tmp_path, *, pictures=1, object_only=True, favourite=False):
@@ -40,7 +36,9 @@ def recovery_source(tmp_path, *, pictures=1, object_only=True, favourite=False):
         if object_only:
             row = annotations[key]
             description = "A ceramic bowl sits alone on a wooden table."
-            annotations[key] = replace(row, text=description, description=description)
+            annotations[key] = replace(
+                row, text=description, description=description, heads=LONE_OBJECT
+            )
     return replace(
         source,
         assets=assets,
@@ -50,21 +48,17 @@ def recovery_source(tmp_path, *, pictures=1, object_only=True, favourite=False):
 
 
 @pytest.mark.parametrize("pictures", [1, 2])
-@pytest.mark.parametrize("weak", [False, True])
-def test_recovery_cannot_revive_a_thin_object_story_even_when_it_is_major(tmp_path, pictures, weak):
-    plan = run(recovery_source(tmp_path, pictures=pictures), RecoveryJudge(weak=weak))
+def test_recovery_cannot_revive_a_thin_object_story_even_when_it_is_major(tmp_path, pictures):
+    plan = run(recovery_source(tmp_path, pictures=pictures), RecoveryJudge())
     assert plan["carriers"]
     assert all(not c["asset_id"].startswith("o0-") for c in plan["carriers"])
 
 
 @pytest.mark.parametrize("object_only,favourite", [(False, False), (True, True)])
-def test_recovery_keeps_weak_people_pictures_and_owner_favourites(tmp_path, object_only, favourite):
+def test_recovery_keeps_people_pictures_and_owner_favourites(tmp_path, object_only, favourite):
     source = recovery_source(tmp_path, object_only=object_only, favourite=favourite)
-    plan = run(source, RecoveryJudge(weak=True))
+    plan = run(source, RecoveryJudge())
     assert "o0-p0" in {c["asset_id"] for c in plan["carriers"]}
-    files = list(source.artifact_dir.rglob("story-selection.private.json"))
-    assert len(files) == 1
-    assert "o0-p0" in json.loads(files[0].read_text())["kept_without_standing"]
 
 
 def test_recovery_does_not_force_a_rejected_motion_clip_back_into_the_film(tmp_path):
@@ -77,7 +71,7 @@ def test_recovery_does_not_force_a_rejected_motion_clip_back_into_the_film(tmp_p
     )
     source = replace(source, assets=assets)
 
-    plan = run(source, RecoveryJudge(weak=True))
+    plan = run(source, RecoveryJudge())
 
     assert plan["carriers"]
     assert "o0-p0" not in {carrier["asset_id"] for carrier in plan["carriers"]}
@@ -93,7 +87,12 @@ def test_approved_scenery_video_remains_selectable_without_people(tmp_path):
     )
     annotations = dict(source.audience_annotations)
     description = "A waterfall pours into a rocky pool."
-    annotations["o0-p0"] = replace(annotations["o0-p0"], text=description, description=description)
+    annotations["o0-p0"] = replace(
+        annotations["o0-p0"],
+        text=description,
+        description=description,
+        heads=(("nsfw_marqo", "no"), ("frame_kind", "place_or_scenery")),
+    )
     source = replace(
         source,
         assets=assets,

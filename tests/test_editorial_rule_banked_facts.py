@@ -16,17 +16,12 @@ from immich_memories.analysis import editorial_shareability as share
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     banked_leaders,
-    banked_weak,
     open_banked_facts,
-    standing_with_bank,
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
-from immich_memories.analysis.editorial_standing_vote import standing_row_name
 from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
 from immich_memories.analysis.editorial_structure_audience import AUDIENCE_BANK_NAME, AudienceBank
-
-IDENTITY = "reader-a"
 
 
 def _asset(asset_id, *, minute=0, favourite=False, people=()):
@@ -67,7 +62,6 @@ def _draft(assets, *, banked, favourites=()):
             assets,
             {},
             {},
-            weak=banked_weak(banked, ids, favourite=starred),
             leads=banked_leaders(banked, ("M01",)),
         ),
         withhold=withheld_by_bank(banked, favourite=starred),
@@ -75,18 +69,14 @@ def _draft(assets, *, banked, favourites=()):
     return [choices[0].primary, *choices[0].alternatives]
 
 
-# WHY: replaces the banks on disk (the standing JSON, the earlier cuts' records and the
-# annotation store) for the tests that are about what the draft does with an answer rather than
-# about how the answer is found. The tests below `_write_standing_bank` use the real files.
+# WHY: replaces the banks on disk (the earlier cuts' records and the annotation store) for the
+# tests that are about what the draft does with an answer rather than about how the answer is
+# found. The tests below `_open` use the real files.
 class _Banked:
-    def __init__(self, *, standing=(), refused=(), representatives=(), culled=()):
-        self._standing = dict(standing)
+    def __init__(self, *, refused=(), representatives=(), culled=()):
         self._refused = frozenset(refused)
         self._representatives = tuple(representatives)
         self._culled = frozenset(culled)
-
-    def standing_of(self, asset_id):
-        return self._standing.get(asset_id)
 
     def refused_for_audience(self, asset_id):
         return asset_id in self._refused
@@ -117,14 +107,6 @@ def test_a_library_nothing_has_read_draws_the_draft_it_always_drew():
     assert _draft(assets, banked=NO_BANKED_FACTS) == [cold[0].primary, *cold[0].alternatives]
 
 
-def test_a_picture_a_model_refused_standing_does_not_carry_its_moment():
-    assets = {"weak": _asset("weak", minute=0, people=["a", "b"]), "next": _asset("next", minute=1)}
-
-    offered = _draft(assets, banked=_Banked(standing={"weak": 0}))
-
-    assert offered[0] == "next"
-
-
 def test_the_owner_s_favourite_keeps_its_moment_against_a_banked_refusal():
     assets = {
         "star": _asset("star", minute=0, favourite=True),
@@ -133,7 +115,7 @@ def test_the_owner_s_favourite_keeps_its_moment_against_a_banked_refusal():
 
     offered = _draft(
         assets,
-        banked=_Banked(standing={"star": 0}, refused=("star",), culled=("star",)),
+        banked=_Banked(refused=("star",), culled=("star",)),
         favourites=("star",),
     )
 
@@ -172,34 +154,6 @@ def test_a_banked_reading_s_representative_leads_its_episode():
     assert offered[0] == "named"
 
 
-def test_the_rules_standing_answer_stands_where_nothing_was_banked():
-    standing = standing_with_bank(
-        lambda _asset: 1, _Banked(standing={"answered": 0}), favourite=lambda _a: False
-    )
-
-    assert (standing("answered"), standing("unanswered")) == (0, 1)
-
-
-def test_a_banked_vote_cannot_clear_a_picture_the_rules_refuse():
-    """The rules answer zero for a document, a screen or an exposure flag. That is a gate."""
-    standing = standing_with_bank(
-        lambda _asset: 0, _Banked(standing={"flagged": 2}), favourite=lambda _a: False
-    )
-
-    assert standing("flagged") == 0
-
-
-def _write_standing_bank(path: Path, rows: dict[str, int], *, identity=IDENTITY, motion=""):
-    names = {
-        standing_row_name("pic", row, identity=identity, motion_identity=motion): {
-            "votes": votes,
-            "why": "",
-        }
-        for row, votes in rows.items()
-    }
-    path.write_text(json.dumps({"rows": names}))
-
-
 def _open(tmp_path, **overrides):
     return open_banked_facts(
         **{
@@ -207,38 +161,10 @@ def _open(tmp_path, **overrides):
             "attempts_dir": None,
             "store_path": None,
             "audience": "family",
-            "model_identity": IDENTITY,
-            "subject": "",
-            "motion_identity": "",
-            "rows_of": {},
             "episode_cards": {},
             **overrides,
         }
     )
-
-
-def test_a_standing_answer_is_read_back_under_the_name_the_asking_side_wrote_it_under(tmp_path):
-    _write_standing_bank(tmp_path / "picture-stands.private.json", {"a row about a picture": 2})
-
-    banked = _open(tmp_path, rows_of={"pic": "a row about a picture"})
-
-    assert banked.standing_of("pic") == 0
-
-
-def test_a_standing_answer_from_another_reader_is_not_read_as_this_one_s(tmp_path):
-    _write_standing_bank(
-        tmp_path / "picture-stands.private.json", {"a row about a picture": 2}, identity="reader-b"
-    )
-
-    banked = _open(tmp_path, rows_of={"pic": "a row about a picture"})
-
-    assert banked.standing_of("pic") is None
-
-
-def test_a_missing_standing_bank_answers_nothing(tmp_path):
-    banked = _open(tmp_path, rows_of={"pic": "a row about a picture"})
-
-    assert banked.standing_of("pic") is None
 
 
 def _write_cut(attempts: Path, name: str, *, audience: str, verdicts: dict[str, str]):

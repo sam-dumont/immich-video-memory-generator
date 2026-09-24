@@ -17,7 +17,6 @@ import pytest
 from immich_memories.analysis.editorial_block_votes import judge_worthiness
 from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_page_recovery import PageReadFailure
-from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.config_models_llm import LLMConfig
 from tests.test_editorial_duration_planner_integration import run
 from tests.test_editorial_story_first_planner import StoryJudge, make_source
@@ -42,44 +41,63 @@ class RecordedJudge:
         self.failures.append((stage, record))
 
 
-def test_malformed_vote_cannot_become_a_banked_rejection():
+def worth_one(judge, bank):
+    return judge_worthiness(
+        judge,
+        happenings=["photo"],
+        label_of={"photo": "F01"},
+        text_of=lambda _: "a screen",
+        near_home=lambda _: None,
+        contract="contract",
+        contract_key="contract hash",
+        criterion="Pick the happenings",
+        marker="",
+        period_label="February 2024",
+        bank=bank,
+    )
+
+
+def test_malformed_vote_cannot_become_a_banked_answer():
     # WHY: replay the real reader's malformed identifier without calling the model.
-    judge = RecordedJudge('{"weak": {"P01 (near home)": "a screen"}}')
+    judge = RecordedJudge('{"worthy": {"F01 (near home)": "a screen"}}')
     bank = {}
     with pytest.raises(PageReadFailure):
-        judge_standing(
-            judge,
-            pictures=["photo"],
-            line_of=lambda _: "a screen",
-            bank=bank,
-        )
+        worth_one(judge, bank)
     assert not bank.get("rows")
     assert judge.failures[0][1]["attempt_count"] == 3
 
 
+class RecoveringJudge(RecordedJudge):
+    """Names a label the block never offered `bad` times, then answers validly."""
+
+    def __init__(self, bad: int):
+        super().__init__('{"worthy": {"F01": "an occasion"}}')
+        self.bad = bad
+        self.prompts = []
+
+    def ask(self, stage, prompt, **kwargs):
+        self.prompts.append(prompt)
+        if len(self.prompts) <= self.bad:
+            return '{"worthy": {"F01 (near home)": "an occasion"}}'
+        return super().ask(stage, prompt, **kwargs)
+
+
 def test_invalid_labels_are_reasked_and_only_valid_votes_are_reused():
-    class RecoveringJudge(RecordedJudge):
-        def __init__(self):
-            super().__init__('{"weak": {"P01": "a screen"}}')
-            self.calls = 0
-
-        def ask(self, stage, prompt, **kwargs):
-            self.calls += 1
-            if self.calls == 1:
-                return '{"weak": {"P01 (near home)": "a screen"}}'
-            return super().ask(stage, prompt, **kwargs)
-
     # WHY: one malformed model response followed by a valid answer exercises bank reuse.
-    judge, bank = RecoveringJudge(), {}
-    kwargs = {
-        "pictures": ["photo"],
-        "line_of": lambda _: "a screen",
-        "bank": bank,
-    }
-    assert judge_standing(judge, **kwargs)["photo"][0] == 0
-    assert judge.calls == 3
-    assert judge_standing(judge, **kwargs)["photo"][0] == 0
-    assert judge.calls == 3
+    judge, bank = RecoveringJudge(bad=1), {}
+    first, _reasons, _rounds = worth_one(judge, bank)
+    asked = len(judge.prompts)
+    second, _reasons, _rounds = worth_one(judge, bank)
+    assert first == second
+    assert len(judge.prompts) == asked
+
+
+def test_the_repair_request_names_the_label_the_block_never_offered():
+    # WHY: two unreadable labels then a valid answer walk the bounded page recovery to its repair.
+    judge = RecoveringJudge(bad=2)
+    worth_one(judge, {})
+    repair = judge.prompts[2].removeprefix(judge.prompts[0])
+    assert 'labels nobody offered: ["F01 (near home)"]' in repair
 
 
 def worthiness(reply: str, offered: tuple[str, ...]):
@@ -230,45 +248,3 @@ def test_the_gate_artifact_records_every_round_and_the_envelope_it_read(tmp_path
     assert gate["counts"]["remarkable"] == len(gate["tiers"]) > 0
     assert [entry["envelope"] for entry in gate["rounds"]] == ["flat", "flat"]
     assert all(entry["picked"] == entry["offered"] for entry in gate["rounds"])
-
-
-@pytest.mark.parametrize(
-    "reply",
-    ['```json\n{"P02": "a screen, nothing to show"}\n```', '{"weak": ["P02"]}'],
-)
-def test_the_standing_sibling_reads_a_flat_rejection_list_too(reply):
-    """`weak` runs the same block vote over `P` labels, and its silent zero fails open: every
-    picture would be left standing. The offer list makes the normalisation just as deterministic."""
-    pictures = ("first", "second", "third")
-    judge = RecordedJudge(reply)
-    votes = judge_standing(
-        judge,
-        pictures=list(pictures),
-        line_of=lambda asset: f"a picture of {asset}",
-    )
-    assert votes["second"][0] == 0, "named by both orders is a firm rejection"
-    assert {votes[a][0] for a in ("first", "third")} == {2}
-
-
-def test_the_repair_request_names_the_label_the_block_never_offered():
-    class RepairedJudge(RecordedJudge):
-        def __init__(self):
-            super().__init__('{"weak": {"P01": "a screen"}}')
-            self.prompts = []
-
-        def ask(self, stage, prompt, **kwargs):
-            self.prompts.append(prompt)
-            if len(self.prompts) < 3:
-                return '{"weak": {"P01 (near home)": "a screen"}}'
-            return super().ask(stage, prompt, **kwargs)
-
-    # WHY: two unreadable labels then a valid answer walk the bounded page recovery to its repair.
-    judge = RepairedJudge()
-    judge_standing(
-        judge,
-        pictures=["photo"],
-        line_of=lambda _: "a screen",
-        bank={},
-    )
-    repair = judge.prompts[2].removeprefix(judge.prompts[0])
-    assert 'labels nobody offered: ["P01 (near home)"]' in repair

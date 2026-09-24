@@ -203,8 +203,6 @@ class StoryJudge(AnnualJudge):
             count = int(re.search(r"gets (\d+) picture", prompt).group(1))
             labels = re.findall(r"^(M\d{2}) \|", prompt, re.MULTILINE)
             return json.dumps({"keep": labels[:count]})
-        if stage.startswith("standing-"):
-            return json.dumps({"weak": {}})  # every canal picture stands
         if stage.startswith("story-threads"):
             return json.dumps({"same": []})  # separate days stay separate stories
         return super().answer(stage, prompt)
@@ -234,8 +232,8 @@ def test_story_first_selects_one_picture_per_depicted_moment_without_beats_or_la
     assert any(stage.startswith("story-episodes") for stage in asked)
     assert not any(stage.startswith("moment-inventory") for stage in asked)
     assert not any(stage.startswith("worthy-") for stage in asked)
-    assert any(stage.startswith("standing-") for stage in asked), (
-        "every carrier is asked to stand by itself"
+    assert not any(stage.startswith("standing-") for stage in asked), (
+        "whether a carrier stands is read from its facts, never asked"
     )
     assert all(
         "Proposed picture" not in call["prompt"]
@@ -403,28 +401,6 @@ def test_story_part_names_the_type_and_never_a_case():
     assert "episode" in _STORY_PART_DEFAULT
 
 
-def test_standing_gate_refuses_only_what_both_answers_call_weak():
-    from immich_memories.analysis.editorial_standing_vote import judge_standing
-
-    class Judge:
-        def __init__(self):
-            self.calls = []
-
-        def ask(self, stage, prompt, max_tokens=0):
-            self.calls.append(stage)
-            if stage.startswith("standing-check"):
-                return json.dumps({"weak": {"P02": "yes: a lone object", "P03": "no"}})
-            return json.dumps({"weak": {"P01": "no", "P02": "yes: a lone object", "P03": "yes"}})
-
-    lines = {
-        "a": "2030-05-02 | people at a picnic",
-        "b": "2030-05-02 | a parked bicycle",
-        "c": "2030-05-03 | a hat",
-    }
-    scores = judge_standing(Judge(), pictures=["a", "b", "c"], line_of=lines.get)
-    assert {k: n for k, (n, _why) in scores.items()} == {"a": 2, "b": 0, "c": 1}
-
-
 def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_the_budget():
     from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
 
@@ -483,10 +459,6 @@ def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_
 class CompanyReplacementJudge(StoryJudge):
     """Prefer two familiar views; let the production company rule improve them."""
 
-    def __init__(self, *, weak=False):
-        super().__init__()
-        self.weak = weak
-
     def answer(self, stage, prompt):
         if stage.startswith("story-weighing"):
             keys = re.findall(r"^(K\d{2}) \|", prompt, re.MULTILINE)
@@ -495,17 +467,12 @@ class CompanyReplacementJudge(StoryJudge):
             # WHY: both reading orders agree on the same moments before the company rule.
             labels = sorted(re.findall(r"^(M\d{2}) \|", prompt, re.MULTILINE))
             return json.dumps({"keep": labels[:2]})
-        if stage.startswith("standing-") and self.weak:
-            rows = re.findall(r"^(P\d+): (.*)$", prompt, re.MULTILINE)
-            return json.dumps(
-                {"weak": {label: "An object on its own" for label, row in rows if "bowl" in row}}
-            )
         return super().answer(stage, prompt)
 
 
 @pytest.mark.parametrize("weak", [False, True])
 def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, weak):
-    """The real story, caption-choice and standing pipeline; only the standing votes differ."""
+    """The real story, caption-choice and standing pipeline; only the standing answer differs."""
     from immich_memories.analysis.editorial_story_planner import select_story_first
 
     relations = ["parent", "parent", "grandparent", "parent", "parent"]
@@ -528,15 +495,16 @@ def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, w
     }
     held = assets[2]
     # WHY: the planner reads life from the picture's own text. The one fresh relation sits on a
-    # lone object, so the two standing orders decide it; a picture with life inside a major
-    # story stands whatever those orders say.
+    # lone object, so its standing answer decides it; a picture with life inside a major story
+    # stands whatever that answer says.
     lines[held] = (
         f"{units[2]['taken']} | A ceramic bowl sits alone on a table. | activity=none"
         f" | with Relative ({relations[2]})"
     )
     records = {}
     selection = select_story_first(
-        judge=CompanyReplacementJudge(weak=weak),
+        judge=CompanyReplacementJudge(),
+        standing=lambda asset_id: 0 if weak and asset_id == held else 2,
         tables={},
         aliases=[alias],
         factual_rows_fn=lambda _tables, _aliases: [

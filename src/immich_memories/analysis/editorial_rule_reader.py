@@ -11,11 +11,11 @@ from typing import Any
 
 import numpy as np
 
-from immich_memories.analysis.editorial_carrier_eligibility import NOTHING_KINDS, screen_flagged
 from immich_memories.analysis.editorial_clip_frames import CLIP_FRAMES_HEAD, SUBJECT_OFTEN_MISSING
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
+from immich_memories.analysis.editorial_standing_facts import carries_nothing
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     StoryEpisode,
@@ -346,14 +346,10 @@ class RuleStructureReader:
         # see it, so a family film judges it like any other; a film sent further keeps the zero.
         exposure_zero = exposure_flagged(heads) and self.source.audience != "family"
         if (
-            heads.get("doc_docling", "photograph") != "photograph"
-            or screen_flagged(heads)
-            or exposure_zero
-            or heads.get("frame_kind") in NOTHING_KINDS
+            exposure_zero
             or heads.get(CLIP_FRAMES_HEAD) == SUBJECT_OFTEN_MISSING
+            or carries_nothing(heads, line, getattr(record, "description", None))
         ):
-            return 0
-        if any(marker in line for marker in ("SOFT (blurry)", "DARK", "BLOWN OUT")):
             return 0
         if self.source.intent.product == "album":
             return 2

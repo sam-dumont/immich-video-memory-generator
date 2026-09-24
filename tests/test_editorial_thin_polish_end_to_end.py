@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from immich_memories.analysis.editorial_standing_facts import carries_nothing
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_thin_gates import ThinGates
 from immich_memories.analysis.editorial_thin_layer import ThinPolish
@@ -40,9 +41,6 @@ class PolishJudge:
 
     @staticmethod
     def answer(stage, prompt):
-        if stage.startswith("standing-"):
-            weak = re.findall(rf"^(P\d+): .*{UNSTEADY}", prompt, re.MULTILINE)
-            return json.dumps({"weak": dict.fromkeys(weak, "nothing stands in it")})
         if stage.startswith("thesis-fit-"):
             named = re.findall(rf"^(P\d+): .*{JUNK}", prompt, re.MULTILINE)
             if stage.endswith("-source"):
@@ -138,18 +136,22 @@ MOMENTS = {
 }
 
 
-def polish_once(tmp_path, judge, standing_bank=None):
-    unit_by_asset = {row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows}
-    standing = StandingGate(
-        judge,
+# The frame head reads the blurred wall as an accidental frame; every other shot carries a moment.
+HEADS = {"g1": {"frame_kind": "accidental_or_blurred_frame"}}
+
+
+def standing_gate():
+    return StandingGate(
+        lambda asset: 0 if carries_nothing(HEADS.get(asset, {}), LINES[asset]) else 2,
         line_of=LINES.get,
         life=lambda _asset: True,
-        unit_by_asset=unit_by_asset,
+        unit_by_asset={row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows},
         pictures_of={"S1": 3, "S2": 3, "S3": 3},
-        bank={} if standing_bank is None else standing_bank,
-        save=None,
-        calls={"standing_rounds": 0},
     )
+
+
+def polish_once(tmp_path, judge):
+    standing = standing_gate()
     layer = ThinPolish(bank_dir=tmp_path, read_period=lambda _stories: (ACCOUNT, {}))
     return layer.polish(
         DRAFT,
@@ -180,17 +182,16 @@ def test_one_polish_drops_the_junk_keeps_the_star_and_refills_what_the_gates_too
     assert kept == sorted(kept, key=lambda asset: LINES[asset])
 
 
-def test_the_polish_spends_one_standing_round_one_vote_one_pick_and_one_check(tmp_path):
+def test_the_polish_spends_one_vote_one_pick_and_one_check_and_no_standing_question(tmp_path):
     judge = PolishJudge()
     polish_once(tmp_path, judge)
 
-    # the draft's standing and the vote each named a shot, so each asked its second order; the
-    # one contested page is picked in one order, its pick is asked once whether it stands, and
-    # the re-check named nobody in its first order
-    assert sum(1 for stage in judge.calls if stage.startswith("standing-")) == 3
+    # the vote named a shot, so it asked its second order; the one contested page is picked in
+    # one order, the facts say whether its pick stands, and the re-check named nobody in its
+    # first order
     assert sum(1 for stage in judge.calls if stage.startswith("thesis-fit-")) == 3
     assert sum(1 for stage in judge.calls if stage.startswith("story-pick-")) == 1
-    assert len(judge.calls) == 7
+    assert len(judge.calls) == 4
 
 
 def test_a_second_run_over_the_same_bank_asks_nothing_and_cuts_the_same_film(tmp_path):
@@ -239,17 +240,7 @@ def banked_records(tmp_path):
 def test_a_story_the_bank_records_something_about_is_seated_from_the_bank(tmp_path):
     """No caller hands the records in: the layer reads them off the period's own readings."""
     judge = PolishJudge()
-    unit_by_asset = {row["asset_id"]: ("fam", row) for rows in POOL.values() for row in rows}
-    standing = StandingGate(
-        judge,
-        line_of=LINES.get,
-        life=lambda _asset: True,
-        unit_by_asset=unit_by_asset,
-        pictures_of={"S1": 3, "S2": 3, "S3": 3},
-        bank={},
-        save=None,
-        calls={"standing_rounds": 0},
-    )
+    standing = standing_gate()
     records = banked_records(tmp_path)
     layer = ThinPolish(bank_dir=tmp_path, read_period=lambda _stories: (ACCOUNT, records))
 
@@ -276,11 +267,10 @@ def test_every_vote_including_the_newcomers_re_check_is_banked_for_the_next_run(
     picks that remain are the judgment cache's to answer, which production keeps in SQLite and
     this fixture's judge stands in for.
     """
-    standing = {}
-    cold = polish_once(tmp_path, PolishJudge(), standing_bank=standing)
+    cold = polish_once(tmp_path, PolishJudge())
     second = PolishJudge()
 
-    warm = polish_once(tmp_path, second, standing_bank=standing)
+    warm = polish_once(tmp_path, second)
 
     assert [stage for stage in second.calls if stage.startswith("thesis-fit-")] == []
     assert [row["asset_id"] for row in warm] == [row["asset_id"] for row in cold]
@@ -296,12 +286,11 @@ def test_a_shot_is_never_voted_on_alone_when_the_bank_holds_its_neighbours(tmp_p
                 asked.append(prompt.count("\nP"))
             return super().ask(stage, prompt, max_tokens, **options)
 
-    standing = {}
-    polish_once(tmp_path, Watching(), standing_bank=standing)
+    polish_once(tmp_path, Watching())
     first_round = list(asked)
     asked.clear()
 
-    polish_once(tmp_path, Watching(), standing_bank=standing)
+    polish_once(tmp_path, Watching())
 
     assert first_round and min(first_round) > 1
     assert asked == []

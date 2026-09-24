@@ -57,7 +57,7 @@ had been empty for every Live Photo. A flagged clip holds its still. The same sa
 go through the `frame_kind` head (`prepare_clip_frames` in `editorial_preparation_heads.py`), and
 `editorial_clip_frames.py` banks the clip's `clip_frames` fact: a clip that shows its moment in
 fewer than three frames of four reads `frames=subject_often_missing` on its line, which the rules
-reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model.
+reader scores 0 (a favourite still wins), and `StandingGate` refuses on every tier.
 The same frames give a video its measured motion: `editorial_video_motion.py` runs the Live Photo
 optical-flow residual (`flow_residual` in `editorial_motion_facts.py`) over them and banks it in
 `motion_residuals` under its own producer; `UnitBuilder._video_unit` carries it, and
@@ -87,18 +87,14 @@ and read again with the same central context. An indivisible group still fails v
 weights and edits never carry into the recovered page.
 
 `editorial_rule_banked_facts.py` lets the no-model draft read what a model already answered about
-this library without asking anything: standing votes from the library's per-picture bank
-(`structure-banks/picture-stands.private.json`, shared by every cut: the standing question names no
-film scope, only a custom or person memory's subject), audience
+this library without asking anything: audience
 refusals recorded by earlier cuts of the same film for the same audience, and the representatives
 and culls of any banked episode reading of the same pictures. A withheld picture is not offered to
 its moment, unless it is the owner's favourite or the moment has nothing else; a named
-representative leads its episode's order. Every read is named the way the writing side named it, so
-a standing vote cast by another reader does not answer here; episode readings are matched on the
-episode and the exact pictures read, minus this run's own producer, because a cull is a refusal and
-a representative still has to win the rules order. A banked standing can only tighten the rules
-answer, never clear it: the rules zero covers documents, screens, flags and empty frames, which are
-eligibility. A library nothing has read answers None, False or () everywhere, and the draft is the
+representative leads its episode's order. Every read is named the way the writing side named it;
+episode readings are matched on the episode and the exact pictures read, minus this run's own
+producer, because a cull is a refusal and a representative still has to win the rules order.
+Standing is not read from any bank: the facts answer it on every tier. A library nothing has read answers None, False or () everywhere, and the draft is the
 one it always cut. Every rules run records what it found in `banked-facts.private.json`, so a draft
 that read nothing says so.
 
@@ -164,8 +160,8 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 - **Bank / banked**: an answer stored under its exact inputs and producer identity, so the next
   run asks nothing and a changed asset invalidates only its own rows. The main ones:
   `annotations.sqlite` (`store/`), episode readings, accounts, cut measurements
-  (`store/cut_measurements.py`) and the `structure-banks/*.private.json` files (standing votes,
-  thesis-fit votes). No row means nobody asked, never "measured nothing". Two runs write them at
+  (`store/cut_measurements.py`) and the `structure-banks/*.private.json` files (thesis-fit
+  votes, audience verdicts). No row means nobody asked, never "measured nothing". Two runs write them at
   once (the pipeline lock covers assembly only): SQLite banks write row by row, and every JSON
   bank merges what is on disk under `locked_file.file_lock` before its atomic replace.
 
@@ -177,9 +173,10 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 - **Carrier**: the picture admitted to carry one chosen moment of a funded story, if it is free,
   in context and spaced from the shots already committed (`editorial_story_carriers.py`,
   `editorial_carrier_eligibility.py`). A carrier is a shot before it is rendered.
-- **Standing**: does a picture stand by itself, and may it serve as context inside its story. The
-  rules reader answers from the facts on the line, a model votes (`editorial_story_standing.py`);
-  the answers are banked in `picture-stands.private.json`.
+- **Standing**: does a picture stand by itself, and may it serve as context inside its story.
+  Answered on every tier from the facts, never asked of a model (`editorial_standing_facts.py`: two
+  points tables, heads alone or heads plus the ingest caption; a caption naming a person or an
+  animal is never refused), and applied by `StandingGate` (`editorial_story_standing.py`).
 - **Look-alike / scene print**: a story's next picture is kept only if it adds to the ones already
   kept (`editorial_story_lookalike.py`). The final review drops repeats by perceptual hash and by
   scene print, the pooled DINOv2 vector of a preview, which catches the same scene in another
@@ -354,8 +351,8 @@ src/immich_memories/
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
-│   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context; StandingBankFile: the library's standing answers
-│   ├── editorial_standing_vote.py # The standing question: one yes/no per row in blocks of 12, the rows called weak asked again once; refused only when both agree
+│   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
+│   ├── editorial_standing_facts.py # Standing from facts, no model: heads (+ caption words), living subjects never refused
 │   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
@@ -393,7 +390,7 @@ src/immich_memories/
 │   │                                # is held whole: the hold the detector's per-picture answer misses
 │   ├── editorial_preparation*.py   # Annotation preparation: captions, public heads, detectors, pixel facts,
 │   │                               # motion lines (one caption-seat sentence per video, read by
-│   │                               # the pick and by the standing gate's moving rows).
+│   │                               # the pick).
 │   │                               # _model_facts.py plans who answers each model producer;
 │   │                               # _detector_frames.py samples a video's eight frames for the
 │   │                               # exposure head, through the motion line's keyframe reader

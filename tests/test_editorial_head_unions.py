@@ -35,9 +35,7 @@ def reader(*, favourite=False, people=(), product="month", line="", audience="se
 # -- a frame that carries nothing ---------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "kind", ["empty_room_ceiling_or_floor", "lone_everyday_object", "body_part_closeup"]
-)
+@pytest.mark.parametrize("kind", ["empty_room_ceiling_or_floor", "lone_everyday_object"])
 def test_a_frame_the_head_says_carries_nothing_does_not_stand(kind):
     assert reader(frame_kind=kind, people="two").standing("a") == 0
 
@@ -58,11 +56,16 @@ def test_a_bank_with_no_frame_kind_row_stands_exactly_as_it_did():
 
 
 def test_the_screen_head_refuses_a_frame_the_document_head_calls_a_photograph():
-    assert reader(doc_docling="photograph", screen="yes", people="two").standing("a") == 0
+    heads = {"frame_kind": "screen_or_document", "doc_docling": "photograph", "screen": "yes"}
+
+    assert reader(people="one", **heads).standing("a") == 0
+    assert reader(people="one", **(heads | {"screen": "no"})).standing("a") == 2
 
 
 def test_the_document_head_still_refuses_without_the_screen_head():
-    assert reader(doc_docling="screenshot_from_computer", people="two").standing("a") == 0
+    heads = {"frame_kind": "screen_or_document", "doc_docling": "screenshot_from_computer"}
+
+    assert reader(people="one", **heads).standing("a") == 0
 
 
 def test_a_bank_with_no_screen_row_is_read_exactly_as_it_was():

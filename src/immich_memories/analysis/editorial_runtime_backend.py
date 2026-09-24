@@ -253,7 +253,6 @@ class ProductionPostCardBackend:
             resolve_motion=production_motion_resolver(source),
             resolve_speech=production_speech_resolver(source, resources=resources),
             observe_story_motion=story_motion.observe,
-            story_motion_identity=story_motion.producer,
             story_motion_metrics=story_motion.metrics,
             clock_offsets=self.clock_offsets(source, resources),
             **self._thin_polish(source),

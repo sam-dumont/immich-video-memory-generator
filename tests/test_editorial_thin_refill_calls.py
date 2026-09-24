@@ -33,15 +33,14 @@ def rows_asked(judge, prefix: str) -> list[int]:
     ]
 
 
-def test_standing_is_asked_only_of_the_rows_the_picker_chose(tmp_path):
+def test_standing_is_never_asked_of_the_draft_or_the_rows_the_picker_chose(tmp_path):
     film = Film()
     small_draft(film)
 
     judge, _payload, _cut, _newcomers = polish(tmp_path, film)
 
-    asked = rows_asked(judge, "standing-")
-    # the draft's twelve in both orders, then the chosen rows only, never the story's thousand
-    assert sum(asked) <= 2 * 12 + 2 * 2
+    assert rows_asked(judge, "story-pick-")
+    assert rows_asked(judge, "standing-") == []
 
 
 def test_a_choice_the_standing_gate_refuses_is_picked_again_from_the_same_page(tmp_path):
