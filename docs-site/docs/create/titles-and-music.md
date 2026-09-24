@@ -81,6 +81,10 @@ Montserrat draws Latin, including Polish, Czech, Turkish and Vietnamese letters.
 comes from the Noto Sans family, letter by letter, so `DEUX SEMAINES EN CRÈTE · Κρήτη` keeps its
 French in Montserrat and draws the Greek in Noto. A word never switches typeface halfway through.
 
+Greek in capitals drops its stress accents, the way Greek signs print it: a caption reads
+`ΗΡΑΚΛΕΙΟ`, not `ΗΡΆΚΛΕΙΟ`. Where the accent kept two vowels apart, the second one takes a
+diaeresis instead, so May is `ΜΑΪΟΣ`.
+
 | Script | Where the font comes from |
 |---|---|
 | Latin, Greek, Cyrillic, Vietnamese | bundled (Noto Sans, 311 KB per weight) |
@@ -117,7 +121,7 @@ length instead of losing it.
 A caption in any alphabet draws as letters. FFmpeg's drawtext draws captions the caption font covers.
 Anything else (a Greek or Cyrillic place, a Japanese date, Arabic or Hebrew written right to left)
 is drawn with the title fonts described in [Other alphabets](#other-alphabets) and laid over the
-frame in the same spot, size and colour.
+frame in the same spot, size, colour and brightness, HDR included.
 
 Places you are at constantly stay unlabelled, because the name of your own town over every third clip
 is noise. Familiarity is measured on GPS observations within **250 m of the asset**, across the

@@ -74,19 +74,31 @@ def test_a_latin_caption_still_goes_through_drawtext(grey_clip: Path) -> None:
     assert filters[0].startswith("drawtext=")
 
 
-def test_a_greek_date_in_an_hdr_frame_matches_the_drawtext_white(grey_clip: Path) -> None:
-    def luma_peak(date: str) -> int:
-        frame = _frame(grey_clip, ClipCaption(date=date), pix_fmt="yuv420p10le")
-        return int(frame[: 640 * 360].max())
+def _luma(clip: Path, date: str) -> np.ndarray:
+    frame = _frame(clip, ClipCaption(date=date), pix_fmt="yuv420p10le")
+    return frame[: 640 * 360].reshape(360, 640).astype(int)
 
-    drawtext_peak = luma_peak("MONDAY 5")
-    overlay_peak = luma_peak("ΔΕΥΤΈΡΑ 5")
 
-    # HLG graphics white is 75 % of range (767 of 1023). Measured on FFmpeg 8.1:
-    # drawtext 648, the overlay 730; overlay converts the PNG's RGB to YUV itself,
-    # drawtext blends its colour in the frame's own space. Both stay under it.
-    assert overlay_peak < 767
-    assert drawtext_peak < 767
+def test_a_greek_date_in_an_hdr_frame_is_as_bright_as_a_drawtext_one(grey_clip: Path) -> None:
+    drawtext = _luma(grey_clip, "MONDAY 5")
+    overlay = _luma(grey_clip, "ΔΕΥΤΕΡΑ 5")
+
+    # Measured on FFmpeg 8.1 before the fix: the overlay peaked at 730/1023
+    # against drawtext's 648, and the grey under it moved from 504 to 514.
+    assert abs(int(overlay.max()) - int(drawtext.max())) <= 8
+    assert np.median(overlay) == np.median(drawtext)
+
+
+def test_a_greek_date_sits_on_the_line_a_drawtext_date_does(grey_clip: Path) -> None:
+    def rows(luma: np.ndarray) -> tuple[int, int]:
+        marked = np.nonzero(np.any(luma != int(np.median(luma)), axis=1))[0]
+        return int(marked.min()), int(marked.max())
+
+    drawtext_top, drawtext_bottom = rows(_luma(grey_clip, "MONDAY 5"))
+    overlay_top, overlay_bottom = rows(_luma(grey_clip, "ΔΕΥΤΕΡΑ 5"))
+
+    assert abs(overlay_top - drawtext_top) <= 1
+    assert abs(overlay_bottom - drawtext_bottom) <= 1
 
 
 @pytest.fixture

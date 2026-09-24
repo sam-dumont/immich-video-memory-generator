@@ -29,6 +29,7 @@ from .backgrounds_animated import create_animated_background
 from .colors import ceil_white_for_hdr
 from .font_chain import title_font
 from .fonts import get_font_path as get_cached_font_path
+from .letter_case import display_upper
 from .styles import TitleStyle
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ class TitleRenderer:
     def _apply_text_transform(self, text: str) -> str:
         """Apply text transformation based on style."""
         if self.style.text_transform == "uppercase":
-            return text.upper()
+            return display_upper(text)
         elif self.style.text_transform == "capitalize":
             return text.title()
         return text

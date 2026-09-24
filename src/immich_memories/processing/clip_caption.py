@@ -23,6 +23,7 @@ from immich_memories.processing.caption_image import (
     render_caption,
     text_width,
 )
+from immich_memories.titles.letter_case import display_upper
 
 
 def resolve_caption_locale(value: str | None) -> str:
@@ -160,10 +161,15 @@ def _overlay(label: str, text: str, style: CaptionStyle, x: int, y: int, window:
     The chain is joined with commas, so this closes it into a labelled pad,
     opens the image as a second input, and hands the overlaid result on to
     whatever filter comes next.
+
+    The image is converted to limited range before it meets the frame. Left
+    to itself, FFmpeg 8.1 negotiates the overlay in full range (the PNG's)
+    and stretches the whole untagged frame to match, which the rawvideo pipe
+    then reads as limited: the video under the caption brightens.
     """
     path, dx, dy = render_caption(text, style)
     return (
-        f"null[{label}_frame];movie='{path}'[{label}_text];"
+        f"null[{label}_frame];movie='{path}',scale=out_range=tv,setparams=range=tv[{label}_text];"
         f"[{label}_frame][{label}_text]overlay=x={x + dx}:y={y + dy}{window}"
     )
 
@@ -211,12 +217,12 @@ def caption_filters(
             max(1, font_size // 32),
         )
     filters = []
-    place = caption.place.upper()
+    place = display_upper(caption.place)
     if style and needs_image(place, font_path):
         filters.append(_overlay("place", place, style, inset, inset, window))
     elif place:
         filters.append(f"drawtext=text='{_escape(place)}'{drawn}:x={inset}:y={inset}")
-    day = caption.date.upper()
+    day = display_upper(caption.date)
     if style and needs_image(day, font_path):
         x = width - text_width(day, style) - inset
         filters.append(_overlay("date", day, style, x, height - inset - line, window))

@@ -48,8 +48,9 @@ class CaptionStyle:
 def render_caption(text: str, style: CaptionStyle) -> tuple[Path, int, int]:
     """A PNG of the caption and the offset of its top-left from the text origin.
 
-    The origin is where drawtext's x/y would put the text; the image carries its
-    outline and shadow, which reach past it on every side.
+    The origin is drawtext's x/y: the left of the text and the top of its
+    tallest letter (not the font's ascender, which sits higher). The image
+    carries the outline and shadow, which reach past it on every side.
     """
     font = title_font(style.font_path, style.font_size, bold=True)
     pad = style.border + style.shadow + 2
@@ -57,31 +58,40 @@ def render_caption(text: str, style: CaptionStyle) -> tuple[Path, int, int]:
     size = (int(right - min(left, 0)) + 2 * pad, int(bottom - min(top, 0)) + 2 * pad)
     origin = (pad - min(left, 0), pad - min(top, 0))
 
-    shadow = Image.new("RGBA", size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).text(
-        (origin[0] + style.shadow, origin[1] + style.shadow),
-        text,
-        font=font,
-        fill=(0, 0, 0, round(255 * 0.35)),
-    )
-    body = Image.new("RGBA", size, (0, 0, 0, 0))
-    ImageDraw.Draw(body).text(
-        origin,
-        text,
-        font=font,
-        fill=(*style.colour, round(255 * 0.85)),
-        stroke_width=style.border,
-        stroke_fill=(0, 0, 0, round(255 * 0.45)),
-    )
-    image = Image.alpha_composite(shadow, body)
+    # Layered the way drawtext draws: shadow, then outline, then letters, each
+    # blended over what is below. Drawing the letters straight onto the outline
+    # replaces its pixels instead, and the caption comes out brighter than
+    # drawtext's (730/1023 against 648 in HLG).
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
+    for offset, stroke, fill in (
+        (style.shadow, style.border, (0, 0, 0, round(255 * 0.35))),
+        (0, style.border, (0, 0, 0, round(255 * 0.45))),
+        (0, 0, (*style.colour, round(255 * 0.85))),
+    ):
+        layer = Image.new("RGBA", size, (0, 0, 0, 0))
+        ImageDraw.Draw(layer).text(
+            (origin[0] + offset, origin[1] + offset),
+            text,
+            font=font,
+            fill=fill,
+            stroke_width=stroke,
+            stroke_fill=fill,
+        )
+        image = Image.alpha_composite(image, layer)
 
-    key = hashlib.sha256(repr((text, style)).encode()).hexdigest()[:24]
+    # Named by its pixels, so a file left by an older render is never reused for
+    # a different drawing; written aside and renamed, so a decoder opening the
+    # same caption never reads half a file.
+    key = hashlib.sha256(repr(size).encode() + image.tobytes()).hexdigest()[:24]
     folder = Path(tempfile.gettempdir()) / "immich-memories-captions"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{key}.png"
     if not path.exists():
-        image.save(path)
-    return path, -int(origin[0]), -int(origin[1])
+        with tempfile.NamedTemporaryFile(dir=folder, suffix=".png", delete=False) as handle:
+            image.save(handle, format="PNG")
+        Path(handle.name).replace(path)
+    ink_top = font.getbbox(text)[1]
+    return path, -int(origin[0]), -int(origin[1] + ink_top)
 
 
 def text_width(text: str, style: CaptionStyle) -> int:

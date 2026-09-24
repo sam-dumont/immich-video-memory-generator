@@ -11,6 +11,7 @@ from datetime import date
 from immich_memories.i18n import get_month_name
 from immich_memories.i18n_places import french_preposition, localise_place
 from immich_memories.processing.clip_caption import resolve_caption_locale
+from immich_memories.titles.letter_case import display_upper
 
 # Duration thresholds for human-readable text
 _DURATION_LABELS = [
@@ -71,7 +72,7 @@ def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str
     Cross-month → season name ("SUMMER 2025").
     """
     if start_date.month == end_date.month and start_date.year == end_date.year:
-        month_name = get_month_name(start_date.month, locale).upper()
+        month_name = display_upper(get_month_name(start_date.month, locale))
         return f"{month_name} {start_date.year}"
     season = _get_season(start_date)
     if locale == "fr":
@@ -103,6 +104,6 @@ def generate_trip_title(
     days = (end_date - start_date).days + 1
     duration = _get_duration_label(days, locale)
     time_label = _get_time_label(start_date, end_date, locale)
-    location_upper = (localise_place(location_name, locale) or location_name).upper()
-    preposition = french_preposition(location_name).upper() if locale == "fr" else "IN"
+    location_upper = display_upper(localise_place(location_name, locale) or location_name)
+    preposition = display_upper(french_preposition(location_name)) if locale == "fr" else "IN"
     return f"{duration} {preposition} {location_upper}, {time_label}"
