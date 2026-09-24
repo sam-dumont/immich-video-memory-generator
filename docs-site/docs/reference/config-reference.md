@@ -185,7 +185,7 @@ explicit `crf` wins. The number is on **libx265's CRF scale**, and every other e
 calibrated against it: each backend gets whatever setting reproduces the same picture, measured by
 SSIM, rather than the same integer. Lower CRF means higher quality everywhere. The measured table
 per encoder is on
-[the hardware overview](../deploy/hardware.md#quality-one-dial-calibrated-per-encoder).
+[the hardware overview](../run/hardware.md#quality-one-dial-calibrated-per-encoder).
 
 The presets are points on that curve, measured on 1080p60 film:
 
@@ -342,7 +342,7 @@ provider.
 dialect filled in. An explicit `base_url` always wins, and under `zai` it also picks the adapter (a
 `.../api/anthropic` base takes the Messages route). Which dialect goes where, what `thinking` does
 on each host, how `thinking_params` and `no_thinking_params` differ, and what batching pays are all
-on [The reader](../deploy/readers.md), with the measured comparison of ten models.
+on [The reader](../better/reader.md), with the measured comparison of ten models.
 
 `thinking` has five settings. `disabled` never asks for reasoning. `low`, `high` and `max` run the
 model in reasoning mode for two calls: title generation, and the special-day question in
@@ -375,7 +375,7 @@ preserves prompt text, judgment keys and source ordering; batch delivery is conf
 
 Left unset, concurrency is read from `base_url`: 1 for a loopback, private address or bare service
 name, 4 for a public host. See
-[Reader concurrency](../deploy/configuration/config-file.md#reader-concurrency). A provider that
+[Reader concurrency](../run/config-file.md#reader-concurrency). A provider that
 answers 429 pauses every reader in the run, each waiting a slightly different span.
 
 `send_image_detail` sends OpenAI's optional `image_url.detail` field. Set it to `false` for strict
@@ -485,11 +485,11 @@ Tier 2: lives under `advanced:` when the app writes the file.
 `people` is how the people file's close family (partner, child, parent) reach the selection. A close
 family member on at least `seat_min_pictures` of the period's pictures, or `seat_min_share` of them,
 who is in none of the film's shots gets one seat: see
-[the family seat](../create/pipeline.md#the-family-seat). A story without three favourites is floored
+[the family seat](../being-rewritten/pipeline.md#the-family-seat). A story without three favourites is floored
 to `major` only when it is both dense (`big_story_density` times the period's median photographed
 day, in pictures per day) and mostly close family (`big_story_family_share` of its pictures); both
 defaults were measured on real months, see
-[editing without a language model](../create/pipeline.md#editing-without-a-language-model).
+[editing without a language model](../being-rewritten/pipeline.md#editing-without-a-language-model).
 
 Docling uses `det-v2`, because ONNX layout optimization mislabels documents on the Celeron J4125.
 Saved `doc_docling: det-v1` settings upgrade on load, and the next run recomputes that head's facts
@@ -576,7 +576,7 @@ procedures, sexual content, exposed adult changing and identifying records are e
 Preparation fills missing descriptions, public heads, detectors and pixel measurements in the
 annotation database, and skips provider calls where the facts are complete. Missing previews or
 providers stop selection with an explicit incomplete result. See
-[Editorial annotation setup](../deploy/configuration/editorial-preparation.md) for the runtime
+[Editorial annotation setup](../being-rewritten/editorial-preparation.md) for the runtime
 extra, the exact model artifacts and the caption endpoint requirements.
 
 ## Inference service
@@ -591,7 +591,7 @@ advanced:
     fallback_to_local: true     # when the service cannot be reached, run the in-process producers
 ```
 
-Point `facts_base_url` at a running [inference service](../deploy/installation/inference-service.md)
+Point `facts_base_url` at a running [inference service](../better/inference.md)
 (`http://inference:8092` in the compose profile) and `prepare` and `generate` send each picture's
 preview there once and bank what comes back. The row is the same row the in-process producers
 write: same head, version, label and encoder key, because the service runs the application's own
@@ -664,7 +664,7 @@ network:
 | `map_tiles` | tile coordinates covering the trip area and your home base | the trip fly-over, the static trip map, and a satellite background behind location cards |
 
 Fonts are not a switch: a render never downloads one, and `titles fonts --install` is the one
-step that does ([Fonts](../deploy/configuration/network-and-privacy.md#fonts)). `preflight` prints a row
+step that does ([Fonts](../run/privacy.md#fonts)). `preflight` prints a row
 for each switch you turn on, naming the host it will contact.
 
 ## Cache
@@ -718,7 +718,7 @@ of the section is config-only.
 
 `trigger_token` turns on the HTTP trigger: one POST that runs whatever `auto run` would have
 decided, so an Immich workflow (or a cron, or a phone shortcut) can start a memory. See
-[Trigger from Immich or anything else](../create/recipes/automated-generation.md#trigger-it-over-http).
+[Trigger from Immich or anything else](../make/automate.md#trigger-it-over-http).
 Keep it out of `config.yaml` with `IMMICH_MEMORIES_SERVER__TRIGGER_TOKEN`: `server` does not expand
 a `${VAR}` reference, so writing one here stores the six literal characters as your token. Either
 way the value is redacted from `/health`, the config viewer and the logs, from config load onwards.
@@ -763,7 +763,7 @@ scheduler:
 
 ## Automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2: lives under `advanced:` when the app writes the file.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../being-rewritten/auto.md) for the full command reference. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 automation:
@@ -784,7 +784,7 @@ automation:
 
 ## Authentication
 
-Protects the web UI. See the [Authentication guide](../deploy/configuration/authentication.mdx) for provider-specific setup (OIDC examples, header proxy config, etc.).
+Protects the web UI. See the [Authentication guide](../run/authentication.mdx) for provider-specific setup (OIDC examples, header proxy config, etc.).
 
 ```yaml
 auth:

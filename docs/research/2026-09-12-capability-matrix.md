@@ -15,7 +15,7 @@ two classifier generations, under two hash seeds. None made a language-model req
 Ten metadata-profile films passed complete video and audio decoding. These results establish
 working paths and repeatability; they do not establish equal editorial quality or release readiness.
 
-For setup choices, read [Running modes and tradeoffs](../../docs-site/docs/deploy/running-modes.md).
+For setup choices, read [Running modes and tradeoffs](../../docs-site/docs/being-rewritten/running-modes.md).
 The [aggregate data](2026-09-12-capability-matrix.data.json) contains only the public numeric fields.
 
 ## Capabilities

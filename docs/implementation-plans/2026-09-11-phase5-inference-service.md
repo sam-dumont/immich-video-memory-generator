@@ -71,7 +71,7 @@ external hosted llm know their data goes out."* Someone who configures an extern
 already chosen to send their data there, and a consent prompt in front of a choice they have
 already made is friction, not protection. §5.5's description of what each seat sends stands and is
 still true — it belongs in the documentation as a plain statement, which is where it now lives
-(`docs-site/docs/deploy/configuration/network-and-privacy.md`). There is no gate, no grant store
+(`docs-site/docs/run/privacy.md`). There is no gate, no grant store
 and no per-host opt-in to build. Do not re-propose one.
 
 **The one packaging trap to carry into W5.** The stock `llama.cpp` CUDA image ships cubins for

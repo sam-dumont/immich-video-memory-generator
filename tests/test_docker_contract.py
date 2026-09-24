@@ -667,7 +667,7 @@ def test_no_page_passes_an_extends_overlay_to_compose_as_a_file() -> None:
 
 def test_the_documented_cuda_override_extends_the_captioner_overlay() -> None:
     """The heredoc caption-server.md writes, read back: it has to name a real target."""
-    page = (REPO_ROOT / "docs-site/docs/deploy/installation/caption-server.md").read_text()
+    page = (REPO_ROOT / "docs-site/docs/better/captions.md").read_text()
     start = page.index("cat > captioner.cuda.yml <<'EOF'\n") + len(
         "cat > captioner.cuda.yml <<'EOF'\n"
     )
