@@ -114,6 +114,11 @@ clip does not restart a caption already running, captions stay clear of dissolve
 incoming labels cannot overlap, and a clip too short to hold a window keeps its caption for its whole
 length instead of losing it.
 
+A caption in any alphabet draws as letters. FFmpeg's drawtext draws captions the caption font covers.
+Anything else (a Greek or Cyrillic place, a Japanese date, Arabic or Hebrew written right to left)
+is drawn with the title fonts described in [Other alphabets](#other-alphabets) and laid over the
+frame in the same spot, size and colour.
+
 Places you are at constantly stay unlabelled, because the name of your own town over every third clip
 is noise. Familiarity is measured on GPS observations within **250 m of the asset**, across the
 accessible library's history, and a place qualifies on either pattern: 12 distinct visit weeks across

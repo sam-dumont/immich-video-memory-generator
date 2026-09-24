@@ -244,8 +244,7 @@ class ChainFont(ImageFont.FreeTypeFont):
         self._fonts: dict[_Face, ImageFont.FreeTypeFont] = {}
 
     def _needs_chain(self, text: str) -> bool:
-        own = _codepoints(str(self.path), self.index)
-        return any(ord(c) not in own and not c.isspace() for c in text)
+        return not face_covers(str(self.path), text)
 
     def _run_font(self, face: _Face) -> ImageFont.FreeTypeFont:
         if face not in self._fonts:
@@ -430,3 +429,9 @@ def _direction_for(run: TextRun, shaped: bool) -> tuple[str | None, str]:
 def title_font(path: str | Path, size: float, *, bold: bool = False) -> ChainFont:
     """The face at `path`, backed by Noto for every letter it cannot draw itself."""
     return ChainFont(str(path), size, bold=bold)
+
+
+def face_covers(path: str | Path, text: str) -> bool:
+    """Whether the face at `path` alone has a glyph for every letter of `text`."""
+    own = _codepoints(str(path))
+    return all(c.isspace() or ord(c) in own for c in text)
