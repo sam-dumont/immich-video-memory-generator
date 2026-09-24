@@ -416,7 +416,8 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, injected geocoder)
 │   ├── place_name_cache.py     # Localised names for the places one cut shows, one ask each
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
-│   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── special_day.py          # Every run of activity, and a found day named from its own lines
+│   ├── special_day_sequence.py # Days read a month at a time in order; the reader names occasions; 30 s film floor
 │   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
 │   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for

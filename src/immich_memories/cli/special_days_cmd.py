@@ -35,7 +35,6 @@ def _register_discover(main: click.Group) -> None:
     @main.command("discover-days")
     @click.option("--since", type=int, default=2007, help="First year to scan")
     @click.option("--until", type=int, default=date.today().year, help="Last year to scan")
-    @click.option("--per-year", type=int, default=6, help="Busiest candidates to ask about")
     @click.option(
         "--also-skip",
         multiple=True,
@@ -62,7 +61,6 @@ def _register_discover(main: click.Group) -> None:
     def discover_days(
         since: int,
         until: int,
-        per_year: int,
         also_skip: tuple[str, ...],
         out: Path,
         rescan: bool,
@@ -75,7 +73,9 @@ def _register_discover(main: click.Group) -> None:
         the wedding), and that needs the days found in advance.
 
         Days inside a trip are skipped, since a trip memory already tells that
-        story, and so are holidays, which have their own.
+        story, and so are holidays, which have their own. Every other day is
+        read, a month at a time and in order, and the model says which were
+        occasions; no picture count or active-hours bar decides what it sees.
 
         Resumes by default: years already in the catalogue are not scanned
         again, which matters for a command that runs for hours. --rescan
@@ -88,9 +88,7 @@ def _register_discover(main: click.Group) -> None:
         will replace before it starts, and it never touches a year outside the
         period.
         """
-        found = _scan_library(
-            since, until, per_year, also_skip, out, rescan=rescan, replace=replace
-        )
+        found = _scan_library(since, until, also_skip, out, rescan=rescan, replace=replace)
         _write_catalogue(out, found, rescan=rescan or replace)
         days = sum(1 for entry in found if entry.get("day"))
         print_success(f"{days} special days in {out}")
@@ -207,7 +205,6 @@ def _scan_one_year(
     assets: list,
     found: list[dict],
     out: Path,
-    per_year: int,
     also_skip: tuple[str, ...],
     home: tuple[float, float] | None,
     config: Config,
@@ -221,12 +218,12 @@ def _scan_one_year(
         assets,
         llm_config=config.llm,
         home=home,
-        ask=per_year,
         extra_holidays=also_skip,
         analysis_config=config.analysis,
         trips_config=config.trips,
         captions=prepared_captions(config, tuple(asset.id for asset in assets)),
         judgment_cache_path=verdicts_beside(config.cache.cache_path),
+        still_seconds=config.photos.duration,
     ):
         found.append(record_for(day))
         if day.judged:
@@ -247,7 +244,6 @@ def _scan_one_year(
 def _scan_library(
     since: int,
     until: int,
-    per_year: int,
     also_skip: tuple[str, ...],
     out: Path,
     *,
@@ -260,6 +256,7 @@ def _scan_library(
     where it stopped rather than starting the twenty years again.
     """
     from immich_memories.api.sync_client import SyncImmichClient
+    from immich_memories.automation.special_day_scan import YearNotRead
     from immich_memories.config import get_config
 
     config = get_config()
@@ -277,7 +274,11 @@ def _scan_library(
                 found.append({"scanned": year})
                 continue
             console.print(f"[dim]{year}: {len(assets)} assets[/dim]")
-            _scan_one_year(year, assets, found, out, per_year, also_skip, home, config)
+            try:
+                _scan_one_year(year, assets, found, out, also_skip, home, config)
+            except YearNotRead as exc:
+                # The months it did read are banked; the next run asks only the rest.
+                console.print(f"[yellow]{exc}; left for the next run[/yellow]")
     return found
 
 
