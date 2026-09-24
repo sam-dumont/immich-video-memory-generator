@@ -51,6 +51,39 @@ an `llm` endpoint configured, the music stage still asks it one question after t
 prompt and 54 completion tokens on the fixture month, 1,033 and 59 on a real one. A rules cell with
 no endpoint at all asked nothing.
 
+### The Laya audience pre-screen
+
+On a Mac with a model reader, one question the reader asks for every shot can be answered locally
+instead: does the caption describe a bath, a nappy change, breastfeeding or one of the other private
+activities the family audience holds back. Laya is a 0.4B text classifier (Apache-2.0) fine-tuned on
+captions of public CC BY photographs. It reads the same compact caption the preparation seat wrote,
+in about 14 ms per shot, where the reader takes seconds.
+
+```bash
+pip install laya-mlx                         # Apple silicon only
+immich-memories models fetch --laya          # 811 MB, digest-pinned
+```
+
+```yaml
+advanced:
+  editorial:
+    laya_audience: true
+```
+
+It only adds holds. The detector holds (the sensitive-content detector and the uncovered-person
+head) are applied first and never lifted, the same support checks read its finding as they read the
+reader's, and a shot it does not answer is asked of the reader alone. On the held-out public test
+split it kept all 9 shots the labelling reader held in both orders and held 12 of 3,130 clean shots
+too (0.4 %) at the default threshold of 0.186, the lowest that kept every hold of the calibration
+split. It is off by default.
+
+On one real library (4,699 captions, graded by a hosted reader in both orders) it kept 50 of the 51
+shots held in both orders and every held bath, nudity, breastfeeding and medical shot. It held 47
+clean shots too (1 %). Its known limit: travel and administrative documents (a boarding pass, an
+invoice) can slip through as not identifying, because few such captions were in its training set. The
+sensitive-content and uncovered-person detectors remain the floor either way. The reader still
+judges which shots stand by themselves.
+
 ## The preparation tier
 
 | `tier` | What runs on every picture in scope | What the editor and the gate are handed |

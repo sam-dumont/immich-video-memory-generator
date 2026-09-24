@@ -390,13 +390,15 @@ def _select(
         bank_path=audit_dir / "shareability.private.json",
         library=AudienceBank(
             source.bank_dir.parent / AUDIENCE_BANK_NAME,
-            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}",
+            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}"
+            + "|laya" * bool(ports.laya),
         ),
         check_audience=audience_check_for(audience_tier),
         chains=chain_holds_for(
             source.assets, source.audience_annotations, source.companion_detectors
         ),
         companion_heads=source.companion_detectors,
+        activity_reader=ports.laya.activity_answers if ports.laya else None,
     )
     attached_relation_records: dict[str, dict[str, Any]] = {}
     relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)
@@ -781,7 +783,7 @@ def _thin_polish(
             thumbnail_hash=ports.thumbnail_hash,
             audience_name=source.audience,
             audience_batch=AUDIENCE_BATCH_SIZE
-            if source.config.editorial.thin_batched_audience
+            if source.config.editorial.thin_batched_audience or ports.laya
             else 0,
         ),
         catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets, drafted=carriers),

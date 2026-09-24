@@ -9,7 +9,7 @@ replacement path as any refusal. Attached sampled material can only tighten a ve
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -196,8 +196,11 @@ class AudienceGate:
         check_audience=_share.check_audience,
         chains: Mapping[str, ChainHold] | None = None,
         companion_heads: Mapping[str, Mapping[str, str]] | None = None,
+        activity_reader: Callable[[Mapping[str, tuple[Sequence[str], bool]]], dict[str, str]]
+        | None = None,
     ) -> None:
         self._judge = judge
+        self._activity_reader = activity_reader
         self.audience = audience
         self._check_audience = check_audience
         self._pictures = picture_evidence
@@ -293,6 +296,7 @@ class AudienceGate:
         if batch < 2 or self._check_audience is not _share.check_audience:
             return
         pending: dict[str, tuple[dict[str, Any], bool]] = {}
+        captions: dict[str, list[str]] = {}
         for u in units:
             observed_reason, terminal, evidence = self._evidence(u)
             if observed_reason or terminal is not None or self._held_already(evidence):
@@ -303,9 +307,27 @@ class AudienceGate:
             allow_nudity = _share.activity_question(evidence)
             if allow_nudity is not None:
                 pending[key] = (evidence, allow_nudity)
+                if self._activity_reader is not None:
+                    captions[key] = self._pictures.compact_captions(u)
+        pending = self._read_locally(pending, captions)
         first_call = len(self._judge.calls)
         self._answered.update(ask_activity_batches(self._judge, pending, size=batch))
         self.requests += len(self._judge.calls) - first_call
+
+    def _read_locally(
+        self,
+        pending: dict[str, tuple[dict[str, Any], bool]],
+        captions: Mapping[str, Sequence[str]],
+    ) -> dict[str, tuple[dict[str, Any], bool]]:
+        """Let the local reader answer from the compact captions it was trained on; return what
+        it left for the text model."""
+        if self._activity_reader is None or not pending:
+            return pending
+        read = self._activity_reader(
+            {k: (captions[k], allow) for k, (_e, allow) in pending.items()}
+        )
+        self._answered.update(read)
+        return {k: v for k, v in pending.items() if k not in read}
 
     def _evidence(self, u) -> tuple[str | None, dict[str, Any] | None, dict[str, Any]]:
         """The carrier rule's refusal if one applies, a body observation's terminal hold, and

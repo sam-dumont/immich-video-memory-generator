@@ -37,6 +37,30 @@ Open Images V7 photographs (the training data behind the bundled heads)
   Note: no photograph from a private library was used, and this notice does not
     relicense the source photographs.
 
+Laya audience pre-screen (fine-tuned from convaiinnovations/laya-typed-decisions)
+  Role: the optional local answer to the audience check's activity question
+    (`editorial.laya_audience`, off by default)
+  Artifact: laya-audience-a79ad9fa.tar, a bf16 checkpoint of a ModernBERT-large
+    encoder with Laya's decision head, fine-tuned by this project, served from the
+    `models-v2` release, 811 MB,
+    sha256 a79ad9fa3e4b5ae23e6b7ca9233f2bed50746a72baf0c3803dbecd68a6625dc4;
+    fetched only by `immich-memories models fetch --laya`
+  License: Apache-2.0 (the archive carries LICENSE and NOTICE)
+  Copyright: the Laya authors (convaiinnovations, github.com/NandhaKishorM/laya);
+    Answer.AI and LightOn (ModernBERT-large)
+  URL: https://huggingface.co/convaiinnovations/laya-typed-decisions
+  Training text: captions written by SmolVLM2-500M for 30,972 public photographs of
+    the CommonCatalog CC BY slice of YFCC100M (CC BY 2.0), plus 4,660 synthetic
+    captions. Every photographer is credited in ATTRIBUTION.csv inside the archive,
+    also published as laya-audience-attribution.csv on the `models-v2` release. No
+    photograph is in the archive or relicensed by it. Labels: this project's
+    audience question answered by glm-5.3-flash. No picture or caption from any
+    user library was used for training.
+  Removal: email sam@dropbars.be with the photo id; the photograph is dropped from
+    the manifest and from the next checkpoint.
+  Runtime: laya-mlx (Apache-2.0, https://github.com/mizorewww/laya-mlx),
+    installed separately on Apple silicon
+
 Marqo NSFW image detector (Marqo/nsfw-image-detection-384)
   Role: the sensitive-content detector behind the family-viewing gate
   Artifact: nsfw-marqo-384-924658f1.onnx, an ONNX export of revision
