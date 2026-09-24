@@ -33,7 +33,7 @@ export const redirects: {from: string; to: string}[] = [
   {from: '/docs/welcome/built-with-ai', to: '/docs/welcome/about'},
   {from: '/docs/create/cli/auto', to: '/docs/make/automate'},
   {from: '/docs/create/cli/scheduler', to: '/docs/make/automate'},
-  {from: '/docs/create/pipeline', to: '/docs/being-rewritten/pipeline'},
+  {from: '/docs/create/pipeline', to: '/docs/how-it-chooses/overview'},
   {from: '/docs/deploy/running-modes', to: '/docs/better/overview'},
   {from: '/docs/deploy/self-hosting', to: '/docs/get-started/quick-start'},
   {from: '/docs/deploy/common-setups/nas-only', to: '/docs/run/nas'},
