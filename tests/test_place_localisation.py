@@ -53,6 +53,36 @@ class TestTheFilmReadsTheseNames:
 
         assert "À CHYPRE" in title
 
+    @pytest.mark.parametrize(
+        ("place", "expected"),
+        [
+            # A ratchet render read "DEUX SEMAINES À ITALIE" (#1101).
+            ("Italy", "DEUX SEMAINES EN ITALIE"),
+            ("Iran", "DEUX SEMAINES EN IRAN"),
+            ("Portugal", "DEUX SEMAINES AU PORTUGAL"),
+            ("Mexico", "DEUX SEMAINES AU MEXIQUE"),
+            ("United States", "DEUX SEMAINES AUX ÉTATS-UNIS"),
+            ("Netherlands", "DEUX SEMAINES AUX PAYS-BAS"),
+            ("Cyprus", "DEUX SEMAINES À CHYPRE"),
+            ("Lisbon, Portugal", "DEUX SEMAINES À LISBON, PORTUGAL"),
+        ],
+    )
+    def test_a_french_trip_title_takes_the_country_s_own_preposition(
+        self, place: str, expected: str
+    ) -> None:
+        from immich_memories.titles._trip_titles import generate_trip_title
+
+        title = generate_trip_title(place, date(2024, 7, 1), date(2024, 7, 14), locale="fr")
+
+        assert title == f"{expected}, JUILLET 2024"
+
+    def test_an_english_trip_title_keeps_in(self) -> None:
+        from immich_memories.titles._trip_titles import generate_trip_title
+
+        title = generate_trip_title("Italy", date(2024, 7, 1), date(2024, 7, 14), locale="en")
+
+        assert title == "TWO WEEKS IN ITALY, JULY 2024"
+
     def test_a_clip_overlay_localises_the_country_and_still_drops_home(self) -> None:
         from immich_memories.analysis.familiar_places import PlaceHistory, PlaceObservation
         from immich_memories.generate_captions import apply_location_captions

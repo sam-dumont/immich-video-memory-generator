@@ -11,10 +11,15 @@ Supported fonts:
 - JosefinSans (vintage elegant)
 - Quicksand (friendly rounded)
 - Montserrat (geometric humanist)
+
+Those five are Latin subsets. A title with a letter they lack (a Greek or
+Cyrillic place name) is drawn whole in Noto Sans, which the wheel carries in
+Latin, Greek and Cyrillic for exactly that; see `font_covering`.
 """
 
 from __future__ import annotations
 
+import functools
 import logging
 from pathlib import Path
 from typing import Literal
@@ -27,6 +32,48 @@ logger = logging.getLogger(__name__)
 BUNDLED_FONTS_DIR = Path(__file__).parent / "bundled_fonts"
 
 _CDN_HOST = "cdn.jsdelivr.net"
+
+# Noto Sans cut to Latin, Greek and Cyrillic: the face a title falls back to,
+# whole, when its own family cannot draw one of its letters (#1101).
+_COVERAGE_FALLBACK = {
+    False: BUNDLED_FONTS_DIR / "noto-sans" / "latin-greek-cyrillic-400-normal.ttf",
+    True: BUNDLED_FONTS_DIR / "noto-sans" / "latin-greek-cyrillic-700-normal.ttf",
+}
+
+
+@functools.lru_cache(maxsize=32)
+def _codepoints(font_path: str) -> frozenset[int]:
+    """Every character this face has a glyph for; empty when it cannot be read."""
+    import freetype
+
+    try:
+        face = freetype.Face(font_path)
+    except (freetype.FT_Exception, OSError):
+        return frozenset()
+    return frozenset(code for code, _glyph in face.get_chars())
+
+
+def _missing(font_path: Path | str, text: str) -> str:
+    drawn = _codepoints(str(font_path))
+    return "".join(dict.fromkeys(c for c in text if not c.isspace() and ord(c) not in drawn))
+
+
+def font_covering(font_path: Path | str, text: str, *, bold: bool = False) -> str:
+    """The face to draw `text` with: `font_path` when it has every letter, else one that does.
+
+    A title is drawn in one face, never glyph by glyph, so a Greek place in a
+    French title does not switch typeface mid-line. When no bundled face draws
+    it all, the requested face is kept and the missing letters are logged: they
+    will show as boxes, and that must not be silent. A path that is not a file
+    (a family name the host resolves itself) is passed through untouched.
+    """
+    if not text or not Path(font_path).is_file() or not _missing(font_path, text):
+        return str(font_path)
+    fallback = _COVERAGE_FALLBACK[bold]
+    if missing := _missing(fallback, text):
+        logger.warning("No bundled font draws %r in %r; they will render as boxes", missing, text)
+        return str(font_path)
+    return str(fallback)
 
 
 def font_downloads_allowed() -> bool:

@@ -5,6 +5,9 @@ Raleway    — Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida (OFL-1.1)
 Josefin Sans — Santiago Orozco (OFL-1.1) — https://github.com/ThomasJocworksource/JosefinSans
 Quicksand  — Andrew Paglinawan (OFL-1.1) — https://github.com/alexeiva/quicksand
 Montserrat — Julieta Ulanovsky, Sol Matas, Juan Pablo del Peral, Jacques Le Bailly (OFL-1.1)
+Noto Sans  — The Noto Project Authors (OFL-1.1) — https://github.com/notofonts/latin-greek-cyrillic
+             Instanced at weights 400 and 700 from Google Fonts' variable NotoSans and cut to
+             Latin, Greek and Cyrillic with fontTools (noto-sans/).
 
 Downloaded from Fontsource CDN (https://fontsource.org), which redistributes
 Google Fonts under their original open-source licenses.

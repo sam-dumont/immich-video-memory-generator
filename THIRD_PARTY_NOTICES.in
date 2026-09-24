@@ -115,6 +115,8 @@ Raleway           Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
                                               https://github.com/impallari/Raleway
 Josefin Sans      Santiago Orozco             https://github.com/googlefonts/josefinsans
 Quicksand         Andrew Paglinawan           https://github.com/googlefonts/Quicksand
+Noto Sans         The Noto Project Authors    https://github.com/notofonts/latin-greek-cyrillic
+                  (Latin, Greek and Cyrillic subset, fallback for letters the others lack)
 
 Originally obtained through Fontsource (https://fontsource.org/, MIT); the
 Fontsource CDN is only contacted as a fallback for a custom font name.

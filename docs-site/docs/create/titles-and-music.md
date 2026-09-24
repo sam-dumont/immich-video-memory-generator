@@ -41,7 +41,10 @@ anyway. Which renderer your machine gets is on
 ## Styles
 
 All styles use dark cinematic palettes with white text. Every title is Montserrat: there is no font
-choice, and the `preferred_fonts` list in the style definitions is read by nothing.
+choice, and the `preferred_fonts` list in the style definitions is read by nothing. Montserrat ships
+as a Latin subset, so a title with a Greek or Cyrillic letter in it (a place geocoded in its own
+script, say) is drawn whole in Noto Sans, which the app carries for that. A letter no bundled font
+has is logged as a warning rather than drawn as a silent gap.
 
 | Style | Palette | Character |
 |-------|---------|-----------|
@@ -140,8 +143,9 @@ renderer also knows `osm` and `topo` for the pin-and-label frames, but both are 
 
 Immich geocodes with GeoNames and stores English, so every city and country it hands over is
 English. Country names are translated offline (CLDR, through babel) wherever a viewer reads one:
-the trip title, the clip overlays, the map pin labels and the location cards. A French film says
-`DEUX SEMAINES À ESPAGNE`, not `À SPAIN`.
+the trip title, the clip overlays, the map pin labels and the location cards. A French trip title
+also takes the country's own preposition: `DEUX SEMAINES EN ESPAGNE`, `AU PORTUGAL`,
+`AUX ÉTATS-UNIS`, `À CHYPRE`, not `À SPAIN`. A city keeps `À`.
 
 City names have no offline table. They stay as Immich stored them unless `network.geocoding: true`
 lets Nominatim answer in the film's language, one request per distinct place on the cut. See

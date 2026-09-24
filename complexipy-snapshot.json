@@ -3113,55 +3113,55 @@
       {
         "name": "_search_font_paths",
         "complexity": 20,
-        "line_start": 148,
-        "line_end": 162,
+        "line_start": 157,
+        "line_end": 171,
         "line_complexities": [
           {
-            "line": 150,
+            "line": 159,
             "complexity": 1
           },
           {
-            "line": 151,
-            "complexity": 2
-          },
-          {
-            "line": 153,
-            "complexity": 2
-          },
-          {
-            "line": 154,
-            "complexity": 0
-          },
-          {
-            "line": 155,
-            "complexity": 3
-          },
-          {
-            "line": 156,
-            "complexity": 0
-          },
-          {
-            "line": 157,
-            "complexity": 3
-          },
-          {
-            "line": 158,
-            "complexity": 4
-          },
-          {
-            "line": 159,
-            "complexity": 0
-          },
-          {
             "line": 160,
-            "complexity": 5
-          },
-          {
-            "line": 161,
-            "complexity": 0
+            "complexity": 2
           },
           {
             "line": 162,
+            "complexity": 2
+          },
+          {
+            "line": 163,
+            "complexity": 0
+          },
+          {
+            "line": 164,
+            "complexity": 3
+          },
+          {
+            "line": 165,
+            "complexity": 0
+          },
+          {
+            "line": 166,
+            "complexity": 3
+          },
+          {
+            "line": 167,
+            "complexity": 4
+          },
+          {
+            "line": 168,
+            "complexity": 0
+          },
+          {
+            "line": 169,
+            "complexity": 5
+          },
+          {
+            "line": 170,
+            "complexity": 0
+          },
+          {
+            "line": 171,
             "complexity": 0
           }
         ]

@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from immich_memories.titles.colors import ceil_white_for_hdr
+from immich_memories.titles.fonts import font_covering
 from immich_memories.titles.safe_zones import safe_text_width
 from immich_memories.titles.text_layout import (
     TextStack,
@@ -206,10 +207,14 @@ class TitleTextRenderer:
     def render(self, t: float, progress: float, title: str, subtitle: str | None):
         """Render title and subtitle text onto the frame."""
         title_anim = self._compute_animation(t, progress, is_subtitle=False)
-        if self.use_sdf:
+        if self.use_sdf and self._sdf_draws(title, subtitle):
             self._render_text_sdf(title, subtitle, title_anim, t, progress)
         else:
             self._render_text_pil(title, subtitle, title_anim, t, progress)
+
+    def _sdf_draws(self, title: str, subtitle: str | None) -> bool:
+        """Whether the SDF atlas has every letter; the PIL layers draw anything else."""
+        return self._sdf_atlas is not None and self._sdf_atlas.draws(f"{title} {subtitle or ''}")
 
     def _base_sizes(self, subtitle: str | None) -> tuple[int, int]:
         """Title and subtitle font sizes before the layout gets a say.
@@ -428,15 +433,18 @@ class TitleTextRenderer:
             smoothing,
         )
 
-    def _font(self, font_size: int):
+    def _font(self, font_size: int, text: str):
         """The configured face at this size, or Pillow's own when it is missing.
 
         The fallback is asked for a size because the layout is measured in
         pixels: a face that ignores the size would place text nowhere near
-        where the stack expects it.
+        where the stack expects it. A face without one of the text's letters
+        gives way to one that has them all (#1101).
         """
+        # WHY bold: _get_system_font takes the heaviest weight the family has.
+        path = font_covering(_get_system_font(self.config.font_family), text, bold=True)
         try:
-            return ImageFont.truetype(_get_system_font(self.config.font_family), font_size)
+            return ImageFont.truetype(path, font_size)
         except (OSError, ValueError):
             return ImageFont.load_default(size=font_size)
 
@@ -446,7 +454,9 @@ class TitleTextRenderer:
         safe_width = safe_text_width(self.config.width, self.config.height)
 
         def count(text: str, font_size: int) -> int:
-            return len(_split_text_for_rendering(draw, text, self._font(font_size), safe_width))
+            return len(
+                _split_text_for_rendering(draw, text, self._font(font_size, text), safe_width)
+            )
 
         return count
 
@@ -460,7 +470,7 @@ class TitleTextRenderer:
         w, h = self.config.width, self.config.height
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        font = self._font(font_size)
+        font = self._font(font_size, text)
 
         safe_width = safe_text_width(w, h)
         bbox = draw.textbbox((0, 0), text, font=font)

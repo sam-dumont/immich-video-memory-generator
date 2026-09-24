@@ -74,6 +74,15 @@ class SDFFontAtlas:
     # SDF parameters
     spread: int = 8  # Distance field spread in pixels
 
+    def draws(self, text: str) -> bool:
+        """Whether every letter of `text` has a glyph here.
+
+        The layout advances a space for a letter it has no glyph for, so a
+        Greek place name would come out as a gap; a renderer asks this first
+        and draws such text some other way (#1101).
+        """
+        return all(char.isspace() or char in self.glyphs for char in text)
+
 
 # =============================================================================
 # Font Discovery

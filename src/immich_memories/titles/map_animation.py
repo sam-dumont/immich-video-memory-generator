@@ -226,7 +226,9 @@ def _draw_pins(
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     base_r = max(6, int(min(w, h) * 0.012))
-    font = _get_font(max(12, int(min(w, h) * 0.022)), bold=True)
+    font = _get_font(
+        max(12, int(min(w, h) * 0.022)), bold=True, text="".join(pin.name or "" for pin in pins)
+    )
     a_w, a_f = int(200 * pin_alpha), int(230 * pin_alpha)
     a_l, a_s = int(220 * pin_alpha), int(140 * pin_alpha)
     white = ceil_rgb_for_hdr((255, 255, 255)) if cfg.hdr else (255, 255, 255)
@@ -490,7 +492,7 @@ def _render_title_overlay(text: str, w: int, h: int, hdr: bool = False) -> Image
     draw = ImageDraw.Draw(img)
 
     fs = int(w * 0.12) if is_portrait else int(h * 0.09)
-    font = _get_font(fs, bold=True)
+    font = _get_font(fs, bold=True, text=text)
 
     white = ceil_rgb_for_hdr((255, 255, 255)) if hdr else (255, 255, 255)
     lines = _wrap_text(text, draw, font, int(w * 0.88))
