@@ -9,7 +9,7 @@ refusal.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -197,8 +197,11 @@ class AudienceGate:
         chains: Mapping[str, ChainHold] | None = None,
         companion_heads: Mapping[str, Mapping[str, str]] | None = None,
         strict_sharing: bool = True,
+        activity_reader: Callable[[Mapping[str, tuple[Sequence[str], bool]]], dict[str, str]]
+        | None = None,
     ) -> None:
         self._judge = judge
+        self._activity_reader = activity_reader
         self.audience = audience
         self._strict_sharing = strict_sharing
         self._check_audience = check_audience
@@ -289,13 +292,14 @@ class AudienceGate:
     def prefetch(self, units, *, batch: int) -> None:
         """Ask the activity question of every carrier here that still needs one, `batch` a request.
 
-        A carrier a rule, a detector's floor or a banked answer already decides is not sent. The answers wait in the gate, and `verdict_of` reads each carrier exactly
-        as before, asking alone any carrier the batch left unanswered. Only the full check has
+        A carrier a rule, a detector's floor or a banked answer already decides is not sent. The
+        answers wait in the gate, and `verdict_of` reads each carrier exactly as before, asking alone any carrier the batch left unanswered. Only the full check has
         an activity question to batch; any other check is left as it is.
         """
         if batch < 2 or self._check_audience is not _share.check_audience:
             return
         pending: dict[str, tuple[dict[str, Any], bool]] = {}
+        captions: dict[str, list[str]] = {}
         for u in units:
             observed_reason, evidence = self._evidence(u)
             if observed_reason or self._held_already(evidence):
@@ -306,9 +310,35 @@ class AudienceGate:
             allow_nudity = _share.activity_question(evidence)
             if allow_nudity is not None:
                 pending[key] = (evidence, allow_nudity)
+                if self._activity_reader is not None:
+                    captions[key] = self._compact_captions(u)
+        pending = self._read_locally(pending, captions)
         first_call = len(self._judge.calls)
         self._answered.update(ask_activity_batches(self._judge, pending, size=batch))
         self.requests += len(self._judge.calls) - first_call
+
+    def _read_locally(
+        self,
+        pending: dict[str, tuple[dict[str, Any], bool]],
+        captions: Mapping[str, Sequence[str]],
+    ) -> dict[str, tuple[dict[str, Any], bool]]:
+        """Let the local reader answer from the compact captions it was trained on; return what
+        it left for the text model."""
+        if self._activity_reader is None or not pending:
+            return pending
+        read = self._activity_reader(
+            {k: (captions[k], allow) for k, (_e, allow) in pending.items()}
+        )
+        self._answered.update(read)
+        return {k: v for k, v in pending.items() if k not in read}
+
+    def _compact_captions(self, u) -> list[str]:
+        """The preparation seat's caption of each member of this carrier."""
+        members = dict.fromkeys(str(i) for i in (u.get("asset_id"), *u.get("members", ())) if i)
+        return [
+            str(getattr(self._annotations.get(asset_id), "description", "") or "")
+            for asset_id in members
+        ]
 
     def _evidence(self, u) -> tuple[str | None, dict[str, Any]]:
         """The carrier rule's refusal if one applies, and the evidence the audience question is

@@ -21,6 +21,7 @@ from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_laya_reader import LayaReader
     from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
     from immich_memories.analysis.editorial_thin_layer import ThinPolish
 
@@ -217,6 +218,9 @@ class StructurePlannerPorts:
     # A frame's scene print (`editorial_scene_prints`), so the final review reads the scene a
     # cut repeats and not only the frame; None reads the cached hash alone.
     scene_print: Callable[[str], Any] | None = None
+    # The local Laya model answering the audience check's activity question
+    # (`editorial.laya_audience`); None asks the text model.
+    laya: LayaReader | None = None
 
 
 @dataclass(frozen=True)

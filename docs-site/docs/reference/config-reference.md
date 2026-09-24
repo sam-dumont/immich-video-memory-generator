@@ -447,6 +447,10 @@ editorial:
   thin_batched_audience: false   # ask the thin layer's audience question of 12 carriers per request
   strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
+  laya_audience: false           # answer the audience activity question with the local Laya model
+  laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
+  laya_checkpoint_url: "https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v2/laya-audience-a79ad9fa.tar"
+  laya_audience_threshold: 0.186 # Laya's hold probability at or above which a carrier is held
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
   head_versions:                 # exact producer version selected for each annotation head
@@ -541,6 +545,11 @@ share outside the family, whatever the reader's text says about it. A caption th
 used to clear an exposure flag for sharing; with this on (the default), only your own clearance on
 the picture does. Family films are unchanged. The hold is applied per film and never written to the
 library's audience bank, so setting it to `false` gives the reader's own answer back at once.
+
+`laya_audience` answers the audience check's activity question with a local Laya model instead of
+the text model: Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
+first. It reads the compact caption and adds holds; detector and rule holds still apply and
+are never lifted. See [Running modes](../being-rewritten/running-modes.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

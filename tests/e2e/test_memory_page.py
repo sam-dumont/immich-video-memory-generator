@@ -227,9 +227,10 @@ def test_the_trip_picker_offers_a_year_with_only_photos(
 
 
 def test_a_first_cut_before_models_fetch_says_to_run_it_and_the_message_stays(
-    page: Page, first_launch_app_url: str
+    page: Page, first_launch_app_url: str, first_launch_workspace
 ) -> None:
     _brief_for_june(page, first_launch_app_url)
+    log_before_cut = first_launch_workspace.log_path.stat().st_size
 
     page.get_by_role("button", name="Cut", exact=True).click()
 
@@ -238,6 +239,12 @@ def test_a_first_cut_before_models_fetch_says_to_run_it_and_the_message_stays(
     )
     expect(refusal).to_be_visible(timeout=60_000)
     expect(page.get_by_role("combobox", name="Memory type")).to_be_visible()
+    # Refused before the pool loads: not one picture was asked of Immich.
+    with first_launch_workspace.log_path.open() as log:
+        log.seek(log_before_cut)
+        after_cut = log.read()
+    assert "/thumbnail" not in after_cut
+    assert "/api/search/" not in after_cut
     # The command is what the reader has to copy into a terminal, so the
     # message waits for them instead of fading with a toast.
     page.reload()

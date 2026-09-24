@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from immich_memories.analysis.editorial_preparation_detectors import MARQO_ONNX_SHA256
+from immich_memories.config_models_editorial import LAYA_AUDIENCE_URL
 from immich_memories.config_models_editorial_preparation import MARQO_ONNX_URL
 from immich_memories.config_models_triage import DINOV2_SMALL_ONNX_URL
 from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
@@ -39,6 +40,14 @@ ENCODER = PinnedModel(
     "the pinned DINOv2 ONNX export", DINOV2_SMALL_ONNX_URL, DINOV2_SMALL_ONNX_SHA256
 )
 MARQO_ONNX = PinnedModel("the pinned Marqo ONNX export", MARQO_ONNX_URL, MARQO_ONNX_SHA256)
+# The optional audience pre-screen (`editorial.laya_audience`): a bf16 Laya checkpoint archive,
+# Apache-2.0, fetched only on `models fetch --laya`.
+LAYA_AUDIENCE = PinnedModel(
+    "the pinned Laya audience checkpoint",
+    LAYA_AUDIENCE_URL,
+    "a79ad9fa3e4b5ae23e6b7ca9233f2bed50746a72baf0c3803dbecd68a6625dc4",
+)
+LAYA_MAX_BYTES = 1024 * 1024 * 1024
 
 
 def fetch_pinned_model(

@@ -14,6 +14,13 @@ from immich_memories.config_models_editorial_preparation import EditorialPrepara
 
 logger = logging.getLogger(__name__)
 
+# The one place the Laya checkpoint's host is named; `models fetch --laya` verifies the digest
+# pinned in pinned_models.py whatever this points at.
+LAYA_AUDIENCE_URL = (
+    "https://github.com/sam-dumont/immich-video-memory-generator/"
+    "releases/download/models-v2/laya-audience-a79ad9fa.tar"
+)
+
 # Heads that once shipped and no longer do. A config file that still names one is a
 # config written before the head was retired, not a broken config: the name is dropped
 # and the run continues, because nothing left in the tree reads it.
@@ -143,7 +150,34 @@ class EditorialConfig(BaseModel):
         description="Exact producer of pixel facts and thresholds",
     )
 
-    @field_validator("annotation_database", mode="before")
+    laya_audience: bool = Field(
+        default=False,
+        description=(
+            "Answer the audience check's activity question with the local Laya model instead of "
+            "the text model (Apple silicon; `pip install laya-mlx`, then `models fetch --laya`). "
+            "It reads the compact caption. Detector and rule holds still apply and are "
+            "never lifted"
+        ),
+    )
+    laya_checkpoint: str = Field(
+        default="~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar",
+        description="The digest-pinned Laya checkpoint archive (811 MB); unpacked beside it on first use",
+    )
+    laya_checkpoint_url: str = Field(
+        default=LAYA_AUDIENCE_URL,
+        description="Where `models fetch --laya` downloads the pinned Laya checkpoint from",
+    )
+    laya_audience_threshold: float = Field(
+        default=0.186,
+        ge=0,
+        le=1,
+        description=(
+            "Laya's hold probability at or above which a carrier is held. 0.186 keeps every hold "
+            "of the public calibration split"
+        ),
+    )
+
+    @field_validator("annotation_database", "laya_checkpoint", mode="before")
     @classmethod
     def expand_database_environment(cls, value: object) -> object:
         """Expand only the project's explicit `${NAME}` configuration form."""
@@ -178,6 +212,10 @@ class EditorialConfig(BaseModel):
             logger.info("ignoring retired head versions: %s", ", ".join(retired))
             value = {head: version for head, version in value.items() if head not in RETIRED_HEADS}
         return value
+
+    @property
+    def laya_checkpoint_path(self) -> Path:
+        return Path(self.laya_checkpoint).expanduser()
 
     @property
     def annotation_database_path(self) -> Path | None:

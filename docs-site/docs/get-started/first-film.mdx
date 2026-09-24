@@ -1,126 +1,116 @@
 ---
-sidebar_label: "Your First Memory"
-sidebar_position: 1
+title: Your first film
+sidebar_label: "Your first film"
 ---
 
 import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
-# Your First Memory
+# Your first film
 
-One month, start to finish. A month is the right first cut: one minute of video, and the slow
-part (reading every picture once) is bounded by what one month holds.
+Reader: newcomer.
 
-## Before you start
+One month, start to finish, in the web UI, then the same thing on the CLI. A month is the right
+first cut: about a minute of film, and the slow part (reading each picture once) is bounded by
+what one month holds.
 
-- **Immich v2 or v3** and an API key (Account Settings > API Keys; grant **All**, or at least read
-  access to assets, people, albums, timeline and search, plus upload and album rights if you want
-  the video back in Immich).
-- **Docker**, or **Python 3.11 or later**.
-- About **22 GB of disk** for the caches at their default budgets (10 GB of downloaded video kept
-  7 days, 10 GB of previews, 2 GB of clip previews).
-- One of the three ways to run: rules only needs nothing else; the classifiers need
-  `immich-memories models fetch`; the model reader needs a caption server and a reader. The
-  [self-hosting guide](../being-rewritten/self-hosting.md) stands them up in order.
+This page assumes the [Quick start](./quick-start.md) is done: the container is up and
+`models fetch` has run. Without the models a cut refuses to start and says
+`Run immich-memories models fetch`. On pip, it's the same commands without the
+`docker compose exec immich-memories` prefix: [uv or pip](../run/uv-pip.md).
 
-## Launch
+## Pick a month
 
-Docker:
+Open [http://localhost:8080](http://localhost:8080). With `IMMICH_URL` and `IMMICH_API_KEY` set,
+the page connects on its own and shows the brief. If it doesn't, open **Advanced**, fill the
+**Immich Connection** panel and press **Test Connection**.
 
-```bash
-cat > .env << 'EOF'
-IMMICH_URL=https://photos.example.com
-IMMICH_API_KEY=your-api-key-here
-EOF
-curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
-docker compose up -d
-```
-
-Or without Docker:
-
-```bash
-uvx --from "immich-memories[editorial]" immich-memories ui
-```
-
-Open [http://localhost:8080](http://localhost:8080). Both routes keep the UI on localhost. If the
-app and your browser are on different machines, read the
-[Docker page](../run/docker.md#quick-start) first: it pairs publishing the port
-with turning on authentication.
-
-## Connect and pick a month
-
-With credentials in the config or the environment the page connects on its own and shows the
-brief. Otherwise fill the **Immich Connection** panel and press **Test Connection**.
-
-Choose **Monthly Highlights** and a month with a fair number of pictures. Leave **Auto duration**
-on.
+Choose **Monthly Highlights** and a month with a fair number of pictures and a few videos. Leave
+**Auto duration** on.
 
 <ThemedScreenshot name="memory-brief" alt="The brief, connected to Immich" />
 
 ## Cut
 
-Press **Cut**. Five phase rows follow the run, the counted stages draw a bar with an estimate,
-and a model server that stops answering is named on the Editing row within a second. Reloading
-mid-cut lands on the same rows. The full anatomy of this screen is on the
-[Memory page](../make/web-ui.mdx#cut).
+Press **Cut**. One row per phase follows the run: reading dates, places and people, then the
+pictures, then the edit. The counted stages draw a bar with an estimate, and reloading the page
+mid-cut lands on the same rows.
 
-If `immich-memories models fetch` has not run on this host, the cut does not start. The brief
-comes back with a red card that names the missing model and the command to run, and it stays
-there until the next **Cut**.
+If `immich-memories models fetch` has not run on this host, the cut does not start and nothing is
+asked of Immich. The brief comes back with a red card that names the missing model and the
+command to run, and it stays there until the next **Cut**.
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
 
+The first cut reads every picture the film can reach: the month's pictures, their Live Photo clips
+and the bursts around them. Each one goes through the eight context heads and the two detectors
+once, and the answers are banked. The second cut of the same month reads nothing again.
+
 ## Read the storyboard
 
-When it finishes, the page opens on the **Storyboard**: the cut in the order it plays, one shot
-per picture with its timecode, day, the story it belongs to and the editor's one-line reason.
-The **Story** tab shows the same cut the way the editor weighed it, heaviest story first.
+When the cut finishes, the page opens on the **Storyboard**: the film in the order it plays, one
+shot per row, with its timecode, its day, the story it belongs to and the reason the editor kept
+it. The **Story** tab shows the same cut the way the editor weighed it, heaviest story first.
 
 <ThemedScreenshot name="memory-story" alt="The storyboard of the first cut" />
 
-If a picture should not be there, **Review the pool** opens the media pool with the cut's picks:
-untick it, or tick one the editor dropped, and press **Cut again**. Your ticks hold.
+A few things to look for on a first cut:
+
+- **It's chronological.** Always. A film never jumps back in time.
+- **Favourites come first.** A picture you starred in Immich wins its moment over the others.
+- **Videos lead.** When a video carries a moment, it beats a still of the same moment.
+- **Quiet weeks can be empty.** A week at home with no favourite, no video, no close family and no
+  unusually busy day gets no shot. The film goes short rather than fill it with a guess.
+
+Why each rule exists, and every number behind it, is on
+[How it chooses](../how-it-chooses/overview.md).
+
+## Fix it with two clicks
+
+**Review the pool** opens the media pool with the cut's picks ticked. Untick a picture the editor
+kept and it's out; tick one it dropped and it's in, in its own story at its own time. Press
+**Cut again**. Your ticks hold until **Start over**. The one thing that outranks a tick is the
+family-viewing gate.
+
+<ThemedScreenshot name="memory-pool-outcomes" alt="The media pool after a cut, with the picks ticked" />
+
+Two minutes in the pool before the first cut pays off too: untick the pocket recording and the
+45-second clip of a wall. Twins and bursts the editor judges itself; what it can't know is what
+you would never show anyone.
+
+More ways to steer it (stars, people, `runs why`) are on
+[Overrule it](../how-it-chooses/overrule-it.md).
 
 ## Export and watch
 
 Press **Export**, then **Generate Video**. The status line walks through downloading the clips,
-assembling with transitions and titles, music and delivery. Music, title and resolution sit one
-click away under **Back to Generation Options**; the defaults are fine for a first run.
+assembling with titles and transitions, the music, and delivery. Music, title and resolution sit
+one click away under **Back to Generation Options**; the defaults are fine for a first film.
 
 <ThemedScreenshot name="memory-export" alt="Export: output filename and Generate Video" />
 
-The player shows the result, **Saved to** gives the path (a per-run folder under
-`~/Videos/Memories` by default) and **Length** gives the finished film's runtime, measured from the
-file rather than from the plan. With **Upload after generation** on, it is also in the Immich
-album you named.
+The player shows the result. **Saved to** gives the path: `./output` beside your compose file on
+Docker, `~/Videos/Memories` on pip, one folder per run. **Length** is measured from the finished
+file. With **Upload after generation** on, the film also goes to the Immich album you named,
+tagged as this app's own so a later run never films it again.
 
-Before the render, the **Film length** card on the export step estimates that runtime. It is an
-estimate because the smart transition style decides each cut or fade as it goes, so two renders of
-one selection differ by about a second.
+## The same on the CLI
 
-## What just happened
+```bash
+alias im='docker compose exec immich-memories immich-memories'
+im generate --memory-type monthly_highlights --year 2025 --month 6
+im runs story        # the storyboard of the last run, in the terminal
+im runs why <asset-id>   # what the run decided about one picture, and why
+```
 
-The app fetched the month's metadata and previews, prepared facts for every eligible picture,
-read the stories those pictures show, gave each story the pictures its weight earned, and
-assembled them in chronological order with FFmpeg, titles and music. Everything it read is
-banked, so the second cut over the same month is mostly the render. Every attempt is kept under
-the cache directory with the plan and the reason for every picture, and `immich-memories runs
-story` prints the same storyboard in the terminal.
-
-## Two things that save a wasted night
-
-**Make the first one short.** Three to five minutes, not thirty. If the config is wrong you find out
-in a quarter of the time. And there is no pre-warm command: `analyze` counts videos and prepares
-nothing, so on a slow host run the cut you actually want overnight rather than trying to warm up
-first.
-
-**Untick what you would never show.** Two minutes in the
-[media pool](../make/web-ui.mdx#the-media-pool) keeps the pocket recording and the 45-second
-clip of a wall out of the editor's hands. Twins and bursts it judges itself; what it cannot know is
-what you would never show anyone.
+`generate` prepares, cuts and renders in one go. To read a bigger window ahead of time (a whole
+year, overnight on a NAS), run `im prepare --year 2025`: it reads and banks, and cuts nothing.
+Every cut inside that year then starts warm. All flags: [generate](../make/cli/generate.md),
+[prepare](../make/cli/prepare.md).
 
 ## Next
 
-- Other types: [Trip](../make/memory-types.mdx#trip) (needs GPS), [Person spotlight](../make/memory-types.mdx#monthly-season-person-multi-person) (needs face recognition in Immich).
-- How the editor decides: [The Curator](../being-rewritten/pipeline.md).
-- Automate it: one daily [`auto run`](../being-rewritten/auto.md).
-- Every flag: [generate](../make/cli/generate.md).
+- [Teach it your family](./who-is-who.md): home base and who's who. Without them a holiday is
+  three weekly stories and the people who matter most get no guaranteed seat.
+- [Memory types](../make/memory-types.mdx): trips (need GPS), a person's film (needs faces named in
+  Immich), a year.
+- [Automate it](../make/automate.md): one film a day, with no cron.
