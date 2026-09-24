@@ -24,6 +24,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from immich_memories.locked_file import file_lock
+
 logger = logging.getLogger(__name__)
 
 # About 1.1 km at the equator: fine enough to name a town, coarse enough that
@@ -97,17 +99,23 @@ class PlaceNameCache:
             return {}
 
     def flush(self) -> None:
-        """Persist what this run learned. A write failure is not a render failure."""
+        """Persist what this run learned beside what other runs wrote meanwhile.
+
+        A write failure is not a render failure.
+        """
         if not self._dirty:
             return
-        payload = {"schema_version": _SCHEMA_VERSION, "names": self._known}
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            with tempfile.NamedTemporaryFile("w", dir=self._path.parent, delete=False) as stream:
-                temporary = Path(stream.name)
-                json.dump(payload, stream, separators=(",", ":"))
-                stream.close()
-                temporary.replace(self._path)
+            with file_lock(self._path):
+                self._known = self._read() | self._known
+                payload = {"schema_version": _SCHEMA_VERSION, "names": self._known}
+                with tempfile.NamedTemporaryFile(
+                    "w", dir=self._path.parent, delete=False
+                ) as stream:
+                    temporary = Path(stream.name)
+                    json.dump(payload, stream, separators=(",", ":"))
+                    stream.close()
+                    temporary.replace(self._path)
             self._dirty = False
         except OSError as error:
             logger.debug("Could not write the place-name cache: %s", error)

@@ -13,7 +13,6 @@ refused or the vote named.
 from __future__ import annotations
 
 import calendar
-import json
 import logging
 import math
 from collections.abc import Callable, Mapping, Sequence
@@ -23,7 +22,12 @@ from operator import itemgetter
 from pathlib import Path
 from typing import Any
 
-from immich_memories.analysis.editorial_block_votes import BLOCK_SIZE, balanced_groups
+from immich_memories.analysis.editorial_block_votes import (
+    BLOCK_SIZE,
+    balanced_groups,
+    load_vote_bank,
+    save_vote_bank,
+)
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
     ThinCatalogue,
@@ -50,7 +54,6 @@ from immich_memories.analysis.editorial_thin_vote import (
     sole_family_shots,
     vote_thesis_fit,
 )
-from immich_memories.security import write_secret_file
 
 logger = logging.getLogger(__name__)
 
@@ -326,8 +329,7 @@ class ThinPolish:
 
     def _bank(self) -> dict:
         """Both votes read and write one file, so neither is paid for twice."""
-        path = self._bank_path()
-        return json.loads(path.read_text()) if path.exists() else {}
+        return load_vote_bank(self._bank_path())
 
     def _bank_path(self) -> Path:
         return self.bank_dir / "thesis-fit.private.json"
@@ -358,7 +360,7 @@ class ThinPolish:
             subject=fit.subject,
             story_of=lambda asset: story_of(asset, "") or "",
             bank=bank,
-            save=lambda: write_secret_file(self._bank_path(), json.dumps(bank, indent=1)),
+            save=lambda: save_vote_bank(self._bank_path(), bank),
         )
 
 

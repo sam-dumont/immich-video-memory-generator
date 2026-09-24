@@ -11,14 +11,17 @@ when they fall off the roster.
 from __future__ import annotations
 
 import copy
+import functools
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar
 
 import yaml
 
+from immich_memories.locked_file import file_lock
 from immich_memories.people.relationships import owner_role, reciprocal_kind
 from immich_memories.security import write_secret_file
 
@@ -29,6 +32,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 _FILE_HEADER = """\
 # Who is in this library, as the people graph reads it.
@@ -92,6 +98,22 @@ def retained_immich_ids(document: dict[str, Any]) -> set[str]:
     return retained
 
 
+def _one_writer(write: Callable[Concatenate[Path, _P], _R]) -> Callable[Concatenate[Path, _P], _R]:
+    """Hold the file's lock from the read to the replace.
+
+    A scan from the CLI and a confirmation from the web UI both rewrite the whole file from
+    what they read; without the lock, the later write drops the earlier one's change.
+    """
+
+    @functools.wraps(write)
+    def locked(path: Path, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        with file_lock(path):
+            return write(path, *args, **kwargs)
+
+    return locked
+
+
+@_one_writer
 def save_graph(path: Path, graph: PeopleGraph) -> None:
     """Write the graph, preserving every confirmed field already on disk."""
     standing = load_document(path)
@@ -109,6 +131,7 @@ def save_graph(path: Path, graph: PeopleGraph) -> None:
     )
 
 
+@_one_writer
 def save_confirmed(path: Path, person_id: str, confirmed: dict[str, Any]) -> None:
     """Replace one person's confirmed block, leaving the rest of the file alone.
 
@@ -127,6 +150,7 @@ def save_confirmed(path: Path, person_id: str, confirmed: dict[str, Any]) -> Non
     _write(path, document)
 
 
+@_one_writer
 def add_confirmed_person(
     path: Path,
     name: str,
@@ -168,6 +192,7 @@ def add_confirmed_person(
     return local_id
 
 
+@_one_writer
 def save_confirmed_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
     """Write one user relationship and its reciprocal as one file operation."""
     if source_id == target_id:
@@ -183,6 +208,7 @@ def save_confirmed_relationship(path: Path, source_id: str, kind: str, target_id
     _write(path, document)
 
 
+@_one_writer
 def remove_confirmed_relationship(path: Path, source_id: str, kind: str, target_id: str) -> None:
     """Remove one confirmed relationship and the reciprocal written with it."""
     document = load_document(path)

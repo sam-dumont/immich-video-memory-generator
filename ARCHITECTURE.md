@@ -165,7 +165,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   run asks nothing and a changed asset invalidates only its own rows. The main ones:
   `annotations.sqlite` (`store/`), episode readings, accounts, cut measurements
   (`store/cut_measurements.py`) and the `structure-banks/*.private.json` files (standing votes,
-  thesis-fit votes). No row means nobody asked, never "measured nothing".
+  thesis-fit votes). No row means nobody asked, never "measured nothing". Two runs write them at
+  once (the pipeline lock covers assembly only): SQLite banks write row by row, and every JSON
+  bank merges what is on disk under `locked_file.file_lock` before its atomic replace.
 
 **Building the cut**
 
@@ -738,6 +740,7 @@ src/immich_memories/
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization, secret files, credential fingerprints
+├── locked_file.py              # file_lock(): one writer at a time on a bank file several runs rewrite
 ├── i18n.py                     # Internationalization
 ├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── place_names.py              # Offline island boxes and short island/region names (en, fr)

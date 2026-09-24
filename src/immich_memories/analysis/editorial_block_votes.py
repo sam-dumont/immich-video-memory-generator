@@ -16,12 +16,15 @@ import math
 import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from functools import partial
+from pathlib import Path
 from typing import NamedTuple
 
 from immich_memories.analysis.editorial_page_recovery import read_page_answer
 from immich_memories.analysis.editorial_reader_concurrency import reader_map
 from immich_memories.analysis.editorial_structure_json import _first_object
 from immich_memories.analysis.strict_json import named_keys
+from immich_memories.locked_file import file_lock
+from immich_memories.security import write_secret_file
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,39 @@ BLOCK_CACHE_VERSION = "block-votes-v3-validated-labels"
 # Rows whose block was asked in one order only. They answer a caller whose rule one order
 # settles and nobody else: a reader of the whole-answer store never sees them.
 ONE_ORDER_ROWS = "rows-one-order"
+
+
+def load_vote_bank(path: Path) -> dict:
+    """A vote bank file's entries, or an empty bank when it is missing or unreadable."""
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return entries if isinstance(entries, dict) else {}
+
+
+def save_vote_bank(path: Path, bank: MutableMapping[str, dict]) -> None:
+    """Write `bank` over what another run banked in the meantime without dropping it.
+
+    Under the file's lock, every entry on disk this bank lacks is folded into it in place (the
+    row stores key by key, since the vote keeps writing into them), then the whole replaces the
+    file. A key is its whole question, so two runs can only add different keys or the same
+    answer twice: this run's copy of a shared key wins.
+    """
+    with file_lock(path):
+        for key, banked in load_vote_bank(path).items():
+            mine = bank.get(key)
+            if (
+                key in ("rows", ONE_ORDER_ROWS)
+                and isinstance(mine, dict)
+                and isinstance(banked, dict)
+            ):
+                for name, row in banked.items():
+                    mine.setdefault(name, row)
+            else:
+                bank.setdefault(key, banked)
+        write_secret_file(path, json.dumps(bank, indent=1))
+
 
 # Which rows one order's answer already decides, given the row and whether that order named
 # it. A caller that passes none asks both orders of every block, as the vote always has.

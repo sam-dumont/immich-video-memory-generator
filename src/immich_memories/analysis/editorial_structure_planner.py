@@ -18,7 +18,12 @@ from typing import Any
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
-from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
+from immich_memories.analysis.editorial_block_votes import (
+    judge_worthiness,
+    load_vote_bank,
+    save_vote_bank,
+    worth_criterion_v44,
+)
 from immich_memories.analysis.editorial_carrier_eligibility import people_moment
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
@@ -555,7 +560,7 @@ def _worthiness_gate(
         record("memory-worthy-gate", {"version": "story-importance-v1", "rounds": []})
         return {}, {}, ""
     bank_path = source.bank_dir / "memory-worthy.private.json"
-    bank = json.loads(bank_path.read_text()) if bank_path.exists() else {}
+    bank = load_vote_bank(bank_path)
     gate_tier, gate_reason, gate_rounds = judge_worthiness(
         ports.judge,
         happenings=wall.fam_ids,
@@ -568,7 +573,7 @@ def _worthiness_gate(
         marker=marker,
         period_label=source.case.label,
         bank=bank,
-        save=lambda: write_secret_file(bank_path, json.dumps(bank, indent=1)),
+        save=lambda: save_vote_bank(bank_path, bank),
     )
     record(
         "memory-worthy-gate",

@@ -8,18 +8,17 @@ neither of them.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.editorial_block_votes import load_vote_bank, save_vote_bank
 from immich_memories.analysis.editorial_clip_frames import subject_often_missing
 from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     moving_picture_row,
 )
-from immich_memories.security import write_secret_file
 
 WEIGHED_STORY_WEIGHTS = ("dominant", "major", "minor")
 STANDING_BANK_NAME = "picture-stands.private.json"
@@ -49,28 +48,10 @@ class StandingBankFile:
     @classmethod
     def open(cls, case_bank_dir: Path) -> StandingBankFile:
         path = standing_bank_path(case_bank_dir)
-        return cls(path, _read_entries(path))
+        return cls(path, load_vote_bank(path))
 
     def save(self) -> None:
-        merged = _read_entries(self.path)
-        rows = _rows(merged) | _rows(self.entries)
-        merged.update(self.entries)
-        merged["rows"] = rows
-        self.path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-        write_secret_file(self.path, json.dumps(merged, indent=1))
-
-
-def _rows(entries: dict) -> dict:
-    rows = entries.get("rows")
-    return rows if isinstance(rows, dict) else {}
-
-
-def _read_entries(path: Path) -> dict:
-    try:
-        entries = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-    return entries if isinstance(entries, dict) else {}
+        save_vote_bank(self.path, self.entries)
 
 
 def standing_row(
