@@ -189,7 +189,7 @@ def find_font(family: str, weight: str = "regular", _seen: set[str] | None = Non
 
     # The bundled families are named latin-<n>-normal.ttf, which no candidate
     # spelling matches, so searching the directories first walked straight past
-    # the fonts the wheel ships and out to the CDN.
+    # the fonts the wheel ships.
     named_weight = _WEIGHT_NAMES.get(weight, "Regular")
     with contextlib.suppress(Exception):
         from immich_memories.titles.fonts import bundled_font_path
@@ -202,14 +202,6 @@ def find_font(family: str, weight: str = "regular", _seen: set[str] | None = Non
     result = _search_font_paths(candidates)
     if result:
         return result
-
-    # Only now the CDN, and only when network.font_downloads allows it.
-    with contextlib.suppress(Exception):
-        from immich_memories.titles.fonts import get_font_path
-
-        cdn_result = get_font_path(family, named_weight)  # type: ignore[arg-type]
-        if cdn_result:
-            return cdn_result
 
     # System fallback
     for fallback in ("Helvetica", "Arial", "SF Pro"):

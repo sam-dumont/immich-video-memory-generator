@@ -150,7 +150,7 @@ def _draw_pin_labels(
 
     w, h = image.size
     label_size = max(12, int(min(w, h) * 0.018))
-    font = _get_font(label_size, bold=False, text="".join(names))
+    font = _get_font(label_size, bold=False)
 
     # Draw labels on RGBA overlay for semi-transparent blending
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -225,7 +225,7 @@ def _draw_title_band(
 def _draw_title_landscape(draw, image: Image.Image, title: str, width: int, height: int) -> None:
     """Landscape: single line, centered, 9% height."""
     title_size = int(height * 0.09)
-    title_font = _get_font(title_size, bold=True, text=title)
+    title_font = _get_font(title_size, bold=True)
 
     bbox = draw.textbbox((0, 0), title, font=title_font)
     text_w = bbox[2] - bbox[0]
@@ -233,7 +233,7 @@ def _draw_title_landscape(draw, image: Image.Image, title: str, width: int, heig
 
     if text_w > width * 0.9:
         title_size = int(title_size * (width * 0.9) / text_w)
-        title_font = _get_font(title_size, bold=True, text=title)
+        title_font = _get_font(title_size, bold=True)
         bbox = draw.textbbox((0, 0), title, font=title_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
@@ -249,7 +249,7 @@ def _draw_title_landscape(draw, image: Image.Image, title: str, width: int, heig
 def _draw_title_portrait(draw, image: Image.Image, title: str, width: int, height: int) -> None:
     """Portrait: multiline with MUCH bigger font. Split on comma or space."""
     title_size = int(width * 0.12)
-    title_font = _get_font(title_size, bold=True, text=title)
+    title_font = _get_font(title_size, bold=True)
 
     # Split into lines — prefer splitting at comma, then at spaces
     lines = _split_title_for_portrait(title, draw, title_font, int(width * 0.9))
@@ -261,7 +261,7 @@ def _draw_title_portrait(draw, image: Image.Image, title: str, width: int, heigh
         if line_w > width * 0.92:
             scale = (width * 0.92) / line_w
             title_size = int(title_size * scale)
-            title_font = _get_font(title_size, bold=True, text=title)
+            title_font = _get_font(title_size, bold=True)
             break
 
     line_height = int(title_size * 1.25)
@@ -351,25 +351,24 @@ def _add_attribution(image: Image.Image, width: int, height: int) -> None:
     draw.text((x, y), _OSM_ATTRIBUTION, fill=(200, 200, 200), font=font)
 
 
-def _get_font(
-    size: int, bold: bool = False, text: str = ""
-) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Load a font at the given size, preferring Montserrat (OFL).
 
     The wheel carries Montserrat, so the pin labels never needed a download;
-    the user's own font directory still overrides it. A `text` with letters
-    Montserrat lacks, such as a Greek place name, gets a face that has them (#1101).
+    the user's own font directory still overrides it. A letter Montserrat
+    lacks, such as in a Greek place name, comes from the Noto chain (#1101).
     """
     from pathlib import Path
 
-    from immich_memories.titles.fonts import FontWeight, bundled_font_path, font_covering
+    from immich_memories.titles.font_chain import title_font
+    from immich_memories.titles.fonts import FontWeight, bundled_font_path
 
     weight: FontWeight = "Bold" if bold else "Regular"
     cached = Path.home() / ".immich-memories" / "fonts" / "Montserrat" / f"Montserrat-{weight}.ttf"
     for montserrat in (bundled_font_path("Montserrat", weight), cached):
         if montserrat is not None and montserrat.exists():
             with contextlib.suppress(OSError):
-                return ImageFont.truetype(font_covering(montserrat, text, bold=bold), size)
+                return title_font(montserrat, size, bold=bold)
 
     # System fallbacks
     fallbacks = [

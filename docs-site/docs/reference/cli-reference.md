@@ -688,9 +688,12 @@ immich-memories titles [OPTIONS]
 
 Manage title screen fonts.
 
-Five OFL-1.1 families ship inside the wheel. Anything else is fetched
-from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
-where you can drop your own TTFs.
+Five OFL-1.1 families and Noto Sans (Latin, Greek, Cyrillic, Vietnamese)
+ship inside the wheel. `--install` adds the Noto faces for every other
+script a title can hold (Arabic, Hebrew, Indic, Thai, CJK and more) from
+raw.githubusercontent.com, each file checked against a pinned SHA-256.
+It is the only step that downloads a font; a render never does. The
+Docker image runs it at build time.
 
 ```bash
 immich-memories titles fonts [OPTIONS]
@@ -698,9 +701,9 @@ immich-memories titles fonts [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--download`, `-d` | boolean | false | Download all fonts |
-| `--clear` | boolean | false | Clear font cache |
-| `--list` | boolean | false | List cached fonts (the default) |
+| `--install` | boolean | false | Download the pinned Noto script fonts (about 43 MB, most of it CJK) |
+| `--clear` | boolean | false | Clear ~/.immich-memories/fonts |
+| `--list` | boolean | false | List title fonts (the default) |
 
 ### `titles test`
 
@@ -749,7 +752,6 @@ immich-memories titles test [OPTIONS]
 | `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |
-| `--download-fonts` | boolean | false | Fetch every supported family from cdn.jsdelivr.net before generating |
 | `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |
 
 ## `ui`

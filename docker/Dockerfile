@@ -107,8 +107,11 @@ WORKDIR /app
 # failure diagnosable from inside the container. `dpkg --print-architecture`
 # rather than $TARGETARCH: the latter is empty under the legacy builder, which
 # would silently ship the broken image again.
+# WHY libfribidi0: Pillow's wheels carry HarfBuzz but load FriBiDi from the
+# system; without it an Arabic or Hebrew title is drawn unshaped (#1101).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libfribidi0 \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
@@ -130,6 +133,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # arm64 with INSTALL_EXTRAS=all: 10.5 GB -> 7.08 GB, one fewer layer.
 RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
     pip install --no-cache-dir /wheels/*.whl
+
+# The Noto faces for every script the wheel does not carry (Arabic, Hebrew, the
+# Indic scripts, Thai, CJK and more): 43 MB, 39.5 MB of it the two CJK
+# collections. WHY at build time: a render never downloads a font. Each file is
+# checked against its pinned SHA-256 in script_fonts.py and a mismatch fails the
+# build. Outside $HOME because the config volume is mounted over it.
+ENV IMMICH_MEMORIES_FONTS_DIR=/usr/share/immich-memories/fonts
+RUN python -c "from immich_memories.titles.script_fonts import install_script_fonts; install_script_fonts()"
 
 # Create non-root user for security. UID/GID 1000 on purpose: it matches the first
 # Linux user on most home servers (bind mounts of ./output and ./config are
