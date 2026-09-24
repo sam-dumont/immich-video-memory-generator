@@ -2,8 +2,8 @@
 
 The manual is on the [docs site](https://sam-dumont.github.io/immich-video-memory-generator/),
 versioned with the code:
-[self-hosting](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting),
-[your first memory](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory),
+[self-hosting](https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/self-hosting),
+[your first memory](https://sam-dumont.github.io/immich-video-memory-generator/docs/get-started/first-film),
 [config reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/config-reference),
 [CLI reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/cli-reference),
 [troubleshooting](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/troubleshooting).

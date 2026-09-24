@@ -23,7 +23,7 @@ from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _get_clip_hdr_types,
-    _get_colorspace_filter,
+    get_colorspace_filter,
 )
 from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
@@ -114,7 +114,7 @@ def create_assembly_context(
             f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
         )
 
-    colorspace_filter = _get_colorspace_filter(hdr_type)
+    colorspace_filter = get_colorspace_filter(hdr_type)
 
     return AssemblyContext(
         target_w=target_w,

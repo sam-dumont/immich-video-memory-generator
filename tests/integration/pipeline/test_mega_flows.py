@@ -79,7 +79,7 @@ class _FakeStreamingClip:
 class TestMegaFlowTripMemory:
     """Full trip pipeline: GPS clips → trip detection → map fly-over → privacy → assembly.
 
-    Exercises: _extract_clips, anonymize_clips_for_privacy, _build_title_settings(trip),
+    Exercises: extract_clips, anonymize_clips_for_privacy, build_title_settings(trip),
     extract_trip_locations, generate_trip_title_text, TripService.generate_trip_map_screen,
     create_map_fly_video (real ArcGIS tiles), location card dividers,
     streaming_assemble_full, cleanup.
@@ -188,7 +188,7 @@ class TestMegaFlowMonthlyWithPhotos:
 
     Exercises: _add_photos_if_enabled, score_photos (metadata scoring),
     _apply_unified_budget, estimate_title_overhead, select_within_budget,
-    render_photo_clips, _render_single_photo (download → prepare → stream render),
+    render_photo_clips, render_single_photo (download → prepare → stream render),
     _merge_by_date, month dividers, streaming assembly.
     """
 

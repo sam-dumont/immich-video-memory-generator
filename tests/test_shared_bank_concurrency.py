@@ -12,7 +12,6 @@ from immich_memories.analysis.editorial_block_votes import (
     load_vote_bank,
     save_vote_bank,
 )
-from immich_memories.analysis.editorial_story_standing import StandingBankFile, standing_bank_path
 from immich_memories.analysis.editorial_structure_audience import AudienceBank
 from immich_memories.analysis.place_name_cache import PlaceNameCache
 from immich_memories.people.companion import add_confirmed_person, load_document, people_entries
@@ -56,29 +55,6 @@ def test_two_runs_saving_one_vote_bank_keep_both_runs_blocks_and_rows(tmp_path):
     assert set(banked) == {"block-1", "block-2", "rows", ONE_ORDER_ROWS}
     assert set(banked["rows"]) == {"row-1", "row-2"}
     assert set(banked[ONE_ORDER_ROWS]) == {"partial-1", "partial-2"}
-
-
-def _bank_rows_at_once(case_bank_dir, writers: int, rows_each: int) -> None:
-    def cut(writer: int) -> None:
-        for n in range(rows_each):
-            bank = StandingBankFile.open(case_bank_dir)
-            bank.entries.setdefault("rows", {})[f"w{writer}-r{n}"] = {"votes": 2, "why": ""}
-            bank.save()
-
-    with ThreadPoolExecutor(writers) as pool:
-        list(pool.map(cut, range(writers)))
-
-
-def test_films_saving_the_standing_bank_at_the_same_moment_keep_every_row(tmp_path):
-    case_bank_dir = tmp_path / "structure-banks" / "month"
-    padding = {f"old-{n}": {"votes": 1, "why": "x" * 40} for n in range(3000)}
-    StandingBankFile(standing_bank_path(case_bank_dir), {"rows": padding}).save()
-
-    _bank_rows_at_once(case_bank_dir, writers=4, rows_each=15)
-
-    rows = StandingBankFile.open(case_bank_dir).entries["rows"]
-    assert {f"w{w}-r{n}" for w in range(4) for n in range(15)} <= set(rows)
-    assert len(rows) == 3000 + 60
 
 
 def test_two_runs_naming_different_places_keep_both_names(tmp_path):

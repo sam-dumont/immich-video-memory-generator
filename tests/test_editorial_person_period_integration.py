@@ -180,7 +180,7 @@ def test_unsampled_person_period_facts_reach_editorial_stages_but_not_picture_ev
     grounded_people = grounded[0]["people"]
     assert "relationship=partner" in grounded_people and "source=confirmed" in grounded_people
     assert "first=2020-05" in grounded_people
-    for prefix in ("shareability-", "standing-"):
+    for prefix in ("shareability-",):
         prompts = [row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)]
         assert prompts, prefix
         assert all(

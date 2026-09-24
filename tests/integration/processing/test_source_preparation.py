@@ -9,7 +9,7 @@ from PIL import Image
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
-from immich_memories.generate_clips import _extract_clips
+from immich_memories.generate_clips import extract_clips
 from immich_memories.processing.download_coordinator import DownloadCoordinator
 from immich_memories.processing.output_canvas import OutputCanvas
 from immich_memories.processing.probe_cache import ProbeCache
@@ -53,7 +53,7 @@ def test_mixed_sources_prepare_in_workers_and_keep_editorial_order(tmp_path, no_
         output_canvas=OutputCanvas(320, 180, "landscape"),
         clip_segments={"video": (0, 1.5)},
     )
-    clips = _extract_clips(
+    clips = extract_clips(
         params,
         None,
         tmp_path,

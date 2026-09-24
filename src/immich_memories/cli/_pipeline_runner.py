@@ -337,7 +337,8 @@ def run_pipeline_and_generate(
     from immich_memories.analysis.editorial_runtime import build_smart_pipeline
     from immich_memories.analysis.smart_pipeline import PipelineConfig
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
-    from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+    from immich_memories.generate import GenerationParams, generate_memory
+    from immich_memories.generate_clips import assets_to_clips
     from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
 
@@ -589,7 +590,7 @@ def run_pipeline_and_generate(
         progress.update(task, description=event.message)
 
     # WHY: Photos are now in selected_clips as IMAGE-type assets.
-    # generate.py's _extract_clips will detect IMAGE type and render them.
+    # generate.py's extract_clips will detect IMAGE type and render them.
     # Setting include_photos=False prevents the old _add_photos_if_enabled path.
     gen_params = GenerationParams(
         clips=selected_clips,

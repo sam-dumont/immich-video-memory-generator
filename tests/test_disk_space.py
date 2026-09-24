@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from immich_memories.generate import GenerationError
+from tests.conftest import make_clip
 
 
 class TestCheckDiskSpace:
@@ -50,21 +51,21 @@ class TestCheckDiskSpace:
             check_disk_space(tmp_path)
 
 
-class TestDiskSpaceWiredInPipeline:
-    """check_disk_space is called early in generate_memory()."""
+def test_a_run_on_a_full_disk_stops_before_it_downloads_anything(tmp_path: Path):
+    from immich_memories.config_loader import Config
+    from immich_memories.generate import GenerationParams, generate_memory
 
-    def test_check_disk_space_called_before_extraction(self, tmp_path: Path):
-        """generate_memory should check disk space before starting extraction."""
-        import immich_memories.generate as gen_mod
+    client = MagicMock()  # WHY: Immich must not be asked for a single clip
+    params = GenerationParams(
+        clips=[make_clip("c1")], output_path=tmp_path / "out.mp4", config=Config(), client=client
+    )
 
-        assert hasattr(gen_mod, "check_disk_space"), (
-            "check_disk_space must be defined in generate.py"
-        )
+    # WHY: a disk with 500 MB left, below the 1 GB floor
+    with (
+        # WHY: shutil.disk_usage reads the real volume
+        patch("immich_memories.generate.shutil.disk_usage", return_value=MagicMock(free=500 << 20)),
+        pytest.raises(GenerationError, match="Insufficient disk space"),
+    ):
+        generate_memory(params)
 
-        # Verify the function is called in the pipeline (may be in inner function)
-        import inspect
-
-        # check_disk_space is in _generate_memory_inner (called by generate_memory under lock)
-        pipeline_fn = getattr(gen_mod, "_generate_memory_inner", gen_mod.generate_memory)
-        source = inspect.getsource(pipeline_fn)
-        assert "check_disk_space" in source, "pipeline must call check_disk_space"
+    assert client.mock_calls == []

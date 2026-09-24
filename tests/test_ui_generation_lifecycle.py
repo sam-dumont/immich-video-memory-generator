@@ -211,7 +211,7 @@ async def test_ui_music_failure_retains_music_as_last_phase(
     def fail_music(*_args, **_kwargs):
         raise RuntimeError("music backend failed")
 
-    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", fail_music)
+    monkeypatch.setattr("immich_memories.generate_settings.run_music_phase", fail_music)
     with pytest.raises(RuntimeError, match="music backend failed"):
         await step4_generate.finalize_ui_generation(
             state,
@@ -346,7 +346,7 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
     async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
-    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", apply_music)
+    monkeypatch.setattr("immich_memories.generate_settings.run_music_phase", apply_music)
     # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
     monkeypatch.setattr(output_contract.subprocess, "run", film_tools)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
@@ -479,7 +479,7 @@ async def test_ui_success_toast_failure_preserves_delivered_state(
     _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
-        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+        "immich_memories.generate_delivery.upload_to_immich", lambda *_args: upload_result
     )
     monkeypatch.setattr("immich_memories.ui.pages._step4_upload.ui.notify", fail_success_toast)
     caplog.set_level("WARNING", logger="immich_memories.ui.pages._step4_upload")
@@ -546,7 +546,7 @@ async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raise
     _pass_film_checks(monkeypatch)
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
-        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+        "immich_memories.generate_delivery.upload_to_immich", lambda *_args: upload_result
     )
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.ui.notify",
@@ -654,7 +654,7 @@ async def test_run_generation_does_not_restore_stale_pending_delivery_after_ambi
     )
     monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
     monkeypatch.setattr(
-        "immich_memories.generate_delivery._upload_to_immich", lambda *_args: upload_result
+        "immich_memories.generate_delivery.upload_to_immich", lambda *_args: upload_result
     )
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.ui.notify", lambda *_args, **_kwargs: None

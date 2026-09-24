@@ -516,10 +516,10 @@ async def finalize_ui_generation(
     )
     if music_source in _SOURCES_WITH_AUDIO:
         from immich_memories.generate_music import MusicSource
-        from immich_memories.generate_settings import _run_music_phase
+        from immich_memories.generate_settings import run_music_phase
 
         music_result = await io_bound_result(
-            _run_music_phase,
+            run_music_phase,
             params,
             list(prepared.assembly_clips),
             prepared.current_path,

@@ -2,7 +2,7 @@
 
 The rules draft fills its slots from the material, not from what vouches for each picture, so
 in a quiet month it reaches past its indicators. A picture with no indicator of its own (no
-star, no video or playing motion, no person Immich knows, no banked standing answer) is only
+star, no video or playing motion, no person Immich knows) is only
 there as filler, and when the frame head reads it as carrying nothing (a lone object, an empty
 room, a body part, a screen or a document) it leaves the cut. Nothing takes its place: short
 beats a guess.
@@ -25,7 +25,6 @@ MOVING_KINDS = frozenset({"video", "live-motion"})
 class FillerEvidence:
     frame_kind_of: Callable[[str], str | None]
     known_person: Callable[[str], bool]
-    vouched_by_bank: Callable[[str], bool]
     protected: frozenset[str] = frozenset()
 
 
@@ -36,7 +35,6 @@ def _has_indicator(carrier: dict, evidence: FillerEvidence) -> bool:
         or carrier.get("kind") in MOVING_KINDS
         or asset in evidence.protected
         or evidence.known_person(asset)
-        or evidence.vouched_by_bank(asset)
     )
 
 
@@ -58,7 +56,7 @@ def drop_unvouched_filler(
     return kept, dropped
 
 
-def filler_evidence(source, banked) -> FillerEvidence:
+def filler_evidence(source) -> FillerEvidence:
     """What vouches for a picture of a planning input, and what its frame head read."""
 
     def frame_kind_of(asset_id: str) -> str | None:
@@ -72,6 +70,5 @@ def filler_evidence(source, banked) -> FillerEvidence:
     return FillerEvidence(
         frame_kind_of=frame_kind_of,
         known_person=known_person,
-        vouched_by_bank=lambda asset_id: (banked.standing_of(asset_id) or 0) >= 1,
         protected=frozenset(source.owner_required_asset_ids),
     )

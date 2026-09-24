@@ -150,6 +150,8 @@ def render_brief(state: AppState) -> None:
         )
         return
 
+    if state.cut_failure:
+        im_info_card(state.cut_failure, variant="error")
     im_section_header("What is it about", icon="auto_awesome")
     select_row = ui.row().classes("w-full items-end gap-4")
     params = ui.column().classes("w-full")

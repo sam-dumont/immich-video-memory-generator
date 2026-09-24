@@ -222,7 +222,7 @@ def test_source_probe_helpers_share_one_caller_owned_cache(tmp_path: Path, monke
 
 def test_assembler_uses_the_caller_owned_run_cache() -> None:
     from immich_memories.config_loader import Config
-    from immich_memories.generate_settings import _create_assembler
+    from immich_memories.generate_settings import create_assembler
     from immich_memories.processing.assembly_config import (
         AssemblySettings,
         standalone_assembly_encoding_plan,
@@ -230,7 +230,7 @@ def test_assembler_uses_the_caller_owned_run_cache() -> None:
     from immich_memories.processing.probe_cache import ProbeCache
 
     cache = ProbeCache()
-    assembler = _create_assembler(
+    assembler = create_assembler(
         AssemblySettings(encoding_plan=standalone_assembly_encoding_plan()),
         Config(),
         probe_cache=cache,
@@ -240,7 +240,7 @@ def test_assembler_uses_the_caller_owned_run_cache() -> None:
 
 
 def test_extracted_segment_duration_uses_the_run_cache(tmp_path: Path, monkeypatch) -> None:
-    from immich_memories.generate_clips import _probe_file_duration
+    from immich_memories.generate_clips import probe_file_duration
     from immich_memories.processing.probe_cache import ProbeCache
 
     segment = tmp_path / "segment.mp4"
@@ -255,7 +255,7 @@ def test_extracted_segment_duration_uses_the_run_cache(tmp_path: Path, monkeypat
     monkeypatch.setattr("immich_memories.processing.probe_cache.subprocess.run", run_probe)
     cache = ProbeCache()
 
-    assert _probe_file_duration(segment, probe_cache=cache) == 5.12
+    assert probe_file_duration(segment, probe_cache=cache) == 5.12
     assert cache.get(segment).codec == "hevc"
     assert calls == 1
 
@@ -282,7 +282,7 @@ def test_hot_assembly_metadata_consumers_share_one_probe(tmp_path: Path, monkeyp
 
     monkeypatch.setattr("immich_memories.processing.probe_cache.subprocess.run", run_probe)
     monkeypatch.setattr(
-        "immich_memories.processing.hdr_utilities._check_zscale_available", lambda: True
+        "immich_memories.processing.hdr_utilities.check_zscale_available", lambda: True
     )
     settings = AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
     assembler = VideoAssembler(settings)
@@ -349,9 +349,9 @@ def test_generation_probe_cache_seams_share_the_exact_cache(monkeypatch) -> None
     extract = MagicMock(return_value=[])
     build_settings = MagicMock(return_value="settings")
     create_assembler = MagicMock(return_value="assembler")
-    monkeypatch.setattr(generate_render_module, "_extract_clips", extract)
-    monkeypatch.setattr(generate_render_module, "_build_assembly_settings", build_settings)
-    monkeypatch.setattr(generate_render_module, "_create_assembler", create_assembler)
+    monkeypatch.setattr(generate_render_module, "extract_clips", extract)
+    monkeypatch.setattr(generate_render_module, "build_assembly_settings", build_settings)
+    monkeypatch.setattr(generate_render_module, "create_assembler", create_assembler)
     monkeypatch.setattr(generate_render_module, "_build_download_coordinator", lambda *_args: None)
 
     _extract_clips_with_optional_prefetch(
@@ -400,11 +400,11 @@ def test_generation_probe_cache_seams_preserve_legacy_call_shapes(monkeypatch) -
 
     monkeypatch.setattr(
         generate_render_module,
-        "_extract_clips",
+        "extract_clips",
         MagicMock(side_effect=legacy_extract),
     )
-    monkeypatch.setattr(generate_render_module, "_build_assembly_settings", legacy_settings)
-    monkeypatch.setattr(generate_render_module, "_create_assembler", legacy_assembler)
+    monkeypatch.setattr(generate_render_module, "build_assembly_settings", legacy_settings)
+    monkeypatch.setattr(generate_render_module, "create_assembler", legacy_assembler)
     monkeypatch.setattr(generate_render_module, "_build_download_coordinator", lambda *_args: None)
     cache = ProbeCache()
 

@@ -275,7 +275,6 @@ class ProductionPostCardBackend:
             attached_material_metrics=attached_samples.metrics,
             observe_picture=picture_facts.observe,
             observe_story_motion=story_motion.observe,
-            story_motion_identity=story_motion.producer,
             story_motion_metrics=story_motion.metrics,
             confirm_sampled_pairs=sampled_pairs,
             confirm_episode_pairs=sampled_pairs.confirm_episode_pairs,

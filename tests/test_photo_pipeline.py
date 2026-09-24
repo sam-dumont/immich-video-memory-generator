@@ -131,41 +131,13 @@ def test_the_messaging_glob_does_not_match_a_place_called_wa() -> None:
 
 
 def _captured_filter(*, primaries: str) -> str:
-    """Render one gain-mapped frame and return the -vf zscale expression."""
-    import pathlib
-    from unittest.mock import patch
+    """The zscale expression a gain-mapped photo with these primaries is encoded through."""
+    from immich_memories.photos.photo_pipeline import photo_filter_chain
 
-    import numpy as np
-
-    from immich_memories.photos.photo_pipeline import KenBurnsParams, _stream_render_to_mp4
-
-    seen: dict[str, str] = {}
-
-    def _capture(command, _frames, **_kwargs):
-        seen["vf"] = command[command.index("-vf") + 1]
-        return 0, ""
-
-    params = KenBurnsParams(
-        zoom_start=1.0, zoom_end=1.0, pan_start=(0.5, 0.5), pan_end=(0.5, 0.5), fps=1, duration=1.0
+    _, vf = photo_filter_chain(
+        gain_map_hdr=True, has_zscale=True, peak_nits=1000, primaries=primaries
     )
-    # WHY: both mocks below replace external boundaries, not project code.
-    with (
-        # WHY: FFmpeg is the boundary; the filter string is built before it.
-        patch("immich_memories.photos.photo_pipeline.write_frames_to_ffmpeg", _capture),
-        # WHY: replaces probing the host FFmpeg for zscale, which may lack it.
-        patch("immich_memories.processing.hdr_utilities.check_zscale_available", lambda: True),
-    ):
-        _stream_render_to_mp4(
-            np.zeros((8, 8, 3), dtype=np.float32),
-            params,
-            pathlib.Path("unused.mp4"),
-            8,
-            8,
-            gain_map_hdr=True,
-            peak_nits=1000,
-            primaries=primaries,
-        )
-    return seen["vf"]
+    return vf
 
 
 def test_a_display_p3_photo_is_not_encoded_as_if_it_were_bt709() -> None:

@@ -35,11 +35,11 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     BankedAnswers,
     banked_leaders,
-    banked_weak,
     configured_text_identity,
     open_banked_facts,
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
+from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_candidates import story_candidates
@@ -50,10 +50,6 @@ from immich_memories.analysis.editorial_story_lookalike import (
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_replies import film_close_family
-from immich_memories.analysis.editorial_story_standing import (
-    StandingBankFile,
-    standing_row,
-)
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
@@ -416,7 +412,7 @@ def _select(
     )
     # A no-model draft asks nothing, so it reads the model's answers through `banked` alone.
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
-    banked = _banked_facts(source, ports, unit_of)
+    banked = _banked_facts(source, ports)
     if ports.rules is not None:
         record_story("banked-facts", banked.record())
     selection = _story_selection(
@@ -520,12 +516,13 @@ def _select(
         pixel_facts=source.pixel_facts,
         owner_required=source.owner_required_asset_ids,
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
+        gate=gate,
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")
     if ports.rules is not None and not run.polished:
         # The last removal pass, so no replacement pass can bring a removed filler's like back in.
-        drop_filler_nothing_vouches_for(run, filler_evidence(source, banked), record_story)
+        drop_filler_nothing_vouches_for(run, filler_evidence(source), record_story)
     # After every pass that removes a shot, so none of them can undo a family seat. It seats a
     # close family member's frame, never filler the pass above removed.
     seat_again_after_review(
@@ -624,7 +621,6 @@ def _story_selection(
     banked: BankedAnswers,
     looks_alike=None,
 ):
-    bank = StandingBankFile.open(source.bank_dir) if ports.rules is None else None
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT
@@ -650,11 +646,6 @@ def _story_selection(
             source.assets,
             source.annotations,
             source.motion_residuals,
-            weak=banked_weak(
-                banked,
-                tuple(unit_of),
-                favourite=lambda asset_id: bool(unit_of[asset_id].get("favourite")),
-            ),
             leads=banked_leaders(banked, tuple(source.episode_readings)),
         )
         if ports.rules is not None
@@ -668,7 +659,6 @@ def _story_selection(
         description_of=material.text.description,
         quality=material.builder.quality,
         motion_line=ports.observe_story_motion,
-        motion_identity=ports.story_motion_identity,
         episode_readings=source.episode_readings,
         target_seconds=(
             source.render_timing.selection_budget(
@@ -680,9 +670,7 @@ def _story_selection(
         seconds_per_slot=seconds_per_slot,
         record=record,
         family_tier=tier,
-        standing_subject=source.intent.subject or "",
-        standing_bank=bank.entries if bank is not None else None,
-        standing_save=bank.save if bank is not None else None,
+        standing=(ports.rules or RuleStructureReader(source)).standing,
         excluded=material.document_sources,
         allow_story_gaps=bool(marker),  # a subject memory's stages span weeks with gaps
         journey=source.case.product == "trip",
@@ -701,7 +689,7 @@ def _story_selection(
     )
 
 
-def _banked_facts(source, ports, unit_of) -> BankedAnswers:
+def _banked_facts(source, ports) -> BankedAnswers:
     """What earlier model answers about this library say, for the draft that asks nothing.
 
     Only the no-model draft reads them. A model run asks its own questions about every
@@ -715,15 +703,6 @@ def _banked_facts(source, ports, unit_of) -> BankedAnswers:
         attempts_dir=source.artifact_dir.parent,
         store_path=source.store_path,
         audience=source.audience,
-        model_identity=configured_text_identity(source.config.llm),
-        subject=source.intent.subject or "",
-        motion_identity=ports.story_motion_identity,
-        rows_of={
-            asset_id: standing_row(
-                source.annotations.get(asset_id, ""), unit, ports.observe_story_motion
-            )
-            for asset_id, unit in unit_of.items()
-        },
         episode_cards=source.episode_readings,
         own_producers=frozenset(
             str(row.get("producer_key", ""))

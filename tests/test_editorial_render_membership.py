@@ -9,7 +9,7 @@ from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.api.models import AssetType
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
-from immich_memories.generate_clips import _extract_clips
+from immich_memories.generate_clips import extract_clips
 from immich_memories.generate_timeline import apply_final_content_budget, validate_certified_content
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.editorial_timing import (
@@ -132,12 +132,12 @@ def test_actual_extraction_failure_cannot_publish_a_smaller_selected_film(
             is_photo=True,
         )
 
-    monkeypatch.setattr("immich_memories.photos.photo_pipeline._render_single_photo", render)
+    monkeypatch.setattr("immich_memories.photos.photo_pipeline.render_single_photo", render)
     monkeypatch.setattr(
-        "immich_memories.generate_photos._detect_photo_resolution", lambda *_: (1920, 1080)
+        "immich_memories.generate_photos.detect_photo_resolution", lambda *_: (1920, 1080)
     )
     monkeypatch.setattr("immich_memories.generate_clips._download_video_path", lambda *_: None)
-    rendered = _extract_clips(params, None, tmp_path)
+    rendered = extract_clips(params, None, tmp_path)
     assert [clip.asset_id for clip in rendered] == ["source-1"]
     with pytest.raises(ValueError, match="missing=\\['source-0'\\]"):
         apply_final_content_budget(params, rendered)

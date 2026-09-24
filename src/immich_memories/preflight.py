@@ -524,7 +524,7 @@ def _platform_tag() -> str:
 
 # Nothing ships a captioner, so a failing row has to say where the recipes are.
 # A path, not a URL: the docs travel with the checkout and with the image.
-CAPTION_SETUP_PAGE = "docs/deploy/installation/caption-server.md"
+CAPTION_SETUP_PAGE = "docs/better/captions.md"
 
 
 def _caption_endpoint_unreachable(base_url: str, error: Exception) -> CheckResult:

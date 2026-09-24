@@ -8,6 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from immich_memories.generate import GenerationError
+from tests.conftest import make_clip
+
 
 def _file_state(path: Path) -> tuple[bool, int | None, int | None]:
     """Return existence, modification time, and size without creating the path."""
@@ -20,16 +23,6 @@ def _file_state(path: Path) -> tuple[bool, int | None, int | None]:
 
 class TestPipelineLockWiredInPipeline:
     """PipelineLock is used in generate_memory()."""
-
-    def test_generate_memory_uses_pipeline_lock(self):
-        """generate_memory must use PipelineLock."""
-        import inspect
-
-        import immich_memories.generate as gen_mod
-
-        assert hasattr(gen_mod, "PipelineLock")
-        source = inspect.getsource(gen_mod.generate_memory)
-        assert "PipelineLock" in source
 
     def test_generate_memory_locks_configured_application_state(
         self,
@@ -46,9 +39,8 @@ class TestPipelineLockWiredInPipeline:
         real_lock_before = _file_state(real_lock)
         fake_home = tmp_path / "fake-home"
         legacy_lock = fake_home / ".immich-memories" / ".lock"
-        result_path = tmp_path / "result.mp4"
         params = GenerationParams(
-            clips=[MagicMock()],
+            clips=[make_clip("c1")],
             output_path=tmp_path / "output.mp4",
             config=config,
         )
@@ -56,18 +48,17 @@ class TestPipelineLockWiredInPipeline:
         assert configured_lock.parent == config.cache.database_path.parent
         assert configured_lock.is_relative_to(isolated_user_paths)
 
+        # WHY: stop the run at its first check inside the lock, with nothing rendered
         with (
+            # WHY: a home the legacy lock location would resolve under
             patch("immich_memories.generate.Path.home", return_value=fake_home),
-            patch(
-                "immich_memories.generate._generate_memory_inner",
-                return_value=result_path,
-            ) as mock_inner,
+            # WHY: a full disk ends the run right after the lock is taken
+            patch("immich_memories.generate.shutil.disk_usage", return_value=MagicMock(free=0)),
+            pytest.raises(GenerationError, match="Insufficient disk space"),
         ):
-            result = generate_memory(params)
+            generate_memory(params)
 
         assert _file_state(real_lock) == real_lock_before
-        assert result == result_path
-        mock_inner.assert_called_once_with(params)
         assert configured_lock.exists()
         assert not legacy_lock.exists()
 
@@ -78,20 +69,17 @@ class TestPipelineLockWiredInPipeline:
 
         config = Config(cache={"database": "~/.immich-memories/cache.db"})
         params = GenerationParams(
-            clips=[MagicMock()],
+            clips=[make_clip("c1")],
             output_path=tmp_path / "output.mp4",
             config=config,
         )
         expected_lock = Path.home() / ".immich-memories" / ".lock"
 
-        with (
-            patch("immich_memories.generate.PipelineLock") as mock_lock,
-            patch(
-                "immich_memories.generate._generate_memory_inner",
-                return_value=tmp_path / "result.mp4",
-            ),
-        ):
-            generate_memory(params)
+        # WHY: the real lock would take the user's own; refusing it stops the run there
+        with patch("immich_memories.generate.PipelineLock") as mock_lock:
+            mock_lock.return_value.__enter__.side_effect = GenerationError("held elsewhere")
+            with pytest.raises(GenerationError, match="held elsewhere"):
+                generate_memory(params)
 
         mock_lock.assert_called_once_with(expected_lock)
 

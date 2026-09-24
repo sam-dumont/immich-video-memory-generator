@@ -6,13 +6,28 @@ import threading
 
 import pytest
 
-from immich_memories.analysis.editorial_standing_vote import judge_standing
+from immich_memories.analysis.editorial_block_votes import judge_worthiness
 from immich_memories.analysis.editorial_structure_io import StructureTextJudge
 from immich_memories.config import Config
 from immich_memories.config_models_llm import LLMConfig
 
 
-def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_path, monkeypatch):
+def worthiness(judge, happenings):
+    return judge_worthiness(
+        judge,
+        happenings=happenings,
+        label_of={h: f"F{i + 1:02d}" for i, h in enumerate(happenings)},
+        text_of=lambda h: f"People outdoors {h}",
+        near_home=lambda _: None,
+        contract="contract",
+        contract_key="contract hash",
+        criterion="Pick occasions",
+        marker="",
+        period_label="period",
+    )[0]
+
+
+def test_votes_overlap_blocks_but_keep_order_and_reuse_the_same_bank(tmp_path, monkeypatch):
     from immich_memories.analysis import editorial_text_gateway as gateway
     from immich_memories.analysis import llm_metrics
 
@@ -34,7 +49,7 @@ def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_p
         with lock:
             active -= 1
         llm_metrics.record_reply(prompt_tokens=3, completion_tokens=2)
-        return '{"weak":{}}'
+        return '{"worthy":{}}'
 
     # WHY: replace only the remote model; keep real request identities, audit files and SQLite.
     monkeypatch.setattr(gateway, "query_llm", completion)
@@ -46,28 +61,24 @@ def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_p
     pictures = [f"asset-{i}" for i in range(36)]
 
     def read(judge):
-        return judge_standing(
-            judge,
-            pictures=pictures,
-            line_of=lambda a: f"People outdoors {a}",
-        )
+        return worthiness(judge, pictures)
 
     with llm_metrics.collecting() as counters:
         first = read(cold)
-    assert counters.calls == 3
-    assert counters.prompt_tokens == 9
+    assert counters.calls == 6
+    assert counters.prompt_tokens == 18
     assert maximum == 2
     assert list(first) == pictures
-    assert all(score == 2 for score, _why in first.values())
-    assert [c["stage"] for c in cold.calls] == [f"standing-{block}-source" for block in range(1, 4)]
-    assert len(list((cold_out / "calls").glob("*.request.private.txt"))) == 3
+    assert set(first.values()) == {2}
+    assert all(c["stage"].startswith("worthy-") for c in cold.calls)
+    assert len(list((cold_out / "calls").glob("*.request.private.txt"))) == 6
     warm = StructureTextJudge(
         config.model_copy(update={"llm": config.llm.model_copy(update={"reader_concurrency": 1})}),
         warm_out,
         cache_path=tmp_path / "judgments.sqlite",
     )
     assert read(warm) == first
-    assert len(sent) == 3
+    assert len(sent) == 6
     assert all(c["cache_hit"] for c in warm.calls)
     assert [c["judgment_key"] for c in cold.calls] == [c["judgment_key"] for c in warm.calls]
 
@@ -82,7 +93,7 @@ def test_cancellation_reaches_workers_before_they_send_a_request(tmp_path, monke
 
     async def completion(prompt, _config, **_kwargs):
         sent.append(prompt)
-        return '{"weak":{}}'
+        return '{"worthy":{}}'
 
     # WHY: capture paid provider requests; cancellation must prevent all of them.
     monkeypatch.setattr(gateway, "query_llm", completion)
@@ -95,11 +106,7 @@ def test_cancellation_reaches_workers_before_they_send_a_request(tmp_path, monke
 
     with cancellation_scope(check), pytest.raises(PipelineCancelled):
         stopped = True
-        judge_standing(
-            judge,
-            pictures=[str(i) for i in range(36)],
-            line_of=lambda a: a,
-        )
+        worthiness(judge, [str(i) for i in range(36)])
     assert sent == []
     assert judge.calls == []
     assert not list(tmp_path.glob(".reader-*"))

@@ -42,19 +42,13 @@ def test_a_clip_with_no_readable_frame_decides_nothing():
 def _standing(line_of, *, favourite=False, kind="video"):
 
     from immich_memories.analysis.editorial_story_standing import StandingGate
-    from immich_memories.config_models_llm import LLMConfig
 
-    class Approves:
-        # WHY: the text model is the standing gate's only external boundary; it approves
-        # every row, so any refusal here is the clip's frames and not a vote.
-        config = SimpleNamespace(llm=LLMConfig(model="model-a"))
+    scored: list[str] = []
 
-        def __init__(self):
-            self.calls: list[str] = []
-
-        def ask(self, _stage, prompt, **_kwargs):
-            self.calls.append(prompt)
-            return '{"weak": {}}'
+    def stands_on_its_facts(asset: str) -> int:
+        # Every picture's own facts say it stands, so any refusal here is the clip's frames.
+        scored.append(asset)
+        return 2
 
     clip = {
         "asset_id": "clip",
@@ -63,30 +57,26 @@ def _standing(line_of, *, favourite=False, kind="video"):
         "members": ["clip"],
         "favourite": favourite,
     }
-    judge = Approves()
     gate = StandingGate(
-        judge,
+        stands_on_its_facts,
         line_of=line_of,
         life=lambda _asset: True,
         unit_by_asset={"clip": ("E1", clip)},
         pictures_of={"S1": 5},
-        bank=None,
-        save=None,
-        calls={"standing_rounds": 0},
     )
-    return gate, judge
+    return gate, scored
 
 
-def test_a_clip_whose_frames_often_miss_its_subject_does_not_stand_on_approving_votes():
-    gate, judge = _standing(
+def test_a_clip_whose_frames_often_miss_its_subject_does_not_stand_on_facts_that_stand():
+    gate, scored = _standing(
         lambda _asset: "10:00 | VIDEO 12s raw | a child at a door | frames=subject_often_missing"
     )
     needs = {"clip": gate.needs("clip", "major", "S1")}
     gate.ensure(["clip"], needs)
 
     assert not gate.stands("clip", "major", "S1")
-    # No answer can move it, so nobody is asked about it.
-    assert needs == {"clip": 0} and judge.calls == []
+    # No answer can move it, so it is not even scored.
+    assert needs == {"clip": 0} and scored == []
 
 
 def test_a_favourite_clip_whose_frames_often_miss_its_subject_still_stands():
@@ -102,7 +92,7 @@ def test_a_favourite_clip_whose_frames_often_miss_its_subject_still_stands():
     assert not other.stands("clip", "major", "S1")
 
 
-def test_a_clip_that_shows_its_moment_still_stands_on_approving_votes():
+def test_a_clip_that_shows_its_moment_still_stands_on_facts_that_stand():
     gate, _judge = _standing(lambda _asset: "10:00 | VIDEO 12s raw | a child at a door")
     gate.ensure(["clip"], {"clip": gate.needs("clip", "major", "S1")})
 

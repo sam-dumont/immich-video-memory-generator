@@ -272,12 +272,16 @@ def final_duplicate_review(
     replacements_for: Callable[[Mapping[str, Any]], Sequence[tuple[str, Mapping[str, Any]]]]
     | None = None,
     close_family_of: Callable[[str], Collection[str]] = lambda _asset: (),
+    gate: AudienceGate | None = None,
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward.
 
     A close family member's only shot never leaves: the free review keeps it ahead of its
-    look-alike, and the sampled review over its survivors treats it as protected."""
+    look-alike, and the sampled review over its survivors treats it as protected. A refill
+    arrives after the audience gate ran, so `gate` judges it like any other carrier: its
+    banked verdict when there is one, a new question otherwise, and a refused refill leaves
+    the slot to the next offer or empty."""
     protected = sorted(
         (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())
         | set(owner_required)
@@ -293,6 +297,7 @@ def final_duplicate_review(
         replacements_for=replacements_for,
         scene_print=ports.scene_print,
         close_family_of=close_family_of,
+        admits=_admitted_by(gate),
         # A scene repeat nothing replaces leaves only while the film still reaches its target
         # within the shortfall the owner accepts: a film short of material keeps it.
         content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
@@ -334,6 +339,12 @@ def final_duplicate_review(
     _settle_replacements(
         run, ports, [row["replacement"] for row in removed.values() if "replacement" in row]
     )
+
+
+def _admitted_by(gate: AudienceGate | None) -> Callable[[Mapping[str, Any]], bool]:
+    if gate is None:
+        return lambda _row: True
+    return lambda row: _share.allowed(gate.verdict_of(row), gate.audience)
 
 
 def held_by_gate(gate: AudienceGate, unit_of: Mapping[str, Mapping[str, Any]]):

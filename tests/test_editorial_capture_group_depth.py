@@ -49,15 +49,11 @@ def _admission(*, mechanical, slots=8):
 
     judge = type("Judge", (), {"calls": [], "ask": staticmethod(never)})()
     gate = StandingGate(
-        judge,
+        STANDING.__getitem__,
         line_of=lambda a: f"line for {a}",
         life=lambda _a: False,
         unit_by_asset=unit_by_asset,
         pictures_of={"S001": len(MEMBERS)},
-        bank=None,
-        save=None,
-        calls={"standing_rounds": 0},
-        score_of=STANDING.__getitem__,
     )
     choice = DepictedChoice(
         key="M01:cg",
@@ -83,7 +79,7 @@ def _admission(*, mechanical, slots=8):
         contract="",
         record=lambda _name, _value: None,
         slots=slots,
-        calls={"pick_calls": 0, "standing_rounds": 0},
+        calls={"pick_calls": 0},
         mechanical_picks=mechanical,
         # Two frames of one moment never look alike here: this test is about the walk.
         lookalike=LookAlikeCheck(lambda _candidate, _keeper: False, slots=slots),

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
-from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
 from .styles import TitleStyle
 from .video_encoding import create_title_video
@@ -310,7 +310,7 @@ class RenderingService:
             # frame 30 does not at either 30 or 60 fps.
             filters: list[str] = []
             if source_transfer is not HdrTransfer.NONE:
-                conversion = _get_hdr_conversion_filter(
+                conversion = get_hdr_conversion_filter(
                     source_transfer.value,
                     "sdr",
                     source_primaries="bt2020",

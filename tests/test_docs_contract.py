@@ -34,7 +34,7 @@ PRIMARY_MANUAL_CONTRACTS = [
         id="config-reference",
     ),
     pytest.param(
-        "docs-site/docs/deploy/configuration/config-file.md",
+        "docs-site/docs/run/config-file.md",
         "## Quick start config",
         "## Clip pacing",
         "`auto` is the default runtime policy: the app detects the server major and selects the "
@@ -145,7 +145,7 @@ def test_primary_manual_contract_rejects_policy_mutations(
 def test_immich_environment_override_is_documented() -> None:
     """Operators must be able to find the environment form of the escape hatch."""
     section = _normalized_section(
-        "docs-site/docs/deploy/configuration/environment-variables.md",
+        "docs-site/docs/run/environment-variables.md",
         "### Immich connection",
         "### Analysis settings",
     )
@@ -160,7 +160,7 @@ def test_immich_environment_override_is_documented() -> None:
 def test_upgrade_manual_explains_the_complete_v2_to_v3_contract() -> None:
     """The upgrade section must keep every compatibility boundary together."""
     section = _normalized_section(
-        "docs-site/docs/deploy/maintenance/upgrading.md",
+        "docs-site/docs/run/maintenance/upgrading.md",
         "## Upgrading Immich from v2 to v3",
         "## Config compatibility",
     )
@@ -204,7 +204,7 @@ def test_upgrade_manual_explains_the_complete_v2_to_v3_contract() -> None:
 def test_upgrade_contract_rejects_semantic_mutations(documented: str, weakened: str) -> None:
     """Each launch-critical sentence must fail independently when its meaning is removed."""
     section = _normalized_section(
-        "docs-site/docs/deploy/maintenance/upgrading.md",
+        "docs-site/docs/run/maintenance/upgrading.md",
         "## Upgrading Immich from v2 to v3",
         "## Config compatibility",
     )
@@ -291,7 +291,7 @@ def test_launch_audit_closes_the_immich_code_and_docs_blocker() -> None:
 
 
 def test_auto_docs_state_the_daily_variety_contract() -> None:
-    text = " ".join(_read("docs-site/docs/create/cli/auto.md").lower().split())
+    text = " ".join(_read("docs-site/docs/being-rewritten/auto.md").lower().split())
 
     for phrase in (
         "latest completed month",
@@ -304,7 +304,7 @@ def test_auto_docs_state_the_daily_variety_contract() -> None:
 
 
 def test_auto_quiet_json_example_includes_the_stable_action_field() -> None:
-    text = _read("docs-site/docs/create/cli/auto.md")
+    text = _read("docs-site/docs/being-rewritten/auto.md")
     example = text.split("Quiet output is a stable JSON object", 1)[1]
     json_block = example.split("```json", 1)[1].split("```", 1)[0]
 
@@ -312,21 +312,21 @@ def test_auto_quiet_json_example_includes_the_stable_action_field() -> None:
 
 
 def test_daily_auto_run_is_the_recommended_entry_point() -> None:
-    text = _read("docs-site/docs/create/recipes/automated-generation.md").lower()
+    text = _read("docs-site/docs/make/automate.md").lower()
 
     assert "immich-memories auto run" in text
     assert "single daily entry point" in text
 
 
 def test_scheduler_docs_call_the_daemon_advanced_or_legacy() -> None:
-    text = _read("docs-site/docs/create/cli/scheduler.md").lower()
+    text = _read("docs-site/docs/being-rewritten/scheduler.md").lower()
 
     assert "advanced/legacy" in text
     assert "auto" in text
 
 
 def test_health_docs_distinguish_liveness_from_readiness() -> None:
-    text = " ".join(_read("docs-site/docs/deploy/maintenance/health-logs-cache.md").split())
+    text = " ".join(_read("docs-site/docs/run/maintenance/health-logs-cache.md").split())
 
     assert "/health/live" in text
     assert "/health/ready" in text
@@ -339,7 +339,7 @@ def test_health_docs_distinguish_liveness_from_readiness() -> None:
 
 
 def test_docker_docs_name_the_required_writable_mount_and_build_extras() -> None:
-    text = _read("docs-site/docs/deploy/installation/docker.md")
+    text = _read("docs-site/docs/run/docker.md")
 
     assert "/home/immich/.immich-memories" in text
     assert "INSTALL_EXTRAS" in text
@@ -349,10 +349,10 @@ def test_ui_deployment_docs_are_explicit_about_exposure_and_replica_limits() -> 
     """Deployment entry points must not imply that the stateful UI is safely scalable."""
     for relative_path in (
         "README.md",
-        "docs-site/docs/deploy/installation/docker.md",
-        "docs-site/docs/deploy/installation/kubernetes.md",
-        "docs-site/docs/deploy/installation/terraform.md",
-        "docs-site/docs/deploy/configuration/authentication.mdx",
+        "docs-site/docs/run/docker.md",
+        "docs-site/docs/run/kubernetes.md",
+        "docs-site/docs/run/terraform.md",
+        "docs-site/docs/run/authentication.mdx",
     ):
         text = " ".join(_read(relative_path).lower().split())
         assert "single-user, single-replica" in text, relative_path
@@ -362,7 +362,7 @@ def test_ui_deployment_docs_are_explicit_about_exposure_and_replica_limits() -> 
 
 def test_api_compatibility_docs_describe_auto_and_manual_overrides() -> None:
     text = _read("docs-site/docs/reference/config-reference.md").lower()
-    upgrade = _read("docs-site/docs/deploy/maintenance/upgrading.md").lower()
+    upgrade = _read("docs-site/docs/run/maintenance/upgrading.md").lower()
 
     assert "api_version: auto  # auto | v2 | v3" in text
     assert "runtime" in text
@@ -395,7 +395,7 @@ def test_output_docs_distinguish_cli_format_choices_from_config_pairs() -> None:
 
 def test_output_docs_explain_the_hdr_codec_contract() -> None:
     reference = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
-    manual = " ".join(_read("docs-site/docs/deploy/configuration/config-file.md").split())
+    manual = " ".join(_read("docs-site/docs/run/config-file.md").split())
 
     for text in (reference, manual):
         assert "hdr_mode: auto" in text
@@ -405,7 +405,7 @@ def test_output_docs_explain_the_hdr_codec_contract() -> None:
 
 def test_output_docs_explain_effective_resolution_and_hardware_quality() -> None:
     reference = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
-    cli = " ".join(_read("docs-site/docs/create/cli/generate.md").split())
+    cli = " ".join(_read("docs-site/docs/make/cli/generate.md").split())
 
     assert "CRF is the image-quality authority" in reference
     assert "VideoToolbox" not in reference or "libx265's CRF scale" in reference
@@ -440,9 +440,9 @@ def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -
 def test_kubernetes_and_terraform_docs_describe_the_fixed_manifests() -> None:
     """Issue #307: the deploy pages must not describe hand-fixes for solved gaps."""
     for relative_path in (
-        "docs-site/docs/deploy/installation/kubernetes.md",
-        "docs-site/docs/deploy/installation/terraform.md",
-        "docs-site/docs/deploy/common-setups/kubernetes-gpu.md",
+        "docs-site/docs/run/kubernetes.md",
+        "docs-site/docs/run/terraform.md",
+        "docs-site/docs/being-rewritten/kubernetes-gpu.md",
         "deploy/kubernetes/README.md",
         "deploy/terraform/README.md",
     ):
@@ -454,6 +454,6 @@ def test_kubernetes_and_terraform_docs_describe_the_fixed_manifests() -> None:
         assert "/health/ready" in text, relative_path
         assert "gpu" in text.lower(), relative_path
 
-    recipe = _read("docs-site/docs/create/recipes/automated-generation.md")
+    recipe = _read("docs-site/docs/make/automate.md")
     assert "configmap" not in recipe.lower()
     assert "deploy/kubernetes/base/job.yaml" in recipe

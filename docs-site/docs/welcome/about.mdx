@@ -1,0 +1,65 @@
+---
+sidebar_label: "Why this exists"
+sidebar_position: 2
+title: Why this exists
+---
+
+# Why this exists
+
+Reader: newcomer.
+
+## A birthday recap I never finished
+
+End of December 2025. My son's birthday was coming up and I wanted a recap of his year. I had
+hundreds of clips, all safely in Immich.
+
+I opened Premiere, imported 40 clips, dragged them onto a timeline, added a few crossfades,
+realised I needed music. Two hours later I had 90 seconds of mediocre output and 360 clips I
+hadn't looked at. Never finished it.
+
+Storage wasn't the problem (Immich handles that), and neither was finding clips (search works).
+The problem is the 4 to 8 hours between "I have 400 clips" and "here's a 3-minute film I'd show
+my family".
+
+## What it does instead
+
+It does the boring part. It connects to Immich read-only, looks at the period I pick and builds
+the film the way I would: find the stories in the period (a birthday, a weekend away, the
+ordinary weeks at home), give the big ones more room, keep the favourites, prefer a video when a
+video carries the moment, and keep everything in the order it happened. Then it renders it with
+titles, a map for a trip, and music.
+
+All of that runs on the NAS, without a model. A model can polish the draft if you have one, and
+that's it: it never has to be there.
+
+I still review what it picked. But I'm reviewing 30 pictures in a storyboard instead of scrolling
+through 400, and when it leaves one out, `runs why` says which rule did it. Every feature traces
+back to one manual step I didn't want to do again: that's why Live Photos get stitched, why a trip
+opens on a map, and why the music ducks under the clips' own sound.
+
+If you run Immich, you already decided to own your pictures. This gives you something to do with
+them.
+
+## Built with AI, on purpose
+
+Claude writes the code; I make the decisions, test the films and debug what breaks. That's the
+experiment: how far can you push AI on a codebase this size and keep it clean?
+
+The answer so far is guardrails. Every PR goes through the gates in the `Makefile` (lint, types,
+complexity, an 800-line file cap, dead code, duplication, architecture boundaries, security scans,
+docs drift) and the build stays red until they pass. They catch real bugs that Claude introduces
+with a straight face. The file cap forced a composition-based design with zero mixins, which
+turned out to be the right call anyway.
+
+The judgement calls stay human: what a good film is, which rule is right, when a cut is good
+enough to ship. [DISCLAIMER.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/DISCLAIMER.md)
+lists the gates one by one and where the approach fell short.
+
+## What it isn't
+
+- **Not a video editor.** You tick and untick pictures and cut again. There is no timeline.
+- **Not a photo manager.** It needs Immich and only reads from it, unless you ask it to upload
+  the film back.
+- **Not instant.** The first cut over a period reads the pictures it can use; that work is
+  banked, so the next cut over the same period is mostly the render.
+- **No mobile app.** A web UI that works in a phone browser, and a CLI.

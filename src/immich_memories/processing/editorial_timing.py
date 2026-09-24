@@ -121,12 +121,12 @@ def timing_policy_for_params(params: GenerationParams) -> EditorialTimingPolicy:
     """Build from actual per-run title inputs, without reusing a previously frozen plan."""
     from dataclasses import replace
 
-    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
 
     raw = replace(params, timeline_plan=None)
     if params.target_duration_seconds is None:
         raise ValueError("Editorial timing requires the original requested duration")
-    titles = _build_title_settings(raw, raw.config, [])
+    titles = build_title_settings(raw, raw.config, [])
     options = {key: getattr(titles, key) for key in _TITLE_FIELDS} if titles is not None else None
     return EditorialTimingPolicy(
         target_seconds=params.target_duration_seconds,

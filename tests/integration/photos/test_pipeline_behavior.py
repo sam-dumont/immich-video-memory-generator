@@ -2,7 +2,7 @@
 
 The batch render_photo_clips this file used to call was only ever reachable
 from the two-budget chain. A photograph now renders one at a time, as the clip
-it has already won a place as, through generate_clips._render_photo_as_clip.
+it has already won a place as, through generate_clips.render_photo_as_clip.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from immich_memories.config_models_render import PhotoConfig
-from immich_memories.photos.photo_pipeline import _render_single_photo
+from immich_memories.photos.photo_pipeline import render_single_photo
 from tests.conftest import make_asset
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
@@ -35,7 +35,7 @@ class TestRenderSinglePhoto:
             shutil.copy(test_photo_landscape, dest_path)
 
         clips = [
-            _render_single_photo(
+            render_single_photo(
                 asset=asset,
                 config=config,
                 target_w=1280,
@@ -60,7 +60,7 @@ class TestRenderSinglePhoto:
         def download_fn(asset_id: str, dest_path: Path) -> None:
             raise OSError("no such asset")
 
-        clip = _render_single_photo(
+        clip = render_single_photo(
             asset=make_asset("missing", original_file_name="IMG_0.jpg"),
             config=PhotoConfig(),
             target_w=640,
