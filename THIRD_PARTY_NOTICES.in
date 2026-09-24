@@ -110,16 +110,33 @@ Title fonts, src/immich_memories/titles/bundled_fonts/ (see LICENSE there).
 All under the SIL Open Font License 1.1 (https://openfontlicense.org/):
 
 Montserrat        Julieta Ulanovsky           https://github.com/JulietaUla/montserrat
+                  (Latin, plus Latin Extended and Vietnamese from Fontsource 5.3.0)
 Outfit            Rodrigo Fuenzalida          https://github.com/nicholasjimmy/outfit
 Raleway           Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
                                               https://github.com/impallari/Raleway
 Josefin Sans      Santiago Orozco             https://github.com/googlefonts/josefinsans
 Quicksand         Andrew Paglinawan           https://github.com/googlefonts/Quicksand
 Noto Sans         The Noto Project Authors    https://github.com/notofonts/latin-greek-cyrillic
-                  (Latin, Greek and Cyrillic subset, fallback for letters the others lack)
+                  (Latin, Latin Extended, Greek, Cyrillic and Vietnamese, cut with
+                  fontTools from notofonts.github.io at e0ad9f16; the fallback for
+                  letters the others lack)
 
-Originally obtained through Fontsource (https://fontsource.org/, MIT); the
-Fontsource CDN is only contacted as a fallback for a custom font name.
+Originally obtained through Fontsource (https://fontsource.org/, MIT). Nothing
+is downloaded while a film renders.
+
+Noto script fonts (downloaded by `immich-memories titles fonts --install`, and
+at build time into the Docker image, every file SHA-256-pinned)
+  Role: the letters of every script the bundled fonts lack: Arabic, Hebrew,
+    Thaana, Devanagari, Bengali, Gujarati, Gurmukhi, Oriya, Tamil, Telugu,
+    Kannada, Malayalam, Sinhala, Thai, Lao, Khmer, Myanmar, Armenian,
+    Georgian, Ethiopic, and Chinese, Japanese and Korean
+  Artifact: Noto Sans <Script> Regular and Bold, unhinted TTF, from
+    notofonts/notofonts.github.io at commit e0ad9f160a2942bcdd249bb1958e8336742edef3
+    (3.8 MB), and NotoSansCJK-Regular.ttc / NotoSansCJK-Bold.ttc from
+    notofonts/noto-cjk tag Sans2.004 (39.5 MB)
+  License: SIL Open Font License 1.1
+  Copyright: The Noto Project Authors; Adobe (Noto Sans CJK / Source Han Sans)
+  URL: https://github.com/notofonts, https://github.com/notofonts/noto-cjk
 
 Inter (web UI and docs site: src/immich_memories/ui/static/fonts/,
 docs-site/static/fonts/)

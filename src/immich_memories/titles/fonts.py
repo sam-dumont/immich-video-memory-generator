@@ -1,9 +1,8 @@
 """Font management for title screens.
 
-Fonts are bundled in the package (bundled_fonts/), and that is where every
-lookup starts. The Fontsource CDN is the last resort for a family the wheel
-does not carry, and it is only reached when `network.font_downloads` is on.
-All fonts are OFL-1.1 licensed (see bundled_fonts/LICENSE).
+Every title font ships in the package (bundled_fonts/), and nothing here is
+ever downloaded while a film renders. All fonts are OFL-1.1 licensed (see
+bundled_fonts/LICENSE).
 
 Supported fonts:
 - Outfit (modern geometric)
@@ -12,82 +11,24 @@ Supported fonts:
 - Quicksand (friendly rounded)
 - Montserrat (geometric humanist)
 
-Those five are Latin subsets. A title with a letter they lack (a Greek or
-Cyrillic place name) is drawn whole in Noto Sans, which the wheel carries in
-Latin, Greek and Cyrillic for exactly that; see `font_covering`.
+Those five are Latin subsets (Montserrat also carries Latin Extended and
+Vietnamese). A letter they lack comes from Noto Sans, bundled for Latin,
+Greek, Cyrillic and Vietnamese, or from the Noto script faces installed by
+`titles fonts --install`: see `font_chain` and `script_fonts`.
 """
 
 from __future__ import annotations
 
-import functools
 import logging
 from pathlib import Path
 from typing import Literal
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
-# Bundled fonts ship with the package — no network needed
 BUNDLED_FONTS_DIR = Path(__file__).parent / "bundled_fonts"
 
-_CDN_HOST = "cdn.jsdelivr.net"
 
-# Noto Sans cut to Latin, Greek and Cyrillic: the face a title falls back to,
-# whole, when its own family cannot draw one of its letters (#1101).
-_COVERAGE_FALLBACK = {
-    False: BUNDLED_FONTS_DIR / "noto-sans" / "latin-greek-cyrillic-400-normal.ttf",
-    True: BUNDLED_FONTS_DIR / "noto-sans" / "latin-greek-cyrillic-700-normal.ttf",
-}
-
-
-@functools.lru_cache(maxsize=32)
-def _codepoints(font_path: str) -> frozenset[int]:
-    """Every character this face has a glyph for; empty when it cannot be read."""
-    import freetype
-
-    try:
-        face = freetype.Face(font_path)
-    except (freetype.FT_Exception, OSError):
-        return frozenset()
-    return frozenset(code for code, _glyph in face.get_chars())
-
-
-def _missing(font_path: Path | str, text: str) -> str:
-    drawn = _codepoints(str(font_path))
-    return "".join(dict.fromkeys(c for c in text if not c.isspace() and ord(c) not in drawn))
-
-
-def font_covering(font_path: Path | str, text: str, *, bold: bool = False) -> str:
-    """The face to draw `text` with: `font_path` when it has every letter, else one that does.
-
-    A title is drawn in one face, never glyph by glyph, so a Greek place in a
-    French title does not switch typeface mid-line. When no bundled face draws
-    it all, the requested face is kept and the missing letters are logged: they
-    will show as boxes, and that must not be silent. A path that is not a file
-    (a family name the host resolves itself) is passed through untouched.
-    """
-    if not text or not Path(font_path).is_file() or not _missing(font_path, text):
-        return str(font_path)
-    fallback = _COVERAGE_FALLBACK[bold]
-    if missing := _missing(fallback, text):
-        logger.warning("No bundled font draws %r in %r; they will render as boxes", missing, text)
-        return str(font_path)
-    return str(fallback)
-
-
-def font_downloads_allowed() -> bool:
-    """Whether this install lets a font come from the CDN. A missing config says no."""
-    try:
-        from immich_memories.config import get_config
-
-        return get_config().network.font_downloads
-    except Exception:  # noqa: BLE001 -- an unreadable config is a "no", not a crash
-        return False
-
-
-# Font metadata with Fontsource CDN download URLs
-# URL pattern: https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.ttf
+# The bundled families: bundled_fonts/<fontsource_slug>/latin-<weight>-normal.ttf
 FONT_DEFINITIONS: dict[str, dict] = {
     "Outfit": {
         "family": "Outfit",
@@ -184,9 +125,8 @@ def get_font_path(
 ) -> Path | None:
     """Get the path to a specific font file.
 
-    Looks in the bundled families, then the user's own font directory, and only
-    then asks the CDN -- which answers nothing unless `network.font_downloads`
-    is on.
+    Looks in the bundled families, then the user's own font directory. Nothing
+    is downloaded.
 
     Args:
         font_family: Font family name (e.g., "Outfit", "Raleway").
@@ -222,209 +162,7 @@ def get_font_path(
         if font_path.exists():
             return font_path
 
-    # 3. Download from CDN as last resort
-    if ensure_font_available(font_family, fonts_dir):
-        for name in possible_names:
-            font_path = font_dir / name
-            if font_path.exists():
-                return font_path
-
     return None
-
-
-def is_font_cached(
-    font_family: str,
-    fonts_dir: Path | None = None,
-) -> bool:
-    """Check if a font family is already cached.
-
-    Args:
-        font_family: Font family name.
-        fonts_dir: Override fonts directory.
-
-    Returns:
-        True if at least one weight of the font is cached.
-    """
-    if fonts_dir is None:
-        fonts_dir = get_fonts_cache_dir()
-
-    dir_name = font_family.replace(" ", "")
-    font_dir = fonts_dir / dir_name
-
-    if not font_dir.exists():
-        return False
-
-    # Check for any font files
-    return any(font_dir.glob("*.ttf")) or any(font_dir.glob("*.otf"))
-
-
-def ensure_font_available(
-    font_family: str,
-    fonts_dir: Path | None = None,
-) -> bool:
-    """Ensure a font family is available, downloading if needed.
-
-    Args:
-        font_family: Font family name.
-        fonts_dir: Override fonts directory.
-
-    Returns:
-        True if font is available (cached or freshly downloaded).
-    """
-    if fonts_dir is None:
-        fonts_dir = get_fonts_cache_dir()
-
-    if is_font_cached(font_family, fonts_dir):
-        return True
-
-    return download_font(font_family, fonts_dir)
-
-
-# WHY the magic check: the CDN URL is @latest (unpinned) — an sfnt magic plus a
-# sane size is the minimum bar before writing executable-adjacent content into
-# the font cache.
-_SFNT_MAGIC = (
-    b"\x00\x01\x00\x00",  # TrueType
-    b"OTTO",  # CFF OpenType
-    b"true",  # legacy Apple TrueType
-)
-
-
-def _fetch_font_file(client: httpx.Client, slug: str, weight_value: int) -> bytes | None:
-    """One Fontsource TTF, or None when what came back is not a font."""
-    response = client.get(
-        f"https://{_CDN_HOST}/fontsource/fonts/{slug}@latest/latin-{weight_value}-normal.ttf"
-    )
-    response.raise_for_status()
-    if len(response.content) < 100 or response.content[:4] not in _SFNT_MAGIC:
-        return None
-    return response.content
-
-
-def download_font(
-    font_family: str,
-    fonts_dir: Path | None = None,
-    *,
-    allowed: bool | None = None,
-) -> bool:
-    """Download a font family from Fontsource CDN.
-
-    Args:
-        font_family: Font family name (e.g., "Outfit").
-        fonts_dir: Override fonts directory.
-        allowed: Whether reaching the CDN is permitted. None asks the config's
-            `network.font_downloads`, which is off in a fresh install; `titles
-            fonts --download` passes True because the person asked for it.
-
-    Returns:
-        True if download succeeded.
-    """
-    if allowed is None:
-        allowed = font_downloads_allowed()
-    if not allowed:
-        logger.info(
-            "Not fetching %s from %s: set network.font_downloads: true to allow it",
-            font_family,
-            _CDN_HOST,
-        )
-        return False
-
-    if fonts_dir is None:
-        fonts_dir = get_fonts_cache_dir()
-
-    # Get font definition
-    dir_name = font_family.replace(" ", "")
-    if dir_name not in FONT_DEFINITIONS:
-        logger.warning(f"Unknown font family: {font_family}")
-        return False
-
-    font_def = FONT_DEFINITIONS[dir_name]
-    fontsource_slug = font_def["fontsource_slug"]
-    weights = font_def["weights"]
-
-    # Create font directory
-    font_dir = fonts_dir / dir_name
-    font_dir.mkdir(parents=True, exist_ok=True)
-
-    logger.info(f"Downloading font: {font_family}")
-
-    try:
-        downloaded_count = 0
-
-        with httpx.Client(follow_redirects=True, timeout=30.0) as client:
-            for weight_name, weight_value in weights.items():
-                content = _fetch_font_file(client, fontsource_slug, weight_value)
-                if content is None:
-                    logger.warning(
-                        f"Downloaded file for {font_family} {weight_name} is not a font; skipping"
-                    )
-                    continue
-                # Save with our naming convention: FontFamily-Weight.ttf
-                (font_dir / f"{dir_name}-{weight_name}.ttf").write_bytes(content)
-                downloaded_count += 1
-
-        if downloaded_count == 0:
-            logger.warning(f"No font files downloaded for {font_family}")
-            return False
-
-        logger.info(f"Downloaded {font_family}: {downloaded_count} font files")
-        return True
-
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error downloading {font_family}: {e}")
-        return False
-    except (OSError, RuntimeError) as e:
-        logger.error(f"Error downloading {font_family}: {e}")
-        return False
-
-
-def download_all_fonts(
-    fonts_dir: Path | None = None,
-    force: bool = False,
-    *,
-    allowed: bool | None = None,
-) -> dict[str, bool]:
-    """Download all supported fonts.
-
-    Args:
-        fonts_dir: Override fonts directory.
-        force: If True, re-download even if cached.
-        allowed: Whether reaching the CDN is permitted; None asks the config.
-
-    Returns:
-        Dict mapping font name to success status.
-    """
-    if fonts_dir is None:
-        fonts_dir = get_fonts_cache_dir()
-
-    results = {}
-
-    for font_family in FONT_DEFINITIONS:
-        if not force and is_font_cached(font_family, fonts_dir):
-            logger.info(f"Font already cached: {font_family}")
-            results[font_family] = True
-            continue
-
-        results[font_family] = download_font(font_family, fonts_dir, allowed=allowed)
-
-    return results
-
-
-def get_available_fonts(fonts_dir: Path | None = None) -> list[str]:
-    """Get list of currently cached font families.
-
-    Args:
-        fonts_dir: Override fonts directory.
-
-    Returns:
-        List of cached font family names.
-    """
-    if fonts_dir is None:
-        fonts_dir = get_fonts_cache_dir()
-
-    return [
-        font_family for font_family in FONT_DEFINITIONS if is_font_cached(font_family, fonts_dir)
-    ]
 
 
 def clear_font_cache(fonts_dir: Path | None = None) -> None:

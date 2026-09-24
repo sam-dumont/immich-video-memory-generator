@@ -426,7 +426,9 @@ src/immich_memories/
 │   ├── animations.py           # Text animations
 │   ├── styles.py               # Visual style presets
 │   ├── colors.py               # Color utilities
-│   ├── fonts.py                # Font management
+│   ├── fonts.py                # Bundled title families (nothing downloaded at run time)
+│   ├── font_chain.py           # ChainFont: per-letter Noto fallback, bidi run order
+│   ├── script_fonts.py         # Pinned Noto script fonts, `titles fonts --install`
 │   ├── llm_titles.py           # LLM-generated titles
 │   ├── sdf_font.py             # SDF font rendering
 │   ├── sdf_font_rendering.py   # SDF rendering helpers

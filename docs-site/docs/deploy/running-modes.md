@@ -381,8 +381,8 @@ judged less focused than the shorter metadata cut.
 
 ## What leaves your network, per mode
 
-Nothing in this table leaves by default. The three third-party hosts (Nominatim, ArcGIS tiles,
-jsDelivr fonts) are `network:` switches, all off, and
+Nothing in this table leaves by default. The two third-party hosts (Nominatim and ArcGIS tiles)
+are `network:` switches, both off, and a render never downloads a font, and
 [Network & Privacy](configuration/network-and-privacy.md) says what each one sends.
 
 | Mode | To the caption server | To the reader | Elsewhere |

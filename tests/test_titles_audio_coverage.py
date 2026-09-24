@@ -335,29 +335,6 @@ class TestFontDiscovery:
             assert path.exists()
             assert path.suffix == ".ttf"
 
-    def test_unknown_font_returns_none(self):
-        """Unknown font families can't be downloaded or found."""
-        from immich_memories.titles.fonts import download_font
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = download_font("NonExistentFont123", Path(tmpdir))
-            assert result is False
-
-    def test_is_font_cached_empty_dir(self):
-        from immich_memories.titles.fonts import is_font_cached
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            assert not is_font_cached("Outfit", Path(tmpdir))
-
-    def test_is_font_cached_with_ttf(self):
-        from immich_memories.titles.fonts import is_font_cached
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            font_dir = Path(tmpdir) / "Outfit"
-            font_dir.mkdir()
-            (font_dir / "Outfit-Regular.ttf").write_bytes(b"fake font")
-            assert is_font_cached("Outfit", Path(tmpdir))
-
     def test_get_font_path_checks_user_cache(self):
         """User cache is checked when bundled font is missing for unknown families."""
         from immich_memories.titles.fonts import get_font_path
@@ -371,23 +348,6 @@ class TestFontDiscovery:
 
             path = get_font_path("CustomFont", "Regular", Path(tmpdir))
             assert path == fake_font
-
-    def test_get_available_fonts_empty(self):
-        from immich_memories.titles.fonts import get_available_fonts
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            fonts = get_available_fonts(Path(tmpdir))
-            assert fonts == []
-
-    def test_get_available_fonts_with_cached(self):
-        from immich_memories.titles.fonts import get_available_fonts
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            font_dir = Path(tmpdir) / "Outfit"
-            font_dir.mkdir()
-            (font_dir / "Outfit-Regular.ttf").write_bytes(b"fake")
-            fonts = get_available_fonts(Path(tmpdir))
-            assert "Outfit" in fonts
 
     def test_clear_font_cache(self):
         from immich_memories.titles.fonts import clear_font_cache
@@ -413,26 +373,6 @@ class TestFontManager:
             (font_dir / "test.ttf").write_bytes(b"data")
             mgr.clear_cache()
             assert not font_dir.exists()
-
-
-class TestDownloadAllFonts:
-    """Test download_all_fonts behavior."""
-
-    def test_skips_cached(self):
-        from immich_memories.titles.fonts import download_all_fonts
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            font_dir = Path(tmpdir) / "Outfit"
-            font_dir.mkdir()
-            (font_dir / "Outfit-Regular.ttf").write_bytes(b"fake")
-
-            # WHY: mock download_font to avoid real network calls
-            with patch("immich_memories.titles.fonts.download_font") as mock_dl:
-                results = download_all_fonts(Path(tmpdir))
-                assert results["Outfit"] is True
-                # Outfit shouldn't trigger download since it's cached
-                for call in mock_dl.call_args_list:
-                    assert call[0][0] != "Outfit"
 
 
 # ---------------------------------------------------------------------------

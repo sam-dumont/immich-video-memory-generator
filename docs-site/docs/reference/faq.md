@@ -14,8 +14,8 @@ the copy it replaces to Immich's trash. Nothing else is written.
 **What leaves my machine?**
 
 By default nothing but requests to your Immich server. The caption server and the reader can
-receive pictures and annotation text; both default to `localhost`. Nominatim geocoding, satellite
-map tiles and font downloads are three switches under `network:`, all off.
+receive pictures and annotation text; both default to `localhost`. Nominatim geocoding and satellite
+map tiles are two switches under `network:`, both off, and a render never downloads a font.
 [Network & Privacy](../deploy/configuration/network-and-privacy.md) says what each one sends.
 
 **Do I need a model?**
