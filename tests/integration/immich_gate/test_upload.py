@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,10 @@ def _render(folder: Path, colour: str) -> Path:
             "libx264",
             "-pix_fmt",
             "yuv420p",
+            # Unique bytes per run: Immich answers a checksum it already holds
+            # (even in the trash) with that old asset instead of a new upload.
+            "-metadata",
+            f"comment={uuid.uuid4()}",
             str(film),
         ],
         check=True,
@@ -42,11 +47,26 @@ def _render(folder: Path, colour: str) -> Path:
     return film
 
 
+def _read_by_immich(gate_client, asset_id: str) -> bool:
+    """Whether Immich's metadata job has read the file (only it sets dateTimeOriginal)."""
+    for _ in range(60):
+        exif = gate_client.get_asset(asset_id).exif_info
+        if exif is not None and exif.date_time_original is not None:
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def test_a_rerendered_film_is_filed_in_its_album_and_replaces_the_earlier_one(
     gate_client, tmp_path
 ):
     album = f"Gate films {uuid.uuid4().hex[:8]}"
     first = gate_client.upload_memory(_render(tmp_path / "a", "red"), album, captured_at=_CAPTURED)
+    # A real re-render comes long after Immich read the first upload. That read
+    # used to wipe a tag applied while it ran (#1270), so the film lost its
+    # provenance and a v3 re-render kept it as a duplicate.
+    assert _read_by_immich(gate_client, first["asset_id"])
+    assert first["asset_id"] in gate_client.generated_asset_ids()
     second = gate_client.upload_memory(
         _render(tmp_path / "b", "blue"), album, captured_at=_CAPTURED
     )

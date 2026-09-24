@@ -53,8 +53,10 @@ The client handles the three v3 wire changes that affect generation:
 - **Upload:** v2 keeps the device identity fields; v3 sends `filename` and omits the removed
   `deviceAssetId` and `deviceId` fields. The schema is selected before bytes are uploaded. v3
   assets no longer report a device either, so a re-render recognises its earlier upload by the
-  `immich-memories/generated` tag on both versions. A v3 render uploaded before the tag existed
-  is left in place.
+  `immich-memories/generated` tag on both versions. The tag goes on once Immich has finished
+  reading the uploaded file: Immich's own metadata read rewrites an asset's tags, so a tag applied
+  while it ran could vanish and leave the film untagged. A v3 render uploaded before the tag
+  existed, or one that lost its tag that way, is left in place.
 - **Search dates:** date bounds include a UTC offset, which v3 requires.
 
 After upgrading Immich:

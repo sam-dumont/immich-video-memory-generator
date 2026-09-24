@@ -3,6 +3,10 @@
 Immich v3 dropped `deviceId` and `deviceAssetId` from both the upload form and
 the asset response (checked against the v2.7.5 and v3.1.0 OpenAPI specs), so the
 v2 device identity cannot recognise a v3 render. The provenance tag can, on both.
+
+Immich reads every upload in a background job, and that job ends by writing the
+file's own tag list over the asset's tags. A tag applied while the read is still
+running is wiped (#1270), so the fake library models that read too.
 """
 
 import json
@@ -12,6 +16,7 @@ from itertools import count
 import httpx
 import pytest
 
+from immich_memories.api import album_service
 from immich_memories.api.generated_asset_tags import GENERATED_MEMORY_TAG
 from immich_memories.api.immich import ImmichClient
 
@@ -32,6 +37,11 @@ class FakeLibrary:
         self.albums: dict[str, dict] = {}
         self.tags: dict[str, str] = {}
         self.tagged: dict[str, set[str]] = {}
+
+    # Immich's metadata job outlives the upload request: here it finishes after
+    # two more requests, like a server that is still running exiftool on the
+    # film while the client carries on.
+    READ_TAKES_REQUESTS = 2
 
     def own_video(self, album: str, filename: str) -> str:
         """A video the user shot and filed in the album themselves."""
@@ -58,13 +68,42 @@ class FakeLibrary:
             ("PUT", "/api/tags"): lambda: self._upsert_tags(body),
             ("PUT", "/api/tags/{id}/assets"): lambda: self._tag(request.url.path, body),
             ("DELETE", "/api/assets"): lambda: self._trash(body),
+            ("GET", "/api/assets/{id}"): lambda: self._asset(request.url.path),
         }
-        return httpx.Response(200, json=handlers[route]())
+        response = httpx.Response(200, json=handlers[route]())
+        if route != ("POST", "/api/assets"):
+            self._advance_reads()
+        return response
+
+    def _advance_reads(self) -> None:
+        for asset_id, asset in self.assets.items():
+            if asset.get("reading", 0) > 0:
+                asset["reading"] -= 1
+                if asset["reading"] == 0:
+                    # The read writes the file's own (empty) tag list over the asset.
+                    for tagged in self.tagged.values():
+                        tagged.discard(asset_id)
+
+    def _asset(self, path: str) -> dict:
+        asset_id = path.split("/")[3]
+        read = self.assets[asset_id].get("reading", 0) == 0
+        return {
+            "id": asset_id,
+            "exifInfo": {
+                "fileSizeInByte": 12,
+                "modifyDate": "2024-06-30T12:00:00.000Z" if read else None,
+            },
+            "tags": [
+                {"id": tag_id, "value": self.tags[tag_id]}
+                for tag_id, ids in self.tagged.items()
+                if asset_id in ids
+            ],
+        }
 
     def _upload(self, content: bytes) -> dict:
         fields = {m[1].decode(): (m[3], m[2]) for m in FORM_FIELD.finditer(content)}
         asset_id = next(self.ids)
-        asset = {"id": asset_id, "trashed": False}
+        asset = {"id": asset_id, "trashed": False, "reading": self.READ_TAKES_REQUESTS}
         if self.version == "v2":
             asset["deviceId"] = fields["deviceId"][0].decode()
             asset["deviceAssetId"] = fields["deviceAssetId"][0].decode()
@@ -127,6 +166,12 @@ async def deliver(library: FakeLibrary, film, album: str = "Memories") -> str:
     )
     async with client:
         return (await client.upload_memory(film, album))["asset_id"]
+
+
+@pytest.fixture(autouse=True)
+def no_waiting(monkeypatch):
+    # WHY: the client polls a real server on a wall clock; the fake answers at once
+    monkeypatch.setattr(album_service, "_POLL_SECONDS", 0.0)
 
 
 @pytest.fixture()
