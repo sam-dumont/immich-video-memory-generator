@@ -542,7 +542,7 @@ the local reader shows the batched question keeps every hold the single one find
 `laya_audience` answers the audience check's activity question with a local Laya model instead of
 the text model: Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
 first. It reads the compact caption and adds holds; detector, body and rule holds still apply and
-are never lifted. See [Running modes](../deploy/running-modes.md#the-laya-audience-pre-screen).
+are never lifted. See [Running modes](../being-rewritten/running-modes.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,
