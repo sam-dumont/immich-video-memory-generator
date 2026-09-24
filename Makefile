@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
+.PHONY: workflow-guard docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots demo-output demo-output-trip diagrams capability-matrix
 
 # Default target
 help:
@@ -47,6 +47,7 @@ help:
 	@echo "  docker       Build Docker image"
 	@echo "  docker-run   Run Docker container"
 	@echo "  compose-check Check docker-compose.yml parses on its own, with nothing beside it"
+	@echo "  workflow-guard Check every workflow job skips in the private GPU mirror"
 	@echo ""
 	@echo "Cache Management:"
 	@echo "  cache-stats           Show analysis cache stats"
@@ -432,8 +433,13 @@ SERVICE_TREES := services/inference
 SERVICE_PACKAGES := services/inference/immich_memories_inference
 COVERAGE_FLAGS := --cov=src/immich_memories --cov=$(SERVICE_PACKAGES) --cov-branch
 
-lint:
+lint: workflow-guard
 	uv run ruff check src tests $(SERVICE_TREES)
+
+# The mirror push to the private GPU repo carries every workflow with it, and
+# private repos bill minutes: every job outside integration.yml must skip there.
+workflow-guard:  ## Fail when a workflow job lacks the public-repo guard
+	uv run python scripts/check_workflow_repo_guard.py
 
 lint-fix:
 	uv run ruff check --fix src tests $(SERVICE_TREES)
