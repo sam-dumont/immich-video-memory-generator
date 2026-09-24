@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.config_models_editorial import EditorialPeopleConfig
+from tests.editorial_subject_family import film_of, her_parents, subject_people
 
 FAMILY = "with Person A (partner; inner circle); Person B (son; 3 months old)"
 STRANGERS = "with Person C (unconfirmed)"
@@ -35,7 +36,7 @@ MONTH = {
 }
 
 
-def _read_month():
+def _read_month(*, family_line=FAMILY, film=None):
     assets, moments, annotations = {}, {}, {}
     for day, (pictures, family, _gate) in MONTH.items():
         ids = []
@@ -50,7 +51,7 @@ def _read_month():
                 exif_info=None,
                 people=[],
             )
-            company = FAMILY if n < family else STRANGERS
+            company = family_line if n < family else STRANGERS
             annotations[asset_id] = f"{taken.isoformat()} | playing | {company}"
             ids.append(asset_id)
         moments[f"M{day:02}"] = tuple(ids)
@@ -65,7 +66,11 @@ def _read_month():
             editorial=SimpleNamespace(people=EditorialPeopleConfig()),
         ),
         intent=SimpleNamespace(product="monthly_highlights"),
+        case=SimpleNamespace(product="monthly_highlights", people=()),
+        people=None,
     )
+    if film is not None:
+        source.case, source.people = film.case, film.people
     reader = RuleStructureReader(source)
 
     def enrich(episodes):
@@ -103,3 +108,16 @@ def test_a_dense_day_of_strangers_is_not_promoted():
 
 def test_a_quiet_week_with_the_family_is_not_promoted():
     assert _read_month()[10] == "minor"
+
+
+def test_a_person_films_big_story_counts_the_subjects_own_parents(tmp_path):
+    """In a film of the owner's partner, a dense run with her parents is her family's big day;
+    to the owner they are in-laws, so a month film still reads the same run as minor."""
+    _people, relation = subject_people(tmp_path)
+    parents = her_parents(relation)
+
+    person = _read_month(family_line=parents, film=film_of(tmp_path / "p", "person_spotlight"))
+    month = _read_month(family_line=parents, film=film_of(tmp_path / "m", "monthly_highlights"))
+
+    assert person[6] == "major"
+    assert month[6] == "minor"
