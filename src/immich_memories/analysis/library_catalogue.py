@@ -19,6 +19,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
 
+from immich_memories.analysis.strict_json import final_json_object
 from immich_memories.operations.cancellation import check_cancelled
 from immich_memories.store.episode_readings import BankedEpisodeReading
 from immich_memories.store.library_catalogue import CatalogueStore, LibraryAccount
@@ -345,10 +346,10 @@ class _AccountBuilder:
         contract += f"This batch contains {len(pending)} independent records. "
         contract += "Return an account for EACH of these exact keys: "
         contract += ", ".join(row["key"] for row in pending) + ".\n"
-        try:
-            return json.loads(self.requester(contract + _OVERVIEW_INSTRUCTIONS + _encode(pending)))
-        except json.JSONDecodeError:
-            return {}
+        # A reader may fence its JSON or trail a word after it; take the object it answered with.
+        return final_json_object(
+            self.requester(contract + _OVERVIEW_INSTRUCTIONS + _encode(pending))
+        )
 
 
 def _valid_accounts(raw, pending) -> dict[str, str]:

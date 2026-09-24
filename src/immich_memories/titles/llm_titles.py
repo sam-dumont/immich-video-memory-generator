@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -550,6 +551,31 @@ def _is_a_known_name(word: str, known: set[str]) -> bool:
     return any(SequenceMatcher(None, lowered, name).ratio() >= _SAME_NAME_RATIO for name in known)
 
 
+@lru_cache(maxsize=1)
+def _calendar_words() -> frozenset[str]:
+    """Month and weekday names in every film language: a date spelled out, never a name.
+
+    The facts carry dates as numbers, so without this "Porto in January" reads as a
+    title that names something no fact names. Wide names only: an abbreviation such
+    as "Jan" is also a first name.
+    """
+    from babel.dates import get_day_names, get_month_names
+
+    from immich_memories.i18n import SUPPORTED_LOCALES, babel_locale
+
+    words: set[str] = set()
+    for code in SUPPORTED_LOCALES:
+        where = babel_locale(code)
+        for context in ("format", "stand-alone"):
+            for names in (
+                get_month_names("wide", context, where),
+                get_day_names("wide", context, where),
+            ):
+                for name in names.values():
+                    words.update(word.casefold() for word in _name_words(name))
+    return frozenset(words)
+
+
 def invented_name(line: str, facts: str) -> str | None:
     """The first name this line uses that the facts do not, if it uses one.
 
@@ -563,7 +589,9 @@ def invented_name(line: str, facts: str) -> str | None:
         (
             word
             for word in _name_words(line)[1:]
-            if word[:1].isupper() and not _is_a_known_name(word, known)
+            if word[:1].isupper()
+            and word.casefold() not in _calendar_words()
+            and not _is_a_known_name(word, known)
         ),
         None,
     )

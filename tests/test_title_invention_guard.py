@@ -36,3 +36,19 @@ def test_a_reply_is_still_parsed_when_it_only_rewords_its_facts():
     suggestion = parse_title_response(reply)
     assert isinstance(suggestion, TitleSuggestion)
     assert invented_name(suggestion.title, FACTS) is None
+
+
+def test_a_month_the_facts_carry_as_a_date_is_not_an_invention():
+    facts = "Memory type: monthly_highlights\nSpan: 2024-01-01 to 2024-01-31 (31 days)\n"
+    assert invented_name("Porto in January", facts + "Places by day:\n  01-04: Porto\n") is None
+
+
+def test_a_weekday_or_month_in_another_film_language_is_not_an_invention():
+    facts = "Span: 2024-03-03 to 2024-03-03 (1 day)\nPlaces by day:\n  03-03: Berlin\n"
+    assert invented_name("Berlin am Sonntag im März", facts) is None
+    assert invented_name("Ein Sonntag im März", facts) is None
+
+
+def test_a_name_beside_a_month_is_still_caught():
+    facts = "Span: 2024-01-01 to 2024-01-31 (31 days)\nPlaces by day:\n  01-04: Porto\n"
+    assert invented_name("Porto in January with Marcel", facts) == "Marcel"
