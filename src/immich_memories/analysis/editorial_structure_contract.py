@@ -28,19 +28,6 @@ if TYPE_CHECKING:
     from immich_memories.analysis.editorial_thin_layer import ThinPolish
 
 
-class SampledPairConfirmer(Protocol):
-    """Confirm nominated source pairs against their own conserved pictures."""
-
-    def __call__(
-        self,
-        pairs: tuple[tuple[str, str], ...],
-        picture_records: Mapping[str, Mapping[str, Any]],
-        corroborating_distances: Sequence[int | None] | None = None,
-    ) -> tuple[Any, Mapping[str, Any]]:
-        """A hash-nominated pair carries its own distance; a described one carries none."""
-        ...
-
-
 class StructureJudge(Protocol):
     calls: list[dict[str, Any]]
 
@@ -225,16 +212,6 @@ class StructurePlannerPorts:
     picture_facts_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_story_motion: Callable[[Mapping[str, Any]], str] | None = None
     story_motion_metrics: Callable[[], Mapping[str, Any]] | None = None
-    confirm_sampled_pairs: SampledPairConfirmer | None = None
-    sampled_pair_metrics: Callable[[], Mapping[str, Any]] | None = None
-    # The same boundary asked whether two nearby captures repeat each other, which
-    # no perceptual distance answers; None leaves the strict question to answer both.
-    confirm_episode_pairs: SampledPairConfirmer | None = None
-    # The same question for two pictures of one story that may be days apart.
-    confirm_story_pairs: SampledPairConfirmer | None = None
-    sampled_preview_hashes: (
-        Callable[[tuple[str, ...], Mapping[str, Mapping[str, Any]]], Mapping[str, str]] | None
-    ) = None
     observe_attached_material: Callable[[list[dict[str, Any]]], AttachedMaterialEvidence] | None = (
         None
     )

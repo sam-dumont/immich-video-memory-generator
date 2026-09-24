@@ -301,7 +301,6 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
         "attached_material_metrics": _optional_metrics(ports.attached_material_metrics),
         "picture_facts_metrics": _optional_metrics(ports.picture_facts_metrics),
         "story_motion_facts": _optional_metrics(ports.story_motion_metrics),
-        "sampled_pair_metrics": _optional_metrics(ports.sampled_pair_metrics),
         "shareability": outcome.share_log,
         "carrier_source_exclusions": {
             "policy": "screen-document-carrier-v1",

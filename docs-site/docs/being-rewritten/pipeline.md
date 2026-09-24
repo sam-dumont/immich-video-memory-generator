@@ -379,8 +379,10 @@ in the repository.
 ## Twins and near-duplicates
 
 You held the shutter down. You imported the same clip twice. You shot the cake from two steps left.
-None of that should cost three slots in a two-minute film. Sameness is decided in four places,
-cheapest first, and only the first one is free of model calls.
+None of that should cost three slots in a two-minute film. Sameness is decided in three places,
+and none of them sends a picture to a model: pictures are read once, at ingest, and every later
+question about them reads what ingest banked (the preview hash and the scene print). That holds on
+every tier, with or without a language model.
 
 **1. Bursts, on capture time and pixels.** Photos within `photos.burst_window_seconds` of each other
 **and** within `photos.burst_hash_threshold` bits on an average hash of their Immich previews are
@@ -399,20 +401,11 @@ of 303 photos went, 21 % of the pool, in groups of up to five. It saves no model
 heads and detectors are paid for the whole eligible period first); what it saves is a cut with five
 near-identical frames in it.
 
-**2. Neighbours, asked as a pair.** Two pictures side by side, two numbered tiles, judged in both
-arrangements: only the two orders agreeing counts as one picture, so a verdict bought once is a
-cache hit everywhere. Perceptual distance is the second vote, never the only one. Measured on 653
-real pairs the model contradicted itself on 39, and only 4 of those were pixel-close: its
-uncertainty lives on pixel-*distant* pairs. At a corroboration distance of 10 the rule reproduced
-all 653 decisions exactly while removing 30 % of the calls, and the first changed decision appears
-at 12. That 10 is a constant in the code, not a setting.
-
-**3. Inside a story, while the cut can still change.** A story's second or third picture is kept
+**2. Inside a story, while the cut can still change.** A story's second or third picture is kept
 only if it does not look like one the story already holds. Trips and long stays are where this
 matters: three one-day stories of a weekend away used to ship three near-identical selfies. The
-question is step 4's repetition question, asked in both arrangements: a pair from the same 90-minute
-episode is asked exactly as step 4 asks it, so the answer is shared, and a pair days apart is asked
-with a premise that says so. A refused picture frees its slot for the story's next distinct moment,
+question is answered from the perceptual hashes the burst pass already caches, at 10 bits, bounded
+to one story or one calendar day. A refused picture frees its slot for the story's next distinct moment,
 or for the next story in line. A favourite is never refused for looking like a picture you did not
 star, and when nothing else can take the slot the refused picture comes back, so this check alone
 never makes a film short. A picture is compared with the frames its story
@@ -430,12 +423,10 @@ question confirms it looks different from the kept frames of its moment and the 
 after it. Nothing unasked and no look-alike fills a slot this way, so a film of one repeated scene
 stays short. The three rungs are spent on pictures that could carry a frame: the ladder walks a moment's members in order, so a member the standing gate or a source rule already refused used to consume one. Where the members were ranked on capture facts rather than by a model, position says little, and a moment of eight pictures whose third-ranked frame scored nothing shipped two frames with five usable ones left behind. Those are now skipped rather than counted, and the spares that remain are offered furthest first in capture time from the frames of that moment already in the cut. One single-day memory went from 15 shots and 80.9 s to 18 and 89.8 s of a 94 s target.
 
-**Steps 3 and 4 ask the hashes first, whatever the reader is.** Step 2 needs a reader, so the no-model editor reported `lookalike: unavailable` and asked nothing. The question is now built from the perceptual hashes the burst pass already caches, at the same corroboration distance of 10 bits, bounded to one story or one calendar day. A frame that plays is never a repeat of a still, a preview with no cached hash answers unknown rather than distinct, and a favourite is still never refused for looking like a picture you did not star. A film with a model asks the hashes first too, and pays a look-alike call only where they do not corroborate: a pair they call alike is a repeat with no call at all, and a pair they answer differently or cannot settle is put to the reader exactly as before. The measured reason: the look-alike stage was 61 % of a film's recovery calls and 60 % of its answers disagreed between the two pair orders, while the hashes settle the near-identical half for nothing. That matters for more than repetition: the depth pass refuses to run without a look-alike relation, so a no-model film could not deepen the moments it already showed. With one, a sparse year film went from 98 shots and 384 s of a 600 s target to 159 and 599.7 s, a single-day memory from 7 shots to 15, and a day that produced no film at all produced one.
+**The look is the same question on every tier.** A frame that plays is never a repeat of a still, a preview with no cached hash answers unknown rather than distinct, and a favourite is never refused for looking like a picture you did not star. A film with a language model used to put the pairs the hashes did not settle to the model as two numbered tiles, in both arrangements. That was a second look at pixels at film time, and it is gone. Over the 4,125 pairs the 30B had answered, it called both arrangements the same picture 20 times; across 59 recorded model films its final pair review removed 23 of 1,319 carriers, and the default model path (the thin layer) had stopped running it at all. The look-alike relation also feeds the depth pass: a film with no relation could not deepen the moments it already showed, and with the hashes a sparse year film went from 98 shots and 384 s of a 600 s target to 159 and 599.7 s, a single-day memory from 7 shots to 15, and a day that produced no film at all produced one.
 
-**4. The final film, over what actually shipped.** Only pictures selected from the same capture
-episode, within the 90-minute window, are compared. Matching hashes or similar captions from
-unrelated episodes do not buy a model call. Within an episode, a hash distance of at most 10 bits
-can corroborate the same-picture question from step 2.
+**3. The final film, over what actually shipped.** The cached hashes and scene prints read the
+finished cut, as described below.
 
 **The same scene, not only the same frame.** A hash only agrees about one framing. The same path at
 dusk shot twice twenty minutes apart, the same couple's selfie a week later, the same stage filmed
@@ -467,31 +458,18 @@ reserves all surviving pictures first, then checks each replacement against thos
 earlier replacements. It skips a conflicting candidate before asking for an audience verdict.
 If no suitable alternative remains, the film gets shorter.
 
-The episode signal is there because the other two miss the obvious case. Two frames of the same
-minute on a dark bus, shot from slightly different angles, have distant hashes and get two
-unrelated descriptions, so nothing ever put them side by side and both shipped. A pair that only
-its episode nominated is asked a different question, whether the two show similar content so that
-keeping one avoids repetition, and it always needs both arrangements to agree: the corroboration
-distance of step 2 was measured on the same-picture question, so it buys nothing here. Pair work
-stays inside the same fixed bound of twice the number of pictures in the cut, and a comparison the
-bound cut short keeps both pictures and says so in the record.
-
-Which one survives, in order: protected carriers, favourites, pictures with a known quality figure,
-quality itself, capture time, then asset id. A favourited copy wins even at a lower resolution: you
-flagged that one on purpose. Each removal writes which picture went, which kept its slot, the
-hamming distance, and which signal nominated the pair.
-
-The cached hashes get the finished film first, on every tier. Nothing nominates a pair from what
-its pictures were described as holding, so this pass reads every frame of one story or one day
-against every other rather than only the ones inside a 90-minute episode: two frames of the same
-subject four shots apart on a thin day are never asked about until here. It stops at the edge of a
-story and a day, and at 6 bits rather than the 10 a nominated pair is confirmed at. Nothing
+The cached hashes read every frame of one story or one day against every other: two frames of the
+same subject four shots apart on a thin day are never compared until here. The pass stops at the
+edge of a story and a day, and at 6 bits rather than the 10 the selection-time check uses. Nothing
 corroborates a pair here, so the hash is the whole verdict; measured over thirty no-model runs at
 10 bits, 50 of 61 refusals sat at 9 or 10 bits and 20 of those were between frames months apart.
 Which picture survives, in order: a carrier you ticked, then the favourite, then the frame that
-moves, then the earlier one. A film with a model then runs the sampled review above over what
-this pass left, and the run's `final_duplicate_review` record lists both passes' removals with
-the free one's own record under `hash_review`.
+moves, then the earlier one. The run's `final_duplicate_review` record lists every removal, the
+hamming distance or scene cosine behind it, and which frame kept its slot.
+
+Two frames of the same minute on a dark bus, shot from slightly different angles, have distant
+hashes. When their scene prints agree they are one scene; when they do not, both ship. No tier
+asks a model to look at the two side by side.
 
 A refused frame does not leave a hole in the film. Its slot is offered the same pictures the
 family-viewing gate would offer: the moment's own other frames first, in the order the quality
@@ -558,8 +536,7 @@ of a model on any tier. The two numbers are `advanced.editorial.people.seat_min_
 The passes after the draft cannot quietly undo a seat. The duplicate review never removes a close
 family member's only shot: of two look-alikes where one is somebody's only appearance, the other
 one leaves; a slot it refills must still show them; and when neither works both frames stay (the
-record names them under `kept_only_shots`). The model's sampled review treats such a frame as
-protected. After every review and the filler pass below have run, the finished film is checked
+record names them under `kept_only_shots`). After every review and the filler pass below have run, the finished film is checked
 once more, and anyone who lost their only shot anyway (to the family-viewing gate or the timing
 trim) is seated again, through the same rules plus the family-viewing gate's own verdict on the
 frame. That second pass is recorded in
@@ -626,7 +603,7 @@ a bank that had nothing to say from one that was never opened.
 
 What you lose: the thesis (the page hides the quote rather than showing a templated one), an
 editor's sentence under each picture (you get `<story>: <n> pictures at <place>` instead), moments
-merged by content across capture groups, sampled duplicate review, the choice to play a Live Photo's
+merged by content across capture groups, the choice to play a Live Photo's
 motion, and the ability to clear a flagged-but-innocent picture for sending.
 
 Measured against the model editor's reference cut over the same periods, the rules reader kept 100 %

@@ -10,7 +10,6 @@ from typing import Any
 from immich_memories.analysis import editorial_shareability as share
 from immich_memories.analysis.editorial_attached_samples import AttachedVideoSamples
 from immich_memories.analysis.editorial_picture_facts import PictureFactsProvider
-from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
 from immich_memories.processing.live_material import LiveRenderMaterial
 
 
@@ -23,13 +22,8 @@ class AttachedMaterialEvidence:
 
 
 class FinalAttachedPictures:
-    def __init__(
-        self,
-        samples: AttachedVideoSamples,
-        pictures: PictureFactsProvider,
-        pairs: CachedSampledPairConfirmer,
-    ) -> None:
-        self._samples, self._pictures, self._pairs = samples, pictures, pairs
+    def __init__(self, samples: AttachedVideoSamples, pictures: PictureFactsProvider) -> None:
+        self._samples, self._pictures = samples, pictures
 
     def __call__(self, carriers: Sequence[Mapping[str, Any]]) -> AttachedMaterialEvidence:
         displayed: dict[str, tuple[str, ...]] = {}
@@ -114,9 +108,8 @@ class FinalAttachedPictures:
                     }
                 )
                 continue
-            sample, frame, source = acquired
+            sample, frame, _source = acquired
             record = self._pictures.observe_sample(sample, frame)
-            self._pairs.bind_sample(sample, source)
             if sample.key in records and records[sample.key] != record:
                 raise ValueError("one exact attached sample produced conflicting observations")
             records[sample.key] = record

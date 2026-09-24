@@ -10,10 +10,8 @@ that build one.
 from __future__ import annotations
 
 import math
-from collections import Counter
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from itertools import chain
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
@@ -23,10 +21,6 @@ from immich_memories.analysis.editorial_completion import (
 )
 from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
 from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
-from immich_memories.analysis.editorial_final_sampled_duplicates import (
-    displayed_sample_members,
-    reduce_final_sampled_duplicates,
-)
 from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_source_route import retire_unprojectable
 from immich_memories.analysis.editorial_story_planner import alternatives_pool
@@ -71,7 +65,7 @@ class PlanRun:
     final_duplicates: dict = field(
         default_factory=lambda: {
             "status": "unavailable",
-            "reason": "sampled comparison ports absent",
+            "reason": "the duplicate review has not run",
         }
     )
     # Binds a kept carrier's unmeasured Live stitch to its measurement (`measured_stitch`).
@@ -120,7 +114,6 @@ def observe_attached(
     ports: StructurePlannerPorts,
     gate: AudienceGate,
     picture_evidence: PictureEvidenceOverlay,
-    relation_records: dict,
     share_log: dict,
 ) -> tuple[AttachedMaterialEvidence, bool]:
     attached = AttachedMaterialEvidence()
@@ -134,7 +127,6 @@ def observe_attached(
     attached = ports.observe_attached_material(run.carriers)
     if set(attached.records) & picture_evidence.records.keys():
         raise ValueError("attached sample identity collides with primary picture evidence")
-    relation_records.update({key: dict(record) for key, record in attached.records.items()})
     run.carriers = tighten_with_attached_samples(
         run.carriers,
         gate=gate,
@@ -144,54 +136,6 @@ def observe_attached(
         cut_carriers=run.cut_carriers,
     )
     return attached, True
-
-
-def _sampled_duplicate_review(
-    run: PlanRun,
-    ports: StructurePlannerPorts,
-    *,
-    source_relation,
-    episode_relation,
-    picture_records,
-    attached: AttachedMaterialEvidence,
-    protected: Sequence[str],
-    quality,
-    pixel_facts,
-):
-    """The model review: nominate a pair from what its pictures were described as holding,
-    confirm it against their conserved pixels. None when this run has no ports to ask with."""
-    if source_relation is None or ports.sampled_preview_hashes is None:
-        return None
-    final_records = {**picture_records, **attached.records}
-    carried = {carrier["asset_id"] for carrier in run.carriers}
-    final_members = {
-        key: members for key, members in attached.displayed_members.items() if key in carried
-    }
-    displayed_ids = tuple(
-        sorted(
-            {
-                member
-                for carrier in run.carriers
-                for member in final_members.get(
-                    carrier["asset_id"], displayed_sample_members(carrier)
-                )
-            }
-        )
-    )
-    return reduce_final_sampled_duplicates(
-        run.carriers,
-        picture_records=final_records,
-        preview_hashes=ports.sampled_preview_hashes(displayed_ids, final_records),
-        confirm_relation=source_relation,
-        confirm_episode_relation=episode_relation,
-        bound_sample_members=final_members,
-        protected_asset_ids=protected,
-        objective_quality={
-            c["asset_id"]: quality(c["asset_id"])
-            for c in run.carriers
-            if c["asset_id"] in pixel_facts
-        },
-    )
 
 
 def replacement_offers(pool_for: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]]]):
@@ -230,42 +174,12 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
         run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
 
 
-def _only_shots(
-    carriers: Sequence[Mapping[str, Any]], close_family_of: Callable[[str], Collection[str]]
-) -> set[str]:
-    """The frames that are some close family member's only shot in the film."""
-    shows = {c["asset_id"]: set(close_family_of(c["asset_id"])) for c in carriers}
-    shots = Counter(chain.from_iterable(shows.values()))
-    return {asset for asset, people in shows.items() if any(shots[p] == 1 for p in people)}
-
-
-def _both_reviews(hash_record: dict, sampled: dict | None) -> dict:
-    """One record for a film that ran both passes: the sampled one, over the hashes' survivors.
-
-    Every removal either pass made is in ``removals``, so the film's bookkeeping reads one
-    list, and the free pass keeps its own record under ``hash_review``.
-    """
-    if sampled is None:
-        return hash_record
-    return sampled | {
-        "removals": [*hash_record["removals"], *sampled["removals"]],
-        "incomplete": bool(hash_record["incomplete"] or sampled["incomplete"]),
-        "hash_review": hash_record,
-    }
-
-
 def final_duplicate_review(
     run: PlanRun,
     ports: StructurePlannerPorts,
     *,
-    source_relation,
-    episode_relation,
-    picture_records,
-    attached: AttachedMaterialEvidence,
     prior,
     prior_assets: set[str],
-    quality,
-    pixel_facts,
     owner_required: Sequence[str] = (),
     replacements_for: Callable[[Mapping[str, Any]], Sequence[tuple[str, Mapping[str, Any]]]]
     | None = None,
@@ -275,20 +189,19 @@ def final_duplicate_review(
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward.
 
-    A close family member's only shot never leaves: the free review keeps it ahead of its
-    look-alike, and the sampled review over its survivors treats it as protected. A refill
-    arrives after the audience gate ran, so `gate` judges it like any other carrier: its
-    banked verdict when there is one, a new question otherwise, and a refused refill leaves
-    the slot to the next offer or empty."""
+    A close family member's only shot never leaves: the review keeps it ahead of its
+    look-alike. A refill arrives after the audience gate ran, so `gate` judges it like any
+    other carrier: its banked verdict when there is one, a new question otherwise, and a
+    refused refill leaves the slot to the next offer or empty."""
     protected = sorted(
         (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())
         | set(owner_required)
     )
     before_duplicates = run.carriers.copy()
-    # The preview hashes the burst pass already cached ask the repetition question over the
-    # whole finished cut for nothing, so this pass runs whatever the reader is. A film with a
-    # model then pays its sampled review only over what the hashes could not settle.
-    run.carriers, hash_record = review_cut_by_cached_hashes(
+    # The preview hashes the burst pass already cached and the scene prints ingest banked ask
+    # the repetition question over the whole finished cut, whatever the reader is. No tier
+    # sends the pair's pixels to a model: pictures are read once, at ingest.
+    run.carriers, run.final_duplicates = review_cut_by_cached_hashes(
         run.carriers,
         thumbnail_hash=ports.thumbnail_hash,
         protected_asset_ids=protected,
@@ -304,22 +217,6 @@ def final_duplicate_review(
     )
     known = {carrier["asset_id"] for carrier in before_duplicates}
     refilled = [c for c in run.carriers if c["asset_id"] not in known]
-    sampled = None
-    if ports.rules is None:
-        reviewed = _sampled_duplicate_review(
-            run,
-            ports,
-            source_relation=source_relation,
-            episode_relation=episode_relation,
-            picture_records=picture_records,
-            attached=attached,
-            protected=sorted({*protected, *_only_shots(run.carriers, close_family_of)}),
-            quality=quality,
-            pixel_facts=pixel_facts,
-        )
-        if reviewed is not None:
-            run.carriers, sampled = reviewed
-    run.final_duplicates = _both_reviews(hash_record, sampled)
     run.final_duplicates["status"] = (
         "incomplete" if run.final_duplicates["incomplete"] else "complete"
     )

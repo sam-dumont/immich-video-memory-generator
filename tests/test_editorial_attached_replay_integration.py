@@ -27,9 +27,6 @@ class Forbidden:
     def observe_sample(self, *_args, **_kwargs):
         pytest.fail("unavailable or empty material requested a model observation")
 
-    def bind_sample(self, *_args, **_kwargs):
-        pytest.fail("unavailable or empty material invented a sample")
-
 
 def live_carrier():
     material = LiveRenderMaterial((LiveSourceEntry("still", "video", 1.0, 0.0, 3.0),))
@@ -52,7 +49,7 @@ def test_final_observer_replays_original_failure_after_fresh_attempt_populates_p
     failed.fetch = lambda _key: None
     cold_outcomes = AttachedAttemptOutcomes(output=tmp_path / "cold", scope={"test": "same"})
     cold = provider(tmp_path / "cache", failed, outcomes=cold_outcomes)
-    original = FinalAttachedPictures(cold, Forbidden(), Forbidden())([live_carrier()])
+    original = FinalAttachedPictures(cold, Forbidden())([live_carrier()])
     reference = replay_from_output(tmp_path / "cold")
     assert original.gaps and not original.records
     assert cold.metrics()["fetch_attempts"] == 1
@@ -65,7 +62,7 @@ def test_final_observer_replays_original_failure_after_fresh_attempt_populates_p
         output=tmp_path / "warm", scope={"test": "same"}, replay=reference
     )
     warm = provider(tmp_path / "cache", Forbidden(), outcomes=warm_outcomes)
-    replayed = FinalAttachedPictures(warm, Forbidden(), Forbidden())([live_carrier()])
+    replayed = FinalAttachedPictures(warm, Forbidden())([live_carrier()])
     assert replayed == original
     assert warm.metrics()["fetch_attempts"] == warm.metrics()["frame_decodes"] == 0
     assert replay_from_output(tmp_path / "warm").read()["complete"] is True
@@ -79,7 +76,7 @@ def test_changed_final_interval_rejects_before_acquisition_or_picture_observatio
         failed,
         outcomes=AttachedAttemptOutcomes(output=tmp_path / "cold", scope={"test": "same"}),
     )
-    FinalAttachedPictures(cold, Forbidden(), Forbidden())([live_carrier()])
+    FinalAttachedPictures(cold, Forbidden())([live_carrier()])
     warm = provider(
         tmp_path / "cache",
         Forbidden(),
@@ -90,7 +87,7 @@ def test_changed_final_interval_rejects_before_acquisition_or_picture_observatio
         ),
     )
     with pytest.raises(ValueError, match="material or complete request set changed"):
-        FinalAttachedPictures(warm, Forbidden(), Forbidden())([{**live_carrier(), "seconds": 1.5}])
+        FinalAttachedPictures(warm, Forbidden())([{**live_carrier(), "seconds": 1.5}])
     assert warm.metrics()["requested_samples"] == 0
 
 
@@ -109,7 +106,6 @@ def test_real_factory_and_no_live_planner_seal_and_replay_empty_material(tmp_pat
                 captured,
                 cache_path=tmp_path / "cache.sqlite",
                 pictures=Forbidden(),
-                pairs=Forbidden(),
                 resources=resources,
             )
             result = plan_structure(
@@ -142,6 +138,5 @@ def test_real_factory_and_no_live_planner_seal_and_replay_empty_material(tmp_pat
             replace(replay_source, allow_live_motion=False),
             cache_path=tmp_path / "cache.sqlite",
             pictures=Forbidden(),
-            pairs=Forbidden(),
             resources=resources,
         )
