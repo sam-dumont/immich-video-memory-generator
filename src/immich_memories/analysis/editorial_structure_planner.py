@@ -25,6 +25,7 @@ from immich_memories.analysis.editorial_block_votes import (
     worth_criterion_v44,
 )
 from immich_memories.analysis.editorial_carrier_eligibility import people_moment
+from immich_memories.analysis.editorial_cut_invariants import check_finished_cut
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
 from immich_memories.analysis.editorial_family_seat import (
@@ -543,6 +544,7 @@ def _select(
         ),
     )
     check_empty_attached(ports, observed)
+    check_finished_cut(source, selection, material, run, gate, banked, share_log, record_story)
     return PlanOutcome(
         contract=contract,
         carriers=run.carriers,

@@ -214,6 +214,24 @@ def film_close_family(source: StructurePlanningInput) -> Callable[[str], Mapping
     return close_family
 
 
+def film_refusal(
+    source: StructurePlanningInput,
+    excluded: Mapping[str, str],
+    withheld: Callable[[str], bool],
+) -> Callable[[str], bool]:
+    """Whether this film refuses a picture as a carrier: a carrier rule, a banked refusal, or
+    (for a film shared beyond the family) the exposure head's hold."""
+
+    def refused(asset: str) -> bool:
+        heads = source.audience_annotations.get(asset)
+        shared_hold = source.audience != "family" and exposure_flagged(
+            dict(heads.heads) if heads else {}
+        )
+        return asset in excluded or withheld(asset) or shared_hold
+
+    return refused
+
+
 @dataclass(frozen=True)
 class FilmSeatSource:
     """The planning run the seat reads: its source, the rules reader (None on a run the model
@@ -264,14 +282,7 @@ def seat_in_film(
         gate.ensure([asset])
         return gate.stands(asset, story["weight"], story["key"])
 
-    withheld = withheld_by_bank(film.banked, favourite=favourite)
-
-    def refused(asset: str) -> bool:
-        heads = source.audience_annotations.get(asset)
-        shared_hold = source.audience != "family" and exposure_flagged(
-            dict(heads.heads) if heads else {}
-        )
-        return asset in excluded or withheld(asset) or shared_hold
+    refused = film_refusal(source, excluded, withheld_by_bank(film.banked, favourite=favourite))
 
     def has_room(cut: list[dict]) -> bool:
         if len(cut) > selection.slots:

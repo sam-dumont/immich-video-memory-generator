@@ -564,6 +564,26 @@ its place: the film goes short rather than keep a guess. A shot with any indicat
 never read, is left alone. `derived-decisions/unvouched-filler.private.json` lists what left, by id
 and head label.
 
+### The finished cut is checked against its promises
+
+Each pass keeps its own promise when it runs, and a later pass can undo it without knowing: the
+duplicate review once took the only shot of a close family member the seat had just covered. So
+after the last pass, the finished cut is read once against all of them:
+
+1. every close family member the seat owes a shot has one, or the seat recorded why not;
+2. no non-favourite carries a moment whose favourite could have carried it;
+3. in a multi-year person film or a multi-range custom film, every year with a story of its own has
+   a shot, unless its pictures were recorded as failing the standing bar;
+4. a Live Photo whose clip measures at least 1.5 with its subject in frame plays as motion;
+5. nothing the family-viewing gate holds, or never judged, and nothing a carrier rule refuses is in
+   the cut;
+6. the cut is in capture order.
+
+It changes nothing. Each broken promise is one warning in the log and one row in
+`derived-decisions/cut-invariants.private.json`, with the pass that last touched it where the
+record knows it, and `runs show` prints the count. A person is named by relation in the log; the
+name stays in the private record.
+
 ### Reading what a model already answered
 
 On a fresh install the draft has nothing to read and cuts exactly the film it cut before. On an
