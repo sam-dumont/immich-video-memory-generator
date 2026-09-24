@@ -135,6 +135,11 @@ def build_upload_fields(
     return identity_fields | common_fields
 
 
+def _file_sha1(file_path: Path) -> str:
+    with file_path.open("rb") as f:
+        return hashlib.file_digest(f, lambda: hashlib.sha1(usedforsecurity=False)).hexdigest()
+
+
 def _upload_asset_id(data: Any) -> str:
     if not isinstance(data, dict):
         raise InvalidUploadResponse("Upload response must contain a non-empty string id")
@@ -199,15 +204,45 @@ class AlbumService:
         modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
         fields = build_upload_fields(version, file_path, modified_at, captured_at)
 
+        checksum = _file_sha1(file_path)
+
         with file_path.open("rb") as f:
             data = await self._request(
                 "POST",
                 "/assets",
                 data=fields,
                 files={"assetData": (file_path.name, f, content_type)},
+                # WHY: Immich answers "duplicate" instead of storing a second copy
+                # of a file whose SHA-1 it already holds for this user.
+                headers={"x-immich-checksum": checksum},
                 timeout=600.0,  # 10 min for large video uploads on slow connections
+                before_retry=lambda: self._stored_upload(checksum),
             )
         return _upload_asset_id(data)
+
+    async def _stored_upload(self, checksum: str) -> dict[str, str] | None:
+        """The asset a failed attempt stored anyway, so a retry does not store it twice.
+
+        A 5xx or a timeout can arrive after Immich has written the asset. The
+        library is asked for the file's checksum first; only a file it does not
+        hold (or holds only in the trash) is sent again.
+        """
+        try:
+            data = await self._request(
+                "POST",
+                "/assets/bulk-upload-check",
+                json={"assets": [{"id": "upload", "checksum": checksum}]},
+            )
+        except Exception:  # WHY: an unanswered check still leaves the checksum header
+            logger.debug("Upload check failed; retrying the upload", exc_info=True)
+            return None
+        results = data.get("results") if isinstance(data, dict) else None
+        found = results[0] if isinstance(results, list) and results else {}
+        asset_id = found.get("assetId") if isinstance(found, dict) else None
+        if not isinstance(asset_id, str) or found.get("isTrashed"):
+            return None
+        logger.info("An earlier upload attempt already stored this film as %s", asset_id)
+        return {"id": asset_id, "status": "duplicate"}
 
     async def create_album(self, name: str, description: str | None = None) -> str:
         """Create an album in Immich. Returns the album ID."""

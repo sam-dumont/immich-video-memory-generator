@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -244,6 +244,8 @@ class ImmichClient:
         self,
         method: str,
         endpoint: str,
+        *,
+        before_retry: Callable[[], Awaitable[Any]] | None = None,
         **kwargs,
     ) -> dict | list | bytes:
         """Make an API request with retry on transient failures.
@@ -251,6 +253,11 @@ class ImmichClient:
         Retries up to _MAX_RETRIES times on timeout, network errors, and
         retryable status codes (429, 500-504). Non-retryable errors (401, 404,
         other 4xx) raise immediately.
+
+        ``before_retry`` runs after each backoff, before the request is sent
+        again; anything it returns other than None is taken as the answer and
+        nothing is re-sent. A write that may already have landed uses it to look
+        before repeating itself.
         """
         url = f"/api{endpoint}"
         logger.debug(f"Request: {method} {url}")
@@ -278,6 +285,8 @@ class ImmichClient:
                     f"retrying in {backoff:.1f}s"
                 )
                 await asyncio.sleep(backoff)
+                if before_retry is not None and (settled := await before_retry()) is not None:
+                    return settled
 
         raise last_exception or ImmichAPIError("Request failed after retries")
 
