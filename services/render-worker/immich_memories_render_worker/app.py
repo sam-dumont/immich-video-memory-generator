@@ -70,7 +70,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request, exc):
-        # Pydantic's input field can echo the whole body, including the scoped key.
+        # Pydantic's input field can echo the whole body, including the Immich key.
         return JSONResponse(
             status_code=422,
             content={

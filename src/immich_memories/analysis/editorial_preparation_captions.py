@@ -13,6 +13,8 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import asdict, dataclass, replace
+from http.client import HTTPResponse
+from urllib.parse import urlsplit
 
 from PIL import Image
 
@@ -75,10 +77,33 @@ def bearer_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    parts = urlsplit(url)
+    return parts.scheme, parts.hostname, parts.port
+
+
+class _CredentialsStayOnTheirOrigin(urllib.request.HTTPRedirectHandler):
+    """urllib copies every header onto a redirect, Authorization included (#1212)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        follow = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if follow is not None and _origin(newurl) != _origin(req.full_url):
+            follow.remove_header("Authorization")
+        return follow
+
+
+_OPENER = urllib.request.build_opener(_CredentialsStayOnTheirOrigin)
+
+
+def open_caption_url(request: urllib.request.Request, *, timeout: float) -> HTTPResponse:
+    """urlopen for a caption endpoint: a redirect to another origin loses the bearer token."""
+    return _OPENER.open(request, timeout=timeout)
+
+
 def _model_inventory(base_url: str, *, timeout: float, api_key: str) -> list[dict]:
     request = urllib.request.Request(f"{base_url}/models", headers=bearer_headers(api_key))  # noqa: S310
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with open_caption_url(request, timeout=timeout) as response:
             payload = json.loads(response.read())
     except urllib.error.HTTPError as exc:
         if exc.code not in REFUSED_CODES:
@@ -112,7 +137,7 @@ def _ask_one(
     prompt_tokens: int | None = None
     body: object = None
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with open_caption_url(request, timeout=timeout) as response:
             body = json.loads(response.read())
         if not isinstance(body, dict):
             raise ValueError("caption response is not an object")

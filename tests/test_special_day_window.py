@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from immich_memories.analysis.special_day import SpecialDay, ask_if_special, event_window
 
 # Two synthetic places, far enough apart to be different clusters.
@@ -180,7 +182,7 @@ def test_the_catalogue_takes_the_models_window_over_the_geometric_one(monkeypatc
         ),
     )
 
-    found = scan_year(day, llm_config=None, home=None, ask=1)
+    found = scan_year(day, llm_config=None, home=None)
 
     assert [(d.day, d.window) for d in found] == [(date(2021, 6, 12), judged)]
 
@@ -235,3 +237,7 @@ def test_an_entry_from_before_windows_existed_still_reads(tmp_path) -> None:
     catalogue.write_text(json.dumps([{"day": "2015-06-12", "title": "A day out"}]))
 
     assert "10 years ago" in _days_due(catalogue, "2025-06-12")
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

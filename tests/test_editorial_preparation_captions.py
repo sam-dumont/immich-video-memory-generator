@@ -1,5 +1,6 @@
 """Real caption orchestration with synthetic responses, including durable failures."""
 
+import contextlib
 import http.server
 import io
 import json
@@ -460,3 +461,48 @@ def test_a_gate_on_completions_alone_still_names_the_setting():
 
     assert "401" in str(refused.value)
     assert "caption_api_key" in str(refused.value)
+
+
+class _Redirector:
+    """Answers every request with a redirect to the same path on another host."""
+
+    def __init__(self, target_base: str) -> None:
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _redirect(self) -> None:
+                self.send_response(302)
+                self.send_header("Location", target_base + self.path.removeprefix("/v1"))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            do_GET = _redirect  # noqa: N815 — BaseHTTPRequestHandler's name
+            do_POST = _redirect  # noqa: N815 — BaseHTTPRequestHandler's name
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+        self.base_url = f"http://127.0.0.1:{self._httpd.server_address[1]}/v1"
+
+    def close(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+
+
+def test_the_caption_key_does_not_follow_a_redirect_to_another_host(open_endpoint):
+    """#1212: a caption server that redirects must not hand our token to the next host."""
+    other_host = open_endpoint.base_url.replace("127.0.0.1", "localhost")
+    redirector = _Redirector(other_host)
+    try:
+        with sqlite3.connect(":memory:") as connection:
+            initialize(connection)
+            # The completion POST comes back as a GET that answers the inventory,
+            # which fails the schema control; only the headers matter here.
+            with contextlib.suppress(ValueError):
+                run(connection, base_url=redirector.base_url, api_key="caption-token")
+    finally:
+        redirector.close()
+
+    assert open_endpoint.seen_authorization, "the redirect was never followed"
+    assert set(open_endpoint.seen_authorization) == {None}

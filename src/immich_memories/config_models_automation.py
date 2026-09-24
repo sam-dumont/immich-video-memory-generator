@@ -58,6 +58,15 @@ class AutomationConfig(BaseModel):
     detect_person_spotlight: bool = Field(default=True)
     detect_activity_burst: bool = Field(default=True)
     burst_threshold: float = Field(default=2.0, ge=1.0, le=10.0)
+    special_days_per_year: int = Field(
+        default=6,
+        ge=1,
+        le=100,
+        description=(
+            "How many days a year discover-days keeps without a model, strongest first. "
+            "A model reading names every occasion it finds"
+        ),
+    )
 
     @field_validator("daily_at")
     @classmethod
