@@ -273,7 +273,7 @@ people:
 """
 
 
-def _planned_person_film(tmp_path, *, product: str):
+def _planned_person_film(tmp_path, *, product: str, scene_print=None, full=False):
     """A rules-read period of the owner's partner. Every moment's starred frame shows her alone,
     and her father and mother are on the other pictures of her first week, so every moment they
     are in goes to a favourite. The people file links her parents to her, not to the owner."""
@@ -323,14 +323,37 @@ def _planned_person_film(tmp_path, *, product: str):
             judge=NoModelJudge(),
             thumbnail_hash=lambda _asset: None,
             rules=RuleStructureReader(source),
+            scene_print=scene_print,
         ),
     ).plan
     shots = [c["asset_id"] for c in plan["carriers"]]
-    return [a for a in shots if "Her Father" in source.annotations[a]]
+    fathers = [a for a in shots if "Her Father" in source.annotations[a]]
+    return (fathers, plan, source) if full else fathers
 
 
 def test_a_person_film_seats_its_subjects_parents_though_the_owner_calls_them_in_laws(tmp_path):
     assert len(_planned_person_film(tmp_path / "person", product="person_spotlight")) == 1
+
+
+def test_the_review_keeps_the_subjects_parents_only_shot_beside_its_look_alike(tmp_path):
+    """Every frame of the month reads as one scene, so the parents' seated shot is a look-alike of
+    a favourite. The owner calls them in-laws, so only the film's own close family protects it:
+    the review keeps it, and the second seat has nobody left to seat."""
+    import json
+
+    import numpy as np
+
+    fathers, plan, source = _planned_person_film(
+        tmp_path,
+        product="person_spotlight",
+        scene_print=lambda _asset: np.array([1.0, 0.0]),
+        full=True,
+    )
+
+    assert len(fathers) == 1
+    assert plan["final_duplicate_review"]["kept_only_shots"] == fathers
+    after = source.artifact_dir / "derived-decisions" / "family-seat-after-review.private.json"
+    assert json.loads(after.read_text())["seats"] == []
 
 
 def test_a_month_film_keeps_close_family_relative_to_the_owner(tmp_path):
