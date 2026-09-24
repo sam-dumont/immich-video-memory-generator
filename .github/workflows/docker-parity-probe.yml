@@ -8,66 +8,66 @@ permissions:
   contents: read
 
 jobs:
-  parity:
+  gha-cache:
+    name: gha layer cache round trip
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    timeout-minutes: 60
+    env:
+      SCOPE: probe-1285-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          fetch-depth: 0
       - name: Free disk
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
-      - name: Old Dockerfile (main) and new
-        run: git show origin/main:docker/Dockerfile > "$RUNNER_TEMP/Dockerfile.old"
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: A. no cache at all (today's CI)
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
-          driver: docker
-      - name: Build old and new, dump content
-        run: |
-          set -euo pipefail
-          args=(--platform linux/amd64 --build-arg APP_VERSION=0+gparity --build-arg INSTALL_EXTRAS=all --build-arg VCS_REF=parity)
-          cat > "$RUNNER_TEMP/m.sh" <<'SH'
-          pip list --format=freeze
-          echo ===
-          find / -xdev \( -path /proc -o -path /sys -o -path /tmp -o -path /dev \) -prune -o -type f -print0 2>/dev/null \
-            | sort -z | xargs -0 sha256sum 2>/dev/null | grep -vE '\.pyc$|__pycache__'
-          SH
-          # old twice: the second, uncached, shows what differs between two builds
-          # of the very same Dockerfile (timestamps, wheels built from sdists).
-          for v in old old-again new; do
-            f=docker/Dockerfile; [ $v != new ] && f="$RUNNER_TEMP/Dockerfile.old"
-            extra=(); [ $v = old-again ] && extra=(--no-cache)
-            start=$(date +%s)
-            docker buildx build "${args[@]}" "${extra[@]}" -f "$f" -t "parity:$v" --load . > "$RUNNER_TEMP/build-$v.log" 2>&1 || { tail -50 "$RUNNER_TEMP/build-$v.log"; exit 1; }
-            echo "$v cold build: $(( $(date +%s) - start ))s"
-            docker run --rm --user 0 --entrypoint sh -v "$RUNNER_TEMP/m.sh:/m.sh:ro" "parity:$v" /m.sh > "$RUNNER_TEMP/content-$v.txt"
-            docker image inspect "parity:$v" --format '{{.Size}} {{json .Config.Labels}} {{json .Config.Env}} {{json .Config.Cmd}} {{json .Config.User}} {{json .Config.WorkingDir}} {{json .Config.ExposedPorts}} {{json .Config.Healthcheck}}' > "$RUNNER_TEMP/config-$v.txt"
-            wc -l "$RUNNER_TEMP/content-$v.txt"
-          done
-          echo "--- config diff old vs new"; diff "$RUNNER_TEMP/config-old.txt" "$RUNNER_TEMP/config-new.txt" && echo "config identical" || true
-          for pair in "old old-again" "old new"; do
-            set -- $pair
-            diff "$RUNNER_TEMP/content-$1.txt" "$RUNNER_TEMP/content-$2.txt" | grep -E '^[<>]' | awk '{print $NF}' | sort -u > "$RUNNER_TEMP/differ-$1-vs-$2.txt" || true
-            echo "--- files differing, $1 vs $2: $(wc -l < "$RUNNER_TEMP/differ-$1-vs-$2.txt")"; cat "$RUNNER_TEMP/differ-$1-vs-$2.txt"
-          done
-          echo "--- in old-vs-new but not in old-vs-old-again:"
-          comm -13 "$RUNNER_TEMP/differ-old-vs-old-again.txt" "$RUNNER_TEMP/differ-old-vs-new.txt"
-      - name: Code-only commit against the local layer cache
-        run: |
-          set -euo pipefail
-          echo "# parity probe" >> src/immich_memories/__init__.py
-          start=$(date +%s)
-          docker buildx build --platform linux/amd64 --build-arg APP_VERSION=0+gparity2 --build-arg INSTALL_EXTRAS=all \
-            --build-arg VCS_REF=parity2 -f docker/Dockerfile -t parity:new2 --progress plain --load . > "$RUNNER_TEMP/build-new2.log" 2>&1
-          echo "new, code-only rebuild: $(( $(date +%s) - start ))s"
-          grep -E '^#[0-9]+ \[' "$RUNNER_TEMP/build-new2.log" | sort -u -t' ' -k1,1 | cut -c1-110
-          echo "CACHED steps: $(grep -cE '^#[0-9]+ CACHED' "$RUNNER_TEMP/build-new2.log")"
-          git checkout src/immich_memories/__init__.py
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+          context: .
+          file: ./docker/Dockerfile
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=0+gprobe1
+            INSTALL_EXTRAS=all
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: B. first build, exporting a mode=max gha cache
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
-          name: docker-parity
-          path: ${{ runner.temp }}/*.txt
+          context: .
+          file: ./docker/Dockerfile
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=0+gprobe1
+            INSTALL_EXTRAS=all
+          cache-from: type=gha,scope=${{ env.SCOPE }}
+          cache-to: type=gha,mode=max,scope=${{ env.SCOPE }}
+      - name: A code-only commit
+        run: echo "# probe" >> src/immich_memories/__init__.py
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: C. code-only rebuild on a fresh builder, importing and exporting the gha cache
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=0+gprobe2
+            INSTALL_EXTRAS=all
+          cache-from: type=gha,scope=${{ env.SCOPE }}
+          cache-to: type=gha,mode=max,scope=${{ env.SCOPE }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: D. code-only rebuild on a fresh builder, importing only
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=0+gprobe3
+            INSTALL_EXTRAS=all
+          cache-from: type=gha,scope=${{ env.SCOPE }}

@@ -17,6 +17,12 @@
 #   3. Post "pending" commit status on this repo
 #   4. Private repo runs FFmpeg + GPU tests on ARC K8s runner
 #   5. Private repo posts "success"/"failure" status back here
+#
+# WHY every other job carries `if: github.repository == 'sam-dumont/immich-video-memory-generator'`:
+# the force-push below brings every workflow file into the private mirror, and
+# private repos bill GitHub-hosted minutes. Unguarded, benchmark/codeql/etc.
+# ate 90% of the free 2,000 minutes in a month. Only integration.yml may run
+# there. `make workflow-guard` (part of `make lint`) fails on an unguarded job.
 
 name: Mirror to CI
 

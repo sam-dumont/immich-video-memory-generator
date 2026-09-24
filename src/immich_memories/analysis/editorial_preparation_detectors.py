@@ -222,13 +222,18 @@ def _announce_once(head: str, message: str) -> None:
     logger.warning("%s", message)
 
 
+def missing_marqo_message(model_path: Path) -> str:
+    """The one sentence a missing detector export is reported with, in preflight and mid-run alike."""
+    return (
+        f"nsfw_marqo has no model: {MARQO_ONNX_ID} is not at {model_path}. "
+        "Run `immich-memories models fetch` to download it, or point "
+        "advanced.editorial.preparation.marqo_onnx at your copy of the export."
+    )
+
+
 def _refuse_unpinned_marqo(model_path: Path) -> None:
     if not model_path.is_file():
-        raise DetectorModelUnavailable(
-            f"nsfw_marqo has no model: {MARQO_ONNX_ID} is not at {model_path}. "
-            "Run `immich-memories models fetch` to download it, or point "
-            "advanced.editorial.preparation.marqo_onnx at your copy of the export."
-        )
+        raise DetectorModelUnavailable(missing_marqo_message(model_path))
     with model_path.open("rb") as handle:
         digest = hashlib.file_digest(handle, "sha256").hexdigest()
     if digest != MARQO_ONNX_SHA256:

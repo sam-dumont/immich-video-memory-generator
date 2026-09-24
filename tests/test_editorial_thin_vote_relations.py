@@ -10,9 +10,11 @@ import json
 import re
 from types import SimpleNamespace
 
+from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_thin_gates import ThinGates
 from immich_memories.analysis.editorial_thin_layer import ThinPolish
 from immich_memories.config_models_llm import LLMConfig
+from tests.editorial_subject_family import film_of, subject_people
 
 PARTNER = "with Person A (partner; aged 34; inner circle)"
 SON = "with Person B (son; 5 days old; recurring circle)"
@@ -78,7 +80,7 @@ def carrier(asset):
     }
 
 
-def polish_of(tmp_path, lines, *, standing=None, subject="", record=lambda _n, _p: None):
+def polish_of(tmp_path, lines, *, standing=None, subject="", record=lambda _n, _p: None, **film):
     judge = FitJudge()
     polish = ThinPolish(
         bank_dir=tmp_path,
@@ -95,6 +97,7 @@ def polish_of(tmp_path, lines, *, standing=None, subject="", record=lambda _n, _
         line_of=lines.get,
         record=record,
         subject=subject,
+        **film,
     )
     return [c["asset_id"] for c in kept], judge
 
@@ -155,3 +158,26 @@ def test_the_vote_is_told_whose_film_it_is_and_each_shots_relation_to_the_owner(
     assert "the owner's close family: partner" in rows["P02"]
     assert "the owner's close family: son" in rows["P01"]
     assert "close family" not in rows["P03"]
+
+
+def test_a_person_film_holds_the_only_shot_of_its_subjects_father(tmp_path):
+    """To the owner he is an in-law; in a film of his daughter he is her father, and a vote that
+    calls his only shot filler does not remove it. A month film still lets the vote remove it."""
+    _people, relation = subject_people(tmp_path)
+    father = f"with Her Father ({relation['Her Father']})"
+    lines = {
+        "a1": f"2024-02-01 09:00 | a woman in a garden | {PARTNER}",
+        "a2": f"2024-02-02 09:00 | filler: a man on a bench | {father}",
+        "a3": f"2024-02-03 09:00 | a man at a table | {FRIEND}",
+    }
+    kept, rows = {}, {}
+    for product in ("person_spotlight", "monthly_highlights"):
+        film = film_of(tmp_path / product, product)
+        kept[product], judge = polish_of(
+            tmp_path / product, lines, close_family=film_close_family(film)
+        )
+        rows[product] = dict(re.findall(r"^(P\d+): (.*)$", judge.prompts[0], re.MULTILINE))
+
+    assert kept == {"person_spotlight": ["a1", "a2", "a3"], "monthly_highlights": ["a1", "a3"]}
+    assert "the film's subject's close family: parent" in rows["person_spotlight"]["P02"]
+    assert "close family" not in rows["monthly_highlights"]["P02"]

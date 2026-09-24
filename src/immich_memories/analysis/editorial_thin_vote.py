@@ -17,7 +17,7 @@ from immich_memories.analysis.editorial_block_votes import (
     vote_blocks,
     weak_example,
 )
-from immich_memories.analysis.editorial_story_replies import close_family_on
+from immich_memories.analysis.editorial_story_replies import OF_THE_SUBJECT, close_family_on
 
 THESIS_FIT_VERSION = "thesis-fit-v4-owner-relations"
 THESIS_FIT_CRITERION = (
@@ -40,7 +40,15 @@ WHOSE_FILM = (
     "every period: a shot of one of them is never unrelated to this film, even when the thesis "
     "centres on someone else."
 )
+# Said only in a block that holds one: a month film's question stays word for word what it was.
+SUBJECTS_FAMILY = (
+    "This film is about someone, and a shot may also name the close family of the film's "
+    "subject (their partner, child, parent), though the owner is not related to them. A shot of "
+    "one of them is never unrelated to this film either."
+)
 NO_SUBJECT = "the owner's own life over this period, and the people in it"
+
+CloseFamily = Callable[[str], Mapping[str, str]]
 
 
 def judge_thesis_fit(
@@ -55,6 +63,7 @@ def judge_thesis_fit(
     save: Callable[[], None] | None = None,
     settled: Callable[[str, bool], bool] | None = None,
     subject: str = "",
+    close_family: CloseFamily = close_family_on,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Does each shot earn its place in THIS film? Named by both orders is a firm no.
 
@@ -68,12 +77,16 @@ def judge_thesis_fit(
     the second run asked one shot alone and moved two of the film's ten.
     """
     label_of = {asset: f"P{number + 1:02d}" for number, asset in enumerate(pictures)}
+    note_of = {asset: _family_note(close_family(line_of(asset))) for asset in pictures}
+    # Only a note naming the subject's family enters the key, so a month film replays its bank.
+    theirs = {asset: note for asset, note in note_of.items() if OF_THE_SUBJECT in note}
+    whose = f"{WHOSE_FILM} {SUBJECTS_FAMILY}" if theirs else WHOSE_FILM
 
     def prompt_of(listing: str) -> str:
         # The block is last; everything above it is byte-identical for the run.
         return (
             f"{contract}\n\nTHE THESIS THIS FILM IS BUILT ON\n{thesis}\n\n"
-            f"THE FILM'S SUBJECT\n{subject or NO_SUBJECT}\n\n{WHOSE_FILM}\n\n"
+            f"THE FILM'S SUBJECT\n{subject or NO_SUBJECT}\n\n{whose}\n\n"
             "Below are the shots currently in this film, one line each: when each was taken and "
             f"what it shows. Text only.\n\n{THESIS_FIT_CRITERION}\n\n"
             f"Answer with one JSON object only, on one line: {weak_example(listing)}"
@@ -83,8 +96,7 @@ def judge_thesis_fit(
     def row_of(asset: str) -> str:
         # The row already opens with the shot's date and time and the cut is offered in its own
         # chronological order; the story alias is added so a repeat of a neighbour is visible.
-        family = _family_note(line_of(asset))
-        return f"{label_of[asset]}: [{story_of(asset) or '-'}]{family} {line_of(asset)}"
+        return f"{label_of[asset]}: [{story_of(asset) or '-'}]{note_of[asset]} {line_of(asset)}"
 
     votes, rounds = vote_blocks(
         judge,
@@ -95,7 +107,9 @@ def judge_thesis_fit(
         prompt_of=prompt_of,
         answer_key="weak",
         bank_key=lambda block: hashlib.sha256(
-            (THESIS_FIT_VERSION + "|" + "|".join(line_of(a) for a in block)).encode()
+            (
+                THESIS_FIT_VERSION + "|" + "|".join(line_of(a) + theirs.get(a, "") for a in block)
+            ).encode()
         ).hexdigest(),
         bank=bank,
         save=save,
@@ -135,23 +149,39 @@ def vote_thesis_fit(
     return votes, rounds
 
 
-def _family_note(line: str) -> str:
-    relations = list(dict.fromkeys(close_family_on(line).values()))
-    return f" (the owner's close family: {', '.join(relations)})" if relations else ""
+def _family_note(close: Mapping[str, str]) -> str:
+    relations = list(dict.fromkeys(close.values()))
+    owners = [r for r in relations if not r.endswith(OF_THE_SUBJECT)]
+    theirs = [r.removesuffix(OF_THE_SUBJECT) for r in relations if r.endswith(OF_THE_SUBJECT)]
+    notes = [
+        f"{whose} close family: {', '.join(found)}"
+        for whose, found in (("the owner's", owners), ("the film's subject's", theirs))
+        if found
+    ]
+    return f" ({'; '.join(notes)})" if notes else ""
+
+
+def _whose(relation: str) -> str:
+    if relation.endswith(OF_THE_SUBJECT):
+        return f"the film's subject's {relation.removesuffix(OF_THE_SUBJECT)}"
+    return f"the owner's {relation}"
 
 
 def sole_family_shots(
-    cut: Sequence[Mapping[str, Any]], line_of: Callable[[str], str]
+    cut: Sequence[Mapping[str, Any]],
+    line_of: Callable[[str], str],
+    close_family: CloseFamily = close_family_on,
 ) -> dict[str, str]:
     """The shots that are the only one in the cut of some close family member, with the relation.
 
     Such a shot is how that person is in the film at all, so a vote alone never removes it; a gate
-    still can. The names only tell two people of the same relation apart inside this call.
+    still can. `close_family` says who counts: in a film about people, the subject's own family
+    too. The names only tell two people of the same relation apart inside this call.
     """
     shots_of: dict[str, list[str]] = {}
     relation_of: dict[str, str] = {}
     for shot in cut:
-        for name, relation in close_family_on(line_of(shot["asset_id"])).items():
+        for name, relation in close_family(line_of(shot["asset_id"])).items():
             shots_of.setdefault(name, []).append(shot["asset_id"])
             relation_of[name] = relation
     sole: dict[str, str] = {}
@@ -203,7 +233,8 @@ def classify_fit(
 def _held_by(shot: Mapping[str, Any], family_held: Mapping[str, str]) -> str:
     if is_protected(shot):
         return HELD_BY_THE_OWNER
-    return f"the only shot of the owner's {family_held[shot['asset_id']]} in the film; the vote does not move it"
+    whose = _whose(family_held[shot["asset_id"]])
+    return f"the only shot of {whose} in the film; the vote does not move it"
 
 
 def _state(named: int, *, protected: bool) -> str:

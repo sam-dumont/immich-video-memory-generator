@@ -69,12 +69,14 @@ def episodes_to_read(
     reads: ShortReads,
     line_of: Callable[[str], str],
     limit: int,
+    close_family: Callable[[str], Mapping[str, str]] = close_family_on,
 ) -> list[Sequence[str]]:
     """The unread episodes of the stories the cut has no shot of, best first, at most `limit`.
 
     The order is the film's cheap evidence: a week the cut does not reach, then a day it does
     not reach, then the story's worthiness tier, then close family on the pictures, then motion,
-    then how many pictures the no-model reader stands at two.
+    then how many pictures the no-model reader stands at two. `close_family` says who counts as
+    close family: in a film about people, the subject's own family too.
     """
     held = {str(row.get("story_episode") or "") for row in cut}
     units: dict[str, tuple[Mapping[str, Any], str]] = {}
@@ -95,7 +97,7 @@ def episodes_to_read(
             all(day.isocalendar()[:2] in weeks for day in taken),
             all(day in days for day in taken),
             min((TIERS.index(tier) for _unit, tier in rows), default=len(TIERS)),
-            not any(close_family_on(line_of(unit["asset_id"])) for unit, _tier in rows),
+            not any(close_family(line_of(unit["asset_id"])) for unit, _tier in rows),
             not any(unit.get("kind") in MOTION_KINDS for unit, _tier in rows),
             -sum(reads.standing(unit["asset_id"]) >= 2 for unit, _tier in rows),
             min(taken, default=date.max),

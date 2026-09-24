@@ -50,6 +50,7 @@ jobs:
   # reports all of them at once, the way thirteen parallel jobs did.
   quality:
     name: Quality Gates
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [setup]
     runs-on: ubuntu-latest
     steps:
@@ -118,6 +119,7 @@ jobs:
   # ── Tier 1: Security (parallel with quality gates) ────────────────────────
   security:
     name: Security Scan
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [setup]
     runs-on: ubuntu-latest
     permissions:
@@ -184,6 +186,7 @@ jobs:
   # ── Tier 2: Tests (after all quality gates pass) ──────────────────────────
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [quality, security]
     permissions:
       contents: read
@@ -317,6 +320,7 @@ jobs:
 
   test-extras:
     name: Test Extras (${{ matrix.os }})
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [quality, security]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -375,6 +379,7 @@ jobs:
   # ── Tier 3: Build + Docker (most expensive, after tests) ─────────────────
   build:
     name: Build Package
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [test]
     runs-on: ubuntu-latest
     steps:
@@ -395,7 +400,7 @@ jobs:
     name: Docker (${{ matrix.platform }})
     needs: [test]
     runs-on: ${{ matrix.runner }}
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     strategy:
       fail-fast: false
       matrix:
@@ -418,14 +423,14 @@ jobs:
             INSTALL_EXTRAS=all
             VCS_REF=${{ github.sha }}
             SOURCE_URL=https://github.com/${{ github.repository }}
-          # WHY scoped: both platform jobs wrote the same default cache scope
-          # and clobbered each other — measured ZERO cached layers on every PR
-          # build, a full image rebuild each time.
-          cache-from: type=gha,scope=docker-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform }}
+          # No gha layer cache: the Dockerfile copies src/ and takes APP_VERSION
+          # before every heavy RUN, so no commit reuses a layer (0 CACHED steps
+          # measured, #1272), while exporting cost ~140 s per job and ~3 GB of
+          # the repo's 10 GB Actions cache per PR, evicting caches that do hit.
 
   docs:
     name: Docs Build
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -452,7 +457,7 @@ jobs:
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -503,7 +508,7 @@ jobs:
     name: CI Success
     needs: [setup, quality, security, test, test-extras, build, docker, docs, launch-check]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
       - name: Check all jobs passed
         run: |

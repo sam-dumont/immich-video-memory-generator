@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from collections import Counter
@@ -30,6 +31,13 @@ _UPLOAD_DEVICE_ID = "immich-memories"
 
 
 logger = logging.getLogger(__name__)
+
+# Immich reads every upload in a background job (exiftool, ffprobe) that ends by
+# writing the file's own tag list over the asset's tags, so a tag applied while
+# that read runs is wiped (#1270). Only that read gives the exif a modifyDate.
+_POLL_SECONDS = 0.5
+_READ_WAIT_POLLS = 120
+_TAG_ATTEMPTS = 3
 
 
 class InvalidUploadResponse(ValueError):
@@ -400,6 +408,38 @@ class AlbumService:
         )
         await self._request("PUT", f"/tags/{tag_id}/assets", json={"ids": [asset_id]})
 
+    async def tag_as_generated_once_read(self, asset_id: str) -> None:
+        """Tag a fresh upload as this app's own once Immich has finished reading it.
+
+        Tagging sooner loses the tag to Immich's own metadata job, and an untagged
+        v3 film is never recognised as ours: it is kept beside its re-render and can
+        come back as source footage. Waits up to a minute for the read, then tags
+        and reads the tag back, re-applying it if it did not stick.
+        """
+        if not await self._read_by_immich(asset_id):
+            logger.warning("Immich had not read the uploaded film yet; tagging it anyway")
+        for _ in range(_TAG_ATTEMPTS):
+            await self.tag_as_generated(asset_id)
+            await asyncio.sleep(_POLL_SECONDS)
+            if await self._carries_generated_tag(asset_id):
+                return
+        logger.warning("The provenance tag did not stay on the uploaded film")
+
+    async def _read_by_immich(self, asset_id: str) -> bool:
+        for _ in range(_READ_WAIT_POLLS):
+            asset = await self._request("GET", f"/assets/{asset_id}") or {}
+            if (asset.get("exifInfo") or {}).get("modifyDate"):
+                return True
+            await asyncio.sleep(_POLL_SECONDS)
+        return False
+
+    async def _carries_generated_tag(self, asset_id: str) -> bool:
+        asset = await self._request("GET", f"/assets/{asset_id}") or {}
+        return any(
+            isinstance(tag, dict) and tag.get("value") == GENERATED_MEMORY_TAG
+            for tag in asset.get("tags") or ()
+        )
+
     async def generated_asset_ids(self) -> frozenset[str]:
         """Every asset the library holds under this app's provenance tag."""
         return await generated_asset_ids(self._request)
@@ -423,7 +463,7 @@ class AlbumService:
         # WHY: the upload has already succeeded; a key without tag scope loses
         # provenance for this film, not the film itself.
         try:
-            await self.tag_as_generated(asset_id)
+            await self.tag_as_generated_once_read(asset_id)
         except Exception as exc:
             logger.warning("Could not tag the uploaded film as this app's own: %s", exc)
 

@@ -289,25 +289,6 @@ def test_someone_whose_every_picture_is_refused_is_owed_nothing_and_the_record_s
     ]
 
 
-_PEOPLE_FILE = """
-version: 1
-owner: {person_id: owner-id, identified: confirmed}
-people:
-  - {ids: [owner-id], name: Owner}
-  - name: Subject
-    ids: [subject-id]
-    confirmed:
-      role: partner
-      links:
-        - {kind: partner-of, with: owner-id}
-        - {kind: child-of, with: her-father-id}
-  - {ids: [her-father-id], name: Her Father}
-  - name: Her Mother
-    ids: [her-mother-id]
-    confirmed: {links: [{kind: mother-of, with: subject-id}]}
-"""
-
-
 def _planned_person_film(tmp_path, *, product: str, scene_print=None, full=False):
     """A rules-read period of the owner's partner. Every moment's starred frame shows her alone,
     and her father and mother are on the other pictures of her first week, so every moment they
@@ -315,18 +296,13 @@ def _planned_person_film(tmp_path, *, product: str, scene_print=None, full=False
     from dataclasses import replace
     from datetime import date
 
-    from immich_memories.analysis.editorial_people import adapt_editorial_people
     from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
     from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
     from immich_memories.analysis.editorial_structure_planner import plan_structure
-    from immich_memories.people.context import load_people_prompt_context
     from tests.editorial_film_fixtures import film_source, home_days
+    from tests.editorial_subject_family import subject_people
 
-    people_file = tmp_path / "people.yaml"
-    people_file.parent.mkdir(parents=True, exist_ok=True)
-    people_file.write_text(_PEOPLE_FILE)
-    context = load_people_prompt_context(people_file, include_derived=True)
-    relation = {c.name: c.relationship for c in context.values()}
+    people, relation = subject_people(tmp_path)
     days = [*home_days(date(2030, 2, 3), 5), *home_days(date(2030, 2, 12), 5)]
     days = [replace(day, moments=3) for day in days]
     source = film_source(
@@ -350,7 +326,7 @@ def _planned_person_film(tmp_path, *, product: str, scene_print=None, full=False
     source = replace(
         source,
         case=replace(source.case, people=("Subject",)),
-        people=adapt_editorial_people(context),
+        people=people,
     )
     plan = plan_structure(
         source,

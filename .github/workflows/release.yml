@@ -72,7 +72,7 @@ jobs:
   ci:
     name: CI
     needs: [analyze]
-    if: needs.analyze.outputs.should_release == 'true'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (needs.analyze.outputs.should_release == 'true')
     uses: ./.github/workflows/ci.yml
     secrets: inherit
     permissions:
@@ -84,6 +84,7 @@ jobs:
     name: Create Release
     needs: [analyze, ci, docker-manifest]
     if: >-
+      github.repository == 'sam-dumont/immich-video-memory-generator' &&
       !cancelled() && needs.analyze.outputs.should_release == 'true' &&
       needs.ci.result == 'success' &&
       (inputs.dry_run || needs.docker-manifest.result == 'success')
@@ -262,7 +263,7 @@ jobs:
   pypi-publish:
     name: Publish to PyPI
     needs: [analyze, release, pypi-publish-music]
-    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (!inputs.dry_run && needs.analyze.outputs.should_release == 'true')
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -287,7 +288,7 @@ jobs:
   pypi-publish-music:
     name: Publish bundled music to PyPI
     needs: [analyze, release]
-    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (!inputs.dry_run && needs.analyze.outputs.should_release == 'true')
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -315,7 +316,7 @@ jobs:
   deploy-docs:
     name: Deploy Docs
     needs: [analyze, release]
-    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (!inputs.dry_run && needs.analyze.outputs.should_release == 'true')
     uses: ./.github/workflows/docs.yml
     with:
       version: v${{ needs.analyze.outputs.next_version }}
@@ -328,7 +329,7 @@ jobs:
   docker-build:
     name: Build Docker Image (${{ matrix.platform }})
     needs: [analyze, ci]
-    if: ${{ !inputs.dry_run && needs.analyze.outputs.should_release == 'true' }}
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (!inputs.dry_run && needs.analyze.outputs.should_release == 'true')
     runs-on: ${{ matrix.runner }}
     # Keep the existing approval before the first registry write.
     environment:
@@ -378,8 +379,8 @@ jobs:
             INSTALL_EXTRAS=all
             VCS_REF=${{ github.sha }}
             SOURCE_URL=https://github.com/${{ github.repository }}
-          cache-from: type=gha,scope=${{ matrix.slug }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+          # No gha layer cache: it never hit (0 CACHED steps, #1272) and each
+          # export pushed the main branch's useful caches out of the 10 GB limit.
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
 
       # Attaches the attestation to the image in GHCR as an OCI referrer, so
@@ -417,6 +418,7 @@ jobs:
     # in front of a real GPU before anyone cuts a version. The tag is then the
     # commit rather than a version, so a test build can never shadow a release.
     if: >-
+      github.repository == 'sam-dumont/immich-video-memory-generator' &&
       !cancelled() && needs.analyze.result == 'success' && !inputs.dry_run &&
       (inputs.inference_only ||
        (needs.release.result == 'success' && needs.analyze.outputs.should_release == 'true'))
@@ -465,8 +467,7 @@ jobs:
             DEVICE=${{ matrix.device }}
             APP_VERSION=${{ needs.analyze.outputs.next_version }}
             VCS_REF=${{ github.sha }}
-          cache-from: type=gha,scope=inference-${{ matrix.device }}-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=inference-${{ matrix.device }}-${{ matrix.platform }}
+          # No gha layer cache: it never hit (0 CACHED steps, #1272).
           outputs: type=image,name=ghcr.io/${{ github.repository }}/inference,push-by-digest=true,name-canonical=true
 
       - name: Export digest
@@ -485,6 +486,7 @@ jobs:
     name: Create Inference Manifest
     needs: [analyze, inference-build]
     if: >-
+      github.repository == 'sam-dumont/immich-video-memory-generator' &&
       !cancelled() && needs.analyze.result == 'success' &&
       needs.inference-build.result == 'success'
     runs-on: ubuntu-latest
@@ -534,6 +536,7 @@ jobs:
 
   docker-smoke:
     name: Smoke Test Docker Image
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [analyze, docker-build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -579,6 +582,7 @@ jobs:
   # Merge per-platform images into a multi-arch manifest
   docker-manifest:
     name: Create Docker Manifest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [analyze, docker-build, docker-smoke]
     runs-on: ubuntu-latest
     permissions:
@@ -617,7 +621,7 @@ jobs:
   deployment-bundle:
     name: Publish matching deployment manifests
     needs: [analyze, docker-manifest, inference-manifest]
-    if: needs.analyze.outputs.should_release == 'true' && !inputs.dry_run
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (needs.analyze.outputs.should_release == 'true' && !inputs.dry_run)
     runs-on: ubuntu-latest
     permissions:
       contents: write

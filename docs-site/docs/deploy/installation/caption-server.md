@@ -125,11 +125,18 @@ build b10920 they are accepted, ignored, and the server starts with zero models 
 ### On an NVIDIA host
 
 Two halves, neither of which works alone: the tag that carries CUDA
-(`export CAPTIONER_TAG=server-cuda`) and the device. From a checkout the device comes from an
-overlay:
+(`export CAPTIONER_TAG=server-cuda`) and the device. From a checkout the device comes from
+`docker/hwaccel.captioner.yml`. That file holds `extends:` targets, not services, so it cannot go
+on the command line as `-f` itself; a three-line override pulls its `cuda` block into the
+captioner:
 
 ```bash
-docker compose -f docker-compose.yml -f docker/hwaccel.captioner.yml --profile captioner up -d
+cat > captioner.cuda.yml <<'EOF'
+services:
+  immich-memories-captioner:
+    extends: { file: docker/hwaccel.captioner.yml, service: cuda }
+EOF
+CAPTIONER_TAG=server-cuda docker compose -f docker-compose.yml -f captioner.cuda.yml --profile captioner up -d
 ```
 
 A downloaded `docker-compose.yml` reads no file beside itself, so the same two blocks ship in the
