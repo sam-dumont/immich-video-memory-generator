@@ -323,6 +323,21 @@ def sample_config() -> Config:
 
 
 @pytest.fixture(autouse=True)
+def _an_install_that_ran_models_fetch(request, monkeypatch):
+    """Every run in the suite starts on a host that can finish it.
+
+    The pinned exports are 110 MB and cannot live in the repo, so without this every
+    CLI test would stop at the pre-run install checks. A test marked `install_checks`
+    meets the real ones.
+    """
+    if request.node.get_closest_marker("install_checks"):
+        return
+    # WHY: model files and the output volume are install-time host state, not
+    # what the CLI tests are about.
+    monkeypatch.setattr("immich_memories.preflight_run.run_blockers", lambda *_args, **_kwargs: [])
+
+
+@pytest.fixture(autouse=True)
 def _forget_learned_endpoints():
     """Clear what one test taught the transport about a server, before the next runs.
 

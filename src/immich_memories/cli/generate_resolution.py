@@ -20,7 +20,7 @@ import click
 from immich_memories.api.models import Person
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.cli._date_resolution import resolve_date_range
-from immich_memories.cli._helpers import print_error, print_info
+from immich_memories.cli._helpers import print_error, print_info, refuse_blocked_host
 from immich_memories.people.expression_window import DerivedPeopleWindow, library_people_window
 from immich_memories.timeperiod import DateRange
 
@@ -462,3 +462,15 @@ def announce_people_window(
     logger.info("Memory window %s: %s", date_range.description, derived.origin)
     print_info(f"Memory window: {date_range.description}: {derived.origin}")
     return {"window_origin": derived.origin}
+
+
+def refuse_unfinishable_run(
+    config: Config, output_path: Path, *, dry_run: bool, no_render: bool
+) -> None:
+    """Exit before Immich is contacted when this host cannot finish the run.
+
+    A dry run prepares nothing and writes nothing, so it is never refused; a
+    ``--no-render`` run prepares but writes no film, so only the models count.
+    """
+    if not dry_run:
+        refuse_blocked_host(config, output_directory=None if no_render else output_path.parent)

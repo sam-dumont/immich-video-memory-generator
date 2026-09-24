@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from immich_memories.analysis.editorial_planner import EditorialSelection
 from immich_memories.analysis.smart_pipeline import PipelineConfig, PipelineResult
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
@@ -374,3 +376,32 @@ def test_a_tick_the_last_cut_did_not_make_reaches_the_editor_as_a_requirement() 
     assert context.owner_required_asset_ids == ("add-photo",)
     # The result becomes the reference for the next round of ticks.
     assert state.previous_cut_asset_ids == frozenset({"add-photo"})
+
+
+@pytest.mark.install_checks
+def test_the_web_run_names_the_fetch_command_before_touching_immich(tmp_path) -> None:
+    """The web UI is the Docker user's first run; it meets the same pre-run checks as the CLI."""
+    config = Config(
+        triage={"encoder": str(tmp_path / "missing.onnx")},
+        output={"directory": str(tmp_path / "output")},
+    )
+    state = AppState(
+        config=config,
+        immich_url="http://immich.test",
+        immich_api_key="test-key",
+        date_ranges=[_WINDOW],
+        clips=[_clip("a")],
+        thumbnail_cache=MagicMock(),
+    )
+    progress_state = {"cancelled": False, "done": False, "error": None}
+
+    with (
+        # WHY: Immich is the external boundary; reaching it at all is the failure here.
+        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
+        # WHY: get_config would read the developer's own config.yaml off disk.
+        patch("immich_memories.config.get_config", return_value=config),
+    ):
+        _run_pipeline_blocking(state, MagicMock(), state.clips, [], progress_state)
+
+    assert "immich-memories models fetch" in progress_state["error"]
+    client_cls.assert_not_called()
