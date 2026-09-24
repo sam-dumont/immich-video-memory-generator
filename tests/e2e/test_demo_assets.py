@@ -258,6 +258,15 @@ def _encode_for_the_web(source: Path, destination: Path) -> None:
     )
 
 
+def _trip_environment(home: Path) -> dict[str, str]:
+    # WHY: a default run makes no outside call (#1037), so without these two
+    # opt-ins the trip opens on its title over the first picture, not the map.
+    env = _build_launch_environment(home)
+    env["IMMICH_MEMORIES_NETWORK__GEOCODING"] = "true"
+    env["IMMICH_MEMORIES_NETWORK__MAP_TILES"] = "true"
+    return env
+
+
 def _run_trip_cli(workspace, output_dir: Path) -> Path:
     """Cut the fixture's lake week through the real CLI, and return what it wrote."""
     state_dir = workspace.root / "state"
@@ -282,7 +291,7 @@ def _run_trip_cli(workspace, output_dir: Path) -> Path:
             str(output_dir / "trip.mp4"),
         ],
         cwd=_REPO_ROOT,
-        env=_build_launch_environment(workspace.root),
+        env=_trip_environment(workspace.root),
         capture_output=True,
         text=True,
         timeout=1800,

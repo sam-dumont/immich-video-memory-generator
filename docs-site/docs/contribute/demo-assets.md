@@ -52,7 +52,8 @@ app, the scene changes with it: `tests/e2e/test_demo_assets.py` pins the button 
 shows against the real pages.
 
 Keep the UI workflow together: brief, cut, storyboard, pool correction, export, generation,
-finished file. Runs and Suggestions follow, then the CLI goes straight into the rendered film.
+finished file. Runs and Suggestions follow, then the brief as a host without its models shows
+it (the red card that says to run `models fetch`), then the CLI goes straight into the rendered film.
 
 The last scene plays the closing seconds of `output-preview.mp4` and must stop before the film's
 blurred ending card, because the hero GIF's last three seconds are the demo's last three. It does

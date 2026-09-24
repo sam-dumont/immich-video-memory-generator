@@ -48,7 +48,10 @@ def _add_scope_rows(table: Table, *, album_ref: str | None, date_range: DateRang
     if album_ref:
         table.add_row("Album", album_ref)
         return
-    table.add_row("Time Period", date_range.description)
+    table.add_row(
+        "Time Period",
+        f"{date_range.start.date().isoformat()} to {date_range.end.date().isoformat()}",
+    )
     table.add_row("Duration", f"{date_range.days} days")
 
 

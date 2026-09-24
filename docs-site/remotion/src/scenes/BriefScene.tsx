@@ -12,13 +12,10 @@ import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
 import { PageHeader, CONTENT_X, CONTENT_Y } from "../components/PageHeader";
 import { ImCard } from "../components/ImCard";
-import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
-import { ImSeparator } from "../components/ImSeparator";
-import { ImToggle } from "../components/ImToggle";
 import { ImSelect } from "../components/ImSelect";
-import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
+import { BriefFooter, BriefParams } from "../components/BriefParts";
 
 // The select's rows, in the order the real page lists them: the CLI's
 // --memory-type choices, then the custom range the CLI spells as --start/--end.
@@ -175,103 +172,11 @@ export const BriefScene: React.FC<Props> = ({ bassIntensity }) => {
                 transform: `translateY(${(1 - paramsReveal) * 10}px)`,
               }}
             >
-              <div style={{ display: "flex", gap: 24, alignItems: "flex-end" }}>
-                <ImSelect label="Year" value="2024" style={{ width: 160 }} />
-                <ImSelect label="Month" value="June" style={{ width: 192 }} />
-              </div>
-              <ImSelect
-                label="Only with (optional)"
-                value=""
-                style={{ width: 288, marginTop: 14 }}
-              />
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  marginTop: 10,
-                  padding: "8px 0",
-                }}
-              >
-                <MaterialIcon name="tune" size={20} color={COLORS.textSecondary} />
-                <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
-                  Advanced people condition
-                </span>
-                <MaterialIcon
-                  name="keyboard_arrow_down"
-                  size={22}
-                  color={COLORS.textSecondary}
-                />
-              </div>
+              <BriefParams />
             </ImCard>
           )}
 
-          <div style={{ marginTop: 16 }}>
-            <ImSectionHeader icon="timer" title="How long" />
-          </div>
-          <ImToggle
-            label="Auto duration"
-            checked
-            trailing={
-              <>
-                <span
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: COLORS.text,
-                    fontFamily,
-                    marginLeft: 8,
-                  }}
-                >
-                  Auto &middot; 1m 00s
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textSecondary,
-                    fontFamily,
-                    marginLeft: 8,
-                  }}
-                >
-                  the type&rsquo;s default length
-                </span>
-              </>
-            }
-          />
-
-          {/* Advanced expansion — collapsed, as the brief opens */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              marginTop: 8,
-              padding: "10px 0",
-            }}
-          >
-            <MaterialIcon name="tune" size={20} color={COLORS.textSecondary} />
-            <span style={{ fontSize: 14, color: COLORS.text, flex: 1 }}>
-              Advanced
-            </span>
-            <MaterialIcon
-              name="keyboard_arrow_down"
-              size={22}
-              color={COLORS.textSecondary}
-            />
-          </div>
-
-          <ImSeparator />
-
-          <ImButton
-            text="Cut"
-            variant="primary"
-            icon="content_cut"
-            fullWidth
-            style={{
-              padding: "12px 20px",
-              transform: `scale(${cutPress})`,
-            }}
-          />
+          <BriefFooter cutScale={cutPress} />
         </div>
       </WindowFrame>
       <AnimatedCursor steps={cursorSteps} />

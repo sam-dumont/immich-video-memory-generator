@@ -35,15 +35,15 @@ const PREVIEW_START = 46;
 const PREVIEW_END = 126;
 
 // Where the cut is, frame by frame. The stage strings are the exact labels the
-// editorial planner reports through on_stage, in the order it reaches them.
+// editorial planner reports through on_stage, in the order it reaches them on
+// the default no-model route (tests/e2e/fake_editorial.py STAGES).
 const TIMELINE = [
   { at: 0, phase: 0, detail: "" },
   { at: 28, phase: 1, detail: "" },
   { at: 52, phase: 2, detail: "Preparing previews: 2/6" },
   { at: 80, phase: 2, detail: "Reading dates, places and people" },
-  { at: 100, phase: 3, detail: "Reading event evidence: 3/9" },
-  { at: 120, phase: 3, detail: "Reading the period account" },
-  { at: 136, phase: 3, detail: "Building editorial cards" },
+  { at: 100, phase: 3, detail: "Reading event evidence" },
+  { at: 128, phase: 3, detail: "Building editorial cards" },
   { at: 150, phase: 3, detail: "Editing the memory" },
   { at: 162, phase: 3, detail: "Validating selected source timing" },
   { at: 172, phase: DONE, detail: "" },

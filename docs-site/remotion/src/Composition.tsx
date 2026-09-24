@@ -18,13 +18,14 @@ import { OutputPreviewScene } from "./scenes/OutputPreviewScene";
 import { CliScene } from "./scenes/CliScene";
 import { RunsScene } from "./scenes/RunsScene";
 import { SuggestionsScene } from "./scenes/SuggestionsScene";
+import { RefusedScene } from "./scenes/RefusedScene";
 
 const FADE = 15; // 0.5s
 const SLIDE = 12; // 0.4s
 
 // Scene durations (frames at 30fps). TransitionSeries overlaps each pair by the
 // transition's length, so the video runs sum(D) - sum(transitions):
-// 1664 - 168 = 1496 frames, which is TOTAL_FRAMES in theme.ts.
+// 1679 - 183 = 1496 frames, which is TOTAL_FRAMES in theme.ts.
 //
 // The ceiling is demo-music.wav: 49.97 s, or 1499 frames. A demo that outruns
 // its own track ends on an audible cut, which is why the terminal and the film
@@ -43,10 +44,11 @@ const D = {
   complete: 60, // 2.0s — the finished file and its measured length
   runs: 90, // 3.0s — the completed run in the browser's history
   suggestions: 90, // 3.0s — what automation would propose next
-  // The recording runs 62.56s and CliScene starts it at 15s, so 178 frames at
-  // 8x is the whole rest of it: one more and the terminal freezes on its last
+  refused: 75, // 2.5s — a host without its models: the brief says why, and what to run
+  // The recording runs 58.0s and CliScene starts it at 18.6s, so 118 frames at
+  // 10x is the whole rest of it: one more and the terminal freezes on its last
   // line, one fewer and the `open` that ends it never arrives.
-  cli: 178, // 5.9s — the real terminal at 8x: the bar, the cut, runs story, runs why
+  cli: 118, // 3.9s — the real terminal at 10x: the bar, the cut, runs story, runs why
   output: 212, // 7.1s — the film it made, ending on its last picture, full bleed
 };
 
@@ -189,7 +191,17 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 12. CLI — its final `open` leads straight into the rendered film */}
+        {/* 12. Refused — a cut on a host without models says why on the brief */}
+        <TransitionSeries.Sequence durationInFrames={D.refused}>
+          <RefusedScene bassIntensity={bass} />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 13. CLI — its final `open` leads straight into the rendered film */}
         <TransitionSeries.Sequence durationInFrames={D.cli}>
           <CliScene />
         </TransitionSeries.Sequence>
@@ -199,7 +211,7 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 13. The film it made, last: full bleed, real time */}
+        {/* 14. The film it made, last: full bleed, real time */}
         <TransitionSeries.Sequence durationInFrames={D.output}>
           <OutputPreviewScene frames={D.output} />
         </TransitionSeries.Sequence>

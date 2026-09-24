@@ -118,6 +118,20 @@ def test_the_parameters_table_falls_back_to_the_time_period():
     assert table.columns[0]._cells == ["Time Period", "Duration"]
 
 
+def test_the_parameters_table_writes_the_time_period_as_rfc3339_dates():
+    table = Table()
+    table.add_column("Setting")
+    table.add_column("Value")
+
+    _add_scope_rows(
+        table,
+        album_ref=None,
+        date_range=DateRange(start=datetime(2024, 6, 1), end=datetime(2024, 6, 30, 23, 59, 59)),
+    )
+
+    assert table.columns[1]._cells[0] == "2024-06-01 to 2024-06-30"
+
+
 def test_an_unknown_target_duration_reads_as_auto():
     assert _format_target_duration(None) == "auto"
     assert _format_target_duration(45.0) == "45s"
