@@ -62,3 +62,30 @@ def test_a_truncation_is_reported_after_the_fact_too() -> None:
 
 def test_a_run_with_no_model_spend_renders_nothing() -> None:
     assert render_llm_totals({}) == ""
+
+
+def test_a_batch_share_with_unmetered_lines_is_called_a_floor_live_and_stored() -> None:
+    counters = LLMCounters(
+        calls=5,
+        unmetered_calls=1,
+        prompt_tokens=50,
+        completion_tokens=20,
+        batch_calls=3,
+        batch_unmetered_calls=1,
+        batch_prompt_tokens=30,
+        batch_completion_tokens=12,
+    )
+    live = render_run_summary(
+        total_seconds=40.0,
+        analysis_seconds=30.0,
+        generation_seconds=10.0,
+        eligible=20,
+        planned=8,
+        counters=counters,
+    )
+    stored = render_llm_totals(counters.as_metrics())
+
+    for text in (live, stored):
+        assert "5 calls (2 realtime, 3 batch)" in text
+        assert "at least 30 prompt / 12 completion" in text
+        assert "1 batch line reported no usage" in text

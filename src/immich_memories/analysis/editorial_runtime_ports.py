@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from itertools import chain
@@ -87,8 +86,6 @@ class EditorialRuntimePorts:
         [StructurePlanningInput, StructurePlannerPorts], StructurePlanningResult
     ] = plan_structure
     structure_ports_factory: Callable[[StructurePlanningInput], StructurePlannerPorts] | None = None
-    monotonic: Callable[[], float] = time.monotonic
-    report: Callable[[str], None] = lambda _message: None
     prepare_annotations: Callable[..., Any] | None = None
 
 

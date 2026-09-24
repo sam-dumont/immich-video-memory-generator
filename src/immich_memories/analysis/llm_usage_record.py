@@ -50,6 +50,8 @@ def _usage_record(counters: LLMCounters) -> dict:
             "truncated": counters.truncated,
             "wall_seconds": round(counters.wall_seconds, 3),
             "batch_calls": counters.batch_calls,
+            "batch_unmetered_calls": counters.batch_unmetered_calls,
+            "batch_usage_complete": counters.batch_unmetered_calls == 0,
             "batch_prompt_tokens": counters.batch_prompt_tokens,
             "batch_completion_tokens": counters.batch_completion_tokens,
             "by_model": {name: asdict(spend) for name, spend in sorted(counters.by_model.items())},

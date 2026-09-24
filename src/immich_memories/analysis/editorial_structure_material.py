@@ -266,10 +266,15 @@ class UnitBuilder:
         }
 
     def _video_unit(self, asset_id: str, base: dict) -> dict | None:
-        """None for a clip too short to read as a shot rather than a stub."""
+        """None for a clip too short to read as a shot rather than a stub.
+
+        A video always plays. Its residual over its sampled frames, where one was measured,
+        says whether anything moves in it (#1166); None means nobody measured it.
+        """
         dur = float(self._assets[asset_id].duration_seconds or 0.0)
         if dur < MIN_MOTION_SECONDS:
             return None
+        measured = self._residuals.get(asset_id, {}).get("residual")
         return base | {
             "kind": "video",
             "asset_id": asset_id,
@@ -278,7 +283,8 @@ class UnitBuilder:
             "trim_points": [],
             "seconds": round(min(dur, MOTION_CAP_SECONDS), 2),
             "raw_seconds": round(dur, 2),
-            "residual": None,
+            "residual": measured,
+            "motion_assessed": measured is not None,
         }
 
     def _still_unit(self, asset_id: str, base: dict) -> dict:

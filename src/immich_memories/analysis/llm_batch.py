@@ -417,17 +417,22 @@ def _read_results(
         body = reader(row)
         if body is None:
             continue
+        # WHY: the provider billed this completion whether or not its answer
+        # parses, so the bill is read before the answer is.
+        usage = _batch_usage(body)
+        llm_metrics.record_batch_reply(
+            prompt_tokens=usage.prompt_tokens,
+            cached_prompt_tokens=usage.cached_prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            reasoning_tokens=usage.reasoning_tokens,
+            usage_known=usage.known,
+        )
         try:
-            reply = _batch_reply(config, body)
+            reply = _batch_reply(config, body, usage)
             answers[row["custom_id"]] = reply
         except (KeyError, TypeError, ValueError) as exc:
             logger.info("Batch line %s was unreadable (%s)", row.get("custom_id"), exc)
             continue
-        llm_metrics.record_batch_reply(
-            prompt_tokens=reply.prompt_tokens,
-            completion_tokens=reply.completion_tokens,
-            reasoning_tokens=reply.reasoning_tokens,
-        )
         if resolved.provider == "openai-compatible":
             learn_reasoning(endpoint, reply)
     return answers
@@ -449,24 +454,67 @@ def _anthropic_result(row: dict) -> dict | None:
     return message if isinstance(message, dict) else None
 
 
-def _batch_reply(config: LLMConfig, body: dict) -> LLMReply:
-    """Keep the answer and its billed reasoning together, including empty replies."""
+@dataclass(frozen=True)
+class _BatchUsage:
+    prompt_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    known: bool = False
+
+
+def _batch_usage(body: dict) -> _BatchUsage:
+    """What the provider says one completed line cost, in either dialect.
+
+    Every count supplied is kept; a line missing either headline count is
+    unknown rather than zero, so the run's bill can say it is incomplete
+    instead of reading as cheaper than it was.
+    """
     usage = body.get("usage")
     if not isinstance(usage, dict):
-        usage = {}
-    prompt_tokens = usage.get("prompt_tokens")
-    if prompt_tokens is None:
-        prompt_tokens = (usage.get("input_tokens") or 0) + (
-            usage.get("cache_read_input_tokens") or 0
-        )
+        return _BatchUsage()
+    if "input_tokens" in usage or "output_tokens" in usage:
+        return _anthropic_usage(usage)
+    prompt = _reported(usage, "prompt_tokens")
+    completion = _reported(usage, "completion_tokens")
+    return _BatchUsage(
+        prompt_tokens=prompt or 0,
+        cached_prompt_tokens=_reported(usage.get("prompt_tokens_details"), "cached_tokens") or 0,
+        completion_tokens=completion or 0,
+        reasoning_tokens=_reported(usage, "reasoning_tokens")
+        or _reported(usage.get("completion_tokens_details"), "reasoning_tokens")
+        or 0,
+        known=prompt is not None and completion is not None,
+    )
+
+
+def _anthropic_usage(usage: dict) -> _BatchUsage:
+    """Anthropic bills cache reads apart from `input_tokens`; the prompt is both."""
+    fresh = _reported(usage, "input_tokens")
+    output = _reported(usage, "output_tokens")
+    cached = _reported(usage, "cache_read_input_tokens") or 0
+    return _BatchUsage(
+        prompt_tokens=(fresh or 0) + cached,
+        cached_prompt_tokens=cached,
+        completion_tokens=output or 0,
+        known=fresh is not None and output is not None,
+    )
+
+
+def _reported(section: object, name: str) -> int | None:
+    value = section.get(name) if isinstance(section, dict) else None
+    return value if isinstance(value, int) and llm_metrics.token_counts_reported(value) else None
+
+
+def _batch_reply(config: LLMConfig, body: dict, usage: _BatchUsage) -> LLMReply:
+    """Keep the answer and its billed reasoning together, including empty replies."""
     choices = body.get("choices") or [{}]
-    details = usage.get("completion_tokens_details") or {}
     return LLMReply(
         content=read_batch_answer(config, body),
         finish_reason=str(choices[0].get("finish_reason") or body.get("stop_reason") or ""),
-        prompt_tokens=int(prompt_tokens or 0),
-        completion_tokens=int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
-        reasoning_tokens=int(usage.get("reasoning_tokens") or details.get("reasoning_tokens") or 0),
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        reasoning_tokens=usage.reasoning_tokens,
     )
 
 

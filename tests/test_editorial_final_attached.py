@@ -161,8 +161,6 @@ def test_actual_planner_checks_final_live_intervals_and_does_not_refill_a_sample
     ports = StructurePlannerPorts(
         judge=judge,
         thumbnail_hash=lambda _: None,
-        rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-        reranker_identity={"model": "controlled", "endpoint": "test://local"},
         observe_picture=lambda _: {
             **picture_record(),
             "description": "A clothed person moves furniture.",

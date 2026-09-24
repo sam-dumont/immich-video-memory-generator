@@ -162,15 +162,6 @@ def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
         image.save(output, "JPEG")
         return output.getvalue()
 
-    class Ranker:
-        identity = {"model": "controlled", "endpoint": "test://local"}
-
-        def __call__(self, _query, documents):
-            return dict.fromkeys(range(len(documents)), 1.0)
-
-    monkeypatch.setattr(
-        "immich_memories.analysis.editorial_runtime_backend.StructureReranker", Ranker
-    )
     monkeypatch.setattr(
         "immich_memories.analysis.editorial_runtime_backend.StructureTextJudge",
         lambda *_args, **_kwargs: ControlledStoryJudge(judgments, require_hits=replay[0]),

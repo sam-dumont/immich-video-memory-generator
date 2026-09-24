@@ -519,3 +519,170 @@ def test_an_abandoned_queued_line_and_its_live_re_ask_are_both_on_the_record(tmp
     assert queued["response_chars"] == 0
     assert live["prompt_sha256"] == queued["prompt_sha256"]
     assert counters.truncated == 1
+
+
+def _openai_bodies_wire(bodies: dict[str, dict]):
+    """An OpenAI batch host whose completed lines carry exactly the bodies given."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/files/out/content"):
+            return httpx.Response(
+                200,
+                text="\n".join(
+                    json.dumps({"custom_id": key, "response": {"status_code": 200, "body": body}})
+                    for key, body in bodies.items()
+                ),
+            )
+        if path.endswith("/files"):
+            return httpx.Response(200, json={"id": "in"})
+        if "/batches/" in path:
+            return httpx.Response(200, json={"status": "completed", "output_file_id": "out"})
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "b1"})
+        return httpx.Response(200, json={"data": []})
+
+    return handler
+
+
+def test_a_paid_batch_line_that_cannot_be_read_is_still_on_the_bill():
+    config = _config()
+    prompts = _prompts(config, 2)
+    coordinator, _ = _coordinator(
+        config,
+        _openai_bodies_wire(
+            {
+                prompts[0].key: {
+                    "choices": [{"message": "not an object", "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 30, "completion_tokens": 9},
+                },
+                prompts[1].key: {
+                    "choices": [{"message": {"content": "kept"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+                },
+            }
+        ),
+    )
+
+    with llm_metrics.collecting() as counters:
+        coordinator.prefill(prompts)
+
+    assert coordinator.answer_for(prompts[0].key) is None
+    assert (counters.calls, counters.batch_calls) == (2, 2)
+    assert (counters.prompt_tokens, counters.completion_tokens) == (40, 13)
+    assert (counters.batch_prompt_tokens, counters.batch_completion_tokens) == (40, 13)
+
+
+def _answered(usage: dict | None) -> dict:
+    body: dict = {"choices": [{"message": {"content": "kept"}, "finish_reason": "stop"}]}
+    if usage is not None:
+        body["usage"] = usage
+    return body
+
+
+def test_a_batch_line_without_usage_leaves_the_bill_marked_incomplete():
+    config = _config()
+    prompts = _prompts(config, 2)
+    coordinator, _ = _coordinator(
+        config,
+        _openai_bodies_wire(
+            {
+                prompts[0].key: _answered(None),
+                prompts[1].key: _answered({"prompt_tokens": 0, "completion_tokens": 0}),
+            }
+        ),
+    )
+
+    with llm_metrics.collecting() as counters:
+        coordinator.prefill(prompts)
+
+    assert (counters.batch_calls, counters.unmetered_calls) == (2, 1)
+    assert counters.as_metrics()["llm_batch_unmetered_calls"] == 1
+
+
+def test_an_anthropic_batch_line_keeps_its_cache_reads_on_the_bill():
+    config = _config(provider="anthropic", base_url="https://claude.example.test")
+    prompts = _prompts(config, 2)
+    usage = {"input_tokens": 5, "cache_read_input_tokens": 40, "output_tokens": 3}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/results"):
+            return httpx.Response(
+                200,
+                text="\n".join(
+                    json.dumps(
+                        {
+                            "custom_id": prompt.key,
+                            "result": {
+                                "type": "succeeded",
+                                "message": {"content": "not a list", "usage": usage},
+                            },
+                        }
+                    )
+                    for prompt in prompts
+                ),
+            )
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "msgbatch_1"})
+        if request.url.path.endswith("/batches"):
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(200, json={"processing_status": "ended"})
+
+    coordinator, _ = _coordinator(config, handler)
+    with llm_metrics.collecting() as counters:
+        coordinator.prefill(prompts)
+
+    assert coordinator.answer_for(prompts[0].key) is None
+    assert (counters.batch_calls, counters.unmetered_calls) == (2, 0)
+    assert (counters.prompt_tokens, counters.cached_prompt_tokens) == (90, 80)
+    assert counters.batch_completion_tokens == 6
+
+
+def test_a_queued_answer_is_billed_once_and_an_unreadable_one_goes_live(monkeypatch):
+    config = _config()
+    kept, broken = (batch_prompt_key(config, f"ask {n}", max_tokens=100) for n in range(2))
+    coordinator, _ = _coordinator(
+        config,
+        _openai_bodies_wire(
+            {
+                kept: _answered({"prompt_tokens": 10, "completion_tokens": 4}),
+                broken: {"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 2}},
+            }
+        ),
+    )
+    asked_live: list[str] = []
+
+    async def fake_query(prompt, llm_config, **kwargs):
+        # WHY: replaces the realtime provider endpoint, the one external boundary.
+        asked_live.append(prompt)
+        return "live answer"
+
+    monkeypatch.setattr(gateway, "query_llm", fake_query)
+    requester = SyncTextPromptRequester(
+        config, max_tokens=100, timeout_seconds=30, batch=coordinator
+    )
+
+    with llm_metrics.collecting() as counters:
+        requester.prefetch([("ask 0", 100), ("ask 1", 100)])
+        assert requester.request_with_budget("ask 0", max_tokens=100) == "kept"
+        assert requester.request_with_budget("ask 1", max_tokens=100) == "live answer"
+
+    assert asked_live == ["ask 1"]
+    assert (counters.calls, counters.batch_calls) == (2, 2)
+    assert counters.batch_prompt_tokens == 22
+
+
+def test_a_batch_line_missing_one_count_keeps_the_counts_it_did_report():
+    config = _config()
+    prompts = _prompts(config, 2)
+    partial = {"completion_tokens": 100, "completion_tokens_details": {"reasoning_tokens": 80}}
+    coordinator, _ = _coordinator(
+        config,
+        _openai_bodies_wire({prompt.key: _answered(partial) for prompt in prompts}),
+    )
+
+    with llm_metrics.collecting() as counters:
+        coordinator.prefill(prompts)
+
+    assert counters.batch_unmetered_calls == 2
+    assert (counters.completion_tokens, counters.reasoning_tokens) == (200, 160)

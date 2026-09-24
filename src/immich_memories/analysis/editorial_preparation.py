@@ -45,6 +45,13 @@ from immich_memories.analysis.editorial_preparation_pixels import (
     remember_pixel,
 )
 from immich_memories.analysis.editorial_preparation_remote import prepare_remote_facts
+from immich_memories.analysis.editorial_video_motion import (
+    STAGE as VIDEO_MOTION,
+)
+from immich_memories.analysis.editorial_video_motion import (
+    bank_video_motion,
+    videos_owing_motion,
+)
 from immich_memories.analysis.remote_facts import RemoteFactsError
 from immich_memories.analysis.subject_framing import FaceBox
 from immich_memories.api.models import Asset
@@ -104,7 +111,9 @@ class PreparationResult:
         clip Immich would not serve, which leaves its still in the film either way.
         """
         return not self.missing_by_producer and all(
-            key.startswith(("detector_frames:", f"{CLIP_COMPANION}:", CLIP_FRAMES_HEAD))
+            key.startswith(
+                ("detector_frames:", f"{CLIP_COMPANION}:", CLIP_FRAMES_HEAD, VIDEO_MOTION)
+            )
             for key in self.failures
         )
 
@@ -128,6 +137,7 @@ class PreparationResult:
                     "detector_frames:",
                     CLIP_COMPANION,
                     f"{CLIP_FRAMES_HEAD}:",
+                    f"{VIDEO_MOTION}:",
                 )
             )
         )
@@ -163,6 +173,7 @@ class PreparationPorts:
     detectors: Callable = prepare_detectors
     motion: Callable = prepare_motion_lines
     clip_frames: Callable = prepare_clip_frames
+    video_motion: Callable = bank_video_motion
 
 
 PREVIEW_UNAVAILABLE = "preview unavailable at Immich (HTTP 404)"
@@ -423,6 +434,21 @@ class _Acquisition:
         except Exception as exc:
             self.failures[CLIP_FRAMES_HEAD] = f"{type(exc).__name__}: {exc}"
 
+    def video_motion(
+        self, frame_paths: Mapping[str, Sequence[Path]], videos: Mapping[str, Asset]
+    ) -> None:
+        """Bank each video's residual over the frames already sampled for it; a video it
+        cannot measure stays unmeasured, as every video was, and never blocks the cut."""
+        self.check()
+        try:
+            with self.timed(VIDEO_MOTION, len(frame_paths)):
+                errors = self.providers.video_motion(
+                    store_path=self.store_path, videos=videos, frame_paths=frame_paths
+                )
+            self.failures.update({f"{VIDEO_MOTION}:{k}": v for k, v in errors.items()})
+        except Exception as exc:
+            self.failures[VIDEO_MOTION] = f"{type(exc).__name__}: {exc}"
+
     def captions(self, connection: sqlite3.Connection, asset_ids: Sequence[str]) -> None:
         self.check()
         try:
@@ -572,8 +598,18 @@ def prepare_editorial_annotations(
                 connection, sorted(frames.video_ids), CLIP_FRAMES_HEAD, CLIP_FRAMES_VERSION
             )
             connection.commit()
+            motion_owed = videos_owing_motion(connection, source, frames.video_ids)
             acquire_model_facts(
-                stage, before, ids, available, pending, head_versions, preview_paths, frames, clips
+                stage,
+                before,
+                ids,
+                available,
+                pending,
+                head_versions,
+                preview_paths,
+                frames,
+                clips,
+                motion_owed,
             )
             acquire_clip_companions(
                 stage, connection, frames, cache_path, fetch_preview, head_versions
