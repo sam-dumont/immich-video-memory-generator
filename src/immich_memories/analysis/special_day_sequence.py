@@ -26,7 +26,7 @@ import collections
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -52,10 +52,12 @@ SCAN_VERSION = f"{SEQUENCE_VERSION}+{PROMPT_VERSION}"
 
 # Owner, 2026-09-18: a day is kept only if a film of it can run this long.
 MIN_FILM_SECONDS = 30.0
-# The shape of `planning/auto_duration.py`'s diverse capacity with the episode as the unit: no
-# one episode fills more than thirty seconds, and a burst of frames of one scene (a moment) is
-# one still, however many frames it holds.
+# The shape of `planning/auto_duration.py`'s diverse capacity with the episode as the unit: a
+# burst of forty frames of one scene counts as four stills, and no episode fills more than thirty
+# seconds on its own.
+_STILLS_PER_EPISODE = 4
 _SECONDS_PER_EPISODE = 30.0
+_EPISODE = timedelta(minutes=EPISODE_WINDOW_MINUTES)
 
 _CAPTIONS_PER_RUN = 3
 _CAPTION_CHARACTERS = 100
@@ -149,22 +151,31 @@ def _place_of(asset: Any) -> str | None:
 def filmable_seconds(items: list, *, still_seconds: float, clip_seconds: float) -> float:
     """What a film of this run could hold, episode by episode.
 
-    Episodes and moments are the editor's own (`moment_grouping`, 90 and 10 minutes, time and
-    place): a day of three episodes has three things to show, a day of one burst has one.
-    The scan has already removed what the camera never shot, so the unfiltered grouping is
-    the right one here.
+    Episodes are the editor's own 90-minute groups (`moment_grouping`, time and place), and a
+    group that ran on for hours is taken 90 minutes at a time, so a day photographed steadily
+    from morning to night is as many episodes as it has 90-minute stretches, and a burst is one.
     """
     total = 0.0
-    for episode in _group_by_time_and_place(items, window_minutes=EPISODE_WINDOW_MINUTES):
+    for episode in _episodes(items):
         clips = sum(
             min(float(getattr(a, "duration_seconds", None) or 0.0), clip_seconds)
             for a in episode
             if getattr(a, "is_video", False)
         )
-        stills = [a for a in episode if not getattr(a, "is_video", False)]
-        scenes = len(_group_by_time_and_place(stills)) if stills else 0
-        total += min(_SECONDS_PER_EPISODE, scenes * still_seconds + clips)
+        stills = sum(1 for a in episode if not getattr(a, "is_video", False))
+        total += min(_SECONDS_PER_EPISODE, min(stills, _STILLS_PER_EPISODE) * still_seconds + clips)
     return total
+
+
+def _episodes(items: list) -> list[list]:
+    sliced: list[list] = []
+    for group in _group_by_time_and_place(items, window_minutes=EPISODE_WINDOW_MINUTES):
+        first = min(a.file_created_at for a in group)
+        spans: dict[int, list] = collections.defaultdict(list)
+        for asset in group:
+            spans[(asset.file_created_at - first) // _EPISODE].append(asset)
+        sliced.extend(spans.values())
+    return sliced
 
 
 def read_in_sequence(

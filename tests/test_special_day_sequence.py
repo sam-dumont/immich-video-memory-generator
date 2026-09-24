@@ -16,12 +16,19 @@ import pytest
 from immich_memories.analysis.special_day import SpecialDay
 from immich_memories.automation.special_day_scan import scan_year
 
+# Synthetic coordinates: a home, and a camp about 67 km south of it.
+HOME_AT = (50.8, 4.4)
+CAMP_AT = (50.2, 4.4)
 
-def _picture(when: datetime, n: int, *, city: str | None, video: float | None = None):
+
+def _picture(when: datetime, n: int, *, city: str | None, video: float | None = None, at=None):
+    lat, lon = at or (None, None)
     return SimpleNamespace(
         id=f"p-{when:%m%d%H%M}-{n}",
         file_created_at=when,
-        exif_info=SimpleNamespace(city=city, country="Belgium" if city else None),
+        exif_info=SimpleNamespace(
+            city=city, country="Belgium" if city else None, latitude=lat, longitude=lon
+        ),
         people=[],
         is_favorite=False,
         is_video=video is not None,
@@ -30,10 +37,10 @@ def _picture(when: datetime, n: int, *, city: str | None, video: float | None = 
     )
 
 
-def _day(start: datetime, *, pictures: int, hours: int, city: str | None, videos: int = 0):
+def _day(start: datetime, *, pictures: int, hours: int, city: str | None, videos: int = 0, at=None):
     step = timedelta(hours=hours) / pictures
     return [
-        _picture(start + step * n, n, city=city, video=8.0 if n < videos else None)
+        _picture(start + step * n, n, city=city, video=8.0 if n < videos else None, at=at)
         for n in range(pictures)
     ]
 
@@ -43,8 +50,8 @@ HOME = datetime(2021, 7, 3, 9, 0, tzinfo=UTC)
 
 
 def _library():
-    camp = _day(CAMP, pictures=18, hours=4, city="Hastière", videos=3)
-    home = _day(HOME, pictures=60, hours=9, city="Someplace")
+    camp = _day(CAMP, pictures=18, hours=4, city="Hastière", videos=3, at=CAMP_AT)
+    home = _day(HOME, pictures=60, hours=9, city="Someplace", at=HOME_AT)
     captions = {p.id: "children around a campfire at a summer camp" for p in camp}
     captions |= {p.id: "a cat asleep on a sofa" for p in home}
     return camp + home, captions
@@ -144,3 +151,52 @@ def test_a_run_the_reader_invents_is_ignored(monkeypatch, reader):
     )
 
     assert scan_year(assets, llm_config=None, home=None, captions=captions) == []
+
+
+def test_without_a_model_days_are_found_from_their_facts_alone(monkeypatch):
+    """The NAS tier (`editorial.reader: rules`, no model) discovers days with no text call.
+
+    A day loud on one fact is kept: the camp was spent 67 km from home, and the busy day at
+    home clears the measured active-hours bar. No reader tells the cat on the sofa apart from
+    an occasion; that is what the model tier adds.
+    """
+    assets, captions = _library()
+
+    # WHY: the text model is the boundary; the no-model tier must never reach it.
+    def no_model(*_a, **_k):
+        pytest.fail("the no-model tier asked a model")
+
+    monkeypatch.setattr("immich_memories.analysis.special_day_sequence._read", no_model)
+    monkeypatch.setattr("immich_memories.automation.special_day_scan.ask_if_special", no_model)
+
+    found = scan_year(assets, llm_config=None, home=HOME_AT, captions=captions, reader="rules")
+
+    assert {d.day: d.what for d in found} == {
+        HOME.date(): "a long day, 9 active hours",
+        CAMP.date(): "a day away from home",
+    }
+    assert {d.day: d.title for d in found} == {
+        HOME.date(): "A day in Someplace",
+        CAMP.date(): "A day in Hastière",
+    }
+
+
+@pytest.mark.parametrize(
+    ("starred", "videos", "what"),
+    [(3, 0, "3 favourites"), (0, 6, "a day mostly on video"), (2, 2, None)],
+)
+def test_without_a_model_one_loud_fact_is_enough(starred, videos, what):
+    # Twelve pictures in three episodes of one afternoon at home: under the hours bar.
+    day = [
+        p
+        for start in (12, 15, 18)
+        for p in _day(HOME.replace(hour=start), pictures=4, hours=1, city="Someplace")
+    ]
+    for picture in day[:starred]:
+        picture.is_favorite = True
+    for picture in day[-videos:] if videos else []:
+        picture.is_video, picture.duration_seconds = True, 8.0
+
+    found = scan_year(day, llm_config=None, home=None, reader="rules")
+
+    assert [d.what for d in found] == ([what] if what else [])

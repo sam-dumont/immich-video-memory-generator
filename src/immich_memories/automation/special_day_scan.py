@@ -16,9 +16,12 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from immich_memories.analysis.special_day import (
+    MIN_ACTIVE_HOURS,
+    MIN_PHOTOS,
+    SpecialDay,
     active_hours,
     ask_if_special,
     candidate_days,
@@ -33,6 +36,7 @@ from immich_memories.analysis.special_day_sequence import (
     filmable_seconds,
     read_in_sequence,
 )
+from immich_memories.analysis.special_day_title import honest_title
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
 from immich_memories.config_models_analysis import AnalysisConfig
@@ -175,6 +179,7 @@ def scan_year(
     captions: dict[str, str] | None = None,
     judgment_cache_path: Path | None = None,
     still_seconds: float | None = None,
+    reader: Literal["model", "rules"] = "model",
 ) -> list[DiscoveredDay]:
     """Find the days in one year's assets that were occasions, and name them.
 
@@ -183,6 +188,10 @@ def scan_year(
     occasion a film could be cut from is then named from its own pictures' lines. A month the
     reader could not read raises `YearNotRead` so the year is scanned again, not recorded
     half-read; the months it did read are banked and cost nothing the second time.
+
+    With `reader="rules"` (no model configured) nothing is asked at all: a run is an
+    occasion when one of its recorded facts is loud (`_occasion_by_facts`), and it is
+    titled from its own place. The film floor applies the same on both tiers.
 
     Anything generation would throw away is removed first, so the scan judges
     the same library a memory could actually be cut from. Measured on a real
@@ -220,42 +229,104 @@ def scan_year(
 
     off_trip = candidate_days(assets, away_days=away)
     candidates = _drop_the_holidays_it_actually_was(off_trip, holidays, home, trips.min_distance_km)
-    reading = read_in_sequence(
-        candidates, captions=captions, llm_config=llm_config, cache_path=judgment_cache_path
+    occasions = _occasions(
+        candidates,
+        year=year,
+        reader=reader,
+        home=home,
+        away_km=trips.min_distance_km,
+        captions=captions,
+        llm_config=llm_config,
+        cache_path=judgment_cache_path,
     )
     logger.info(
-        "%d: %d runs read (%d with nothing recorded beyond the clock), %d occasions, "
-        "%d dates covered by trips, %d dropped as the holiday they fell on",
+        "%d: %d occasions, %d dates covered by trips, %d dropped as the holiday they fell on",
         year,
-        reading.offered,
-        reading.silent,
-        len(reading.found),
+        len(occasions),
         len(away),
         len(off_trip) - len(candidates),
     )
-    if reading.unread_months:
-        raise YearNotRead(year, reading.unread_months)
 
     clip_seconds = (analysis_config or AnalysisConfig()).optimal_clip_duration
     stills = PhotoConfig().duration if still_seconds is None else still_seconds
     found: list[DiscoveredDay] = []
-    for day, what in sorted(reading.found.items()):
+    for day, what in sorted(occasions.items()):
         items = candidates[day]
         if filmable_seconds(items, still_seconds=stills, clip_seconds=clip_seconds) < (
             MIN_FILM_SECONDS
         ):
             logger.info("%s read as %r, dropped for want of material to film", day, what)
             continue
-        day_captions = {
-            asset.id: captions[asset.id] for asset in items if captions and captions.get(asset.id)
-        }
-        verdict = ask_if_special(
-            items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
+        verdict = (
+            SpecialDay(special=True, title=honest_title(items, what=what, evidence=""), what=what)
+            if reader == "rules"
+            else ask_if_special(
+                items,
+                llm_config,
+                captions={a.id: captions[a.id] for a in items if captions and captions.get(a.id)},
+                judgment_cache_path=judgment_cache_path,
+            )
         )
         outcome = _day_from(day, items, verdict, what)
         if outcome is not None:
             found.append(outcome)
     return found
+
+
+def _occasions(
+    candidates: dict[date, list],
+    *,
+    year: int,
+    reader: str,
+    home: tuple[float, float] | None,
+    away_km: float,
+    captions: dict[str, str] | None,
+    llm_config: Any,
+    cache_path: Path | None,
+) -> dict[date, str]:
+    """The occasions among these runs and what each was: read by the model, or by the facts."""
+    if reader == "rules":
+        return {
+            day: what
+            for day, items in candidates.items()
+            if (what := _occasion_by_facts(items, home, away_km))
+        }
+    reading = read_in_sequence(
+        candidates, captions=captions, llm_config=llm_config, cache_path=cache_path
+    )
+    logger.info(
+        "%d: %d runs read, %d with nothing recorded beyond the clock",
+        year,
+        reading.offered,
+        reading.silent,
+    )
+    if reading.unread_months:
+        raise YearNotRead(year, reading.unread_months)
+    return reading.found
+
+
+# A run loud on one of these facts is an occasion to the no-model tier. The first is the bar
+# measured on labelled days; the others are the single loud axes the owner's confirmed occasions
+# showed (#1093). Close family is not among them yet: the scan has no relationships to read.
+_FAVOURITES_OF_AN_OCCASION = 3
+_VIDEOS_OF_AN_OCCASION = 3
+_VIDEO_SHARE_OF_AN_OCCASION = 0.5
+
+
+def _occasion_by_facts(items: list, home: tuple[float, float] | None, away_km: float) -> str:
+    """What the loudest recorded fact says this run was, or "" when none is loud."""
+    hours = active_hours(items)
+    if len(items) >= MIN_PHOTOS and hours >= MIN_ACTIVE_HOURS:
+        return f"a long day, {hours} active hours"
+    if home and _kept_away_from_home(items, home, away_km):
+        return "a day away from home"
+    stars = sum(1 for a in items if getattr(a, "is_favorite", False))
+    if stars >= _FAVOURITES_OF_AN_OCCASION:
+        return f"{stars} favourites"
+    videos = sum(1 for a in items if getattr(a, "is_video", False))
+    if videos >= _VIDEOS_OF_AN_OCCASION and videos >= _VIDEO_SHARE_OF_AN_OCCASION * len(items):
+        return "a day mostly on video"
+    return ""
 
 
 class YearNotRead(RuntimeError):

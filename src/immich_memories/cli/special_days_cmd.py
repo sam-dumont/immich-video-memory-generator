@@ -224,6 +224,7 @@ def _scan_one_year(
         captions=prepared_captions(config, tuple(asset.id for asset in assets)),
         judgment_cache_path=verdicts_beside(config.cache.cache_path),
         still_seconds=config.photos.duration,
+        reader=config.editorial.resolve_reader(config.llm.model),
     ):
         found.append(record_for(day))
         if day.judged:

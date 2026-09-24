@@ -210,10 +210,18 @@ occasion. An afternoon at home, a walk, a meal, a park or a day spent photograph
 ordinary however pleasant it was and however many pictures it left.
 
 An occasion is kept only if a film of it can run 30 seconds. That is counted episode by episode (the
-editor's own 90-minute groups): a burst of frames of one scene is one still, and no episode fills
-more than 30 seconds, so a day of three pictures can be named correctly and still be dropped. It is
+editor's own 90-minute groups, a group that ran on for hours taken 90 minutes at a time): an episode
+counts at most four stills plus its clips, and fills at most 30 seconds, so a day of one burst can be
+named correctly and still be dropped. It is
 checked last, after the day was read, and the log says the day was dropped for want of material. A
 day that is kept is then named from its own pictures' lines, the way it always was.
+
+Without a model (`editorial.reader: rules`, or a blank `llm.model`) nothing is asked. A day is kept
+when one recorded fact is loud: at least 20 pictures across six active hours, most of its located
+pictures away from home (the `trips:` distance), at least three favourites, or at least three videos
+making half the day. It is titled after its place ("A day in ..."), and the same 30-second floor
+applies. The facts cannot tell a long ordinary day from an occasion; reading the day is what the
+model adds.
 
 A day ends when the photographs stop for five hours, not at midnight, so a wedding that runs past
 one is one occasion. Days inside a detected trip are skipped, because a trip memory already tells
