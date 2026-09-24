@@ -65,20 +65,29 @@ def seat_close_family(
     """The film with one seat for every close family member it owes one, and the record of why.
 
     A seat is appended when the film has room; otherwise it replaces the weakest non-favourite
-    of its own story. A favourite is never displaced, nor the only shot of another close family
-    member. A person with no frame that clears the story's bar, or no seat to take, stays out,
-    and the record says so.
+    of its own story, and when that story holds no shot to give up, the weakest non-favourite of
+    a story that keeps another shot. A favourite is never displaced, nor the only shot of another
+    close family member. Only pictures the film could show count toward what someone is owed: a
+    person whose every picture is refused as a carrier is owed nothing, and the record says so,
+    as it does for a person with no frame that clears the story's bar, or no seat to take.
     """
-    on = {asset: close_family_on(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)}
+    everyone = {
+        asset: close_family_on(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)
+    }
+    on = {asset: people for asset, people in everyone.items() if not inputs.refused(asset)}
     counts = Counter(chain.from_iterable(on.values()))
-    relation = {name: rel for people in on.values() for name, rel in people.items()}
+    relation = {name: rel for people in everyone.values() for name, rel in people.items()}
     film = carriers.copy()
     seats: list[dict[str, Any]] = []
-    for name, pictures in counts.most_common():
-        if not inputs.policy.owed(pictures, len(on)) or _shots_of(name, film, inputs.line_of):
+    for name, pictures in Counter(chain.from_iterable(everyone.values())).most_common():
+        if not inputs.policy.owed(pictures, len(everyone)) or _shots_of(name, film, inputs.line_of):
+            continue
+        if not inputs.policy.owed(counts[name], len(on)):
+            seats.append(_refused_record(relation[name], pictures, counts[name]))
             continue
         seats.append(
-            {"relation": relation[name], "pictures": pictures} | _seat_one(name, film, on, inputs)
+            {"relation": relation[name], "pictures": counts[name]}
+            | _seat_one(name, film, on, inputs)
         )
     return film, {
         "version": FAMILY_SEAT_VERSION,
@@ -86,6 +95,18 @@ def seat_close_family(
         "min_pictures": inputs.policy.min_pictures,
         "min_share": inputs.policy.min_share,
         "seats": seats,
+    }
+
+
+def _refused_record(relation: str, pictures: int, showable: int) -> dict[str, Any]:
+    return {
+        "relation": relation,
+        "pictures": pictures,
+        "showable": showable,
+        "placed": None,
+        "reason": "every picture of them in this film is refused as a carrier"
+        if not showable
+        else "too few of their pictures in this film can be shown",
     }
 
 
@@ -119,7 +140,7 @@ def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str,
         if inputs.has_room([*film, seat]):
             film.append(seat)
             return {"story": key, "asset_id": best["asset_id"], "placed": "appended"}
-        victim = _weakest_replaceable(key, film, inputs)
+        victim = _weakest_replaceable(key, film, inputs) or _weakest_anywhere(film, inputs)
         if victim is not None:
             film[film.index(victim)] = seat
             return {
@@ -131,16 +152,28 @@ def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str,
     return {"placed": None, "reason": "no frame clears a story's bar with a seat to take"}
 
 
-def _weakest_replaceable(key: str, film: list[dict], inputs: FamilySeatInputs) -> dict | None:
-    """The story's weakest carrier that is neither a favourite nor someone's only shot."""
+def _weakest_anywhere(film: list[dict], inputs: FamilySeatInputs) -> dict | None:
+    """The film's weakest replaceable carrier among the stories that keep another shot."""
+    shots = Counter(c.get("story_episode") for c in film)
+    return _weakest_replaceable(
+        None, [c for c in film if shots[c.get("story_episode")] > 1], inputs, whole=film
+    )
+
+
+def _weakest_replaceable(
+    key: str | None, film: list[dict], inputs: FamilySeatInputs, whole: list[dict] | None = None
+) -> dict | None:
+    """The story's weakest carrier (any story's when `key` is None) that is neither a
+    favourite nor someone's only shot in the `whole` film."""
+    whole = film if whole is None else whole
     victims = [
         c
         for c in film
-        if c.get("story_episode") == key
+        if (key is None or c.get("story_episode") == key)
         and not c.get("favourite")
         and not c.get("family_seat")
         and not any(
-            _shots_of(other, film, inputs.line_of) == 1
+            _shots_of(other, whole, inputs.line_of) == 1
             for other in close_family_on(inputs.line_of(c["asset_id"]))
         )
     ]

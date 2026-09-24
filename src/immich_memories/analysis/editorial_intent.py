@@ -62,6 +62,10 @@ class EditorialIntent:
     abstention_policy: str
     subject: str | None = None
     max_carriers_per_partition: int | None = None
+    # Every partition that holds material gets one moment before any story deepens: a person's
+    # lifetime or a works period over years is about the span, and a year that holds her is
+    # part of it however few stars it has.
+    voice_per_partition: bool = False
 
     def partition_for(self, when: date) -> IntentPartition | None:
         return next((part for part in self.partitions if part.covers(when)), None)
@@ -259,6 +263,7 @@ def _person(product, spans, whole, *, brief, who):
         allowed_texture="domestic life only when it shows a relationship or a change; presence alone is not merit",
         abstention_policy="a required era or window has no usable material: say so in the plan; do not fill it with another era",
         subject=subject,
+        voice_per_partition=eras,
     )
 
 
@@ -337,6 +342,7 @@ def _custom(product, spans, whole, *, brief, who):
         allowed_texture="only what concerns the subject",
         abstention_policy="the subject is not visible in the material: insufficient_material, not a film about something else",
         subject=brief.strip(),
+        voice_per_partition=len(spans) > 1,
     )
 
 

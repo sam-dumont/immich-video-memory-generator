@@ -515,8 +515,13 @@ favourite is never displaced. A frame any hold refuses (an earlier `do_not_show`
 refusal, a source rule, or an exposure hold on a film for outside the family) is never the seat,
 and the family-viewing gate still judges the cut afterwards. When no frame of theirs clears the bar,
 or their stories hold nothing but favourites and the film is full, nobody is seated and
-`derived-decisions/family-seat.private.json` says so, by relation only. Nothing is asked of a model
-on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
+`derived-decisions/family-seat.private.json` says so, by relation only. Only pictures the film could
+show count toward the 20: a person whose every picture in the film is refused as a carrier (every
+one a hospital scene the medical-care rule holds back, for instance) is owed nothing, and the
+record says that rather than "no frame clears a story's bar". When the story holding most of their
+pictures has no shot to give up (it got no slot, or holds only favourites) and the film is full, the
+seat replaces the film's weakest non-favourite in a story that keeps another shot. Nothing is asked
+of a model on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
 
 ### Reading what a model already answered
