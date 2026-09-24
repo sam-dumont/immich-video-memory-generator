@@ -87,3 +87,20 @@ def test_failed_checkpoint_replacement_preserves_the_previous_usage(tmp_path, mo
 
     assert json.loads((tmp_path / USAGE_FILE).read_text())["prompt_tokens"] == 50
     assert sorted(p.name for p in tmp_path.iterdir()) == [USAGE_FILE]
+
+
+def test_a_batch_total_with_unmetered_lines_is_not_presented_as_complete(tmp_path) -> None:
+    counters = LLMCounters(
+        calls=3,
+        unmetered_calls=1,
+        batch_calls=2,
+        batch_unmetered_calls=1,
+        batch_prompt_tokens=10,
+    )
+    write_llm_usage(tmp_path, counters)
+
+    record = json.loads((tmp_path / USAGE_FILE).read_text())
+
+    assert record["usage_complete"] is False
+    assert record["batch_unmetered_calls"] == 1
+    assert record["batch_usage_complete"] is False

@@ -65,6 +65,11 @@ too. Reusing prepared facts adds no preparation calls.
 summary name this gap. A reported zero is distinct from missing usage. Reasoning tokens remain
 a subset of output tokens, not an additional charge.
 
+Provider batch lines count the same way. Every completed line is billed on the record once,
+including one whose answer the stage could not read and then asked again in real time.
+`batch_unmetered_calls` counts batch lines that came back without usage; while it is above zero,
+`batch_usage_complete` is `false` and the batch token totals are a floor.
+
 The setup matrix leaves cost unpriced when usage is incomplete or the total includes preparation:
 local caption compute cannot be priced using the hosted reader's rate. Counts remain available
 by stage and model for separate pricing. A successful rendered CLI run replaces the file with

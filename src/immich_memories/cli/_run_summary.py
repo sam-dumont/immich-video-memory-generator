@@ -75,11 +75,7 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
             f"        {_thousands(counters.reasoning_tokens)} of the completion tokens were reasoning"
         )
     if counters.batch_calls:
-        lines.append(
-            f"        {_thousands(counters.batch_prompt_tokens)} prompt / "
-            f"{_thousands(counters.batch_completion_tokens)} completion of that came "
-            "back from the provider's batch route"
-        )
+        lines.append(_batch_line(counters))
     if counters.truncated:
         # The sentence #600 needed on the night it started, instead of two
         # months later in a server log nobody was reading.
@@ -89,6 +85,21 @@ def _llm_lines(counters: LLMCounters) -> list[str]:
             "token budget and retried without it"
         )
     return lines
+
+
+def _batch_line(counters: LLMCounters) -> str:
+    """The batch route's share; a floor, said as one, when a line came back unmetered."""
+    share = (
+        f"{_thousands(counters.batch_prompt_tokens)} prompt / "
+        f"{_thousands(counters.batch_completion_tokens)} completion"
+    )
+    if not counters.batch_unmetered_calls:
+        return f"        {share} of that came back from the provider's batch route"
+    noun = "line" if counters.batch_unmetered_calls == 1 else "lines"
+    return (
+        f"        at least {share} of that came back from the provider's batch route; "
+        f"{counters.batch_unmetered_calls} batch {noun} reported no usage"
+    )
 
 
 _TIER_LINES = {
@@ -196,5 +207,9 @@ def render_llm_totals(metrics: dict) -> str:
         reasoning_tokens=int(metrics.get("llm_reasoning_tokens", 0)),
         truncated=int(metrics.get("llm_truncated", 0)),
         wall_seconds=float(metrics.get("llm_wall_seconds", 0.0)),
+        batch_calls=int(metrics.get("llm_batch_calls", 0)),
+        batch_unmetered_calls=int(metrics.get("llm_batch_unmetered_calls", 0)),
+        batch_prompt_tokens=int(metrics.get("llm_batch_prompt_tokens", 0)),
+        batch_completion_tokens=int(metrics.get("llm_batch_completion_tokens", 0)),
     )
     return "\n".join(line for line in _llm_lines(counters) if line).strip()
