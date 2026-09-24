@@ -43,7 +43,7 @@ def _render(folder: Path, colour: str) -> Path:
 
 
 def test_a_rerendered_film_is_filed_in_its_album_and_replaces_the_earlier_one(
-    gate_client, gate_version, tmp_path
+    gate_client, tmp_path
 ):
     album = f"Gate films {uuid.uuid4().hex[:8]}"
     first = gate_client.upload_memory(_render(tmp_path / "a", "red"), album, captured_at=_CAPTURED)
@@ -61,13 +61,8 @@ def test_a_rerendered_film_is_filed_in_its_album_and_replaces_the_earlier_one(
         for asset in gate_client.list_album_assets(second["album_id"])
         if asset.get("originalFileName") == _FILM_NAME
     )
-    if gate_version == "v2":
-        # A v2 upload carries this app's device identity, so the earlier render
-        # of the same recipe goes to Immich's trash.
-        assert filed == [second["asset_id"]]
-        assert gate_client.get_asset(first["asset_id"]).is_trashed
-    else:
-        # A v3 upload carries no device identity, so nothing proves the earlier
-        # file is ours and it is kept (supersede_previous_renders).
-        assert filed == sorted([first["asset_id"], second["asset_id"]])
-        assert not gate_client.get_asset(first["asset_id"]).is_trashed
+    # v2 proves the earlier render is ours by its device identity; v3 dropped
+    # deviceId, so there the immich-memories/generated tag proves it. Either way
+    # the earlier render of the same recipe goes to Immich's trash.
+    assert filed == [second["asset_id"]]
+    assert gate_client.get_asset(first["asset_id"]).is_trashed
