@@ -50,6 +50,7 @@ jobs:
   # reports all of them at once, the way thirteen parallel jobs did.
   quality:
     name: Quality Gates
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [setup]
     runs-on: ubuntu-latest
     steps:
@@ -118,6 +119,7 @@ jobs:
   # ── Tier 1: Security (parallel with quality gates) ────────────────────────
   security:
     name: Security Scan
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [setup]
     runs-on: ubuntu-latest
     permissions:
@@ -184,6 +186,7 @@ jobs:
   # ── Tier 2: Tests (after all quality gates pass) ──────────────────────────
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [quality, security]
     permissions:
       contents: read
@@ -317,6 +320,7 @@ jobs:
 
   test-extras:
     name: Test Extras (${{ matrix.os }})
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [quality, security]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -375,6 +379,7 @@ jobs:
   # ── Tier 3: Build + Docker (most expensive, after tests) ─────────────────
   build:
     name: Build Package
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: [test]
     runs-on: ubuntu-latest
     steps:
@@ -395,7 +400,7 @@ jobs:
     name: Docker (${{ matrix.platform }})
     needs: [test]
     runs-on: ${{ matrix.runner }}
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     strategy:
       fail-fast: false
       matrix:
@@ -425,6 +430,7 @@ jobs:
 
   docs:
     name: Docs Build
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -451,7 +457,7 @@ jobs:
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -502,7 +508,7 @@ jobs:
     name: CI Success
     needs: [setup, quality, security, test, test-extras, build, docker, docs, launch-check]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
       - name: Check all jobs passed
         run: |
