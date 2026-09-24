@@ -547,7 +547,7 @@ def run_pipeline_and_generate(
             scope=FilmScope(start=date_range.start, end=date_range.end, pool=pool),
         )
 
-    resolved_title, resolved_subtitle = resolve_cli_title(
+    resolved_title, resolved_subtitle, title_source = resolve_cli_title(
         enabled=llm_title,
         title_override=title_override,
         subtitle_override=subtitle_override,
@@ -609,6 +609,7 @@ def run_pipeline_and_generate(
         privacy_mode=privacy_mode,
         title=resolved_title,
         subtitle=resolved_subtitle,
+        title_source=title_source,
         music_path=resolved.music_path,
         music_volume=music_volume,
         no_music=no_music,

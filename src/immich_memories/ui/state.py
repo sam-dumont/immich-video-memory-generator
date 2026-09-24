@@ -145,6 +145,8 @@ class AppState:
     # LLM-generated title (shown in Step 3, used in Step 4)
     title_suggestion_title: str | None = None
     title_suggestion_subtitle: str | None = None
+    # Who wrote title_suggestion_title: a TitleSource value.
+    title_suggestion_source: str | None = None
     title_suggestion_trip_type: str | None = None
     title_suggestion_map_mode: str | None = None
 
@@ -368,6 +370,7 @@ class AppState:
         self.review_selected_mode = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
+        self.title_suggestion_source = None
         self.cancel_requested = False
         self.discard_music_preview()
 

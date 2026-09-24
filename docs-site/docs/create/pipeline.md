@@ -304,6 +304,17 @@ whether one frame would make a good photograph. Standing votes are banked per pi
 key carries the caption seat that wrote those sentences: a different seat writes different rows and
 its predecessor's verdicts are not replayed against them.
 
+**Every picture gets its own yes or no.** The gate used to ask the reader to name the weak pictures
+in a block of twelve. The local 30B named a few in every block, whatever the question said: a baby
+on a blanket, a family posing, a man and a boy by a wall all came out weak in both orders, and
+rewording the question moved 31 of 100 such rows to 30. Now each row gets its own answer: weak
+means a lone object, an empty room or floor, a screen, a document, a test shot, an unusable blur
+or a body-part close-up, and people in a real moment stand, quiet or posed. Only the rows the first
+answer calls weak are asked again, in a block of their own, and a picture leaves only when both
+answers agree. A picture the frame head calls a people moment, sharp and not a body part, stands
+without being asked. On the same 100 rows, weak in both orders went from 31 to 12, and the plates,
+tiles and bottles stayed weak.
+
 Speech boundaries measured after a cut guide playback timing. Finding those boundaries does not
 reopen a settled standing judgment: speech presence alone says nothing about what was said.
 
@@ -649,7 +660,7 @@ the episode readings used for the cut.
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with eight context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../deploy/installation/inference-service.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. The same reading names the episode's notable moments: what a family would remember on its own and a 25-word summary would lose. Banked per group and evidence key | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing is asked in two packed rounds and banked per picture, and picture facts are observed for the cut. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing asks every picture for its own yes or no in packed blocks, asks the pictures called weak once more, and banks each picture, and picture facts are observed for the cut. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -698,7 +709,7 @@ flowchart TB
     synthesis --> weigh["Story weighing"]
     weigh --> candidates["Shortlisted candidates from prepared captions:<br/>local, no model calls"]
     candidates --> standing
-    subgraph standing["Standing gate: pictures in blocks of 12, two orders again"]
+    subgraph standing["Standing gate: a yes or no per picture in blocks of 12, doubts asked once more"]
         direction LR
         s1["block 1"] ~~~ sn["block n"]
     end

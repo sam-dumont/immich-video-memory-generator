@@ -12,6 +12,7 @@ from nicegui import ui
 
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
+from immich_memories.titles.title_source import TitleSource
 from immich_memories.ui.components import im_card
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.step1_config import render_custom_range
@@ -406,6 +407,7 @@ def _render_trip_params(state: AppState) -> None:
                 p["trip_start"] = trip.start_date
                 p["trip_end"] = trip.end_date
                 p["location_name"] = trip.location_name
+                p["location_kind"] = trip.location_kind
                 p["asset_count"] = trip.asset_count
                 p["home_lat"] = trips_config.homebase_latitude
                 p["home_lon"] = trips_config.homebase_longitude
@@ -535,6 +537,7 @@ def _choose_special_day(entry: DiscoveredDay, other_days: set[date]) -> None:
     # invent one for an occasion it never saw.
     state.title_suggestion_title = _day_name(entry)
     state.title_suggestion_subtitle = entry.subtitle or None
+    state.title_suggestion_source = TitleSource.OCCASION
 
 
 def _render_special_day_params(state: AppState) -> None:

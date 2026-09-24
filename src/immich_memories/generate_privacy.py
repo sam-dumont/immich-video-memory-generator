@@ -182,4 +182,5 @@ def generate_trip_title_text(preset_params: dict, locale: str = "en") -> str | N
     if not location_name or not trip_start or not trip_end:
         return None
 
-    return generate_trip_title(location_name, trip_start, trip_end, locale=locale)
+    kind = preset_params.get("location_kind") or None
+    return generate_trip_title(location_name, trip_start, trip_end, locale=locale, kind=kind)

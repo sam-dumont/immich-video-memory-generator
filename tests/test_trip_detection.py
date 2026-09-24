@@ -515,7 +515,7 @@ class TestReverseGeocode:
             assets, 45.955, -1.145, lambda *_a, **_k: "Île d'Oléron, France"
         )
 
-        assert result == "Île d'Oléron, France"
+        assert result.name == "Île d'Oléron, France"
 
     def test_naming_falls_back_to_exif_when_geocode_fails(self):
         """When geocode returns None, fall back to EXIF city/country."""
@@ -529,7 +529,7 @@ class TestReverseGeocode:
 
         result = _derive_location_name(assets, 41.39, 2.17, lambda *_a, **_k: None)
 
-        assert result == "Barcelona, Spain"
+        assert result.name == "Barcelona, Spain"
 
 
 class TestReverseGeocodeGranularity:
@@ -556,11 +556,8 @@ class TestReverseGeocodeGranularity:
 
         assert result == "Tenerife, Spain"
 
-    def test_prefers_province_over_state(self):
-        """For Spanish provinces, should use province over state.
-
-        Nominatim returns 'province' for Spanish islands (e.g., 'Santa Cruz de Tenerife').
-        """
+    def test_a_region_scale_trip_takes_the_state_not_the_province(self):
+        """A province is an administrative unit under the name people use."""
         from unittest.mock import MagicMock, patch
 
         from immich_memories.analysis.trip_detection import reverse_geocode
@@ -576,12 +573,12 @@ class TestReverseGeocodeGranularity:
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
             mock_nom.return_value.reverse.return_value = mock_location
-            result = reverse_geocode(28.2916, -16.6291)
+            result = reverse_geocode(28.2916, -16.6291, spread_km=120.0)
 
-        assert result == "Santa Cruz de Tenerife, Spain"
+        assert result == "Canary Islands, Spain"
 
-    def test_prefers_county_over_state(self):
-        """For Ardennes, should return 'Ardennes, France' not 'Grand Est, France'."""
+    def test_a_county_is_never_the_trip_name(self):
+        """Nominatim's county is a regional unit in some countries, in the local script."""
         from unittest.mock import MagicMock, patch
 
         from immich_memories.analysis.trip_detection import reverse_geocode
@@ -589,38 +586,32 @@ class TestReverseGeocodeGranularity:
         mock_location = MagicMock()
         mock_location.raw = {
             "address": {
-                "county": "Ardennes",
-                "state": "Grand Est",
-                "country": "France",
+                "municipality": "Δήμος Ανωγείων",
+                "county": "Περιφερειακή Ενότητα Ρεθύμνης",
+                "state": "Crète",
+                "country": "Grèce",
             }
         }
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
             mock_nom.return_value.reverse.return_value = mock_location
-            result = reverse_geocode(49.77, 4.72)
+            result = reverse_geocode(35.24, 24.9, spread_km=150.0, language="fr")
 
-        assert result == "Ardennes, France"
+        assert result == "Crete, Grèce"
 
-    def test_prefers_state_district_over_state(self):
-        """state_district should be preferred over state."""
+    def test_a_region_label_loses_its_administrative_wording(self):
         from unittest.mock import MagicMock, patch
 
         from immich_memories.analysis.trip_detection import reverse_geocode
 
         mock_location = MagicMock()
-        mock_location.raw = {
-            "address": {
-                "state_district": "Provence",
-                "state": "Provence-Alpes-Côte d'Azur",
-                "country": "France",
-            }
-        }
+        mock_location.raw = {"address": {"state": "Région Crète", "country": "Grèce"}}
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
             mock_nom.return_value.reverse.return_value = mock_location
-            result = reverse_geocode(43.30, 5.37)
+            result = reverse_geocode(35.24, 24.9, spread_km=150.0, language="fr")
 
-        assert result == "Provence, France"
+        assert result == "Crete, Grèce"
 
     def test_deduplicates_region_and_country(self):
         """When state == country (e.g., Cyprus), return just country name."""
@@ -643,8 +634,8 @@ class TestReverseGeocodeGranularity:
 
         assert result == "Cyprus"  # Not "Cyprus, Cyprus"
 
-    def test_uses_detailed_zoom_for_small_spread_trips(self):
-        """For trips in a small area (<80km), use detailed zoom."""
+    def test_a_city_scale_trip_takes_the_town(self):
+        """A trip that fits one town is named after the town, in the film's language."""
         from unittest.mock import MagicMock, patch
 
         from immich_memories.analysis.trip_detection import reverse_geocode
@@ -652,6 +643,7 @@ class TestReverseGeocodeGranularity:
         detailed_location = MagicMock()
         detailed_location.raw = {
             "address": {
+                "town": "Charleville-Mézières",
                 "county": "Ardennes",
                 "state": "Grand Est",
                 "country": "France",
@@ -660,9 +652,9 @@ class TestReverseGeocodeGranularity:
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
             mock_nom.return_value.reverse.return_value = detailed_location
-            result = reverse_geocode(49.77, 4.72, spread_km=30.0)
+            result = reverse_geocode(49.77, 4.72, spread_km=8.0)
 
-        assert result == "Ardennes, France"
+        assert result == "Charleville-Mézières, France"
 
     def test_multi_country_trip_lists_countries(self):
         """A cross-country trip (>300km, multiple countries) lists countries."""
@@ -681,7 +673,7 @@ class TestReverseGeocodeGranularity:
         with patch("immich_memories.analysis.trip_detection.reverse_geocode"):
             result = _derive_location_name(assets, centroid_lat=47.0, centroid_lon=3.0)
 
-        assert result == "Belgium → France → Spain"
+        assert result.name == "Belgium → France → Spain"
 
     def test_dominant_country_ignores_layovers(self):
         """If 90%+ assets are in one country, use that country (ignore layovers)."""
@@ -704,8 +696,7 @@ class TestReverseGeocodeGranularity:
         ):
             result = _derive_location_name(assets, centroid_lat=34.90, centroid_lon=33.00)
 
-        assert result == "Cyprus"
-        assert "Greece" not in result
+        assert result.name == "Cyprus"
 
     def test_falls_back_to_state_when_no_finer_detail(self):
         """When no island/county/state_district, fall back to state."""

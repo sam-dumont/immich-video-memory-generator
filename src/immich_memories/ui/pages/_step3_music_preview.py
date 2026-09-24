@@ -13,6 +13,7 @@ from pathlib import Path
 from nicegui import ui
 
 from immich_memories.security import sanitize_error_message
+from immich_memories.titles.title_source import TitleSource
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,13 @@ def _render_title_metadata_chips(state) -> None:
             ui.badge(f"Map: {state.title_suggestion_map_mode}").props("outline").classes("text-xs")
 
 
+def _edit_title(state, title: str | None) -> None:
+    # Regenerate writes the field too; only a different text is the person's own.
+    if title != state.title_suggestion_title:
+        state.title_suggestion_source = TitleSource.OVERRIDE
+    state.title_suggestion_title = title
+
+
 def render_title_section() -> None:
     """Render the title editing section in Step 3.
 
@@ -186,7 +194,7 @@ def render_title_section() -> None:
             )
 
             def on_title_change(e):
-                state.title_suggestion_title = e.value or None
+                _edit_title(state, e.value or None)
 
             title_input.on_value_change(on_title_change)
 

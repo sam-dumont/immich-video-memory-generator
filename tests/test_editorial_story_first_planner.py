@@ -403,8 +403,8 @@ def test_story_part_names_the_type_and_never_a_case():
     assert "episode" in _STORY_PART_DEFAULT
 
 
-def test_standing_gate_is_reject_only_and_scores_by_how_often_a_picture_is_named_weak():
-    from immich_memories.analysis.editorial_block_votes import judge_standing
+def test_standing_gate_refuses_only_what_both_answers_call_weak():
+    from immich_memories.analysis.editorial_standing_vote import judge_standing
 
     class Judge:
         def __init__(self):
@@ -412,10 +412,9 @@ def test_standing_gate_is_reject_only_and_scores_by_how_often_a_picture_is_named
 
         def ask(self, stage, prompt, max_tokens=0):
             self.calls.append(stage)
-            weak = {"P02": "a lone object"}
-            if stage.endswith("hashed"):
-                weak["P03"] = "blurry"
-            return json.dumps({"weak": weak})
+            if stage.startswith("standing-check"):
+                return json.dumps({"weak": {"P02": "yes: a lone object", "P03": "no"}})
+            return json.dumps({"weak": {"P01": "no", "P02": "yes: a lone object", "P03": "yes"}})
 
     lines = {
         "a": "2030-05-02 | people at a picnic",
@@ -576,7 +575,7 @@ def test_the_audience_reads_the_finished_cut_not_every_candidate(tmp_path):
 
         def answer(self, stage, prompt):
             if stage.startswith("shareability-") and "outing 1, view 2" in prompt:
-                return json.dumps({"finding": "bathing", "why": "A person is bathing"})
+                return json.dumps({"finding": "toileting_or_changing", "why": "A diaper change"})
             return super().answer(stage, prompt)
 
     plan = run(replace(make_source(tmp_path), audience="sendable"), RefusingJudge())

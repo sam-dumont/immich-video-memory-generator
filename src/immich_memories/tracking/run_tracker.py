@@ -195,6 +195,12 @@ class RunTracker:
         self._phase_items_total = 0
         self._phase_llm_mark = None
 
+    def record_title_source(self, source: str) -> None:
+        """Record which source produced the film's opening title."""
+        run = self._require_started()
+        run.title_source = source
+        self.db.record_title_source(self.run_id, source)
+
     def record_phase_event(self, event: PhaseEvent) -> bool:
         """Record one public phase without letting stale telemetry move backwards."""
         self._require_started()
