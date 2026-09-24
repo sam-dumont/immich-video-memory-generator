@@ -465,12 +465,8 @@ def _run_pipeline_blocking(
         raise RuntimeError("Thumbnail cache not initialized")
     try:
         from immich_memories.config import get_config
-        from immich_memories.preflight_run import run_blockers
 
         app_config = get_config()
-        blockers = run_blockers(app_config, output_directory=app_config.output.output_path)
-        if blockers:
-            raise RuntimeError("; ".join(f"{b.message}: {b.details}" for b in blockers))
         with SyncImmichClient(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
