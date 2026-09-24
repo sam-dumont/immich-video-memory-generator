@@ -48,8 +48,6 @@ def run(source, judge, *, account):
         StructurePlannerPorts(
             judge=judge,
             thumbnail_hash=lambda _asset: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             rules=RuleStructureReader(source),
             thin=ThinPolish(
                 bank_dir=source.bank_dir,

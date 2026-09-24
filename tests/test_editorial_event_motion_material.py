@@ -197,8 +197,6 @@ def test_a_video_typed_asset_with_a_rendering_is_an_ordinary_video_unit(tmp_path
         StructurePlannerPorts(
             judge=None,
             thumbnail_hash=lambda _: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
         ),
         wall,
         renderings={
@@ -245,8 +243,6 @@ def test_a_carrier_the_projection_would_refuse_retires_before_the_film_finalizes
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
             thumbnail_hash=lambda _: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             resolve_motion=corrupting,
         ),
     ).plan

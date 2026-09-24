@@ -13,7 +13,6 @@ from types import SimpleNamespace
 import pytest
 
 from immich_memories.analysis import editorial_shareability as share
-from immich_memories.analysis.editorial_block_votes import standing_row_name
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     banked_leaders,
@@ -23,6 +22,7 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
+from immich_memories.analysis.editorial_standing_vote import standing_row_name
 from immich_memories.analysis.editorial_story_shortlist import _capture_group_moments
 from immich_memories.analysis.editorial_structure_audience import AUDIENCE_BANK_NAME, AudienceBank
 

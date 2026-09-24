@@ -35,7 +35,7 @@ from immich_memories.analysis.editorial_structure_contract import (
     StructurePlanningInput,
     StructurePlanningResult,
 )
-from immich_memories.analysis.editorial_structure_io import StructureReranker, StructureTextJudge
+from immich_memories.analysis.editorial_structure_io import StructureTextJudge
 from immich_memories.analysis.editorial_structure_source import capture_structure_input
 from immich_memories.analysis.editorial_thin_layer import ThinPolish, catalogued_period
 from immich_memories.analysis.editorial_thin_short import ShortReads
@@ -237,12 +237,9 @@ class ProductionPostCardBackend:
                 thumbnail_hash=thumbnail_hasher,
                 scene_print=scene_prints,
                 thumbnail_metrics=thumbnail_hasher.metrics,
-                rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 0.0),
-                reranker_identity={"model": "rules-v1", "endpoint": "none"},
                 rules=RuleStructureReader(source),
                 resolve_speech=production_speech_resolver(source, resources=resources),
             )
-        ranker = StructureReranker()
         picture_facts = PictureFactsProvider(
             llm_config=self._config.llm,
             cache_path=self._store_path,
@@ -269,8 +266,6 @@ class ProductionPostCardBackend:
             thumbnail_hash=thumbnail_hasher,
             scene_print=scene_prints,
             thumbnail_metrics=thumbnail_hasher.metrics,
-            rank=ranker,
-            reranker_identity=ranker.identity,
             resolve_motion=production_motion_resolver(
                 source, on_playback=attached_samples.remember_playback
             ),

@@ -13,7 +13,7 @@ way the writing side named it:
 
 * Standing votes live per picture in the library's `picture-stands.private.json`, named by the
   criterion, the motion seat behind a moving row, the replying model, the picture and the row's
-  own text (`editorial_block_votes.standing_row_name`). No film scope is in the name, so a month's
+  own text (`editorial_standing_vote.standing_row_name`). No film scope is in the name, so a month's
   answers serve the year around it. The model identity is part of that name,
   so a bank written by another reader simply does not answer here — it cannot be mistaken for
   one that does.
@@ -45,8 +45,8 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Protocol
 
-from immich_memories.analysis.editorial_block_votes import standing_row_name
 from immich_memories.analysis.editorial_shareability import allowed
+from immich_memories.analysis.editorial_standing_vote import standing_row_name
 from immich_memories.analysis.editorial_story_standing import standing_bank_path
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,

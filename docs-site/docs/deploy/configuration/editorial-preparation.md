@@ -190,6 +190,14 @@ read, and what made the source owe a line (`video`, or the Live Photo's residual
 measurement that produced it). Rows banked before this existed have no record and still answer;
 the cut counts how many of those it read as `unrecorded` in its motion metrics.
 
+A video's sentence counts only where its motion is measured. On every tier that samples a
+video's frames for the exposure head, preparation also measures their optical-flow residual and
+banks it under the picture, its source metadata and
+`motion-residual-v1@median-flow-v1-detector-frames-320x240`, with the frame count it was measured
+on. A video that measures under 1.5 has its sentence withheld (a favourite keeps it); see
+[the pipeline](../../create/pipeline.md). A video already prepared before this is sampled once more
+for the residual alone; a frame read or measurement that fails is named and never blocks the cut.
+
 `no_captions` and `metadata_only` ask for no motion line. The pick then reads the video's plain
 facts instead: its length, and the measured motion of a Live Photo that has one.
 

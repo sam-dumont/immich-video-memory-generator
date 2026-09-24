@@ -225,8 +225,6 @@ def _ports(inspect=None):
     return StructurePlannerPorts(
         judge=ControlledStoryJudge(),
         thumbnail_hash=lambda _: None,
-        rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-        reranker_identity={"model": "controlled", "endpoint": "test://local"},
         observe_picture=lambda _: {
             **picture_record(),
             "description": "A clothed person moves furniture.",

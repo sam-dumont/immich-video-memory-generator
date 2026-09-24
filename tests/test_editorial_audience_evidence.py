@@ -120,8 +120,8 @@ def test_the_activity_prompt_has_no_detector_resolution_or_clearance_instruction
 def test_the_activity_prompt_calls_a_baby_in_the_pool_family_content():
     prompt = share.audience_check_prompt(evidence("A parent holds a baby in a swimming pool."))
     assert (
-        "Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby "
-        "in the water and a baby's swimming lesson, does not match these categories."
+        "A pool, the sea, a lake, a river, a paddling pool, swimming or water play is never "
+        "bathing, including a parent holding a baby in the water and a baby's swimming lesson."
     ) in prompt
 
 
@@ -518,3 +518,18 @@ def test_real_gateway_cold_and_cached_failure_have_identical_audience_semantics(
     assert len(transport_budgets) == count_after_cold
     assert all(call["cache_hit"] is False for call in cold.calls)
     assert all(call["cache_hit"] is True for call in warm.calls)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Holding a baby, even close to the chest or under a blanket, is not breastfeeding",
+        "a statue or artwork is not a person's nudity",
+        "fake blood",
+        "A sleeveless top, a tank top or a vest is clothing.",
+        "An empty bathroom with nobody in it is not bathing.",
+        "an animal nursing its young is not breastfeeding",
+    ],
+)
+def test_the_activity_prompt_names_the_ordinary_scenes_that_imply_no_category(rule):
+    assert rule in share.audience_check_prompt(evidence("A man on a beach."))
