@@ -17,7 +17,7 @@ birthday two days ago, last month's highlights, a year nobody has cut yet. One d
 one video at most. Schedule it once a day and the memories arrive on their own.
 
 The "score" below ranks candidate memories against each other. It never touches which pictures go
-into a video: that is [the editor's job](./pipeline.md).
+into a video: that is [the editor's job](../how-it-chooses/overview.md).
 
 ## How a candidate is chosen
 
