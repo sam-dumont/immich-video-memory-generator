@@ -487,7 +487,7 @@ def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
     )
 
     with patch(
-        "immich_memories.processing.hdr_utilities._check_zscale_available",
+        "immich_memories.processing.hdr_utilities.check_zscale_available",
         return_value=True,
     ):
         decoder = make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=None)
@@ -528,7 +528,7 @@ def test_streaming_decoder_fails_when_required_hdr_conversion_is_unavailable(
 
     with (
         patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=False,
         ),
         pytest.raises(RequiredColorConversionUnavailable),

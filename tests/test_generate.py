@@ -15,13 +15,11 @@ from immich_memories.config_loader import Config
 from immich_memories.generate import (
     GenerationError,
     GenerationParams,
-    _build_assembly_settings,
-    _report,
-    _total_clip_duration,
-    assets_to_clips,
 )
+from immich_memories.generate_clips import assets_to_clips
 from immich_memories.generate_music import music_config_available
 from immich_memories.generate_privacy import clip_location_name
+from immich_memories.generate_settings import build_assembly_settings
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
@@ -127,22 +125,6 @@ class TestGenerationParams:
         assert params.upload_enabled is False
         assert params.music_path is None
         assert params.privacy_mode is False
-
-    def test_progress_callback_called(self):
-        calls = []
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/out.mp4"),
-            config=Config(),
-            progress_callback=lambda phase, pct, msg: calls.append((phase, pct, msg)),
-        )
-        _report(params, "test", 0.5, "halfway")
-        assert len(calls) == 1
-        assert calls[0] == ("test", 0.5, "halfway")
-
-    def test_no_callback_is_noop(self):
-        params = GenerationParams(clips=[], output_path=Path("/tmp/out.mp4"), config=Config())
-        _report(params, "test", 0.5, "halfway")  # Should not raise
 
 
 class TestGenerationError:
@@ -252,7 +234,7 @@ def test_generation_without_dividers_keeps_normal_duration_limit(tmp_path: Path)
 
 
 def test_title_settings_consume_the_resolved_timeline_plan(tmp_path: Path) -> None:
-    from immich_memories.generate import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.processing.timeline_budget import TimelinePlan
 
     params = GenerationParams(
@@ -270,7 +252,7 @@ def test_title_settings_consume_the_resolved_timeline_plan(tmp_path: Path) -> No
         ),
     )
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_duration == 3.0
@@ -414,18 +396,18 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             return_value=video_cache,
         ),
         patch.object(
-            generate_render_module, "_extract_clips", side_effect=extract_at_download_ownership
+            generate_render_module, "extract_clips", side_effect=extract_at_download_ownership
         ) as extract_clips,
         patch.object(
             generate_render_module,
-            "_build_assembly_settings",
+            "build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=encoding_plan),
         ) as build_settings,
         patch.object(
-            generate_render_module, "_create_assembler", return_value=Assembler()
+            generate_render_module, "create_assembler", return_value=Assembler()
         ) as create_assembler,
-        patch.object(generate_module, "_run_music_phase"),
-        patch.object(generate_module, "_cleanup_temp_clips"),
+        patch.object(generate_module, "run_music_phase"),
+        patch.object(generate_module, "cleanup_temp_clips"),
     ):
         result = generate_memory(params)
 
@@ -526,18 +508,18 @@ def test_generation_validation_failure_preserves_old_final_and_stops_downstream_
         patch("immich_memories.tracking.generate_run_id", return_value="fixed-run"),
         patch("immich_memories.tracking.RunTracker", return_value=tracker),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "extract_clips", return_value=[assembly_clip]),
         patch.object(
             generate_render_module,
-            "_build_assembly_settings",
+            "build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=_h264_output_plan()),
         ),
         patch.object(
-            generate_render_module, "_create_assembler", return_value=WrongCodecAssembler()
+            generate_render_module, "create_assembler", return_value=WrongCodecAssembler()
         ),
-        patch.object(generate_module, "_run_music_phase", music_phase),
-        patch("immich_memories.generate_delivery._upload_to_immich", upload),
-        patch.object(generate_module, "_cleanup_temp_clips"),
+        patch.object(generate_module, "run_music_phase", music_phase),
+        patch("immich_memories.generate_delivery.upload_to_immich", upload),
+        patch.object(generate_module, "cleanup_temp_clips"),
     ):
         generate_memory(params)
 
@@ -559,7 +541,7 @@ class TestBuildAssemblySettings:
             transition="crossfade",
             transition_duration=0.3,
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         from immich_memories.processing.assembly_config import TransitionType
 
         assert settings.transition == TransitionType.CROSSFADE
@@ -572,7 +554,7 @@ class TestBuildAssemblySettings:
             config=Config(),
             transition="cut",
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         from immich_memories.processing.assembly_config import TransitionType
 
         assert settings.transition == TransitionType.CUT
@@ -584,7 +566,7 @@ class TestBuildAssemblySettings:
             config=Config(),
             output_resolution="1080p",
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         assert settings.target_resolution == (1920, 1080)
         assert settings.auto_resolution is False
 
@@ -597,7 +579,7 @@ class TestBuildAssemblySettings:
             output_path=Path("/tmp/out.mp4"),
             config=config,
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         assert settings.auto_resolution is False
         assert settings.target_resolution == (1920, 1080)
 
@@ -609,7 +591,7 @@ class TestBuildAssemblySettings:
             config=Config(),
             output_resolution="auto",
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         assert settings.auto_resolution is False
         assert settings.target_resolution == (1920, 1080)
 
@@ -622,7 +604,7 @@ class TestBuildAssemblySettings:
             output_path=Path("/tmp/out.mp4"),
             config=config,
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         assert settings.auto_resolution is False
         assert settings.target_resolution == (1280, 720)
 
@@ -633,7 +615,7 @@ class TestBuildAssemblySettings:
             config=Config(),
             privacy_mode=True,
         )
-        settings = _build_assembly_settings(params, [])
+        settings = build_assembly_settings(params, [])
         assert settings.privacy_mode is True
 
 
@@ -654,17 +636,6 @@ class TestAssetsToClips:
         assets = [make_asset(duration="0:00:07.500")]
         clips = assets_to_clips(assets)
         assert clips[0].duration_seconds == 7.5
-
-
-class TestTotalClipDuration:
-    def test_sums_durations(self):
-        clips = [make_clip(duration=3.0), make_clip("c2", duration=5.0)]
-        params = GenerationParams(
-            clips=clips,
-            output_path=Path("/tmp/out.mp4"),
-            config=Config(),
-        )
-        assert _total_clip_duration(params) == 8
 
 
 class TestTripLocations:
@@ -709,7 +680,7 @@ class TestTripLocations:
 
 class TestTitleOverride:
     def test_custom_title_passed_to_settings(self):
-        from immich_memories.generate import _build_title_settings
+        from immich_memories.generate_settings import build_title_settings
 
         params = GenerationParams(
             clips=[],
@@ -720,7 +691,7 @@ class TestTitleOverride:
             date_start=date(2025, 1, 1),
             date_end=date(2025, 12, 31),
         )
-        title_settings = _build_title_settings(params, Config(), [])
+        title_settings = build_title_settings(params, Config(), [])
         assert title_settings.title_override == "My Custom Title"
         assert title_settings.subtitle_override == "Summer 2025"
 

@@ -20,7 +20,7 @@ from tests.conftest import make_clip
 def test_selected_photos_render_each_planned_duration_without_changing_defaults(
     tmp_path, monkeypatch, live
 ):
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clips = [make_clip("first", duration=3.5), make_clip("second", duration=2.25)]
     for clip in clips:
@@ -53,13 +53,13 @@ def test_selected_photos_render_each_planned_duration_without_changing_defaults(
             is_photo=True,
         )
 
-    monkeypatch.setattr("immich_memories.photos.photo_pipeline._render_single_photo", render)
+    monkeypatch.setattr("immich_memories.photos.photo_pipeline.render_single_photo", render)
     monkeypatch.setattr(
-        "immich_memories.generate_photos._detect_photo_resolution", lambda *_: (1920, 1080)
+        "immich_memories.generate_photos.detect_photo_resolution", lambda *_: (1920, 1080)
     )
     download = MagicMock(side_effect=AssertionError("A still must not download companion video"))
     monkeypatch.setattr("immich_memories.generate_clips._download_video_path", download)
-    result = _extract_clips(params, None, tmp_path)
+    result = extract_clips(params, None, tmp_path)
     assert observed == [("first", 3.5), ("second", 2.25)]
     assert [(clip.asset_id, clip.duration) for clip in result] == observed
     assert config.photos.duration == default_duration
@@ -69,7 +69,7 @@ def test_selected_photos_render_each_planned_duration_without_changing_defaults(
 def test_direct_photo_render_without_editorial_selection_keeps_configured_duration(
     tmp_path, monkeypatch
 ):
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("direct-photo", duration=2.0)
     clip.asset.type = AssetType.IMAGE
@@ -81,11 +81,11 @@ def test_direct_photo_render_without_editorial_selection_keeps_configured_durati
         clip_segments={clip.asset.id: (0.0, 2.0)},
     )
     render = MagicMock(return_value=None)
-    monkeypatch.setattr("immich_memories.photos.photo_pipeline._render_single_photo", render)
+    monkeypatch.setattr("immich_memories.photos.photo_pipeline.render_single_photo", render)
     monkeypatch.setattr(
-        "immich_memories.generate_photos._detect_photo_resolution", lambda *_: (1920, 1080)
+        "immich_memories.generate_photos.detect_photo_resolution", lambda *_: (1920, 1080)
     )
-    _extract_clips(params, None, tmp_path)
+    extract_clips(params, None, tmp_path)
     assert render.call_args.kwargs["config"].duration == params.config.photos.duration
 
 
@@ -93,7 +93,7 @@ def test_live_photo_directed_to_still_skips_burst_download_and_uses_photo_render
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("live-photo-still", duration=4.0)
     clip.asset.type = AssetType.IMAGE
@@ -124,12 +124,12 @@ def test_live_photo_directed_to_still_skips_burst_download_and_uses_photo_render
     coordinator.sources_for.return_value = {}
     video_download = MagicMock(side_effect=AssertionError("motion must not be downloaded"))
     monkeypatch.setattr(
-        "immich_memories.generate_photos._render_photo_as_clip",
+        "immich_memories.generate_photos.render_photo_as_clip",
         photo_render,
     )
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", video_download)
 
-    result = _extract_clips(
+    result = extract_clips(
         params,
         MagicMock(),
         tmp_path,
@@ -151,7 +151,7 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("video-still", duration=10.0)
     video_path = tmp_path / "video.mp4"
@@ -196,12 +196,12 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
         raising=False,
     )
     monkeypatch.setattr(
-        "immich_memories.photos.photo_pipeline._render_single_photo",
+        "immich_memories.photos.photo_pipeline.render_single_photo",
         photo_render,
     )
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", video_extract)
 
-    result = _extract_clips(
+    result = extract_clips(
         params,
         MagicMock(),
         tmp_path,
@@ -225,7 +225,7 @@ def test_video_directed_to_still_samples_exact_frame_and_uses_photo_render(
 def test_duplicate_render_directives_fail_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("duplicate-directive", duration=5.0)
     params = GenerationParams(
@@ -241,7 +241,7 @@ def test_duplicate_render_directives_fail_before_prefetch(
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="duplicate render directives.*duplicate-directive"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -254,7 +254,7 @@ def test_duplicate_render_directives_fail_before_prefetch(
 def test_unknown_render_directive_fails_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("known", duration=5.0)
     params = GenerationParams(
@@ -269,7 +269,7 @@ def test_unknown_render_directive_fails_before_prefetch(
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="unknown render directive.*outside-generation"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -282,7 +282,7 @@ def test_unknown_render_directive_fails_before_prefetch(
 def test_image_motion_directive_without_live_photo_family_fails_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("static-image", duration=4.0)
     clip.asset.type = AssetType.IMAGE
@@ -296,7 +296,7 @@ def test_image_motion_directive_without_live_photo_family_fails_before_prefetch(
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="IMAGE motion.*Live Photo family.*static-image"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -309,7 +309,7 @@ def test_image_motion_directive_without_live_photo_family_fails_before_prefetch(
 def test_image_motion_directive_with_unpaired_live_photo_family_fails_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("unpaired-live-photo", duration=4.0)
     clip.asset.type = AssetType.IMAGE
@@ -325,7 +325,7 @@ def test_image_motion_directive_with_unpaired_live_photo_family_fails_before_pre
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="IMAGE motion.*Live Photo family.*unpaired-live-photo"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -338,7 +338,7 @@ def test_image_motion_directive_with_unpaired_live_photo_family_fails_before_pre
 def test_video_still_without_frame_timestamp_fails_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("video-missing-frame", duration=5.0)
     params = GenerationParams(
@@ -351,7 +351,7 @@ def test_video_still_without_frame_timestamp_fails_before_prefetch(
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="exact frame timestamp.*video-missing-frame"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -364,7 +364,7 @@ def test_video_still_without_frame_timestamp_fails_before_prefetch(
 def test_video_still_frame_past_source_fails_before_prefetch(
     tmp_path: Path,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("video-past-frame", duration=5.0)
     params = GenerationParams(
@@ -383,7 +383,7 @@ def test_video_still_frame_past_source_fails_before_prefetch(
     coordinator = MagicMock()
 
     with pytest.raises(ValueError, match="frame timestamp outside source.*video-past-frame"):
-        _extract_clips(
+        extract_clips(
             params,
             MagicMock(),
             tmp_path,
@@ -397,7 +397,7 @@ def test_live_photo_directed_to_motion_preserves_legacy_burst_rendering(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("live-photo-motion", duration=4.0)
     clip.asset.type = AssetType.IMAGE
@@ -427,12 +427,12 @@ def test_live_photo_directed_to_motion_preserves_legacy_burst_rendering(
     photo_render = MagicMock(side_effect=AssertionError("motion must not render as a photo"))
     monkeypatch.setattr("immich_memories.generate_downloads.download_clip", video_download)
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", video_extract)
-    monkeypatch.setattr("immich_memories.generate_photos._render_photo_as_clip", photo_render)
+    monkeypatch.setattr("immich_memories.generate_photos.render_photo_as_clip", photo_render)
     monkeypatch.setattr(
-        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 4.0
+        "immich_memories.generate_clips.probe_file_duration", lambda _path, **_kwargs: 4.0
     )
 
-    result = _extract_clips(
+    result = extract_clips(
         params,
         MagicMock(),
         tmp_path,
@@ -457,7 +457,7 @@ def test_no_render_directive_preserves_legacy_video_extraction(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.generate_clips import extract_clips
 
     clip = make_clip("legacy-video", duration=5.0)
     source = tmp_path / "source.mp4"
@@ -483,10 +483,10 @@ def test_no_render_directive_preserves_legacy_video_extraction(
     video_extract = MagicMock(return_value=segment)
     monkeypatch.setattr("immich_memories.processing.clips.extract_clip", video_extract)
     monkeypatch.setattr(
-        "immich_memories.generate_clips._probe_file_duration", lambda _path, **_kwargs: 2.5
+        "immich_memories.generate_clips.probe_file_duration", lambda _path, **_kwargs: 2.5
     )
 
-    result = _extract_clips(
+    result = extract_clips(
         params,
         MagicMock(),
         tmp_path,

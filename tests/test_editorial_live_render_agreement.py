@@ -470,8 +470,8 @@ def test_actual_extraction_uses_certificate_when_optional_segment_map_is_empty(
     def forbidden(*_args, **_kwargs):
         pytest.fail("a certified extraction cannot use legacy duration shortening")
 
-    monkeypatch.setattr(generate_clips, "_probe_file_duration", forbidden)
-    result = generate_clips._extract_clips(params, None, tmp_path)
+    monkeypatch.setattr(generate_clips, "probe_file_duration", forbidden)
+    result = generate_clips.extract_clips(params, None, tmp_path)
     assert len(result) == 1
     assert result[0].asset_id == clip.asset.id
     assert result[0].duration == 1.5
@@ -490,9 +490,9 @@ def test_actual_extraction_missing_source_propagates_only_for_certified_live(
     monkeypatch.setattr(generate_clips, "_download_video_path", lambda *_args: None)
     if strict:
         with pytest.raises(ValueError, match="source is unavailable"):
-            generate_clips._extract_clips(params, None, tmp_path)
+            generate_clips.extract_clips(params, None, tmp_path)
     else:
-        assert generate_clips._extract_clips(params, None, tmp_path) == []
+        assert generate_clips.extract_clips(params, None, tmp_path) == []
 
 
 def test_actual_prefetch_ignores_stale_local_path_for_certified_companions(source, tmp_path):
@@ -528,4 +528,4 @@ def test_actual_extraction_rejects_mismatched_directives_before_source_work(
 
     monkeypatch.setattr(generate_clips, "_download_video_path", forbidden)
     with pytest.raises(ValueError, match="Editorial Live"):
-        generate_clips._extract_clips(params, None, tmp_path)
+        generate_clips.extract_clips(params, None, tmp_path)

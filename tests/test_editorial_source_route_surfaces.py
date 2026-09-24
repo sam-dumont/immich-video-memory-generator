@@ -171,7 +171,7 @@ def test_cli_source_route_uses_timed_clips_and_preserves_exact_render_handoff(tm
 @pytest.mark.parametrize("duration", [0.25, None])
 def test_cli_short_and_unknown_videos_reach_editor_as_timed_clips(tmp_path, duration):
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
-    from immich_memories.generate import assets_to_clips
+    from immich_memories.generate_clips import assets_to_clips
 
     asset = make_asset("raw-only", duration=duration, file_created_at=_WHEN)
     assert assets_to_clips([asset]) == []

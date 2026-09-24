@@ -36,7 +36,7 @@ def configure_timeline(
 ) -> tuple[TimelinePlan, TitleScreenSettings | None]:
     """Resolve the preliminary plan the brief is cut against."""
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.processing.timeline_budget import plan_timeline
 
     planning_params = GenerationParams(
@@ -49,7 +49,7 @@ def configure_timeline(
         date_end=date_range.end,
         memory_preset_params=memory_preset_params or {},
     )
-    planning_titles = _build_title_settings(planning_params, config, [])
+    planning_titles = build_title_settings(planning_params, config, [])
     planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
     timeline = plan_timeline(
         planning_sources,

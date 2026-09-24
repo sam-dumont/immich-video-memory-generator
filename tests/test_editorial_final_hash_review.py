@@ -128,7 +128,7 @@ def test_a_frame_that_plays_is_kept_over_the_still_that_repeats_it():
 
 
 def test_an_owner_required_picture_keeps_its_frame_and_the_repeat_goes_instead():
-    """A tick outranks every other rung, exactly as the sampled review ranks it."""
+    """A tick outranks every other rung."""
     survivors, record = _review(
         [_carrier("early", minute=0), _carrier("late", minute=30)],
         protected_asset_ids=("late",),

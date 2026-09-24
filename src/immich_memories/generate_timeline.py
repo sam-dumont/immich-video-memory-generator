@@ -157,10 +157,10 @@ def apply_final_content_budget(
     if params.target_duration_seconds is None or not assembly_clips:
         return assembly_clips
     if params.timeline_plan is None:
-        from immich_memories.generate_settings import _build_title_settings
+        from immich_memories.generate_settings import build_title_settings
         from immich_memories.processing.timeline_budget import plan_timeline
 
-        title_settings = _build_title_settings(params, params.config, assembly_clips)
+        title_settings = build_title_settings(params, params.config, assembly_clips)
         params.timeline_plan = plan_timeline(
             assembly_clips,
             title_settings,

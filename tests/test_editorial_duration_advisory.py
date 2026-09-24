@@ -214,14 +214,14 @@ def test_direct_generation_persists_advisory_without_changing_completed_artifact
     with (
         # WHY: VideoDownloadCache would otherwise fetch real Immich video bytes to assemble.
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_render_module, "_extract_clips", return_value=assembly),
+        patch.object(generate_render_module, "extract_clips", return_value=assembly),
         patch.object(
             generate_render_module,
-            "_build_assembly_settings",
+            "build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=_h264_output_plan()),
         ),
-        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
-        patch.object(generate_module, "_cleanup_temp_clips"),
+        patch.object(generate_render_module, "create_assembler", return_value=Assembler()),
+        patch.object(generate_module, "cleanup_temp_clips"),
     ):
         path = generate_memory(params, run_tracker=tracker)
 

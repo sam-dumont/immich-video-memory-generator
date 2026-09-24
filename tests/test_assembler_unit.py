@@ -558,7 +558,7 @@ def test_single_hlg_clip_is_tone_mapped_for_h264_output(tmp_path: Path) -> None:
     with (
         patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value="hlg"),
         patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ),
         patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
@@ -596,7 +596,7 @@ def test_single_hdr_clip_fails_when_required_tone_map_is_unavailable(
     with (
         patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value="hlg"),
         patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=False,
         ),
         patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
@@ -610,7 +610,7 @@ def test_generation_settings_resolve_one_software_h265_plan(tmp_path: Path) -> N
     """Generation must resolve the requested codec once before assembly starts."""
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_assembly_settings
+    from immich_memories.generate_settings import build_assembly_settings
     from immich_memories.processing.encoding_plan import HdrMode
 
     config = Config()
@@ -619,7 +619,7 @@ def test_generation_settings_resolve_one_software_h265_plan(tmp_path: Path) -> N
     config.output.hdr_mode = HdrMode.SDR
     params = GenerationParams(clips=[], output_path=tmp_path / "memory.mp4", config=config)
 
-    settings = _build_assembly_settings(params, [])
+    settings = build_assembly_settings(params, [])
 
     assert settings.encoding_plan.codec is OutputCodec.H265
     assert settings.encoding_plan.encoder == "libx265"
@@ -630,7 +630,7 @@ def test_generation_settings_preserve_exact_pq_transfer(tmp_path: Path) -> None:
     """The source transfer is resolved once instead of collapsing PQ to a bool."""
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_assembly_settings
+    from immich_memories.generate_settings import build_assembly_settings
     from immich_memories.processing.encoding_plan import HdrMode
 
     config = Config()
@@ -644,7 +644,7 @@ def test_generation_settings_preserve_exact_pq_transfer(tmp_path: Path) -> None:
         "immich_memories.processing.hdr_utilities._detect_hdr_type",
         return_value="pq",
     ):
-        settings = _build_assembly_settings(params, [clip])
+        settings = build_assembly_settings(params, [clip])
 
     assert settings.encoding_plan.target_transfer is HdrTransfer.PQ
     assert settings.encoding_plan.container == "mp4"
@@ -658,7 +658,7 @@ def test_generation_settings_warn_when_auto_hdr_is_tone_mapped_by_h264(
     """Auto must explain why detected HDR cannot survive an H.264 request."""
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_assembly_settings
+    from immich_memories.generate_settings import build_assembly_settings
     from immich_memories.processing.encoding_plan import HdrMode
 
     config = Config()
@@ -675,7 +675,7 @@ def test_generation_settings_warn_when_auto_hdr_is_tone_mapped_by_h264(
         ),
         caplog.at_level("WARNING"),
     ):
-        settings = _build_assembly_settings(params, [clip])
+        settings = build_assembly_settings(params, [clip])
 
     assert settings.encoding_plan.tone_map_to_sdr is True
     assert "output.codec: h265" in caplog.text

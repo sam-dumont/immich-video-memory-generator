@@ -84,7 +84,7 @@ def find_short_clips(
     max_return: int = 3,
 ):
     """Find short video clips from Immich, trying preferred date ranges."""
-    from immich_memories.generate import assets_to_clips
+    from immich_memories.generate_clips import assets_to_clips
     from immich_memories.timeperiod import DateRange
 
     for start, end in _SHORT_CLIP_RANGES:
@@ -117,7 +117,7 @@ def find_trip_clips(
     Scans preferred date ranges for a dense cluster of videos that looks
     like a trip — multiple clips within max_trip_days.
     """
-    from immich_memories.generate import assets_to_clips
+    from immich_memories.generate_clips import assets_to_clips
     from immich_memories.timeperiod import DateRange
 
     for start, end in _TRIP_HINT_RANGES:

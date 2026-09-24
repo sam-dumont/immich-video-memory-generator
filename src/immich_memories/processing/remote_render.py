@@ -267,14 +267,14 @@ def _validate_result(params, request, status, clips, probe, plan) -> None:
 
 
 def _expected_duration(params, request, clips) -> float:
-    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.processing.assembly_config import TitleScreenSettings
     from immich_memories.processing.editorial_timing import read_editorial_timeline
     from immich_memories.processing.timeline_preview import preview_timeline
 
     timeline = read_editorial_timeline(request["timing"])
     frozen = replace(params, timeline_plan=timeline)
-    titles = _build_title_settings(frozen, frozen.config, list(clips)) or TitleScreenSettings(
+    titles = build_title_settings(frozen, frozen.config, list(clips)) or TitleScreenSettings(
         enabled=False,
         divider_mode="none",
         show_month_dividers=False,

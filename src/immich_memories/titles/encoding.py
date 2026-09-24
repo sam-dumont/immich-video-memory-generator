@@ -11,8 +11,8 @@ from __future__ import annotations
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.hdr_utilities import (
-    _get_colorspace_filter,
-    _get_hdr_conversion_filter,
+    get_colorspace_filter,
+    get_hdr_conversion_filter,
 )
 
 
@@ -44,7 +44,7 @@ def title_color_filter(plan: EncodingPlan, *, rgb_input: bool = True) -> str:
         # and chroma until zscale applies the SDR-to-HLG/PQ transfer; an 8-bit
         # yuv420p intermediate would create banding in a nominal Main10 title.
         parts.append("format=yuv444p16le" if plan.hdr else "format=yuv420p")
-    conversion = _get_hdr_conversion_filter(
+    conversion = get_hdr_conversion_filter(
         "sdr",
         target,
         source_primaries="bt709",
@@ -54,7 +54,7 @@ def title_color_filter(plan: EncodingPlan, *, rgb_input: bool = True) -> str:
         parts.append(conversion.removeprefix(","))
     parts.extend(
         (
-            _get_colorspace_filter(target).removeprefix(","),
+            get_colorspace_filter(target).removeprefix(","),
             f"format={plan.pixel_format}",
         )
     )

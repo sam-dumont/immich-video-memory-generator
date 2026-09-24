@@ -266,7 +266,7 @@ class TestFullPipelineWithTitles:
     def test_full_pipeline_with_titles_and_transitions(self, immich_short_clips, tmp_path):
         """Full pipeline: real Immich clips -> smart transitions -> title screen -> valid video.
 
-        Exercises: generate_memory, _build_assembly_settings, _build_title_settings,
+        Exercises: generate_memory, build_assembly_settings, build_title_settings,
         VideoAssembler.assemble_with_titles, TitleInserter, TitleScreenGenerator,
         RenderingService, renderer_pil, text_builder, AssemblyEngine,
         ClipEncoder, clip_encoder, assembly_context_builder.
@@ -395,7 +395,7 @@ class TestTripMemoryPipeline:
     def test_trip_memory_type_with_gps(self, short_clip_a, short_clip_b, tmp_path):
         """Trip memory: GPS locations -> title settings -> assembly with trip titles.
 
-        Exercises: _build_title_settings trip branch, _extract_trip_locations,
+        Exercises: build_title_settings trip branch, _extract_trip_locations,
         _generate_trip_title_text, TitleScreenGenerator trip_service path.
         """
         from immich_memories.config_loader import Config
@@ -506,7 +506,7 @@ class TestResolutionVariations:
         """Force 720p output resolution via GenerationParams.
 
         Uses two 720p clips so the assembly engine (not passthrough) runs.
-        Exercises: _build_assembly_settings resolution_map path,
+        Exercises: build_assembly_settings resolution_map path,
         auto_resolution=False, target_resolution override.
         """
         from immich_memories.config_loader import Config
@@ -701,7 +701,7 @@ class TestTitleOverridePipeline:
     def test_custom_title_override_renders(self, short_clip_a, short_clip_b, tmp_path):
         """Custom title + subtitle override flows through to rendered title screen.
 
-        Exercises: GenerationParams.title/subtitle, _build_title_settings
+        Exercises: GenerationParams.title/subtitle, build_title_settings
         title_override branch, TitleInserter with overrides.
         """
         from immich_memories.config_loader import Config

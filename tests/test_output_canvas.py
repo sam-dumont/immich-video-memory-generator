@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
-from immich_memories.generate_photos import _detect_photo_resolution
-from immich_memories.generate_settings import _build_assembly_settings
+from immich_memories.generate_photos import detect_photo_resolution
+from immich_memories.generate_settings import build_assembly_settings
 from immich_memories.processing.output_canvas import OutputCanvas, resolve_output_canvas
 from tests.conftest import make_clip
 
@@ -84,8 +84,8 @@ def test_photo_and_assembly_consume_the_same_explicit_canvas() -> None:
         output_orientation="landscape",
     )
 
-    settings = _build_assembly_settings(params, [])
+    settings = build_assembly_settings(params, [])
 
-    assert _detect_photo_resolution(params) == (1920, 1080)
+    assert detect_photo_resolution(params) == (1920, 1080)
     assert settings.target_resolution == (1920, 1080)
     assert params.output_canvas == OutputCanvas(1920, 1080, "landscape")

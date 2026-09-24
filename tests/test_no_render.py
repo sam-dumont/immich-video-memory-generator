@@ -18,7 +18,7 @@ def _run(**kwargs):
 
     # WHY: Immich is the external boundary — no live server in a unit test.
     with (
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
+        patch("immich_memories.generate_clips.assets_to_clips", return_value=[clip]),
         # WHY: the pipeline is the collaborator under inspection.
         patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as pipeline_type,
     ):
