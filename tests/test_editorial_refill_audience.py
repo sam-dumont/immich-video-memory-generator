@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from immich_memories.analysis.annotation_lines import AssetAnnotationLine
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
 from immich_memories.analysis.editorial_structure_finishing import PlanRun, final_duplicate_review
-from tests.editorial_thin_fixtures import CountingJudge, PictureEvidence
+from tests.editorial_thin_fixtures import CountingJudge
 
 DAY = "2024-02-04"
 HASHES = {"keeper": "0000000000000000", "repeat": "0000000000000000", "held": "00000000ffffffff"}
@@ -28,9 +28,8 @@ def _shot(asset_id: str, minute: int) -> dict:
 
 def _gate(tmp_path, *, exposed: set[str]) -> AudienceGate:
     lines = dict.fromkeys(HASHES, f"{DAY}T09:00 | people at a table")
-    evidence = PictureEvidence(lines)
     # WHY: the exposure head's reading is a banked annotation; the gate reads it off the line.
-    evidence.annotations = {
+    annotations = {
         a: AssetAnnotationLine(
             a,
             f"{DAY}T09:00 | A clothed person at a table. | activity=eating",
@@ -42,7 +41,7 @@ def _gate(tmp_path, *, exposed: set[str]) -> AudienceGate:
     return AudienceGate(
         CountingJudge(),
         audience="sendable",
-        picture_evidence=evidence,
+        annotations=annotations,
         flag_rows={},
         lines=lines,
         bank_path=tmp_path / "shareability.private.json",

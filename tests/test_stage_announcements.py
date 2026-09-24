@@ -24,8 +24,8 @@ def test_an_announcement_reaches_the_attached_sink_and_nothing_else() -> None:
 
 
 def test_an_announcement_survives_the_sync_bridge_thread() -> None:
-    """The gateway runs its coroutine on a helper thread when a loop is already running."""
-    from immich_memories.analysis.editorial_gateway import _run_sync
+    """The text gateway runs its coroutine on a helper thread when a loop is already running."""
+    from immich_memories.analysis.editorial_text_gateway import _run_sync
 
     seen: list[StageUpdate] = []
 

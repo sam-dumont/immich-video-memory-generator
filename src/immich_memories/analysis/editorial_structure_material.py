@@ -26,7 +26,6 @@ from immich_memories.analysis.editorial_person_period_facts import (
     person_period_facts,
     render_person_period_facts,
 )
-from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_speech import banked_unit_regions, speech_buffer
 from immich_memories.analysis.editorial_structure_budget import (
     MIN_CARRIER_SECONDS,
@@ -452,7 +451,6 @@ class Material:
     text: UnitLines
     rows: AnchorRows
     builder: UnitBuilder
-    picture_evidence: PictureEvidenceOverlay
     document_sources: dict[str, str]
     ineligible: dict[str, str]
     moment_assets: dict[str, list[str]]
@@ -503,9 +501,6 @@ def build_material(
     source: StructurePlanningInput, ports: StructurePlannerPorts, wall: Wall
 ) -> Material:
     lines = source.annotations
-    picture_evidence = PictureEvidenceOverlay(
-        source.audience_annotations, lines, ports.observe_picture
-    )
     document_sources = excluded_carrier_sources(lines)
     builder = UnitBuilder(
         source,
@@ -549,7 +544,6 @@ def build_material(
             meaning_of=wall.meaning_of,
         ),
         builder=builder,
-        picture_evidence=picture_evidence,
         document_sources=document_sources,
         ineligible=_ineligible_anchors(wall.fam_ids, units, builder),
         moment_assets=moment_assets,

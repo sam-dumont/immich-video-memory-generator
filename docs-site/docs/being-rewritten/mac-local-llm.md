@@ -36,8 +36,8 @@ context encoder, the detector weights and the caption service are separate from 
 
 ## Set up the reader
 
-The reader needs vision and at least a 32k context: the candidates whose facts the edit demands
-reach it as 800 px tiles, a few dozen per memory. A text-only model cannot take this seat.
+The reader needs at least a 32k context and no vision: it edits from the annotation lines ingest
+banked and is never sent a picture. A model looks at each picture once, at ingest, and never again.
 
 The graded configuration, the one whose cuts have been approved, is
 **`mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`** served by

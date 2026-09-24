@@ -12,6 +12,9 @@ Two layers, in this order, both text-only:
    ``family_only`` or ``do_not_show``. Verdicts combine to the strictest; a sendable export keeps
    only ``share``. A refused carrier is replaced from the same anchor's shareable pool or its slot
    is dropped. Never a refill from another anchor.
+
+The evidence is what ingest banked: the caption, the detector heads and the flags. No model
+looks at a picture here, on any tier; pictures are read once, at ingest.
 """
 
 from __future__ import annotations
@@ -175,7 +178,6 @@ def evidence_for_unit(
     flags: Mapping[str, Sequence[FlagRow]],
     fallback_lines: Mapping[str, str],
     *,
-    picture_records: Mapping[str, Mapping[str, Any]] | None = None,
     chains: Mapping[str, ChainHold] | None = None,
     companion_heads: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict[str, Any]:
@@ -188,7 +190,6 @@ def evidence_for_unit(
     """
     material = {str(i) for i in (unit.get("asset_id"), *unit.get("members", ())) if i}
     companion_ids = {str(i) for i in unit.get("video_ids", ()) if i} - material
-    records = picture_records or {}
     ordered = sorted(material | companion_ids)
     resolved = {
         asset_id: _member_annotation(annotations.get(asset_id), fallback_lines.get(asset_id, ""))
@@ -198,19 +199,18 @@ def evidence_for_unit(
     uncaptioned = [i for i in ordered if i in companion_ids and not resolved[i][0]]
     skipped = set(uncaptioned)
     detectors, companion_flags, warnings = _companion_evidence(
-        uncaptioned, resolved, flags, records, companion_heads or {}
+        uncaptioned, resolved, flags, companion_heads or {}
     )
     evidence: dict[str, Any] = {
         "version": AUDIENCE_CHECK_POLICY_VERSION,
         "members": [
-            _member_evidence(index, resolved[i], flags.get(i, ()), records.get(i))
+            _member_evidence(index, resolved[i], flags.get(i, ()))
             for index, i in enumerate((i for i in ordered if i not in skipped), start=1)
         ],
         "companion_detectors": detectors,
         "companion_flags": companion_flags,
     }
-    # Leave unaffected evidence and request keys byte-identical. The scoped records bind
-    # only warnings that a material still's body observation cannot resolve for its video.
+    # Leave unaffected evidence and request keys byte-identical: only a warned clip adds this.
     if warnings:
         evidence["companion_body_warnings"] = warnings
     chain = _chain_evidence(ordered, chains or {})
@@ -233,7 +233,6 @@ def _companion_evidence(
     uncaptioned: Sequence[str],
     resolved: Mapping[str, tuple[str, tuple[Any, ...]]],
     flags: Mapping[str, Sequence[FlagRow]],
-    records: Mapping[str, Mapping[str, Any]],
     banked: Mapping[str, Mapping[str, str]],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, Any]]]:
     """Detectors, flags and body warnings that an uncaptioned companion contributes."""
@@ -243,7 +242,7 @@ def _companion_evidence(
     warnings: list[dict[str, Any]] = []
     for asset_id in uncaptioned:
         warning = _companion_body_warning(
-            asset_id, heads[asset_id], flags.get(asset_id, ()), records, len(warnings) + 1
+            heads[asset_id], flags.get(asset_id, ()), len(warnings) + 1
         )
         if warning is not None:
             warnings.append(warning)
@@ -282,27 +281,18 @@ def _member_evidence(
     index: int,
     annotation: tuple[str, tuple[Any, ...]],
     rows: Sequence[FlagRow],
-    record: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     caption, heads = annotation
-    member_evidence: dict[str, Any] = {
+    return {
         "member": f"p{index}",
         "caption": caption,
         "detectors": _audience_detectors(heads),
         "flags": _flag_records(rows),
     }
-    body_observation = _visual_body_observation(record)
-    if body_observation is not None:
-        member_evidence["body_observation"] = body_observation
-    return member_evidence
 
 
 def _companion_body_warning(
-    asset_id: str,
-    detectors: Mapping[str, str],
-    flags: Sequence[FlagRow],
-    picture_records: Mapping[str, Mapping[str, Any]],
-    index: int,
+    detectors: Mapping[str, str], flags: Sequence[FlagRow], index: int
 ) -> dict[str, Any] | None:
     """A clearance is local to the warned companion, never inherited from its still."""
     if any(row.source == OWNER_SOURCE and row.flag == OWNER_CLEARED for row in flags):
@@ -314,96 +304,7 @@ def _companion_body_warning(
         "member": f"v{index}",
         "detectors": dict(detectors),
         "flags": warnings,
-        "body_observation": _visual_body_observation(picture_records.get(asset_id)),
-        "scope": "uncaptioned video companion; material still observation is not its clearance",
-    }
-
-
-def _visual_body_observation(record: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Only the available five-field image producer can establish this body fact."""
-    if not isinstance(record, Mapping) or record.get("status") != "available":
-        return None
-    from immich_memories.analysis import editorial_picture_facts as picture_facts
-
-    producer = record.get("producer")
-    if (
-        not isinstance(producer, Mapping)
-        or producer.get("pass_version") != picture_facts.STAGE_VERSION
-        or producer.get("prompt_version") != picture_facts.PROMPT_VERSION
-        or producer.get("schema_version") != picture_facts.SCHEMA_VERSION
-        or producer.get("prompt_sha256")
-        != hashlib.sha256(picture_facts.PROMPT.encode()).hexdigest()
-        or producer.get("schema_sha256") != picture_facts._digest(picture_facts.RESPONSE_SCHEMA)
-        or any(
-            not isinstance(record.get(key), str) or not re.fullmatch(r"[0-9a-f]{64}", record[key])
-            for key in ("identity", "input_sha256", "image_sha256")
-        )
-    ):
-        return None
-    facts = record.get("facts")
-    state = facts.get("uncovered_person") if isinstance(facts, Mapping) else None
-    return {
-        "uncovered_person": state
-        if isinstance(state, str) and state in picture_facts.BODY_STATES
-        else "invalid",
-        "record_identity": record["identity"],
-        "input_sha256": record["input_sha256"],
-        "image_sha256": record["image_sha256"],
-        "producer_identity": picture_facts._digest(dict(producer)),
-        "scope": "direct observation of the sampled picture; no unseen motion assertion",
-    }
-
-
-def terminal_body_hold(
-    unit: Mapping[str, Any],
-    picture_records: Mapping[str, Mapping[str, Any]],
-    witness_id: str,
-) -> dict[str, Any] | None:
-    """A bound positive suffices to reject a sendable unit, not to clear its other members.
-
-    The caller owns the export check. Unobserved members remain absent from the picture
-    bank and must still be observed if another candidate needs them. This is an acquisition
-    stop record, never a complete audience assessment or a fabricated model answer.
-    """
-    material = tuple(
-        dict.fromkeys(str(i) for i in (unit.get("asset_id"), *unit.get("members", ())) if i)
-    )
-    body = _visual_body_observation(picture_records.get(witness_id))
-    if witness_id not in material or body is None or body["uncovered_person"] != "yes":
-        return None
-    aliases = {asset_id: f"p{index + 1}" for index, asset_id in enumerate(material)}
-    observations = {
-        aliases[asset_id]: record
-        for asset_id in material
-        if (record := _visual_body_observation(picture_records.get(asset_id))) is not None
-    }
-    unit_identity = {
-        "asset_id": unit.get("asset_id"),
-        "material_members": material,
-        "all_source_members": unit_members(unit),
-        "kind": unit.get("kind"),
-    }
-    unobserved = [aliases[asset_id] for asset_id in material if asset_id not in picture_records]
-    return {
-        "policy": AUDIENCE_PROMPT_VERSION,
-        "verdict": "family_only",
-        "parsed": True,
-        "finding": "nudity_shirtless_or_underwear",
-        "why": "Direct picture observation identifies an uncovered person",
-        "activity": None,
-        "exposure": None,
-        "body_observations": observations,
-        "acquisition_stop": {
-            "version": "bound-positive-body-stop-v1",
-            "unit_sha256": hashlib.sha256(
-                json.dumps(unit_identity, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest(),
-            "witness_member": aliases[witness_id],
-            "material_member_count": len(material),
-            "observed_members": [aliases[i] for i in material if i in picture_records],
-            "unobserved_members": unobserved,
-            "evidence_scope": "positive witness only; no clearance of other members or activities",
-        },
+        "scope": "uncaptioned video companion; the still's caption is not its clearance",
     }
 
 
@@ -415,67 +316,6 @@ def audience_check_key(evidence: Mapping[str, Any]) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode()).hexdigest()
-
-
-def _body_state_hold(states: Sequence[Any]) -> dict[str, Any] | None:
-    if any(not isinstance(state, str) or state not in {"yes", "no", "unclear"} for state in states):
-        return {
-            "parsed": False,
-            "finding": "invalid_body_observation",
-            "why": "Invalid direct body observation",
-        }
-    if "yes" in states:
-        return {
-            "parsed": True,
-            "finding": "nudity_shirtless_or_underwear",
-            "why": "Direct picture observation identifies an uncovered person",
-        }
-    if "unclear" in states:
-        return {
-            "parsed": False,
-            "finding": "undecided_body_observation",
-            "why": "Direct picture observation cannot resolve visible body coverage",
-        }
-    return None
-
-
-def _companion_body_hold(warnings: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    unresolved = [
-        warning["member"]
-        for warning in warnings
-        if not isinstance(warning.get("body_observation"), Mapping)
-        or warning["body_observation"].get("uncovered_person") != "no"
-    ]
-    if not unresolved:
-        return None
-    return {
-        "parsed": False,
-        "finding": "unresolved_companion_exposure",
-        "why": "A material still cannot clear the warned video's unobserved body coverage",
-        "unresolved_companions": unresolved,
-    }
-
-
-def _observed_body(
-    evidence: Mapping[str, Any], members: Sequence[Any]
-) -> tuple[bool, dict[str, Any] | None, dict[str, Any]]:
-    """Body coverage cannot establish the activity, so a hold never answers on its own.
-
-    Even an uncovered person's caption may describe private care without naming it. A full
-    audience assessment always asks the activity classifier; callers may use
-    ``terminal_body_hold`` only when the body finding already excludes the carrier from
-    their requested audience.
-    """
-    body = {member["member"]: member.get("body_observation") for member in members}
-    if not all(isinstance(record, Mapping) for record in body.values()):
-        return False, None, {}
-    fields: dict[str, Any] = {"body_observations": body}
-    hold = _body_state_hold([record.get("uncovered_person") for record in body.values()])
-    companion_warnings = evidence.get("companion_body_warnings", ())
-    if companion_warnings and hold is None:
-        fields["companion_body_warnings"] = companion_warnings
-        hold = _companion_body_hold(companion_warnings)
-    return True, hold, fields
 
 
 def check_audience(
@@ -491,19 +331,19 @@ def check_audience(
 
 def activity_question(evidence: Mapping[str, Any]) -> bool | None:
     """Whether the check asks the activity question of this evidence at all (None when it does
-    not: a member has no caption), and if so whether the nudity finding may be answered."""
+    not: a member has no caption), and if so whether the nudity finding may be answered. It
+    always may: only a caption and the heads describe a body, and neither clears one."""
     members = evidence.get("members", ())
     if not members or any(not member["caption"] for member in members):
         return None
-    precise_body, _hold, _fields = _observed_body(evidence, members)
-    return not precise_body
+    return True
 
 
 def floors_under(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     """Holds no reading can lift: a model reading only ever adds holds.
 
     A detector that flagged a still, a video's frames or a Live Photo's clip keeps the unit
-    in the family whatever the captions or a body observation say afterwards: the owner
+    in the family whatever the captions say afterwards: the owner
     prefers a false positive to a miss. Nor can the reader see the three minutes around a
     capture. All of these only ever take a unit further from `share`.
     """
@@ -544,6 +384,31 @@ def _head_hold(evidence: Mapping[str, Any]) -> str:
     return ""
 
 
+def strict_sharing_hold(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Keep a unit out of a shared film when anything marked it, whatever the text said.
+
+    The heads' own floor already holds a `yes`. This also holds what only an exposure flag or a
+    flagged clip marked, where a caption that names clothing would otherwise clear it. Only the
+    owner's clearance on the member lifts it, as it lifts every detector hold.
+    """
+    if result["verdict"] != "share":
+        return result
+    by_member = {member["member"]: member for member in evidence.get("members", ())}
+    marked = [
+        alias
+        for alias in sorted(exposure_members(evidence))
+        if not _owner_cleared(by_member.get(alias, {}))
+    ]
+    if not marked:
+        return result
+    return result | {
+        "verdict": "family_only",
+        "finding": "strict_sharing",
+        "why": "a detector or an exposure flag marked it, and strict sharing keeps it in the family",
+        "strict_sharing_members": marked,
+    }
+
+
 def _owner_cleared(member: Mapping[str, Any]) -> bool:
     return any(
         row.get("source") == OWNER_SOURCE and row.get("flag") == OWNER_CLEARED
@@ -569,8 +434,6 @@ def _read_audience(
             "finding": "unavailable_evidence",
             "why": "rendered member has no caption evidence",
         }
-    precise_body, body_hold, body_fields = _observed_body(evidence, members)
-    result.update(body_fields)
     activity_stage = f"{stage}-activity"
     if activity_answer is not None:
         result["activity_asked_in_batch"] = True
@@ -580,7 +443,7 @@ def _read_audience(
             if activity_answer is not None
             else judge.ask(
                 activity_stage,
-                audience_check_prompt(evidence, allow_nudity=not precise_body),
+                audience_check_prompt(evidence),
                 max_tokens=120,
             )
         )
@@ -592,7 +455,7 @@ def _read_audience(
             "failed_stage": activity_stage,
             "completion_failure": exc.as_record(),
         }
-    activity = parse_audience_verdict(raw, evidence, allow_nudity=not precise_body)
+    activity = parse_audience_verdict(raw, evidence)
     if activity is None:
         return result | {
             "finding": "invalid_activity_verdict",
@@ -602,23 +465,6 @@ def _read_audience(
     result.update(parsed=True, activity=activity[1], verdict=activity[0], why=activity[1]["why"])
     if activity[0] != "share":
         return result | {"finding": "private_activity"}
-    if body_hold is not None:
-        # Activity can tighten a body finding, but never clear it. In particular, an uncovered
-        # newborn during a delivery cannot hide the procedure behind a family-only body verdict.
-        return result | body_hold | {"verdict": "family_only"}
-    if precise_body:
-        return result | {
-            "finding": "none",
-            "exposure": {
-                "parsed": True,
-                "basis": "direct_visual_body_observations",
-                "clearances": [
-                    {"member": member["member"], "basis": "uncovered_person_no"}
-                    for member in members
-                ],
-                "unresolved_members": [],
-            },
-        }
     positive = sorted(exposure_members(evidence))
     if not positive:
         return result | {"finding": "none"}

@@ -90,11 +90,6 @@ class ProviderFailure:
     # asking again cannot change the answer.
     attempts: int = 1
 
-    @property
-    def credential(self) -> bool:
-        """Whether every later call will fail the same way until a human acts."""
-        return self.kind == CREDENTIAL_REJECTED
-
     def as_record(self) -> dict[str, object]:
         record: dict[str, object] = {
             "reason": self.kind,
@@ -105,18 +100,6 @@ class ProviderFailure:
         if self.retry_after is not None:
             record["retry_after_seconds"] = self.retry_after
         return record
-
-
-class ProviderCredentialRejected(RuntimeError):
-    """The provider refused the credential, not the payload: every call will fail."""
-
-    def __init__(self, failure: ProviderFailure) -> None:
-        super().__init__(
-            f"the reader's provider rejected its credential (HTTP {failure.status_code}): "
-            f"{failure.message}. Every call fails the same way until the API key or the "
-            "model access is fixed, so the run stops here rather than reading without it."
-        )
-        self.failure = failure
 
 
 class ThrottleGate:

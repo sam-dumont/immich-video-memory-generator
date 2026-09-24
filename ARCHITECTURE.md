@@ -196,9 +196,12 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   thing: one picture for a close family member the draft left out, on every tier
   (`editorial_family_seat.py`).
 - **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
-  holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show`. The
-  strictest answer wins, the gate only ever tightens, and only the owner clears a hold
-  (`editorial_shareability*.py`).
+  holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show` from the
+  caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
+  and only the owner clears a hold (`editorial_shareability*.py`).
+- **Pictures are read once**: a model looks at a picture only at ingest (the caption server, the
+  heads, the detectors). No film-time stage sends a picture to any model, on any tier; the reader
+  is text only (`tests/test_editorial_demanded_previews.py` holds the production route to that).
 - **Exposure chain**: a capture run at least half flagged by the exposure head, with at least three
   flagged captures, is held whole (`editorial_exposure_chains.py`).
 

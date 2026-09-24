@@ -91,8 +91,8 @@ server are their own services. All ten memory types work, same as anywhere else.
 
 ## Pointing the reader at this box
 
-The reader has to accept images and hold at least a 32k context: some candidates reach it as 800 px
-tiles. The graded reader is 30B parameters at 4 bits, roughly 17 GB resident for as long as the
+The reader has to hold at least a 32k context, and reads text only: it is never sent a picture. The
+graded reader is 30B parameters at 4 bits, roughly 17 GB resident for as long as the
 server is up. A 24 GB card (3090, 4090) holds that; below 24 GB, point `llm.base_url` at a box that
 can, because there is no cut without a reader.
 

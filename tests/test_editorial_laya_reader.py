@@ -16,7 +16,6 @@ from immich_memories.analysis.editorial_laya_reader import (
     laya_reader_for,
     unpack_checkpoint,
 )
-from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
 from immich_memories.config_models_editorial import EditorialConfig
 from tests.editorial_thin_fixtures import PRIVATE, CountingJudge
@@ -48,7 +47,7 @@ class StubScorer:
         return out
 
 
-def gate(tmp_path, annotations, scorer, *, observe=None):
+def gate(tmp_path, annotations, scorer):
     lines = {
         a: f"2024-02-01T09:0{i} | {n.description}" for i, (a, n) in enumerate(annotations.items())
     }
@@ -56,7 +55,7 @@ def gate(tmp_path, annotations, scorer, *, observe=None):
     return judge, AudienceGate(
         judge,
         audience="family",
-        picture_evidence=PictureEvidenceOverlay(annotations, lines, observe),
+        annotations=annotations,
         flag_rows={},
         lines=lines,
         bank_path=tmp_path / "shareability.private.json",
@@ -93,16 +92,10 @@ def test_a_detector_hold_stands_when_laya_answers_none(tmp_path):
     assert audience.verdict_of(unit) != "share"
 
 
-def test_laya_reads_the_compact_caption_not_the_picture_observation(tmp_path):
+def test_laya_reads_the_compact_caption(tmp_path):
     annotations = {"a1": line("a1", PRIVATE)}
-
-    def observe(_asset_id):
-        # WHY: stands in for the vision reader's picture observation (an Immich preview and a
-        # model call); only its replacing the caption matters here.
-        return {"status": "available", "description": "subject_action: a toddler plays"}
-
     scorer = StubScorer()
-    _judge, audience = gate(tmp_path, annotations, scorer, observe=observe)
+    _judge, audience = gate(tmp_path, annotations, scorer)
     unit = {"asset_id": "a1", "kind": "still"}
 
     audience.prefetch([unit], batch=12)

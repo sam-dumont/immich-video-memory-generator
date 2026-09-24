@@ -8,18 +8,13 @@ from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.config_loader import Config
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
-from tests.test_editorial_terminal_body_hold import record
 
 
-def cut(captured, judge, name, observe=None):
+def cut(captured, judge, name):
     """One cut in its own attempt folder, beside the same library banks, as a new run makes."""
     return plan_structure(
         replace(captured, artifact_dir=captured.bank_dir.parent / name),
-        StructurePlannerPorts(
-            judge=judge,
-            thumbnail_hash=lambda _: None,
-            observe_picture=observe,
-        ),
+        StructurePlannerPorts(judge=judge, thumbnail_hash=lambda _: None),
     ).plan
 
 
@@ -86,11 +81,6 @@ def bump_audience_prompt(monkeypatch):
     monkeypatch.setattr(share, "AUDIENCE_PROMPT_VERSION", share.AUDIENCE_PROMPT_VERSION + "-next")
 
 
-def body_observer(uncovered):
-    """Direct body observations, the witness a terminal hold is cast on."""
-    return lambda asset_id: record(asset_id, "yes" if asset_id in uncovered else "no")
-
-
 def test_a_text_model_hold_from_an_older_audience_prompt_is_asked_again_and_can_clear(
     tmp_path, monkeypatch
 ):
@@ -107,13 +97,27 @@ def test_a_text_model_hold_from_an_older_audience_prompt_is_asked_again_and_can_
     assert "picture-000" in carried(again), "the new answer replaced the old hold"
 
 
-def test_a_body_hold_from_an_older_audience_prompt_stays(tmp_path, monkeypatch):
+def test_a_body_hold_an_older_library_banked_stays(tmp_path, monkeypatch):
+    """A film-time body observation once cast permanent holds. Pictures are no longer read at
+    film time, so nothing casts a new one, and nothing lifts the ones already banked."""
+    from immich_memories.analysis.editorial_structure_audience import (
+        AUDIENCE_BANK_NAME,
+        AudienceBank,
+    )
+
     held = replace(source(tmp_path, seconds=60), audience="sendable")
-    first = cut(held, ControlledStoryJudge(), "first-cut", observe=body_observer({"picture-000"}))
-    assert first["shareability"]["verdicts"]["picture-000"]["verdict"] != "share"
+    AudienceBank(held.bank_dir.parent / AUDIENCE_BANK_NAME, answerer="older").hold(
+        "picture-000",
+        {
+            "verdict": "family_only",
+            "parsed": True,
+            "finding": "nudity_shirtless_or_underwear",
+            "policy": "audience-evidence-v16",
+        },
+    )
     bump_audience_prompt(monkeypatch)
 
-    later = cut(held, ClearingJudge(), "second-cut", observe=body_observer(set()))
+    later = cut(held, ClearingJudge(), "second-cut")
 
     assert "picture-000" not in carried(later)
 
@@ -143,7 +147,7 @@ def test_a_banked_clearance_of_a_detector_hold_is_not_served(tmp_path):
     gate = AudienceGate(
         SimpleNamespace(calls=[]),
         audience="sendable",
-        picture_evidence=None,
+        annotations={},
         flag_rows={},
         lines={},
         bank_path=tmp_path / "shareability.json",

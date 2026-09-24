@@ -17,7 +17,6 @@ import re
 STARRED = "STARRED by the photographer"
 FLAGGED = "FLAGGED "
 PIXEL_WARNINGS = ("SOFT (blurry)", "DARK", "BLOWN OUT", "rotated")
-UNOBSERVED = "picture observations unavailable"
 
 _ROW_PREFIX = re.compile(r"^Material picture p\d+: ")
 _PIPELINE_TAG = re.compile(
@@ -32,14 +31,13 @@ _PIPELINE_TAG = re.compile(
     rf"|{re.escape(STARRED)}$"
     rf"|{re.escape(FLAGGED)}"
     rf"|(?:{'|'.join(re.escape(warning) for warning in PIXEL_WARNINGS)})$"
-    rf"|{re.escape(UNOBSERVED)}$"
     r")"
 )
 
 
 def content_of(line: str) -> str:
-    """The picture's own evidence on a line: the caption, its setting and exposure fields and a
-    picture observation, joined as the line joins them, with every pipeline-written tag left out.
+    """The picture's own evidence on a line: the caption and its setting and exposure fields,
+    joined as the line joins them, with every pipeline-written tag left out.
 
     A unit's line may hold one row per material picture; each row is read the same way.
     """

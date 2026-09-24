@@ -134,7 +134,6 @@ libraries:
         episodes: {count: 12, parallel: true}
         period: {count: 4, parallel: false}
         story-pick: {count: 48, parallel: true}
-        picture-facts: {count: 36, parallel: false}
     config:
       immich.url: $env:MATRIX_FIXTURE_BASE_URL
       immich.api_key: fake-immich-api-key
@@ -153,7 +152,6 @@ libraries:
         episodes: {count: 48, parallel: true}
         period: {count: 8, parallel: false}
         story-pick: {count: 80, parallel: true}
-        picture-facts: {count: 40, parallel: false}
     config: {}
 
 # What every cell asks the product for. One memory, same length, same shape.
@@ -223,19 +221,15 @@ cells:
 
   # The reader bake-off (#928). Mac cells that differ from `mac-local` in one
   # thing: who reads. Same lane, same tier full, the same caption endpoint and the
-  # same in-process picture facts, so a difference in the cut is a difference in
-  # the reader and not in what the reader was handed.
+  # same banked annotations, so a difference in the cut is a difference in the
+  # reader and not in what the reader was handed.
   #
-  # Four of them read off Melious, and all four take pictures. The reader wants a
-  # vision-capable model with a 32k context: most of what it is handed is
-  # annotation lines, and the structure pass then demands 800 px tiles for the few
-  # dozen pictures a month it cannot settle on paper (36 on the demo month, 40 on
-  # a month of 13,552), with the pair confirmer and the story-motion check asking
-  # for more. That is why `qwen3-30b-a3b-instruct` is retired everywhere, the
-  # other lanes' hosted cells included: Melious lists it text only, and a reader
-  # that cannot take the tiles is not a reader this table is about. Two of the
-  # four carry weights anybody can download and serve, which is the whole point:
-  # what somebody who hosts their own gets out of a cheap model.
+  # Four of them read off Melious. The reader is text only: pictures are read once,
+  # at ingest, by the caption model and the heads, and nothing at film time sends
+  # the reader a tile. It wants a 32k context, because most of what it is handed
+  # is annotation lines. Two of the four carry weights anybody can download and
+  # serve, which is the whole point: what somebody who hosts their own gets out of
+  # a cheap model.
   #
   # The ids below are what `GET $MELIOUS_AI_BASE_URL/models` answers with, not the
   # slug the model page is served at: the Muse Glimmer 30B page lives at

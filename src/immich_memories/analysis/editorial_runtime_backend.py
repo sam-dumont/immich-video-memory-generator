@@ -18,12 +18,10 @@ from immich_memories.analysis.editorial_demanded_previews import DemandedPreview
 from immich_memories.analysis.editorial_motion_facts import production_motion_resolver
 from immich_memories.analysis.editorial_orchestration import TextEditorialWorkprint
 from immich_memories.analysis.editorial_people import EditorialPeople
-from immich_memories.analysis.editorial_picture_facts import PictureFactsProvider
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
 from immich_memories.analysis.editorial_product_brief import build_editorial_brief
 from immich_memories.analysis.editorial_runtime_ports import (
     EditorialRuntimePorts,
-    production_attached_pictures,
     production_live_clock_offsets,
     production_speech_resolver,
     production_story_motion,
@@ -119,7 +117,7 @@ class ProductionPostCardBackend:
             effects = (
                 self._ports.structure_ports_factory(source)
                 if self._ports.structure_ports_factory
-                else self._production_effects(source, trace=trace, resources=resources)
+                else self._production_effects(source, resources=resources)
             )
             result = self._ports.structure_planner(source, effects)
         finally:
@@ -171,7 +169,6 @@ class ProductionPostCardBackend:
             artifact_dir=context.artifact_dir,
             motion_outcome_replay=context.motion_outcome_replay,
             attached_sources=self._attached_sources() if self._attached_sources else (),
-            attached_outcome_replay=context.attached_outcome_replay,
         )
         return source, {candidate.clip.asset.id for candidate in workprint.input_candidates}
 
@@ -195,7 +192,7 @@ class ProductionPostCardBackend:
         return source
 
     def _production_effects(
-        self, source: StructurePlanningInput, *, trace: Trace, resources: ExitStack
+        self, source: StructurePlanningInput, *, resources: ExitStack
     ) -> StructurePlannerPorts:
         rules = self._config.editorial.resolve_reader(self._config.llm.model) == "rules"
         demanded_previews = (
@@ -236,16 +233,8 @@ class ProductionPostCardBackend:
                 resolve_motion=production_motion_resolver(source),
                 clock_offsets=self.clock_offsets(source, resources),
             )
-        picture_facts = PictureFactsProvider(
-            llm_config=self._config.llm,
-            cache_path=self._store_path,
-            trace=trace,
-            preview_bytes=read_preview,
-        )
-        resources.callback(picture_facts.close)
-        final_pictures, attached_samples = production_attached_pictures(
-            source, cache_path=self._store_path, pictures=picture_facts, resources=resources
-        )
+        # The model reads text only. Pictures were read once, at ingest, by the caption model
+        # and the heads; nothing below sends a picture to it.
         story_motion = production_story_motion(source, cache_path=self._store_path)
         return StructurePlannerPorts(
             judge=StructureTextJudge(
@@ -253,23 +242,18 @@ class ProductionPostCardBackend:
             ),
             thumbnail_hash=thumbnail_hasher,
             scene_print=scene_prints,
-            thumbnail_metrics=thumbnail_hasher.metrics,
-            resolve_motion=production_motion_resolver(
-                source, on_playback=attached_samples.remember_playback
-            ),
-            resolve_speech=production_speech_resolver(source, resources=resources),
-            observe_attached_material=final_pictures,
-            attached_material_metrics=attached_samples.metrics,
-            observe_picture=picture_facts.observe,
-            observe_story_motion=story_motion.observe,
-            story_motion_metrics=story_motion.metrics,
-            picture_facts_metrics=(
+            thumbnail_metrics=(
                 lambda: (
-                    picture_facts.metrics() | {"preview_acquisition": demanded_previews.metrics()}
+                    thumbnail_hasher.metrics()
+                    | {"preview_acquisition": demanded_previews.metrics()}
                 )
             )
             if demanded_previews is not None
-            else picture_facts.metrics,
+            else thumbnail_hasher.metrics,
+            resolve_motion=production_motion_resolver(source),
+            resolve_speech=production_speech_resolver(source, resources=resources),
+            observe_story_motion=story_motion.observe,
+            story_motion_metrics=story_motion.metrics,
             clock_offsets=self.clock_offsets(source, resources),
             **self._thin_polish(source),
         )
@@ -428,12 +412,13 @@ def _moment_members(source: StructurePlanningInput) -> set[str]:
 
 
 def _write_visual_requests(artifact_dir: Path, trace: Trace, request_start: int) -> None:
+    """Record every picture the structure stage sent a model: none, since pictures are read
+    once, at ingest. A non-empty list here is a defect, and the record is how to see one."""
     write_secret_file(
-        artifact_dir / "picture-facts-requests.private.json",
+        artifact_dir / "visual-requests.private.json",
         json.dumps(
             {
-                "scope": "all structure-stage visual requests; provenance.pass_name "
-                "names the picture-facts stage of each request",
+                "scope": "every structure-stage request that carried a picture",
                 "requests": trace.as_dict()["requests"][request_start:],
             },
             indent=2,

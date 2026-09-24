@@ -445,6 +445,7 @@ editorial:
   reader: auto                  # auto | model | rules
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
   thin_batched_audience: false   # ask the thin layer's audience question of 12 carriers per request
+  strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   laya_audience: false           # answer the audience activity question with the local Laya model
   laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
@@ -539,9 +540,15 @@ activity?) of twelve shots per request instead of one, in two row orders. Each s
 own answer, a shot either order holds is held, and a shot the replies skip is asked alone. It is off until a probe against
 the local reader shows the batched question keeps every hold the single one finds.
 
+`strict_sharing` keeps any picture a detector head or an exposure flag marked out of a film you
+share outside the family, whatever the reader's text says about it. A caption that names clothing
+used to clear an exposure flag for sharing; with this on (the default), only your own clearance on
+the picture does. Family films are unchanged. The hold is applied per film and never written to the
+library's audience bank, so setting it to `false` gives the reader's own answer back at once.
+
 `laya_audience` answers the audience check's activity question with a local Laya model instead of
 the text model: Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
-first. It reads the compact caption and adds holds; detector, body and rule holds still apply and
+first. It reads the compact caption and adds holds; detector and rule holds still apply and
 are never lifted. See [Running modes](../being-rewritten/running-modes.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`

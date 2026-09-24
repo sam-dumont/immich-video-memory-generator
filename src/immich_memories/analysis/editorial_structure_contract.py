@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from immich_memories.analysis.annotation_lines import AssetAnnotationLine
-from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_case import Case
 from immich_memories.analysis.editorial_contracts import InsightEvidence
 from immich_memories.analysis.editorial_intent import EditorialIntent, build_editorial_intent
@@ -22,7 +21,6 @@ from immich_memories.processing.editorial_timing import EditorialTimingPolicy
 from immich_memories.security import write_secret_file
 
 if TYPE_CHECKING:
-    from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
     from immich_memories.analysis.editorial_laya_reader import LayaReader
     from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
     from immich_memories.analysis.editorial_thin_layer import ThinPolish
@@ -172,7 +170,6 @@ class StructurePlanningInput:
     # The frame head's reading of each Live Photo clip (`clip_frames`): a clip that often
     # misses its subject plays as its still. Empty is what every clip carried before.
     clip_frames: Mapping[str, str] = field(default_factory=dict)
-    attached_outcome_replay: AttachedOutcomeReplay | None = None
     # Owner ticks after a cut: admitted after the read, so no prompt or digest input changes.
     owner_required_asset_ids: tuple[str, ...] = ()
     render_timing: EditorialTimingPolicy | None = None
@@ -208,14 +205,8 @@ class StructurePlannerPorts:
     ) = None
     resolve_speech: Callable[[list[dict]], list[dict]] | None = None
     thumbnail_metrics: Callable[[], Mapping[str, Any]] | None = None
-    observe_picture: Callable[[str], Mapping[str, Any]] | None = None
-    picture_facts_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_story_motion: Callable[[Mapping[str, Any]], str] | None = None
     story_motion_metrics: Callable[[], Mapping[str, Any]] | None = None
-    observe_attached_material: Callable[[list[dict[str, Any]]], AttachedMaterialEvidence] | None = (
-        None
-    )
-    attached_material_metrics: Callable[[], Mapping[str, Any]] | None = None
     rules: RuleStructureReader | None = None
     # Set when the model polishes a rules draft instead of planning the film: the reader above
     # builds the draft with no model and this reads the finished cut once.

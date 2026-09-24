@@ -9,7 +9,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_case import Case, _adapt_production_cards
 from immich_memories.analysis.editorial_clip_frames import load_clip_frames
 from immich_memories.analysis.editorial_intent import build_editorial_intent
@@ -100,7 +99,6 @@ def capture_structure_input(
     artifact_dir: Path,
     motion_outcome_replay: MotionOutcomeReplay | None = None,
     attached_sources: Sequence[Asset | VideoClipInfo] = (),
-    attached_outcome_replay: AttachedOutcomeReplay | None = None,
 ) -> StructurePlanningInput:
     cards, _selectable = _adapt_production_cards(workprint.prepared, workprint.cards)
     renderer = ProductionMomentWallRenderer(workprint.prepared, workprint.cards, people)
@@ -181,7 +179,6 @@ def capture_structure_input(
         bank_dir=store_path.parent / "structure-banks" / case.key,
         artifact_dir=artifact_dir,
         motion_outcome_replay=motion_outcome_replay,
-        attached_outcome_replay=attached_outcome_replay,
         owner_required_asset_ids=tuple(
             asset_id
             for asset_id in workprint.prepared.owner_required_asset_ids

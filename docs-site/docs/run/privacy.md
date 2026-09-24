@@ -34,10 +34,10 @@ turned on they leave your network only when you point them somewhere else.
 What that means per setup:
 
 - **A plain NAS (the default).** Your Immich server. That's the whole list.
-- **A reader or caption server on your own box or LAN.** Still your network. The pictures it reads
-  land on that box's disk and in its logs.
-- **A hosted reader.** 800 px tiles of the pictures it is asked about, and the names beside them,
-  go to that provider. Pointing `llm.base_url` at it is the consent step; nothing asks twice.
+- **A reader or caption server on your own box or LAN.** Still your network. The pictures the
+  caption server reads land on that box's disk and in its logs.
+- **A hosted reader.** The annotation text of the candidates, and the names on it, go to that
+  provider. No picture does. Pointing `llm.base_url` at it is the consent step; nothing asks twice.
 
 ## What Immich sees
 
@@ -61,7 +61,7 @@ touches nothing.
 | Destination | When | What leaves your network | Default |
 |---|---|---|---|
 | Your Immich server | always | the reads above; the film, its tag and its album with upload on | upload off |
-| `llm.base_url` (reader) | a model reads a period, or the pictures a cut asks about | 800 px tiles of stills and the lines beside them: people and place names, and the Immich album names holding those pictures. No video frames | blank `llm.model`: no call |
+| `llm.base_url` (reader) | a model reads a period | text only: the annotation lines of the candidates, with people and place names, and the Immich album names holding those pictures. Never a picture | blank `llm.model`: no call |
 | `llm.base_url` (titles) | a people or occasion film's opening title, whenever a reader is configured; trips only with `--llm-title` | text only: first names, birth dates and ages, the relationships your people file records, the span, place names, the album the cut mostly sits in | `--no-llm-title` or `--title` |
 | `llm.base_url` (music, special days) | music selection and special-day scans, with a model | text only: the cut's story labels and captions; for a day, capture times, places, coordinates and recognised names | no model: no call |
 | `api.openai.com`, `api.anthropic.com`, `api.z.ai` | `llm.provider` is `openai`, `anthropic` or `zai` and `base_url` is left at its default | the reader rows above, to that vendor | set `base_url` yourself |
@@ -79,12 +79,17 @@ touches nothing.
 `preflight` prints one row per outside switch you turned on, naming the host. A default install
 prints none.
 
-## The two picture seats
+## The one picture seat
 
 | Seat | Setting | What it is shown |
 |---|---|---|
-| reader | `llm.base_url` | 800 px tiles of stills, the annotation lines beside them with people and place names, and album names. No video frames: a video reaches it as the captioner's banked sentence |
 | captioner | `editorial.preparation.caption_base_url` | 400 px tiles, a 960 × 320 strip of three keyframes per video, no metadata |
+
+A model looks at a picture once, at ingest: the captioner above, plus the heads and detectors,
+which run in the app or on `advanced.inference.facts_base_url`. After that, no model looks at a
+picture again. The reader edits the film from the text that ingest banked, on every tier.
+A film you share outside the family also leaves out every picture a detector or an exposure flag
+marked, whatever the reader says about it (`advanced.editorial.strict_sharing`, on by default).
 
 Two features can reach a picture seat without being the editor, and both prefer text. Music
 selection reads the cut's text and falls back to defaults rather than send pictures (the standalone

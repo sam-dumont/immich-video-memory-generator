@@ -1,13 +1,10 @@
-"""Refuse expensive readers and image-incompatible endpoints before a full cell."""
+"""Refuse expensive or broken readers before a full cell; never send one a picture."""
 
-import io
-import json
 import sys
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -22,7 +19,6 @@ from setup_matrix_plan import (  # noqa: E402
     Step,
 )
 
-from immich_memories.analysis import editorial_picture_facts  # noqa: E402
 from immich_memories.analysis.llm_wire import LLMTransportAttempt  # noqa: E402
 from immich_memories.config_models_llm import LLMConfig  # noqa: E402
 
@@ -100,39 +96,32 @@ def test_an_unpriced_hosted_reader_does_not_silently_pass_the_cost_gate():
     assert problems == ["cannot project hosted cost: missing prices or token usage"]
 
 
-def test_picture_probe_sends_the_production_prompt_and_a_real_fixture_tile(monkeypatch):
-    observed = {}
+# A shape of the probe's own form whose verdict reads anything as in contract, so the gates
+# around the shapes can be driven without replaying the recorded production prompts.
+TEXT_SHAPE = ("episodes", "episodes.txt", 100, True, lambda _raw, _prompt: "ok")
+
+
+def test_every_probe_shape_is_text_and_sends_no_picture(monkeypatch):
+    observed = []
 
     async def query(prompt, config, **kwargs):
-        observed.update(prompt=prompt, **kwargs)
-        return json.dumps(
-            {
-                field: "no" if field == "uncovered_person" else "not visible"
-                for field in editorial_picture_facts.FIELDS
-            }
-        )
+        observed.append(kwargs)
+        return "{}"
 
+    # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
     monkeypatch.setattr(probe, "query_llm", query)
-    result = probe.probe_shape(
-        probe.SHAPES[0],
-        LLMConfig(model="reader"),
-        reader="local_model",
-        pricing={},
-    )
-    assert result.shape == "picture-facts"
-    assert not result.failed
-    assert observed["prompt"] == editorial_picture_facts.PROMPT
-    assert observed["max_tokens"] == editorial_picture_facts.MAX_OUTPUT_TOKENS
-    assert observed["image_detail"] == "high"
-    with Image.open(io.BytesIO(observed["images"][0])) as picture:
-        assert max(picture.size) == 800
-        assert len(picture.getcolors(256) or []) != 1
+    for shape in probe.SHAPES:
+        probe.probe_shape(shape, LLMConfig(model="reader"), reader="local_model", pricing={})
+
+    assert [shape[0] for shape in probe.SHAPES] == ["episodes", "story-pick"]
+    assert observed and not any(kwargs.get("images") for kwargs in observed)
 
 
-def test_a_reader_that_rejects_images_fails_the_first_shape(monkeypatch):
+def test_a_reader_that_errors_fails_the_first_shape(monkeypatch):
     async def query(*args, **kwargs):
-        raise ValueError("this model does not support images")
+        raise ValueError("this model is not loaded")
 
+    # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
     monkeypatch.setattr(probe, "query_llm", query)
     result = probe.probe_shape(
         probe.SHAPES[0],
@@ -141,7 +130,7 @@ def test_a_reader_that_rejects_images_fails_the_first_shape(monkeypatch):
         pricing={},
     )
     assert result.failed
-    assert "does not support images" in result.verdict
+    assert "not loaded" in result.verdict
 
 
 def _plan():
@@ -195,12 +184,12 @@ def test_budget_override_and_config_are_forwarded_only_to_the_named_probe(tmp_pa
         )
 
 
-def _picture_reader(*, broken: bool = False):
-    """A reader that answers the picture shape in contract, or refuses images."""
+def _text_reader(*, broken: bool = False):
+    """A reader that answers in contract at a measured cost, or fails outright."""
 
     async def query(prompt, config, **kwargs):
         if broken:
-            raise ValueError("images not supported")
+            raise ValueError("the reader is down")
         kwargs["transport_observer"](
             LLMTransportAttempt(
                 attempt=1,
@@ -211,37 +200,31 @@ def _picture_reader(*, broken: bool = False):
                 completion_tokens=10_000,
             )
         )
-        return json.dumps(
-            {
-                field: "no" if field == "uncovered_person" else "not visible"
-                for field in editorial_picture_facts.FIELDS
-            }
-        )
+        return "{}"
 
     return query
 
 
-def _picture_budget(count: int) -> dict:
-    return {**BUDGET, "calls": {"picture-facts": {"count": count, "parallel": False}}}
+def _text_budget(count: int) -> dict:
+    return {**BUDGET, "calls": {"episodes": {"count": count, "parallel": False}}}
 
 
 @pytest.mark.parametrize(
     "broken,override,exit_code", [(False, False, 1), (False, True, 0), (True, True, 1)]
 )
-def test_an_override_waives_cost_but_never_image_failure(
+def test_an_override_waives_cost_but_never_a_failed_reader(
     monkeypatch, tmp_path, broken, override, exit_code
 ):
     config_source = tmp_path / "config.yaml"
     config_source.write_text("immich:\n  url: http://localhost:9998\n  api_key: test-only\n")
-    # One real image shape is enough to exercise this gate without replaying the text contracts.
-    monkeypatch.setattr(probe, "SHAPES", probe.SHAPES[:1])
+    monkeypatch.setattr(probe, "SHAPES", (TEXT_SHAPE,))
     # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
-    monkeypatch.setattr(probe, "query_llm", _picture_reader(broken=broken))
+    monkeypatch.setattr(probe, "query_llm", _text_reader(broken=broken))
     result = probe.probe_cells(
         _plan(),
         config_source,
         PRICING,
-        budget=_picture_budget(100),
+        budget=_text_budget(100),
         budget_overrides=["test-reader"] if override else [],
     )
     assert result == exit_code
@@ -273,12 +256,12 @@ def test_a_cluster_cell_on_the_operators_immich_is_probed_rather_than_crashing(
 
     # WHY: read_operator_immich reads the operator's own config off this machine.
     monkeypatch.setattr(setup_matrix, "read_operator_immich", operator_immich)
-    monkeypatch.setattr(probe, "SHAPES", probe.SHAPES[:1])
+    monkeypatch.setattr(probe, "SHAPES", (TEXT_SHAPE,))
     # WHY: query_llm is the reader's HTTP boundary, and no reader listens in a test.
-    monkeypatch.setattr(probe, "query_llm", _picture_reader())
+    monkeypatch.setattr(probe, "query_llm", _text_reader())
 
     result = probe.probe_cells(
-        replace(plan, cells=(item,)), config_source, PRICING, budget=_picture_budget(1)
+        replace(plan, cells=(item,)), config_source, PRICING, budget=_text_budget(1)
     )
 
     assert result == 0

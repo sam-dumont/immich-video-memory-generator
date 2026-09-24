@@ -191,8 +191,8 @@ and selection are additional work; this is not a first-run estimate.
 ## A reader you do not host
 
 With no second machine, the third option is a provider: same `model` reader, same contract, and
-800 px tiles of the few dozen candidates the edit asks about leave your network, along with their
-annotation lines and the people and place names on them.
+the candidates' annotation lines leave your network, with the people and place names on them. No
+picture does: a model looks at each picture once, at ingest, on your own hardware.
 
 ```yaml
       IMMICH_MEMORIES_LLM__PROVIDER: "openai"      # ollama | openai-compatible | openai | zai | anthropic

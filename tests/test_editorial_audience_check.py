@@ -2,33 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
 
-from immich_memories.analysis import editorial_picture_facts as picture_facts
 from immich_memories.analysis import editorial_shareability as share
 from immich_memories.analysis.editorial_text_failures import TextCompletionFailure
-
-
-def observed(state="no"):
-    """A picture-facts record that carries this run's producer identity."""
-    digest = hashlib.sha256(state.encode()).hexdigest()
-    return {
-        "status": "available",
-        "identity": digest,
-        "input_sha256": digest,
-        "image_sha256": digest,
-        "facts": {"uncovered_person": state},
-        "producer": {
-            "pass_version": picture_facts.STAGE_VERSION,
-            "prompt_version": picture_facts.PROMPT_VERSION,
-            "schema_version": picture_facts.SCHEMA_VERSION,
-            "prompt_sha256": hashlib.sha256(picture_facts.PROMPT.encode()).hexdigest(),
-            "schema_sha256": picture_facts._digest(picture_facts.RESPONSE_SCHEMA),
-        },
-    }
 
 
 class Annotation:
@@ -68,14 +47,8 @@ def failure():
     return TextCompletionFailure(attempts)
 
 
-def evidence_of(unit, annotations, flags=None, records=None):
-    return share.evidence_for_unit(
-        unit,
-        annotations,
-        flags or {},
-        {},
-        picture_records=records,
-    )
+def evidence_of(unit, annotations, flags=None):
+    return share.evidence_for_unit(unit, annotations, flags or {}, {})
 
 
 def test_a_member_without_a_caption_is_an_evidence_gap_rather_than_a_share():
@@ -210,44 +183,3 @@ def test_an_exhausted_coverage_stage_is_recorded_rather_than_guessed():
     assert result["finding"] == "undecided_exposure"
     assert result["failed_stage"] == "unit-1-exposure-1"
     assert result["exposure"]["groups"][0]["status"] == "failed"
-
-
-def test_direct_body_observations_answer_the_coverage_question_without_a_second_call():
-    unit = {"asset_id": "solo", "members": ["solo"]}
-    evidence = evidence_of(
-        unit,
-        {"solo": Annotation("A person at the seaside.", (("nsfw_marqo", "yes"),))},
-        records={"solo": observed("no")},
-    )
-    judge = Judge([finding("none")])
-
-    result = share.check_audience(judge, evidence, "unit-1")
-
-    # The observation answers the coverage question, but it cannot lift the detector's hold.
-    assert result["verdict"] == "family_only" and result["finding"] == "exposure_evidence"
-    assert result["exposure"]["basis"] == "direct_visual_body_observations"
-    assert judge.stages == ["unit-1-activity"]
-
-
-def test_an_ordinary_activity_cannot_clear_an_uncovered_person_the_pixels_showed():
-    unit = {"asset_id": "solo", "members": ["solo"]}
-    evidence = evidence_of(
-        unit, {"solo": Annotation("A person indoors.")}, records={"solo": observed("yes")}
-    )
-
-    result = share.check_audience(Judge([finding("none")]), evidence, "unit-1")
-
-    assert result["verdict"] == "family_only"
-    assert result["finding"] == "nudity_shirtless_or_underwear"
-
-
-def test_an_unresolved_body_observation_keeps_the_carrier_out_of_a_sendable_export():
-    unit = {"asset_id": "solo", "members": ["solo"]}
-    evidence = evidence_of(
-        unit, {"solo": Annotation("A person indoors.")}, records={"solo": observed("unclear")}
-    )
-
-    result = share.check_audience(Judge([finding("none")]), evidence, "unit-1")
-
-    assert result["verdict"] == "family_only"
-    assert result["finding"] == "undecided_body_observation"

@@ -41,11 +41,12 @@ flowchart TD
 
     caption -.->|"a 400 px tile per picture"| captioner(["caption server"])
     episodes -.-> reader(["the reader"])
-    edit -.->|"800 px tiles and annotation lines"| reader
+    edit -.->|"annotation lines, text only"| reader
 ```
 
-Solid arrows are this box. The two dotted ones are the only seats that can live somewhere else, and
-the only things a picture is ever sent to.
+Solid arrows are this box. The dotted ones are the only seats that can live somewhere else. Only the
+caption server is ever sent a picture, once, at ingest. After that no model looks at a picture: the
+reader edits the film from text, on every tier.
 
 ## The rules it obeys
 
@@ -717,7 +718,7 @@ the episode readings used for the cut.
 | **Reading dates, places and people** | The source model, then preparation per producer: previews, pixel facts, the encoder with eight context heads, the two detectors, and on `full` one caption per picture and one motion sentence per video. Nothing banked is produced twice | previews over the network; captions remotable; heads, detectors and pixels on this box or the [inference service](../better/inference.md) |
 | **Reading event evidence: i/n** | Paged episode reading over the annotation lines, the cull asked inside each episode, with an `Albums:` fact line naming the Immich albums that hold the episode. The same reading names the episode's notable moments: what a family would remember on its own and a 25-word summary would lose. Banked per group and evidence key | the reader |
 | **Building editorial cards** | One card per moment, rendered into the wall the planner reads | this box, cheap |
-| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing asks every picture for its own yes or no in packed blocks, asks the pictures called weak once more, and banks each picture, and picture facts are observed for the cut. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
+| **Editing the memory** | The structure and story planners: monthly story reading, trip detection over the film's pictures, custom-subject or trip admission when needed, story weighing, the recurring-activity question, moment picks, standing gate, audience checks. Each a banked question, the gates asked in two orders. Prepared captions supply the candidates inside each funded story's shortlisted capture groups; there is no additional moment-inventory model pass. Standing asks every picture for its own yes or no in packed blocks, asks the pictures called weak once more, and banks each picture. No model looks at a picture here: the audience check reads the caption, the heads and the flags ingest banked. The pick and the standing gate read each video's banked motion sentence. The cut also reuses Live motion residuals and speech boundaries for playback and timing; these timing observations do not reopen standing judgments | the reader; motion and speech locally |
 | **Validating selected source timing** | Intervals bound to their sources, duration realised | this box, cheap |
 
 If the reader stops answering, the Editing stage reports *Waiting for the reader at host:port* and
@@ -864,7 +865,8 @@ Audience verdicts follow a picture across every cut of the library too, in
 it and the exact evidence it read, prompt version included, so the next cut over the same pictures
 asks no audience question it already answered (15 questions to 0 on a repeated test cut), and a new
 reader or a new prompt asks again. A refusal is also kept per picture, and what happens to it
-depends on what cast it. One cast by the nsfw head, a direct body observation or a rule is
+depends on what cast it. One cast by the nsfw head or a rule (or, in a bank written before
+pictures stopped being read at film time, by a body observation) is
 permanent: not a new prompt, not a different reader, not a caption that changed lifts it. That
 includes the nsfw head's hold on a video's frames and on a Live Photo's clip, and an answer banked
 before a hold existed is never served past it. One cast

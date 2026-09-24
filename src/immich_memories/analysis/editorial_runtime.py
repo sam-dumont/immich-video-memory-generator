@@ -13,7 +13,6 @@ from immich_memories.analysis.editorial_album_index import (
     RunAlbumNames,
     record_album_index,
 )
-from immich_memories.analysis.editorial_attached_outcomes import AttachedOutcomeReplay
 from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
 from immich_memories.analysis.editorial_film_reach import film_reach
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
@@ -116,7 +115,6 @@ class EditorialRunContext:
     base_brief: str | None = None
     motion_outcome_replay: MotionOutcomeReplay | None = None
     person_expression: PersonExpression | None = None
-    attached_outcome_replay: AttachedOutcomeReplay | None = None
     render_timing: EditorialTimingPolicy | None = None
     hemisphere: Literal["north", "south"] = "north"
     window_origin: str | None = None  # why a window nobody typed starts where it does
