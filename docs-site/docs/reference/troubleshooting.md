@@ -4,24 +4,45 @@ title: Troubleshooting
 
 # Troubleshooting
 
-`immich-memories -v <command>` logs at DEBUG for one run. `immich-memories preflight` checks
-Immich, the model files and every configured server in one go.
+Reader: anyone whose run stopped.
+
+**Help, in four steps:** read the table below and the [FAQ](./faq.md); check the
+[release notes](https://github.com/sam-dumont/immich-video-memory-generator/releases) for your version;
+[search the issues](https://github.com/sam-dumont/immich-video-memory-generator/issues?q=is%3Aissue); then open
+one with the command, the version (`immich-memories --version`) and the last 50 lines of `-v` output. API keys
+are redacted from logs, but check for names before you paste.
+
+Two commands answer most questions: `immich-memories -v <command>` logs at DEBUG for one run, and
+`immich-memories preflight` checks Immich, the model files, the output directory and every configured server in
+one go. In Docker, prefix both with `docker compose exec immich-memories`.
+
+## When it stops
+
+| What you see | What to do |
+|---|---|
+| `public heads need the pinned DINOv2 ONNX export at …` | Run `immich-memories models fetch` once. It puts the encoder and detectors on the models volume |
+| `nsfw_marqo has no model: …` or `doc_docling has no model: …` | Same: `models fetch` |
+| `Output directory is not writable` | In Docker the container runs as uid 1000: `mkdir output` before `up`, or `sudo chown 1000:1000 output` |
+| `Story-first selection needs prepared annotations at …` | The annotation store moved. Point `editorial.annotation_database` at it |
+| `editorial runtime needs a nonblank LLM model` | `reader: model` with an empty `llm.model`. Set the model, or go back to `reader: auto` |
+| `Waiting for the reader at host:port` | A configured model server stopped answering. See [below](#waiting-for-a-model-server) |
+| `caption endpoint must advertise smolvlm2-500m-base-public` | Right weights, wrong name: alias it. See [Add captions](../better/captions.md) |
+| `caption endpoint failed the compact-v3 schema control` | The server ignores the JSON schema, or it is the wrong model |
 
 ## Cannot connect to Immich
 
-The read-only check comes first: authentication and the resolved API contract, nothing searched,
-generated or uploaded.
+The read-only check comes first: authentication and the resolved API contract, nothing searched, generated or
+uploaded.
 
 ```bash
 immich-memories config test
 ```
 
-It prints one line and exits 1 on failure. `URL not configured` and `API key not configured` mean
-the setting never reached the process.
+It prints one line and exits 1 on failure. `URL not configured` and `API key not configured` mean the setting
+never reached the process.
 
-- The URL needs its protocol (`https://`). A trailing slash is tidied up, not refused.
-- A `403 Forbidden` means the key exists but lacks rights: recreate it with **All**, or the read
-  plus upload plus album scopes the quick start lists.
+- The URL needs its protocol (`https://`). A trailing slash is tidied up.
+- A `403 Forbidden` means the key lacks rights. The scopes are on the [Docker page](../run/docker.md).
 - Immich must be v2 or v3. Immich 1.x is refused at connect time.
 - In Docker, `localhost` is the container. Use the host's IP or the Docker network name.
 
@@ -32,20 +53,20 @@ immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-`auto` detects the server major at runtime; you do not pick one for each run. So a v2-to-v3
-upgrade needs no change here. If a reverse proxy hides or rewrites `/api/server/version`, use `v2`
-or `v3` as a manual troubleshooting escape hatch. The override forces that contract, so go back to
-`auto` once detection works.
+`auto` detects the server major at runtime; you do not pick one for each run. So a v2-to-v3 upgrade needs no
+change here. If a reverse proxy hides or rewrites `/api/server/version`, use `v2` or `v3` as a manual
+troubleshooting escape hatch. The override forces that contract, so go back to `auto` once detection works.
 
-The read-only
-`immich-memories config test` reports the server version and authentication errors; it does not
-test uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check
-the relevant Immich server logs. API keys are redacted.
+The read-only `immich-memories config test` reports the server version and authentication errors; it does not
+test uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check the relevant
+Immich server logs. API keys are redacted.
 
-## The cut stops with "Waiting for the reader at host:port"
+## No videos found
 
-The model server is not answering. Start it (or fix `llm.base_url`), then **Cut again** or rerun
-the command; everything already read is banked. Without a model, set `reader: rules` to cut anyway.
+- The person name must match Immich's exactly, case aside. `immich-memories people` lists them.
+- Photos are in the pool by default (`photos.enabled: true`); with photos off, the period needs at least one
+  video.
+- A `--person` filter needs pictures where Immich recognised that face in the period.
 
 ## A picture I expected is not in the cut
 
@@ -53,110 +74,73 @@ the command; everything already read is banked. Without a model, set `reader: ru
 immich-memories runs why <asset id> --run <run id>
 ```
 
-says where it passed and where it was dropped, with the reason. On the Memory page, tick it on the
-pool page and **Cut again**: a tick outranks the editor. On the CLI, `--include <asset id>`.
-Neither overrides the audience gate: a picture the gate holds at family-only, or one whose file
-Immich cannot serve, stays out however you ask for it.
-
-A source whose preview Immich answers HTTP 404 for is the second kind. The run logs one line
-naming the count and the reason, `preview unavailable at Immich (HTTP 404)`, lists those ids under
-`unservable_sources` in the attempt's `preparation.private.json`, and cuts the rest. Regenerate
-that asset's thumbnails in Immich, then cut again.
-
-## A clip fails with "Could not write header (incorrect codec parameters ?)"
-
-The log names the source and shows a stream copy into a `.mov` refused by FFmpeg, usually
-`vp9 only supported in MP4.`. The source is VP9 or AV1 inside a QuickTime `.MOV`, which Android
-phones and some editors write. A lossless camera cut keeps the source container so ProRes and PCM
-audio survive, and QuickTime will not carry those two codecs.
-
-Nothing to do: the cut re-encodes that clip through the normal encode path with the same in and out
-points, so it costs one encode instead of a copy. If a source still cannot be cut, that clip leaves
-the film by name, the log says why, and the rest is assembled. Only a film whose every source
-failed stops with `No clips could be processed`.
-
-## No videos found
-
-- The person name must match Immich's, case-insensitive, nothing else fuzzy.
-- Photos are in the pool by default (`photos.enabled: true`); with `--no-photos` the period needs
-  at least one video.
-- A `--person` filter needs tagged assets in the period.
+says where it passed and where it was dropped, and why. To overrule it, tick it on the web UI's pool and
+**Cut again**, or pass `--include <asset id>`: a tick outranks the editor. Neither overrides the family-viewing
+gate, and neither brings back a picture whose preview Immich answers HTTP 404 for. The run logs those as
+`preview unavailable at Immich (HTTP 404)` and cuts the rest; regenerate that asset's thumbnails in Immich and
+cut again. Every lever is on [Overrule it](../how-it-chooses/overrule-it.md).
 
 ## The first cut is slow
 
-The first cut over a period prepares every eligible picture once (previews, pixel facts, heads,
-detectors, and on the `full` tier one caption each), then the reader reads the period. The levers,
-in order: put the caption server and the reader on the fastest box you have, prepare a month at a
-time with [`prepare`](../make/cli/prepare.md), pick a lower
-[tier](../being-rewritten/running-modes.md), and keep the cache. Measured numbers per host are on Running
-modes.
+A cut prepares the pictures it can reach once (previews, pixel facts, heads, detectors, and on the `full` tier a
+caption each) and banks them. The second cut over the same period is mostly the render. The levers, in order:
+keep the cache volume, prepare ahead with [`prepare`](../make/cli/prepare.md) overnight, and move the heads to a
+faster box with [the inference service](../better/inference.md). Numbers per host are on
+[Measured](../better/measured.md).
 
-## Out of memory
+## Waiting for a model server
 
-Almost always the reader: a 30B model at 4-bit holds about 17 GB for as long as its server is up.
-If the same box also renders or generates music, that is the collision: stop the model servers
-before a music-heavy run, or move them to their own machine. With ACE-Step's language model on
-(`ace_step.use_lm`, off by default), set `lm_model_size: "0.6B"` or switch it off.
+Only with a reader or caption server configured. The run names the endpoint and retries three times, two then
+four seconds apart, then fails. Start the server or fix `llm.base_url`, then **Cut again** or rerun: everything
+already read is banked. To cut without it, clear `llm.model` with `reader: auto` (the NAS path).
 
-If audio mixing dies at the end of a long album on a small container, that is the memory limit.
-The mixer runs one FFmpeg process per clip and merges in bounded groups; the failure names the clip
-and the exit reason.
+## A clip fails with "Could not write header (incorrect codec parameters ?)"
 
-## A long render ends with "ffprobe failed to inspect output artifact"
+The source is VP9 or AV1 inside a QuickTime `.MOV` (Android phones and some editors write those), and a lossless
+stream copy into `.mov` is refused. Nothing to do: the cut re-encodes that clip with the same in and out points.
+A clip that still cannot be cut leaves the film by name and the rest is assembled. Only a film whose every
+source failed stops with `No clips could be processed`.
 
-The film was fine. Before this fix, the app checked a finished film with one `ffprobe -count_frames`
-call, which decodes every frame on a single thread, and gave up after 15 minutes. That is 2.25x
-realtime on a Celeron J4125 whatever its core count, so a 75-minute album needs about 33 minutes.
-The render that had just spent 11 hours encoding was marked failed and its upload skipped, while
-`ffprobe -show_entries format=duration` on the `.assembling.mp4` beside the run answered at once.
+## A long render spends a while "Checking the finished film" {#a-long-render-ends-with-ffprobe-failed-to-inspect-output-artifact}
 
-That check also ran three times per run: after the encode, after the music mix and before the
-upload. The check is now split in two, and the slow half runs once:
+Before a film gets its final name, FFmpeg decodes every frame once, on every core, and fails the run on any
+decode error. It can take as long as the encode did, and logs
+`Checking the finished film: 12:34 of 1:14:46 decoded` once a minute. That is normal on a NAS with a long film.
 
-1. `ffprobe` reads container, codec, pixel format, colour and duration without decoding and
-   compares them with the encoding plan. It runs after the encode, after the music mix and before
-   the upload, and a wrong codec fails there in under a second.
-2. FFmpeg decodes the video on every core, once per run: on the film as it is after the music
-   mix, just before it gets its final name. Any decode error fails the run. It may take as long as
-   the render's own encode (15 minutes at least), and logs
-   `Checking the finished film: 12:34 of 1:14:46 decoded` once a minute. The upload reuses that
-   decode unless the file's size, modification time or inode changed since, and then decodes again.
-
-A film a [render worker](../being-rewritten/running-modes.md#rendering-on-another-machine) made is decoded
-on the worker. The app skips its own decode when the file it downloaded matches the worker's
-SHA-256, and gives the decode four times the film's duration when the worker sent no digest.
-
-Measured on a Celeron J4125 with two cores, the decode runs at 3.8x realtime for 1080p HEVC
-(a 75-minute film in about 20 minutes, once) and 1.07x for 4K. For a 60-second film, all the checks
-of one run with music took 82 s before this fix and take 17 s now.
-
-If it still runs out, the error reads `the decode check did not finish within the render's own
-encode time` and starts with the path of the film. Nothing deletes that file. Check it yourself:
+If it runs out of time the error reads `the decode check did not finish within the render's own encode time`
+and names the file. Nothing deletes it. Check it yourself:
 
 ```bash
 ffmpeg -v error -i memory.assembling.mp4 -map 0:v:0 -f null -
 ```
 
-No output means every frame decoded. Rename it without `.assembling` and upload it by hand. With
-music on, that file already has the music in it.
+No output means every frame decoded: rename it without `.assembling` and upload it by hand (the music is
+already in it).
+
+## Out of memory
+
+On a NAS, it is almost always a long film's audio mix on a small container: the mixer runs one FFmpeg per clip
+and the failure names the clip. Raise the container's memory limit.
+
+With a model on the same box, it is the model: a 30B reader at 4-bit holds about 17 GB for as long as its server
+is up, and ACE-Step in `lib` mode refuses a render it cannot hold. Stop the model servers before a music-heavy
+run, or give them their own machine.
 
 ## FFmpeg not found
 
-FFmpeg is called by name off `PATH`; a missing binary surfaces as
-`FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'` the first time a clip is
-encoded. `brew install ffmpeg`, `apt install ffmpeg`, or use the Docker image, which has it.
+FFmpeg is called by name off `PATH`, so a missing binary surfaces as
+`FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'` at the first encode. `brew install ffmpeg`,
+`apt install ffmpeg`, or use the Docker image.
 
 ## GPU not detected
 
-The log says `No hardware acceleration detected, using software encoding` and `preflight` reports
-no GPU. `immich-memories hardware` shows what it sees. For NVIDIA, `nvidia-smi` must work; in
-Docker you need `--gpus all` and the NVIDIA Container Toolkit. Hardware encoders only speed up the
-encode, never inference.
+The log says `No hardware acceleration detected, using software encoding`, and `immich-memories hardware` shows
+what it sees. For NVIDIA, `nvidia-smi` must work, and Docker needs the NVIDIA Container Toolkit and the GPU
+overlay. A hardware encoder only speeds up the encode. See [Hardware encoding](../run/hardware.md).
 
 ## Music generation fails
 
-- Both backends default to `http://localhost:8000`. ACE-Step is treated as up only when
-  `/health` returns `{"data": {"status": "ok"}}`; MusicGen only needs HTTP 200.
-- A timeout: raise `ace_step.timeout_seconds` (3600) or `musicgen.timeout_seconds` (10800), both
-  capped at 18000.
-- A failed generator falls back to the next one, then to a bundled track, and the run says so.
+A failed generator falls back to the next one, then to a bundled track, and the finished run says so. ACE-Step
+counts as up only when `/health` returns `{"data": {"status": "ok"}}`; MusicGen needs HTTP 200. For timeouts,
+raise `ace_step.timeout_seconds` (3600) or `musicgen.timeout_seconds` (10800), both capped at 18000. Setup is on
+[Generated music](../better/music.md).

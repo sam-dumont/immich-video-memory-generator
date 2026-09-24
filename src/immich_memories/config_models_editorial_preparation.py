@@ -54,7 +54,7 @@ class EditorialPreparationConfig(BaseModel):
     )
     batch_size: int = Field(default=32, ge=1, le=256)
     head_bundle: str = Field(
-        default="", description="Blank uses the packaged public six-head bundle"
+        default="", description="Blank uses the packaged public eight-head bundle"
     )
     detector_python: str = Field(
         default="", description="Blank uses the current Python interpreter"

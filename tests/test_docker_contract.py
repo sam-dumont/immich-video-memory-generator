@@ -712,3 +712,30 @@ def test_the_documented_cuda_override_extends_the_captioner_overlay() -> None:
 
     assert (REPO_ROOT / extends["file"]).resolve() == HWACCEL_CAPTIONER.resolve()
     assert extends["service"] in yaml.safe_load(HWACCEL_CAPTIONER.read_text())["services"]
+
+
+def _example_env_names() -> list[str]:
+    """Every variable example.env names, set or commented out for the reader to fill in."""
+    names = []
+    for line in (REPO_ROOT / "example.env").read_text().splitlines():
+        match = re.fullmatch(r"#?\s*([A-Z][A-Z0-9_]*)=.*", line.strip())
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def test_every_example_env_variable_reaches_the_app_container() -> None:
+    """Compose reads .env for interpolation only: a line the service block never
+    interpolates is silently dropped, and the reader believes it is set."""
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    environment = compose["services"]["immich-memories"]["environment"]
+    interpolated = {
+        match
+        for value in environment.values()
+        for match in re.findall(r"\$\{([A-Z][A-Z0-9_]*)", str(value))
+    }
+
+    names = _example_env_names()
+
+    assert {"IMMICH_URL", "IMMICH_API_KEY"} <= set(names)
+    assert [name for name in names if name not in interpolated] == []

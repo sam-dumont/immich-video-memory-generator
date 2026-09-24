@@ -4,77 +4,72 @@ title: FAQ
 
 # FAQ
 
-**Does it modify my Immich library?**
+Reader: newcomer. The questions self-hosters ask before and after the first film. For a run that stopped, see
+[Troubleshooting](./troubleshooting.md).
 
-Not unless you ask it to. It reads metadata and previews and downloads copies of the selected
-originals to cut from. With `--upload-to-immich` (or the Export page's upload switch) the finished
-video is uploaded as a new asset, optionally into an album, and tagged `immich-memories/generated`;
-a re-render into the same album sends the copy it replaces to Immich's trash. Nothing else is
-written.
+## Before you install
 
-**What leaves my machine?**
+**Does it change my Immich library?**
 
-By default nothing but requests to your Immich server. The caption server and the reader can
-receive pictures and annotation text; both default to `localhost`. Nominatim geocoding and satellite
-map tiles are two switches under `network:`, both off, and a render never downloads a font.
-[Network & Privacy](../run/privacy.md) says what each one sends.
+It reads. The one write is the finished film, and only when you ask for it (`--upload-to-immich`, or the upload
+switch in the web UI): a new asset, tagged `immich-memories/generated`, optionally in an album. A re-render of
+the same film into the same album moves the copy it replaces to Immich's trash, never a hard delete. Nothing
+else is written.
 
-**Do I need a model?**
+**What leaves my network?**
 
-No. `reader` ships as `auto`, which resolves to the rules reader while `llm.model` is blank. The
-ten standard memory types are then cut from dates, places, favourites, people and whatever image
-facts the tier produced. It is a simpler editor: no thesis, and it can miss an occasion in a broad
-recap. What it keeps per memory type, measured against the model editor, is on
-[Rules mode](../being-rewritten/pipeline.md#editing-without-a-language-model).
+On a default install, nothing: the app talks to your Immich server and that's it. Readers, caption servers,
+place names in your language and the map fly-over are all opt-in, each one listed on
+[Privacy](../run/privacy.md) with what it sends.
 
-**How long does a cut take?**
+**Will it run on my NAS?**
 
-The first cut over a period reads every eligible picture once and banks it; the second is mostly
-the render. Measured for a 60-second month of 1,440 pictures, selection only: 55 s cold and 1.4 s
-warm on a workstation with rules, 279 s cold and 11 s warm on a Celeron NAS. With a model reader,
-a 60-second February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm with no
-model call at all, because a period read once is answered from the bank a month at a time. The
-per-host table is on [Running modes](../being-rewritten/running-modes.md).
+Yes, it works on a plain NAS: the default install cuts films on a NAS CPU from dates, places, favourites,
+people and what small local classifiers measure on each picture. A GPU or a model makes it better and faster
+([What a model adds](../better/overview.md)). Sizes and the one Synology trap are on
+[On a NAS](../run/nas.md) and [Requirements](../run/requirements.md).
+
+**Do I need face recognition?**
+
+No. Without a person, a period covers everyone. Named faces make people films possible and let it keep close
+family in the film ([Teach it your family](../get-started/who-is-who.md)).
+
+**iPhone only?**
+
+Anything FFmpeg decodes. Live Photos are tested on iPhones; Samsung and Pixel motion photos are untested.
+
+## After the first film
+
+**Why is this picture in (or not)?**
+
+`immich-memories runs why <asset id>` says where it passed or was dropped and why. The rules are on
+[How it chooses](../how-it-chooses/overview.md).
+
+**Can I pick pictures myself?**
+
+Yes. Tick or untick on the web UI's pool and cut again, star it in Immich, or pass `--include` / `--exclude`.
+A tick outranks the editor. See [Overrule it](../how-it-chooses/overrule-it.md).
+
+**Why is the first cut slow and the second fast?**
+
+The first cut measures each picture it can reach once and banks the result; the second is mostly the render.
+`prepare` does a period ahead of time, overnight if you like.
 
 **How much disk?**
 
-The caches are bounded by config, not by the library: 10 GB of downloaded video (evicted after
-7 days), 10 GB of Immich previews, 2 GB of clip previews, plus the annotation store. Finished
-films need additional space; their size depends on duration, resolution, codec and quality.
+Caches are capped by config: 10 GB of downloaded video (kept 7 days), 10 GB of Immich previews, plus the
+annotation store. Films come on top, sized by length, resolution and codec.
 
-**Can I generate for several people at once?**
+**Can it make films on its own?**
 
-Yes. `--memory-type multi_person` with repeated `--person` means everyone in the same picture.
-`--people-expression '"Riley" AND ("Casey" OR "Bob")'` takes a real condition, where `AND` means
-the same picture, not the same afternoon. The Memory page has the same field.
+Yes, one a day at most: [Automate it](../make/automate.md).
 
-**Can I use it without face recognition?**
+**Several people on one Immich server?**
 
-Yes. Without a person, a period covers everyone. Face recognition only narrows the pool.
+The web UI is single-user, single-replica: one Immich API key, one library. Run one instance per library.
 
-**What about Live Photos?**
+**Is it stable?**
 
-Included by default. The editor treats a Live Photo as a photograph carrying motion it may play
-when the motion earns it; burst-captured ones are merged into a single moment. Tested on iPhones;
-Samsung and Pixel motion photos are untested.
-See [Live Photos](../make/photos-and-live-photos.md#live-photos).
-
-**Which formats?**
-
-Anything FFmpeg decodes. Output is MP4 or MOV with H.264, H.265 or ProRes. HDR output is H.265
-only.
-
-**Can I run it headless?**
-
-Yes: `generate` works over SSH, in Docker and in CI, and `runs story` prints the cut in the
-terminal.
-
-**Is it safe for production?**
-
-It is beta, and the code was written with AI assistance as a deliberate experiment
-([Built with AI](../being-rewritten/built-with-ai.md)). The output is an editor's judgment. Review a cut
-before showing it at a family party.
-
-**Does it work on Apple Silicon?**
-
-Yes. VideoToolbox for the encode, MLX for ACE-Step, oMLX for the caption model and the reader.
+Install, read-only Immich access and rendering are. Selection keeps improving, measured on real libraries, so
+review a cut before you show it at a family party. The project is built with AI on purpose, as an experiment in
+keeping a complex codebase clean that way: [Why this exists](../welcome/about.mdx).
