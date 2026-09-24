@@ -17,7 +17,6 @@ from typing import Any
 
 from immich_memories.analysis.editorial_rule_banked_facts import (
     BankedFacts,
-    standing_with_bank,
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
@@ -243,17 +242,13 @@ def seat_in_film(
         return bool(unit_by_asset.get(asset, (None, {}))[1].get("favourite"))
 
     rules = film.rules if film.rules is not None else RuleStructureReader(source)
-    standing = standing_with_bank(rules.standing, film.banked, favourite=favourite)
+    standing = rules.standing
     gate = StandingGate(
-        None,
+        standing,
         line_of=lambda asset: selection.lines.get(asset, ""),
         life=life,
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in selection.story.stories},
-        bank=None,
-        save=None,
-        calls={"standing_rounds": 0},
-        score_of=standing,
     )
 
     def stands(asset: str, story: Mapping[str, Any]) -> bool:

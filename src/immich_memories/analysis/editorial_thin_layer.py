@@ -384,9 +384,9 @@ class _FitQuestion:
 
 
 def thin_budget(draft: int, seats: int) -> int:
-    """The calls a polish may spend: four questions per twelve draft shots (standing and fit
-    once, audience in its two orders: one look at the draft) and four per seat it opens.
-    Owner's budget, 09-23, with the audience's second order counted in."""
+    """The calls a polish may spend: four questions per twelve draft shots (the fit vote and the
+    audience question, each in its two orders: one look at the draft) and four per seat it opens.
+    Owner's budget, 09-23. Standing is read from facts and asks nothing."""
     return 4 * math.ceil(draft / BLOCK_SIZE) + 4 * seats
 
 

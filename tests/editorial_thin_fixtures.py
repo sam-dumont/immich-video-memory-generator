@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+from immich_memories.analysis.editorial_standing_facts import carries_nothing
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
 from immich_memories.analysis.editorial_thin_catalogue import BankedCatalogue, ThinStory
@@ -17,15 +18,14 @@ from immich_memories.config_models_llm import LLMConfig
 
 JUNK = "an empty worktop"
 DOUBTFUL = "a plain corridor"
+# The frame head reads this shot as an accidental frame, so the standing facts refuse it.
 UNSTEADY = "a blurred wall"
 PRIVATE = "a child in the bath"
-# The standing gate's source order names this row and its hashed order does not.
-ONE_ORDER = "a half-open door"
 START = datetime(2024, 1, 1, 9, 0)
 
 
 def thin_budget(draft: int, seats: int) -> int:
-    # standing and fit once, audience in two orders, per twelve shots; four per seat
+    # fit and audience, each in its two orders, per twelve shots; four per seat
     return 4 * math.ceil(draft / 12) + 4 * seats
 
 
@@ -44,11 +44,6 @@ class CountingJudge:
     def ask(self, stage, prompt, max_tokens=260, **_options):
         self.calls.append(stage)
         self.prompts.append((stage, prompt))
-        if stage.startswith("standing-"):
-            doubted = _labels(prompt, UNSTEADY)
-            if not stage.startswith("standing-check"):
-                doubted += _labels(prompt, ONE_ORDER)
-            return json.dumps({"weak": dict.fromkeys(doubted, "nothing stands")})
         if stage.startswith("thesis-fit-"):
             doubted = _labels(prompt, JUNK)
             if stage.endswith("-source"):
@@ -59,6 +54,11 @@ class CountingJudge:
         if stage.startswith("shareability-"):
             return _audience(prompt)
         raise AssertionError(f"the thin layer asked an unexpected question: {stage}")
+
+
+def frame_heads(line: str) -> dict[str, str]:
+    """What the frame head reads for a fixture shot."""
+    return {"frame_kind": "accidental_or_blurred_frame"} if UNSTEADY in line else {}
 
 
 def _labels(prompt: str, marker: str) -> list[str]:
@@ -156,14 +156,13 @@ def polish(tmp_path, film: Film, *, audience_batch: int = 12, short=None, room: 
     judge = CountingJudge()
     recorded: dict = {}
     standing = StandingGate(
-        judge,
+        lambda asset: (
+            0 if carries_nothing(frame_heads(film.lines[asset]), film.lines[asset]) else 2
+        ),
         line_of=film.lines.get,
         life=lambda _asset: True,
         unit_by_asset={asset: ("fam", row) for asset, row in film.units.items()},
         pictures_of={key: len(rows) for key, rows in film.pool.items()},
-        bank={},
-        save=None,
-        calls={"standing_rounds": 0},
     )
     audience = AudienceGate(
         judge,

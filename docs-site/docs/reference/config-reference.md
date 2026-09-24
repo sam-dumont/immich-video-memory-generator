@@ -369,7 +369,7 @@ tokens and remembered per server and model; set `always_reasons: true` to spare 
 which otherwise comes back empty.
 
 `reader_concurrency` limits independent reader jobs in flight (1 to 16). Independent episode-evidence
-packs, the period account's calendar-month pages, event inventories and worthiness/standing blocks
+packs, the period account's calendar-month pages, event inventories and worthiness blocks
 can overlap. Pages within an event and later dependent picks remain sequential. Scheduling
 preserves prompt text, judgment keys and source ordering; batch delivery is configured separately.
 

@@ -54,24 +54,6 @@ def source_kind_marker(unit: Mapping[str, Any]) -> str:
     )
 
 
-def moving_picture_row(
-    line: str, unit: Mapping[str, Any], motion_line: Callable[[Mapping[str, Any]], str] | None
-) -> str:
-    """One moving picture's row: what it is, how long it runs, whether anyone speaks, what happens.
-
-    A still that failed to be a photograph and a video judged on one frame of it read the same
-    on a listing; this says which one the row is. The sentence comes from the caption seat at
-    preparation, so no judgment here opens a model connection.
-    """
-    if not carries_motion(unit):
-        return line
-    row = f"{line}{source_kind_marker(unit)}"
-    if unit.get("speech_regions"):
-        row += ", speech"
-    sentence = motion_line(unit).strip() if motion_line is not None else ""
-    return f"{row}. {sentence}" if sentence else row
-
-
 def _repair_question(
     prompt: str,
     *,
