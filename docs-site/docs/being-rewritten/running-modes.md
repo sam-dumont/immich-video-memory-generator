@@ -53,7 +53,7 @@ writes on demand. A film over several windows (the same day across years) is pla
 the model; a window whose account cannot be read, twice, ships the rules cut unpolished and the
 log says so.
 `advanced.editorial.thin_model_layer: false` turns the series off. Described on
-[Pipeline](./pipeline.md).
+[How it chooses](../how-it-chooses/overview.md).
 
 `rules` makes no reader request, which is not the same as no model request anywhere in the run. With
 an `llm` endpoint configured, the music stage still asks it one question after the render: 854
