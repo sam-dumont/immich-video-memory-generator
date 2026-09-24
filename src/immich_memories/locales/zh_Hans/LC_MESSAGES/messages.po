@@ -1,0 +1,108 @@
+# Chinese (Simplified) film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "season.spring"
+msgstr "春天"
+
+msgid "season.summer"
+msgstr "夏天"
+
+msgid "season.autumn"
+msgstr "秋天"
+
+msgid "season.winter"
+msgstr "冬天"
+
+msgid "ordinal"
+msgstr "第{n}"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal}年"
+
+msgid "title.month_year"
+msgstr "{year}年{month_num}月"
+
+msgid "title.month_range_same_year"
+msgstr "{year}年{start_month_num}月至{end_month_num}月"
+
+msgid "title.month_range_different_year"
+msgstr "{start_year}年{start_month_num}月至{end_year}年{end_month_num}月"
+
+msgid "title.season_year"
+msgstr "{year}年{season}"
+
+msgid "title.season_year_span"
+msgstr "{start_year}—{end_year}年{season}"
+
+msgid "title.on_this_day"
+msgstr "{month_num}月{day}日"
+
+msgid "title.on_this_day_subtitle"
+msgstr "那些年的今天"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "和{person}的一年"
+
+msgid "trip.day"
+msgstr "一天"
+
+msgid "trip.weekend"
+msgstr "一个周末"
+
+msgid "trip.week"
+msgstr "一周"
+
+msgid "trip.two_weeks"
+msgstr "两周"
+
+msgid "trip.three_weeks"
+msgstr "三周"
+
+msgid "trip.month"
+msgstr "一个月"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n}天"
+
+msgid "holiday.new_year"
+msgstr "元旦"
+
+msgid "holiday.valentines"
+msgstr "情人节"
+
+msgid "holiday.easter"
+msgstr "复活节"
+
+msgid "holiday.mothers_day"
+msgstr "母亲节"
+
+msgid "holiday.fathers_day"
+msgstr "父亲节"
+
+msgid "holiday.halloween"
+msgstr "万圣节"
+
+msgid "holiday.thanksgiving"
+msgstr "感恩节"
+
+msgid "holiday.christmas_eve"
+msgstr "平安夜"
+
+msgid "holiday.christmas"
+msgstr "圣诞节"
+
+msgid "holiday.new_years_eve"
+msgstr "跨年夜"

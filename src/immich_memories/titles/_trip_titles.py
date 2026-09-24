@@ -8,23 +8,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from immich_memories.i18n import get_month_name
+from immich_memories.i18n import film_text, film_text_n, month_name_forms
 from immich_memories.i18n_places import localise_country, localise_place
 from immich_memories.place_phrases import Place, place_phrase
 from immich_memories.place_phrases.place import infer_place_kind
 from immich_memories.processing.clip_caption import resolve_caption_locale
-
-# Duration thresholds for human-readable text
-_DURATION_LABELS = [
-    (2, 3, "A WEEKEND"),
-    (3, 5, "{days} DAYS"),
-    (5, 8, "A WEEK"),
-    (8, 15, "{days} DAYS"),
-    (15, 15, "TWO WEEKS"),
-    (15, 22, "{days} DAYS"),
-    (22, 30, "THREE WEEKS"),
-    (30, 999, "A MONTH"),
-]
 
 
 def _get_season(d: date) -> str:
@@ -39,31 +27,15 @@ def _get_season(d: date) -> str:
     return "WINTER"
 
 
+_DURATION_KEYS = {1: "day", 2: "weekend", 3: "weekend", 7: "week", 14: "two_weeks"}
+_DURATION_KEYS |= {15: "two_weeks", 21: "three_weeks"}
+
+
 def _get_duration_label(days: int, locale: str = "en") -> str:
-    """Convert trip duration to human-readable label."""
-    if locale == "fr":
-        return {
-            1: "UNE JOURNÉE",
-            2: "UN WEEK-END",
-            3: "UN WEEK-END",
-            7: "UNE SEMAINE",
-            14: "DEUX SEMAINES",
-            15: "DEUX SEMAINES",
-            21: "TROIS SEMAINES",
-        }.get(days, "UN MOIS" if days >= 28 else f"{days} JOURS")
-    if days == 1:
-        return "A DAY"
-    if days <= 3:
-        return "A WEEKEND"
-    if days == 7:
-        return "A WEEK"
-    if days in (14, 15):
-        return "TWO WEEKS"
-    if days == 21:
-        return "THREE WEEKS"
-    if days >= 28:
-        return "A MONTH"
-    return f"{days} DAYS"
+    """Convert trip duration to human-readable label ("A WEEK", "DEUX SEMAINES")."""
+    key = "month" if days >= 28 else _DURATION_KEYS.get(days)
+    label = film_text(f"trip.{key}", locale) if key else film_text_n("trip.days", days, locale)
+    return label.upper()
 
 
 def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str:
@@ -73,19 +45,18 @@ def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str
     Cross-month → season name ("SUMMER 2025").
     """
     if start_date.month == end_date.month and start_date.year == end_date.year:
-        month_name = get_month_name(start_date.month, locale).upper()
-        return f"{month_name} {start_date.year}"
-    season = _get_season(start_date)
-    if locale == "fr":
-        season = {"SPRING": "PRINTEMPS", "SUMMER": "ÉTÉ", "AUTUMN": "AUTOMNE", "WINTER": "HIVER"}[
-            season
-        ]
-    years = (
-        str(start_date.year)
-        if start_date.year == end_date.year
-        else f"{start_date.year}–{end_date.year}"
-    )
-    return f"{season} {years}"
+        forms = month_name_forms(start_date.month, locale)
+        return film_text("title.month_year", locale, year=start_date.year, **forms).upper()
+    season = film_text(f"season.{_get_season(start_date).lower()}", locale)
+    if start_date.year == end_date.year:
+        return film_text("title.season_year", locale, season=season, year=start_date.year).upper()
+    return film_text(
+        "title.season_year_span",
+        locale,
+        season=season,
+        start_year=start_date.year,
+        end_year=end_date.year,
+    ).upper()
 
 
 def _localised(place: Place, locale: str) -> str:

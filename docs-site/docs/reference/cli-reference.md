@@ -748,7 +748,7 @@ immich-memories titles test [OPTIONS]
 | `--month`, `-m` | integer | - | Month for month divider (1-12) |
 | `--orientation` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--resolution`, `-r` | choice: `720p` \| `1080p` \| `4k` | 1080p | Output resolution |
-| `--locale`, `-l` | choice: `en` \| `fr` | en | Language |
+| `--locale`, `-l` | choice: `en` \| `fr` \| `nl` \| `de` \| `es` \| `it` \| `pt-BR` \| `pt-PT` \| `pl` \| `sv` \| `ru` \| `ja` \| `zh-Hans` \| `ko` | en | Language |
 | `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |

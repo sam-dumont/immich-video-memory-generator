@@ -1,0 +1,109 @@
+# Spanish film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "season.spring"
+msgstr "Primavera"
+
+msgid "season.summer"
+msgstr "Verano"
+
+msgid "season.autumn"
+msgstr "Otoño"
+
+msgid "season.winter"
+msgstr "Invierno"
+
+msgid "ordinal"
+msgstr "{n}.º"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal} año"
+
+msgid "title.month_year"
+msgstr "{month} de {year}"
+
+msgid "title.month_range_same_year"
+msgstr "De {start_month_lc} a {end_month_lc} de {year}"
+
+msgid "title.month_range_different_year"
+msgstr "De {start_month_lc} de {start_year} a {end_month_lc} de {end_year}"
+
+msgid "title.season_year"
+msgstr "{season} de {year}"
+
+msgid "title.season_year_span"
+msgstr "{season} {start_year}-{end_year}"
+
+msgid "title.on_this_day"
+msgstr "{day} de {month_lc}"
+
+msgid "title.on_this_day_subtitle"
+msgstr "A lo largo de los años"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "Tu año con {person}"
+
+msgid "trip.day"
+msgstr "Un día"
+
+msgid "trip.weekend"
+msgstr "Un fin de semana"
+
+msgid "trip.week"
+msgstr "Una semana"
+
+msgid "trip.two_weeks"
+msgstr "Dos semanas"
+
+msgid "trip.three_weeks"
+msgstr "Tres semanas"
+
+msgid "trip.month"
+msgstr "Un mes"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n} día"
+msgstr[1] "{n} días"
+
+msgid "holiday.new_year"
+msgstr "Año Nuevo"
+
+msgid "holiday.valentines"
+msgstr "San Valentín"
+
+msgid "holiday.easter"
+msgstr "Pascua"
+
+msgid "holiday.mothers_day"
+msgstr "Día de la Madre"
+
+msgid "holiday.fathers_day"
+msgstr "Día del Padre"
+
+msgid "holiday.halloween"
+msgstr "Halloween"
+
+msgid "holiday.thanksgiving"
+msgstr "Acción de Gracias"
+
+msgid "holiday.christmas_eve"
+msgstr "Nochebuena"
+
+msgid "holiday.christmas"
+msgstr "Navidad"
+
+msgid "holiday.new_years_eve"
+msgstr "Nochevieja"
