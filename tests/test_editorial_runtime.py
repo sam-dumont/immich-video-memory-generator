@@ -432,6 +432,9 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             "enabled": True,
             "annotation_database": str(store),
             "description_model": "student-v1",
+            # The whole-film model planner reads every episode up front; the polish route
+            # reads on demand and has its own tests (test_editorial_thin_account_fallback).
+            "thin_model_layer": False,
         },
     )
     window = _window(2026, 8, 20)

@@ -34,7 +34,11 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_io import StructureTextJudge
 from immich_memories.analysis.editorial_structure_source import capture_structure_input
-from immich_memories.analysis.editorial_thin_layer import ThinPolish, catalogued_period
+from immich_memories.analysis.editorial_thin_layer import (
+    PeriodUnread,
+    ThinPolish,
+    catalogued_period,
+)
 from immich_memories.analysis.editorial_thin_short import ShortReads
 from immich_memories.analysis.editorial_thumbnail_hashes import CachedThumbnailHasher
 from immich_memories.analysis.episode_demand import DemandEpisodeReadings
@@ -269,7 +273,13 @@ class ProductionPostCardBackend:
             return {}
         period = catalogued_period(source.case.ranges)
         config = self._config
-        if not period or config.editorial.resolve_reader(config.llm.model) == "rules":
+        if config.editorial.resolve_reader(config.llm.model) == "rules":
+            return {}
+        if not period:
+            logger.info(
+                "The model plans this film whole: its %d windows have no single account to polish over",
+                len(source.case.ranges),
+            )
             return {}
         from immich_memories.analysis.editorial_laya_reader import laya_reader_for
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
@@ -322,14 +332,18 @@ class ProductionPostCardBackend:
     ) -> tuple[str, Mapping[str, str]]:
         """The account of this period and its records, read from the episodes of the draft's shots.
 
-        A failure here is not a failed film: with no account the layer does not run and the
-        run plans the way it always has.
+        Asked twice, because one dropped call must not ship the draft without its polish. A
+        second failure is still not a failed film: `PeriodUnread` tells the polish why it did
+        not run, and the rules draft ships with the passes a no-model film gets.
         """
         try:
             return self._demanded_period(source, period, asset_ids_of)
         except (OSError, ValueError, RuntimeError) as exc:
-            logger.warning("Could not read an account of this period (%s); planning as before", exc)
-            return "", {}
+            logger.warning("Could not read an account of %s (%s); asking once more", period, exc)
+        try:
+            return self._demanded_period(source, period, asset_ids_of)
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise PeriodUnread(f"could not read an account of {period}: {exc}") from exc
 
     def _demanded_period(
         self, source: StructurePlanningInput, period: str, asset_ids_of: Mapping[str, Sequence[str]]

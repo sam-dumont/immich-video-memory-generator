@@ -48,8 +48,10 @@ hardware were not metered.
 
 The two are not exclusive. A model install runs them in series: the rules reader cuts the film
 with no model call, and the model then reads the finished cut once and says which of its shots add
-nothing to it. It needs a period the library holds an account of, which cataloguing writes;
-without one the run plans the film the way `reader: model` always has.
+nothing to it. It reads an account of the film's window, which cataloguing writes or the cut
+writes on demand. A film over several windows (the same day across years) is planned whole by
+the model; a window whose account cannot be read, twice, ships the rules cut unpolished and the
+log says so.
 `advanced.editorial.thin_model_layer: false` turns the series off. Described on
 [Pipeline](./pipeline.md).
 

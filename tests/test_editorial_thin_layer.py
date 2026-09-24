@@ -181,15 +181,29 @@ def test_story_membership_follows_the_episodes_own_moments(tmp_path):
     assert catalogue.hints["e1"]["day"] == "2024-02-01"
 
 
-def test_only_a_whole_month_or_a_whole_year_names_a_catalogued_period():
+def test_a_whole_month_or_a_whole_year_names_its_calendar_period():
     def span(first, last):
         return (DateRange(datetime(*first, tzinfo=UTC), datetime(*last, tzinfo=UTC)),)
 
     assert catalogued_period(span((2024, 2, 1), (2024, 2, 29, 23, 59, 59))) == "2024-02"
     assert catalogued_period(span((2024, 1, 1), (2024, 12, 31, 23, 59, 59))) == "2024"
-    assert catalogued_period(span((2024, 2, 3), (2024, 2, 29, 23, 59, 59))) == ""
-    assert catalogued_period(span((2024, 2, 1), (2024, 3, 15, 23, 59, 59))) == ""
     assert catalogued_period(()) == ""
+
+
+def test_a_season_a_trip_or_a_fortnight_is_a_window_with_an_account_of_its_own():
+    """Every one-window film gets the polish, not only the ones the calendar names."""
+
+    def span(first, last):
+        return (DateRange(datetime(*first, tzinfo=UTC), datetime(*last, tzinfo=UTC)),)
+
+    spring = span((2024, 3, 1), (2024, 5, 31, 23, 59, 59))
+    assert catalogued_period(spring) == "2024-03-01..2024-05-31"
+    assert catalogued_period(span((2024, 2, 3), (2024, 2, 29, 23, 59, 59))) == (
+        "2024-02-03..2024-02-29"
+    )
+    assert catalogued_period(span((2024, 2, 1), (2024, 3, 15, 23, 59, 59))) == (
+        "2024-02-01..2024-03-15"
+    )
 
 
 def test_a_window_over_several_years_is_a_catalogued_period_of_its_own():

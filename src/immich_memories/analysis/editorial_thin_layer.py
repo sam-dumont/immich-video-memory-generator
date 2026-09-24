@@ -62,27 +62,41 @@ logger = logging.getLogger(__name__)
 THIN_VERSION = "thin-polish-v1"
 
 
+class PeriodUnread(RuntimeError):
+    """The account of the film's period could not be read, twice; the polish cannot run."""
+
+
 def catalogued_period(ranges: Sequence[Any]) -> str:
     """The library node a film of these dates could hold an account of, or nothing.
 
     Cataloguing writes its account per calendar month and per year. A film whose dates are one
-    of those asks for it by name. A window over more than one calendar year, such as a person
-    film from a birth date to today, is its own node ("2005-12-03..2026-09-23"), told from one
-    account per year it touches. A film over any other span has no catalogued period and plans
-    the way it always has.
+    of those asks for it by name. Any other single window, a season, a trip, a fortnight or a
+    person film from a birth date to today, is its own node ("2024-03-01..2024-05-31"), told
+    from one account per year it touches. A film over several windows (the same day across
+    years) has no single account to read, and the model plans it whole.
     """
     if len(ranges) != 1:
         return ""
     first, last = ranges[0].start, ranges[0].end
-    if first.year != last.year:
-        return f"{_day(first)}..{_day(last)}"
-    if first.day != 1 or last.day != calendar.monthrange(last.year, last.month)[1]:
-        return ""
-    if first.month == last.month:
+    whole_months = first.day == 1 and last.day == calendar.monthrange(last.year, last.month)[1]
+    if first.year == last.year and whole_months and first.month == last.month:
         return f"{first.year:04d}-{first.month:02d}"
-    if (first.month, last.month) == (1, 12):
+    if first.year == last.year and whole_months and (first.month, last.month) == (1, 12):
         return f"{first.year:04d}"
-    return ""
+    return f"{_day(first)}..{_day(last)}"
+
+
+def _why_unpolished(catalogue: ThinCatalogue | None, unread: str) -> str:
+    if unread:
+        return unread
+    return "no catalogued account of this period" if catalogue is None else "no draft"
+
+
+def _unpolished(carriers, reason: str, record) -> list[dict[str, Any]]:
+    """The rules draft as it stands, said once in the log and once in the record."""
+    logger.warning("The model polish did not run (%s); the film is the rules draft", reason)
+    record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": reason})
+    return list(carriers)
 
 
 def _day(when: Any) -> str:
@@ -139,6 +153,7 @@ class ThinPolish:
         gates: ThinGates,
         catalogue: ThinCatalogue | None,
         contract: str,
+        unread: str = "",
         line_of: Callable[[str], str],
         record: Callable[[str, Mapping[str, Any]], None],
         candidates_of: Callable[[str], Sequence[Mapping[str, Any]]] = lambda _key: (),
@@ -149,16 +164,14 @@ class ThinPolish:
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
-        A period the library has no account of is not polished at all: the film is the one the
-        planner already built, which is the fallback this layer is switched on in front of.
+        A period the library has no account of is not polished at all: the film is the rules
+        draft, and one log line and the record say why (`unread` when the read itself failed).
         `subject` is who the film is about, which the vote reads beside the account, and
         `close_family` who on a line is close family in this film: the owner's, and in a film
         about people the subject's own as well.
         """
         if catalogue is None or not carriers:
-            reason = "no catalogued account of this period" if catalogue is None else "no draft"
-            record("thin-polish", {"version": THIN_VERSION, "ran": False, "reason": reason})
-            return list(carriers)
+            return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
         carriers = _with_records(carriers, catalogue)
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}

@@ -111,3 +111,40 @@ def test_a_batched_audience_asks_the_cut_in_batches_and_the_audit_counts_every_c
     assert any(stage.startswith("shareability-batch-") for stage in stages)
     audit = audit_of(source)
     assert 0 < audit["calls"]["asked"] <= audit["calls"]["budget"]
+
+
+def test_a_period_that_cannot_be_read_ships_the_no_model_cut_and_says_so(tmp_path, caplog):
+    """The polish could not run, so the film is exactly the NAS cut, and the record says why."""
+    from immich_memories.analysis.editorial_thin_layer import PeriodUnread
+
+    def unreadable(_stories):
+        # WHY: stands in for the reader boundary failing twice; the retry has its own test.
+        raise PeriodUnread("could not read an account of 2030-05: the reader is down")
+
+    source = film(tmp_path)
+    with caplog.at_level("WARNING"):
+        plan = plan_structure(
+            source,
+            StructurePlannerPorts(
+                judge=PolishJudge(),
+                thumbnail_hash=lambda _asset: None,
+                rules=RuleStructureReader(source),
+                thin=ThinPolish(bank_dir=source.bank_dir, read_period=unreadable),
+            ),
+        ).plan
+    nas = film(tmp_path / "nas")
+    nas_plan = plan_structure(
+        nas,
+        StructurePlannerPorts(
+            judge=PolishJudge(), thumbnail_hash=lambda _asset: None, rules=RuleStructureReader(nas)
+        ),
+    ).plan
+
+    audit = audit_of(source)
+    assert audit["ran"] is False
+    assert "the reader is down" in audit["reason"]
+    assert [r.message for r in caplog.records if "polish did not run" in r.message]
+    assert [c["asset_id"] for c in plan["carriers"]] == [
+        c["asset_id"] for c in nas_plan["carriers"]
+    ]
+    assert (source.artifact_dir / "derived-decisions/unvouched-filler.private.json").is_file()

@@ -16,7 +16,6 @@ from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis import llm_metrics
-from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_block_votes import (
     judge_worthiness,
     load_vote_bank,
@@ -45,7 +44,6 @@ from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_lookalike import hash_pair_relation
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_replies import film_close_family
-from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
@@ -91,7 +89,7 @@ from immich_memories.analysis.editorial_structure_record import (
     provider_metrics,
     shave_content_duration,
 )
-from immich_memories.analysis.editorial_thin_gates import ThinGates
+from immich_memories.analysis.editorial_thin_step import polish_the_draft, shows_life
 from immich_memories.analysis.editorial_unvouched_filler import filler_evidence
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
@@ -406,7 +404,7 @@ def _select(
     )
     run.carriers = list(selection.carriers)
     if ports.thin is not None:
-        run.carriers = _thin_polish(
+        run.carriers = polish_the_draft(
             source,
             ports,
             material,
@@ -423,7 +421,7 @@ def _select(
         seat_in_film,
         film=FilmSeatSource(source, ports.rules, selection, material.units, banked),
         candidates_of=story_candidates(selection, wall, pool, material.units),
-        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
+        life=lambda asset_id: shows_life(material, unit_of, asset_id),
         excluded=material.document_sources,
     )
     run.carriers = seat(run.carriers, record=record_story)
@@ -481,7 +479,7 @@ def _select(
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")
-    if ports.rules is not None and ports.thin is None:
+    if ports.rules is not None and not run.polished:
         # The last removal pass, so no replacement pass can bring a removed filler's like back in.
         drop_filler_nothing_vouches_for(run, filler_evidence(source), record_story)
     # After every pass that removes a shot, so none of them can undo a family seat. It seats a
@@ -607,7 +605,7 @@ def _story_selection(
         )
         if ports.rules is not None
         else None,
-        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
+        life=lambda asset_id: shows_life(material, unit_of, asset_id),
         full_lines=source.annotations,
         contract=contract + "\n\n" + source.intent.story_prompt_block(),
         event_units=pool.units,
@@ -666,62 +664,3 @@ def _banked_facts(source, ports) -> BankedAnswers:
             for row in (source.lineage.get("episode_readings") or ())
         ),
     )
-
-
-def _thin_polish(
-    source,
-    ports,
-    material: Material,
-    wall: Wall,
-    selection,
-    pool,
-    gate,
-    carriers,
-    run,
-    *,
-    contract,
-    record,
-):
-    """The model's one read of the rules cut this run built.
-
-    The draft was built blind, from rules. Standing here is the same answer from the heads the
-    draft used; the model is asked only what the heads cannot answer.
-    """
-    if ports.thin is None:
-        return carriers
-    unit_by_asset = {u["asset_id"]: (f, u) for f, units in material.units.items() for u in units}
-    unit_of = {asset: unit for asset, (_family, unit) in unit_by_asset.items()}
-    standing = StandingGate(
-        ports.rules.standing,
-        line_of=lambda asset_id: selection.lines.get(asset_id, ""),
-        life=lambda asset_id: _shows_life(material, unit_of, asset_id),
-        unit_by_asset=unit_by_asset,
-        pictures_of={s["key"]: s["seen"]["pictures"] for s in selection.story.stories},
-    )
-    return ports.thin.polish(
-        carriers,
-        judge=ports.judge,
-        gates=ThinGates(
-            standing=standing,
-            audience=gate,
-            thumbnail_hash=ports.thumbnail_hash,
-            audience_name=source.audience,
-            audience_batch=AUDIENCE_BATCH_SIZE
-            if source.config.editorial.thin_batched_audience or ports.laya
-            else 0,
-        ),
-        catalogue=ports.thin.catalogue_of(selection.story, pool.moment_assets, drafted=carriers),
-        contract=contract,
-        line_of=lambda asset_id: selection.lines.get(asset_id, ""),
-        record=record,
-        candidates_of=story_candidates(selection, wall, pool, material.units),
-        content_cap=run.final_content_cap,
-        protected=source.owner_required_asset_ids,
-        subject=source.intent.subject or "",
-        close_family=film_close_family(source),
-    )
-
-
-def _shows_life(material: Material, unit_of, asset_id: str) -> bool:
-    u = unit_of.get(asset_id)
-    return bool(u) and material.text.shows_life(u) and not material.text.lone_object(u)

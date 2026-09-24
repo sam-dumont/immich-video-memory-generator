@@ -530,9 +530,10 @@ leave open is refilled from the same stories, and nothing else moves.
 
 It needs a period the library holds an account of, which cataloguing writes:
 `immich-memories prepare --overviews` banks one per calendar month, and a cut of a whole month or
-year that finds none writes its own from the readings it has just paid for. Any span that is not a
-whole calendar month or year has no account, and plans the film with the story-first planner
-exactly as it always has, so a library is never left without a film. `false` makes the model plan
+year that finds none writes its own from the readings it has just paid for. Any other single
+window (a season, a trip) is its own period and writes its own account the same way. A film over
+several windows has no single account, and plans the film with the story-first planner, so a
+library is never left without a film. `false` makes the model plan
 the whole film even when an account exists.
 
 `thin_batched_audience` asks the thin layer's audience question (does this shot show a private

@@ -183,8 +183,8 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   framing (`editorial_final_hash_review.py`, `editorial_scene_prints.py`).
 - **Block vote**: the shape of every model yes/no. At most 12 rows, asked twice, in source order
   and in a hashed order; picked both times is firm, once is a maybe (`editorial_block_votes.py`).
-- **Thin layer / thin polish**: model mode's editing when the period has an account and
-  `thin_model_layer` is on (the default). The model reads the finished rules draft once, names
+- **Thin layer / thin polish**: model mode's editing for every one-window film (month, year,
+  season, trip, lifetime) when `thin_model_layer` is on (the default). The model reads the finished rules draft once, names
   the shots that add nothing, and the freed seats are refilled through the same gates. Budget: 4
   calls per 12 draft shots plus 4 per seat (`editorial_thin_layer.py`, `editorial_thin_*.py`).
 - **Thesis-fit vote**: the thin layer's one question, "which of these shots adds nothing to this
@@ -361,6 +361,7 @@ src/immich_memories/
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
 │   │                               # held to 4 calls per 12 draft shots + 4 per seat (thin_budget)
+│   ├── editorial_thin_step.py      # The planner's polish step; an unpolished draft (unread period) gets the no-model passes
 │   ├── editorial_thin_catalogue.py # What a polish may read of a catalogued period: account, stories, hints
 │   ├── editorial_thin_gates.py     # Every draft shot put to standing, audience, spacing and the hash review
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
