@@ -507,14 +507,38 @@ class _FakeEditorialPipeline:
         }
 
 
-def install_fake_editorial_route(stage_seconds: float = DEFAULT_STAGE_SECONDS) -> None:
+def _stand_in_for_models_fetch() -> None:
+    import immich_memories.preflight_run as preflight_run
+    from immich_memories.preflight import CheckResult, CheckStatus
+
+    def fetched(name: str) -> Any:
+        return lambda _config: CheckResult(
+            name=name, status=CheckStatus.OK, message="Stands in for `models fetch`"
+        )
+
+    # WHY: the pinned exports are 110 MB from Hugging Face, and a hermetic launch
+    # reaches no network. Nothing here reads them -- the scripted route replaces
+    # every stage that would -- so only the install check has to see them. The
+    # output directory check stays real.
+    preflight_run.check_encoder = fetched("Encoder")
+    preflight_run.check_detector_export = fetched("Sensitive-content detector")
+
+
+def install_fake_editorial_route(
+    stage_seconds: float = DEFAULT_STAGE_SECONDS, *, models_fetched: bool = True
+) -> None:
     """Point the production pipeline builder at the scripted route.
 
     Replaces one seam, ``editorial_runtime.build_smart_pipeline``, which both
-    the UI and the CLI import at call time.
+    the UI and the CLI import at call time. ``models_fetched`` is the host a
+    user leaves after `immich-memories models fetch`; False is a first launch
+    that skipped it, which the run's install check must refuse.
     """
     import immich_memories.analysis.editorial_runtime as editorial_runtime
     import immich_memories.analysis.trip_detection as trip_detection
+
+    if models_fetched:
+        _stand_in_for_models_fetch()
 
     # WHY: fixture trips already have public place names in EXIF. A hermetic
     # browser or CLI run must not ask Nominatim to name them over the internet.
