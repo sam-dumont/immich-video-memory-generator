@@ -84,6 +84,8 @@ def _print_run_details_table(run, format_duration) -> None:
         )
 
     table.add_row("Clips", f"{run.clips_selected}/{run.clips_analyzed} selected")
+    if run.title_source:
+        table.add_row("Title From", run.title_source)
 
     if run.output_path:
         table.add_row("Output", run.output_path)

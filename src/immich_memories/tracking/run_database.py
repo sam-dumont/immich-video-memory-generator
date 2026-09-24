@@ -520,6 +520,15 @@ class RunDatabase:
             )
             conn.commit()
 
+    def record_title_source(self, run_id: str, source: str) -> None:
+        """Store which source produced the run's opening title."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE pipeline_runs SET title_source = ? WHERE run_id = ?",
+                (source, run_id),
+            )
+            conn.commit()
+
     def get_phase_stats(self, run_id: str) -> list[PhaseStats]:
         """Get all phase stats for a run."""
         with self._get_connection() as conn:

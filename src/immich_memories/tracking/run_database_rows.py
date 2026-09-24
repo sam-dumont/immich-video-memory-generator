@@ -84,6 +84,7 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         llm_metrics=(
             json.loads(_row_value(row, "llm_metrics")) if _row_value(row, "llm_metrics") else {}
         ),
+        title_source=_row_value(row, "title_source"),
         clips_analyzed=row["clips_analyzed"] or 0,
         clips_selected=row["clips_selected"] or 0,
         errors_count=row["errors_count"] or 0,

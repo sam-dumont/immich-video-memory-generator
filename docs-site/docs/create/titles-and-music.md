@@ -236,6 +236,28 @@ which is what a contact-sheet matrix wants so runs months apart stay comparable.
 Two known limits. A single grandparent can come back plural, because the people file records no
 gender. Four or five children in one condition is enough for the model to start inventing roles.
 
+### Where the title came from
+
+Every render logs one line saying which source produced the opening title, and stores it on the
+run, where `immich-memories runs show <run-id>` prints it as **Title From**:
+
+| Source | The title is |
+|---|---|
+| `override` | what you typed: `--title`, or your edit in the wizard |
+| `album` | an album memory's album name |
+| `occasion` | a holiday's name, or the special-day catalogue's title |
+| `model` | what the title reader wrote |
+| `place` | a trip's title, built from where it went |
+| `fallback` | the template: the year, the dates, the people |
+
+```text
+Opening title from place: 'A WEEK IN CRETE, GREECE'
+Opening title from fallback: the template
+```
+
+A `fallback` on a film you expected the model to name means the reader was not asked, failed, or
+had its title refused, not that it wrote a plain title.
+
 ## Music
 
 Three stages: a mood for the memory, a track for the mood, and ducking so the music drops under the
