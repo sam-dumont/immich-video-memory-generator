@@ -384,6 +384,31 @@ def _head_hold(evidence: Mapping[str, Any]) -> str:
     return ""
 
 
+def strict_sharing_hold(evidence: Mapping[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Keep a unit out of a shared film when anything marked it, whatever the text said.
+
+    The heads' own floor already holds a `yes`. This also holds what only an exposure flag or a
+    flagged clip marked, where a caption that names clothing would otherwise clear it. Only the
+    owner's clearance on the member lifts it, as it lifts every detector hold.
+    """
+    if result["verdict"] != "share":
+        return result
+    by_member = {member["member"]: member for member in evidence.get("members", ())}
+    marked = [
+        alias
+        for alias in sorted(exposure_members(evidence))
+        if not _owner_cleared(by_member.get(alias, {}))
+    ]
+    if not marked:
+        return result
+    return result | {
+        "verdict": "family_only",
+        "finding": "strict_sharing",
+        "why": "a detector or an exposure flag marked it, and strict sharing keeps it in the family",
+        "strict_sharing_members": marked,
+    }
+
+
 def _owner_cleared(member: Mapping[str, Any]) -> bool:
     return any(
         row.get("source") == OWNER_SOURCE and row.get("flag") == OWNER_CLEARED

@@ -196,9 +196,11 @@ class AudienceGate:
         check_audience=_share.check_audience,
         chains: Mapping[str, ChainHold] | None = None,
         companion_heads: Mapping[str, Mapping[str, str]] | None = None,
+        strict_sharing: bool = True,
     ) -> None:
         self._judge = judge
         self.audience = audience
+        self._strict_sharing = strict_sharing
         self._check_audience = check_audience
         self._annotations = annotations
         self._flag_rows = flag_rows
@@ -277,6 +279,10 @@ class AudienceGate:
         ):
             record = record | {"verdict": held["verdict"], "banked_hold": held}
         self.keep_hold(u["asset_id"], record)
+        # After the bank, never in it: the owner can turn strict sharing off and have the
+        # reader's own answer back.
+        if self._strict_sharing and self.audience == "sendable":
+            record = _share.strict_sharing_hold(evidence, record)
         self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
         return record["verdict"]
 

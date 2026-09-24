@@ -47,6 +47,8 @@ the host does not publish one.
 A model looks at a picture once, at ingest: the captioner above, plus the heads and detectors,
 which run in the app or on `advanced.inference.facts_base_url`. After that, no model looks at a
 picture again. The reader edits the film from the text that ingest banked, on every tier.
+A film you share outside the family also leaves out every picture a detector or an exposure flag
+marked, whatever the reader says about it (`advanced.editorial.strict_sharing`, on by default).
 
 It defaults to this machine. Pointing it at another host (a box on your LAN, a container, a
 hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing

@@ -106,6 +106,15 @@ class EditorialConfig(BaseModel):
         ),
     )
 
+    strict_sharing: bool = Field(
+        default=True,
+        description=(
+            "Keep any picture a detector head or an exposure flag marked out of a film shared "
+            "outside the family, whatever the reader's text says about it. Family films are "
+            "unchanged. False lets a caption that explains the flag clear it for sharing"
+        ),
+    )
+
     def resolve_reader(self, model: str) -> Literal["model", "rules"]:
         """A blank model selects the bounded rules reader unless explicitly required."""
         if self.reader == "rules" or self.reader == "auto" and not model.strip():

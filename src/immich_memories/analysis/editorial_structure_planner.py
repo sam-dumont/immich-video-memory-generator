@@ -368,6 +368,7 @@ def _select(
             source.assets, source.audience_annotations, source.companion_detectors
         ),
         companion_heads=source.companion_detectors,
+        strict_sharing=source.config.editorial.strict_sharing,
     )
     tier, worth_reason, marker = _worthiness_gate(
         source,
