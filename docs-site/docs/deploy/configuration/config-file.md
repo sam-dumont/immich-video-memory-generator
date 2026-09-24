@@ -170,13 +170,12 @@ or they are left at the placeholder `(0, 0)`; trips stay disabled until you set 
 network:
   geocoding: false        # nominatim.openstreetmap.org
   map_tiles: false        # server.arcgisonline.com
-  font_downloads: false   # cdn.jsdelivr.net
 ```
 
-All three are off, so a default run reaches your Immich server, the endpoints named elsewhere in
+Both are off, so a default run reaches your Immich server, the endpoints named elsewhere in
 this file, and nothing else. `geocoding` buys better trip names and place names in the film's
-language; `map_tiles` buys the trip fly-over and the map behind location cards; `font_downloads`
-buys a title family the wheel does not carry.
+language; `map_tiles` buys the trip fly-over and the map behind location cards. Fonts are never fetched at
+run time: see [Fonts](network-and-privacy.md#fonts).
 [Network & Privacy](network-and-privacy.md) says exactly what each host receives.
 
 ## Reader concurrency

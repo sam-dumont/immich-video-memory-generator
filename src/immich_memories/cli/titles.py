@@ -13,20 +13,6 @@ from immich_memories.cli._flags import output_path
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 
 
-def _download_and_report_fonts(download_all_fonts) -> None:
-    """Download fonts and print success/failure for each."""
-    print_info("Downloading fonts from cdn.jsdelivr.net...")
-    # Asking for the download IS the consent, so this one call does not consult
-    # network.font_downloads; nothing else on the render path reaches the CDN.
-    results = download_all_fonts(allowed=True)
-    for font, success in results.items():
-        if success:
-            print_success(f"Font ready: {font}")
-        else:
-            print_error(f"Failed to download: {font}")
-    console.print()
-
-
 def _print_title_test_params(
     screen_type,
     year,
@@ -175,11 +161,6 @@ def register_titles_commands(main: click.Group) -> None:
         help="Screen type",
     )
     @click.option(
-        "--download-fonts",
-        is_flag=True,
-        help="Fetch every supported family from cdn.jsdelivr.net before generating",
-    )
-    @click.option(
         "--no-animated-background",
         is_flag=True,
         help="Disable animated backgrounds (static gradient)",
@@ -197,7 +178,6 @@ def register_titles_commands(main: click.Group) -> None:
         style: str,
         output: str | None,
         screen_type: str,
-        download_fonts: bool,
         no_animated_background: bool,
     ) -> None:
         """Generate a test title screen to preview styles.
@@ -227,17 +207,12 @@ def register_titles_commands(main: click.Group) -> None:
         from immich_memories.titles import (
             TitleScreenConfig,
             TitleScreenGenerator,
-            download_all_fonts,
             get_resolution_for_orientation,
         )
         from immich_memories.titles.styles import PRESET_STYLES, get_random_style
 
         console.print("[bold]Title Screen Test Generator[/bold]")
         console.print()
-
-        # Download fonts if requested
-        if download_fonts:
-            _download_and_report_fonts(download_all_fonts)
 
         # Determine output path
         output_path = Path(output) if output else Path.cwd() / "title_screen_preview.mp4"
@@ -323,68 +298,56 @@ def register_titles_commands(main: click.Group) -> None:
         console.print(f"[dim]Duration: {result.duration}s[/dim]")
 
     @titles.command("fonts")
-    @click.option("--download", "-d", is_flag=True, help="Download all fonts")
-    @click.option("--clear", is_flag=True, help="Clear font cache")
-    @click.option("--list", "_list_fonts", is_flag=True, help="List cached fonts (the default)")
-    def titles_fonts(download: bool, clear: bool, _list_fonts: bool) -> None:
+    @click.option(
+        "--install",
+        is_flag=True,
+        help="Download the pinned Noto script fonts (about 43 MB, most of it CJK)",
+    )
+    @click.option("--clear", is_flag=True, help="Clear ~/.immich-memories/fonts")
+    @click.option("--list", "_list_fonts", is_flag=True, help="List title fonts (the default)")
+    def titles_fonts(install: bool, clear: bool, _list_fonts: bool) -> None:
         """Manage title screen fonts.
 
-        Five OFL-1.1 families ship inside the wheel. Anything else is fetched
-        from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
-        where you can drop your own TTFs.
+        Five OFL-1.1 families and Noto Sans (Latin, Greek, Cyrillic, Vietnamese)
+        ship inside the wheel. `--install` adds the Noto faces for every other
+        script a title can hold (Arabic, Hebrew, Indic, Thai, CJK and more) from
+        raw.githubusercontent.com, each file checked against a pinned SHA-256.
+        It is the only step that downloads a font; a render never does. The
+        Docker image runs it at build time.
         """
-        from immich_memories.titles import (
-            FONT_DEFINITIONS,
-            FontManager,
-            download_all_fonts,
-            get_available_fonts,
-            get_fonts_cache_dir,
-        )
-
-        manager = FontManager()
+        from immich_memories.titles import FontManager
+        from immich_memories.titles.script_fonts import install_script_fonts, script_fonts_dir
 
         if clear:
             print_info("Clearing font cache...")
-            manager.clear_cache()
+            FontManager().clear_cache()
             print_success("Font cache cleared")
             return
 
-        if download:
-            console.print("[bold]Downloading fonts...[/bold]")
-            console.print()
-
-            results = download_all_fonts()
-
-            for font, success in results.items():
-                if success:
-                    print_success(font)
-                else:
-                    print_error(f"{font} - download failed")
-
-            console.print()
-            print_success(f"Fonts cached in: {get_fonts_cache_dir()}")
+        if install:
+            print_info(f"Installing Noto script fonts into {script_fonts_dir()}...")
+            written = install_script_fonts()
+            print_success(f"{len(written)} fonts installed, the rest were already there")
             return
 
-        # Default: list fonts
-        cached = get_available_fonts()
+        _print_font_table()
 
-        table = Table(title="Title Screen Fonts")
-        table.add_column("Font", style="cyan")
-        table.add_column("Status")
-        table.add_column("Weights", style="dim")
 
-        for font_name, font_def in FONT_DEFINITIONS.items():
-            is_cached = font_name in cached
-            status = "[green]Cached[/green]" if is_cached else "[yellow]Not downloaded[/yellow]"
-            weights = ", ".join(font_def["weights"].keys())
-            table.add_row(font_name, status, weights)
+def _print_font_table() -> None:
+    from immich_memories.titles import FONT_DEFINITIONS
+    from immich_memories.titles.script_fonts import SCRIPT_FONTS, script_fonts_dir
 
-        console.print(table)
-        console.print()
-        console.print(f"[dim]Cache location: {get_fonts_cache_dir()}[/dim]")
-
-        if not cached:
-            console.print()
-            console.print(
-                "Run [cyan]immich-memories titles fonts --download[/cyan] to download fonts"
-            )
+    table = Table(title="Title Screen Fonts")
+    table.add_column("Font", style="cyan")
+    table.add_column("Status")
+    for font_name, font_def in FONT_DEFINITIONS.items():
+        table.add_row(f"{font_name} ({', '.join(font_def['weights'])})", "[green]Bundled[/green]")
+    table.add_row("Noto Sans (Latin, Greek, Cyrillic, Vietnamese)", "[green]Bundled[/green]")
+    folder = script_fonts_dir()
+    missing = [font.file for font in SCRIPT_FONTS if not (folder / font.file).is_file()]
+    scripts = f"{len(SCRIPT_FONTS) - len(missing)}/{len(SCRIPT_FONTS)} installed"
+    table.add_row("Noto script fonts (Arabic, Hebrew, Indic, Thai, CJK, ...)", scripts)
+    console.print(table)
+    console.print(f"[dim]Script fonts: {folder}[/dim]")
+    if missing:
+        console.print("Run [cyan]immich-memories titles fonts --install[/cyan] to add them")

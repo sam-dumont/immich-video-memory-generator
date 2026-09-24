@@ -55,7 +55,6 @@ class TestNetworkSwitches:
         network = _config(tmp_path, monkeypatch).network
         assert not network.geocoding
         assert not network.map_tiles
-        assert not network.font_downloads
 
     def test_the_section_is_tier_one(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config = _config(tmp_path, monkeypatch, "network:\n  geocoding: true\n")
@@ -145,9 +144,9 @@ class TestTitleFontsComeFromTheWheel:
     def test_the_kernel_renderer_finds_the_bundled_montserrat(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # WHY: cdn.jsdelivr.net is the outside host under test; a downloader that
-        # raises proves the bundled file is found without it.
-        monkeypatch.setattr("immich_memories.titles.fonts.download_font", _refuse)
+        # WHY: httpx is the only way out of this process; a client that raises
+        # proves the bundled file is found without any host.
+        monkeypatch.setattr("httpx.Client", _refuse)
         monkeypatch.setenv("HOME", str(tmp_path))
         from immich_memories.titles.kernels import _get_system_font
 
@@ -159,8 +158,8 @@ class TestTitleFontsComeFromTheWheel:
     def test_the_map_renderer_finds_the_bundled_montserrat(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # WHY: same host, same reason — the map's labels used to download it.
-        monkeypatch.setattr("immich_memories.titles.fonts.download_font", _refuse)
+        # WHY: same transport, same reason: the map's labels used to download it.
+        monkeypatch.setattr("httpx.Client", _refuse)
         monkeypatch.setenv("HOME", str(tmp_path))
         from immich_memories.titles.map_renderer import _get_font
 
@@ -168,15 +167,19 @@ class TestTitleFontsComeFromTheWheel:
 
         assert Path(getattr(font, "path", "")).parent.parent.name == "bundled_fonts"
 
-    def test_the_cdn_is_refused_unless_the_switch_is_on(
+    def test_a_script_the_install_lacks_renders_without_a_download(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # WHY: httpx is the transport to cdn.jsdelivr.net; a client that raises
-        # turns "would have connected" into a failing test.
-        monkeypatch.setattr("immich_memories.titles.fonts.httpx.Client", _refuse)
-        from immich_memories.titles.fonts import download_font
+        # WHY: httpx.get is how `titles fonts --install` fetches; a render must never reach it.
+        monkeypatch.setattr("httpx.get", _refuse)
+        monkeypatch.setenv("IMMICH_MEMORIES_FONTS_DIR", str(tmp_path / "empty"))
+        from PIL import Image, ImageDraw
 
-        assert download_font("Montserrat", tmp_path, allowed=False) is False
+        from immich_memories.titles.font_chain import title_font
+        from immich_memories.titles.fonts import bundled_font_path
+
+        font = title_font(bundled_font_path("Montserrat", "Bold"), 40, bold=True)
+        ImageDraw.Draw(Image.new("L", (400, 80))).text((0, 0), "Crète · ירושלים", font=font)
 
     def test_bundled_weights_are_reported_exactly(self) -> None:
         from immich_memories.titles.fonts import bundled_font_path
@@ -246,68 +249,6 @@ class TestMapTilesAreOptIn:
         frame = _render_satellite(41.89, 12.49, 9.0, 64, 48)
 
         assert frame.size == (64, 48)
-
-
-class TestTheSwitchIsReadFromTheConfig:
-    """`download_font` asks the config when the caller does not say."""
-
-    def test_a_config_that_cannot_be_read_says_no(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # WHY: get_config reads the user's config file; a raising stand-in is the
-        # "no config on this box" case, which must not crash a render.
-        monkeypatch.setattr("immich_memories.config.get_config", _refuse)
-        from immich_memories.titles.fonts import font_downloads_allowed
-
-        assert font_downloads_allowed() is False
-
-    def test_the_configured_switch_decides(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        config = _config(tmp_path, monkeypatch, "network:\n  font_downloads: true\n")
-        monkeypatch.setattr("immich_memories.config.get_config", lambda *_a, **_k: config)
-        from immich_memories.titles.fonts import font_downloads_allowed
-
-        assert font_downloads_allowed() is True
-
-    def test_an_allowed_download_writes_the_files_it_was_given(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # WHY: httpx is the transport to cdn.jsdelivr.net. Replacing it keeps the
-        # test offline while still exercising the sfnt check and the write loop.
-        content = b"\x00\x01\x00\x00" + b"f" * 200
-
-        class _Response:
-            def __init__(self, body: bytes) -> None:
-                self.content = body
-
-            def raise_for_status(self) -> None:
-                return None
-
-        class _Client:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc: object) -> None:
-                return None
-
-            def get(self, url: str) -> _Response:
-                return _Response(content if "700" in url else b"<html>not a font")
-
-        monkeypatch.setattr("immich_memories.titles.fonts.httpx.Client", lambda **_k: _Client())
-        from immich_memories.titles.fonts import download_font
-
-        assert download_font("Montserrat", tmp_path, allowed=True) is True
-        assert (tmp_path / "Montserrat" / "Montserrat-Bold.ttf").read_bytes() == content
-        assert not (tmp_path / "Montserrat" / "Montserrat-Regular.ttf").exists()
-
-    def test_the_titles_command_asks_for_the_download_itself(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from immich_memories.cli.titles import _download_and_report_fonts
-
-        seen: list[bool | None] = []
-        _download_and_report_fonts(lambda *, allowed=None: (seen.append(allowed), {})[1])
-
-        assert seen == [True]
 
 
 class TestFontFallbacksWithoutTheCdn:

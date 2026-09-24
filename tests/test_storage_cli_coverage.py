@@ -8,6 +8,7 @@ for pure storage operations.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,14 +16,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from immich_memories.cache.database import (
-    VideoAnalysisCache,
-)
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 from immich_memories.tracking.models import PhaseStats, RunMetadata, SystemInfo
 from immich_memories.tracking.run_database import RunDatabase
-from immich_memories.tracking.run_tracker import RunTracker, format_duration
+from immich_memories.tracking.run_tracker import RunTracker
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -133,21 +131,7 @@ def _invoke_planned_generation(args: list[str], config: Config) -> object:
 
 
 # =========================================================================
-# Module 1: VideoAnalysisCache — uncovered behaviors
-# =========================================================================
-
-
-class TestMigrationsIdempotent:
-    """Opening the same DB twice doesn't fail (migrations are idempotent)."""
-
-    def test_double_open(self, tmp_path):
-        db_path = tmp_path / "m.db"
-        VideoAnalysisCache(db_path)
-        VideoAnalysisCache(db_path)  # should not raise
-
-
-# =========================================================================
-# Module 2: RunDatabase — uncovered behaviors
+# Module 2: RunDatabase
 # =========================================================================
 
 
@@ -455,7 +439,7 @@ class TestRunDatabaseDateRange:
 
 
 # =========================================================================
-# Module 3: RunTracker — uncovered behaviors
+# Module 3: RunTracker
 # =========================================================================
 
 
@@ -646,6 +630,46 @@ class TestRunsShowCommand:
         result = _invoke(["runs", "show", "20260101_120000_abcd"], config=config)
         assert result.exit_code == 0
         assert "Apple M4 Max" in result.output
+
+    def test_runs_show_tells_a_failed_run_where_it_went_wrong(self, tmp_path):
+        """The scope, the error count, the phase that errored and the card it ran on."""
+        config = Config()
+        config.cache.database = str(tmp_path / "test.db")
+        db = RunDatabase(tmp_path / "test.db")
+        run = _make_run(run_id="20260101_120000_abcd", status="failed")
+        run.date_range_start = date(2025, 1, 1)
+        run.date_range_end = date(2025, 12, 31)
+        run.errors_count = 2
+        run.system_info = SystemInfo(
+            platform="linux",
+            platform_version="Ubuntu 22.04",
+            python_version="3.12.0",
+            machine_arch="x86_64",
+            gpu_name="NVIDIA RTX 4090",
+            vram_mb=24576,
+            hw_accel_backend="nvidia",
+            ffmpeg_version="6.1",
+        )
+        db.save_run(run)
+        db.save_phase_stats(
+            run.run_id,
+            PhaseStats(
+                phase_name="clip_extraction",
+                started_at=datetime(2026, 1, 1, 12, 1),
+                duration_seconds=120.0,
+                items_processed=5,
+                errors=[{"error": "timeout"}, {"error": "timeout"}],
+            ),
+        )
+
+        output = _invoke(["runs", "show", "20260101_120000_abcd"], config=config).output
+
+        assert "2025-01-01 to 2025-12-31" in output
+        assert re.search(r"Errors\s*│\s*2", output)
+        assert re.search(r"clip_extraction\s*│\s*2m 00s\s*│\s*5\s*│\s*2\s*│", output)
+        assert "GPU: NVIDIA RTX 4090 (24576 MB)" in output
+        assert "HW Accel: nvidia" in output
+        assert "FFmpeg: 6.1" in output
 
 
 class TestRunsStatsCommand:
@@ -963,70 +987,6 @@ class TestMusicCommandHelp:
         result = _invoke(["music", "add", "--help"])
         assert result.exit_code == 0
         assert "--volume" in result.output
-
-
-class TestRunsPrintHelpers:
-    """Internal print helpers in runs.py."""
-
-    def test_print_run_details_table(self):
-        """_print_run_details_table renders without crashing."""
-        from immich_memories.cli.runs import _print_run_details_table
-
-        run = _make_run(status="completed", person_name="Alice")
-        run.completed_at = datetime(2026, 1, 1, 13, 0)
-        run.clips_analyzed = 100
-        run.clips_selected = 20
-        run.output_path = "/out/video.mp4"
-        run.output_duration_seconds = 120.0
-        run.output_size_bytes = 50_000_000
-        run.errors_count = 2
-        run.date_range_start = date(2025, 1, 1)
-        run.date_range_end = date(2025, 12, 31)
-        # Should not raise
-        _print_run_details_table(run, format_duration)
-
-    def test_print_run_phases_table(self):
-        """_print_run_phases_table renders without crashing."""
-        from immich_memories.cli.runs import _print_run_phases_table
-
-        run = _make_run()
-        run.phases = [
-            PhaseStats(
-                phase_name="analysis",
-                started_at=datetime(2026, 1, 1, 12, 0),
-                duration_seconds=60.0,
-                items_processed=10,
-                items_total=10,
-            ),
-            PhaseStats(
-                phase_name="encoding",
-                started_at=datetime(2026, 1, 1, 12, 1),
-                duration_seconds=120.0,
-                items_processed=5,
-                items_total=0,
-                errors=[{"error": "timeout"}],
-            ),
-        ]
-        _print_run_phases_table(run, format_duration)
-
-    def test_print_run_system_info(self):
-        """_print_run_system_info renders without crashing."""
-        from immich_memories.cli.runs import _print_run_system_info
-
-        si = SystemInfo(
-            platform="linux",
-            platform_version="Ubuntu 22.04",
-            python_version="3.12.0",
-            machine_arch="x86_64",
-            cpu_brand="AMD Ryzen 9",
-            cpu_cores=32,
-            ram_gb=128.0,
-            gpu_name="NVIDIA RTX 4090",
-            vram_mb=24576,
-            hw_accel_backend="nvidia",
-            ffmpeg_version="6.1",
-        )
-        _print_run_system_info(si)
 
 
 class TestPeopleCommand:

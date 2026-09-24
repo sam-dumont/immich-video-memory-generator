@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
     from immich_memories.timeperiod import DateRange
 
+from immich_memories.titles.title_source import TitleSource, override_source
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["resolve_cli_title"]
@@ -77,21 +79,23 @@ def resolve_cli_title(
     memory_preset_params: dict | None = None,
     album_lookup: Callable[[], str | None] | None = None,
     ask: Callable[..., Any] = _ask_the_llm,
-) -> tuple[str | None, str | None]:
-    """Return the (title, subtitle) the run should use.
+) -> tuple[str | None, str | None, TitleSource | None]:
+    """Return the (title, subtitle, source) the run should use.
 
     Owns the whole precedence so the caller gains no branches: an explicit
-    title wins, then the model's, then the template (signalled by ``None``).
-    The subtitle falls back to ``subtitle_override`` on every path.
+    title wins, then the model's, then the template (signalled by ``None``,
+    with no source: the template layers name it later). The subtitle falls
+    back to ``subtitle_override`` on every path.
     """
     if title_override:
-        return title_override, subtitle_override
+        source = override_source(title_override, memory_type, memory_preset_params)
+        return title_override, subtitle_override, source
 
     llm_config = config.title_llm if config.title_llm and config.title_llm.model else config.llm
     if not _asks_the_model(
         enabled=enabled, memory_type=memory_type, configured=bool(llm_config.model)
     ):
-        return None, subtitle_override
+        return None, subtitle_override, None
 
     from dataclasses import replace
 
@@ -116,8 +120,9 @@ def resolve_cli_title(
         )
     except Exception:  # WHY: an optional title must not fail the whole run
         logger.warning("LLM title generation failed; using the template title", exc_info=True)
-        return None, subtitle_override
+        return None, subtitle_override, None
 
     if not suggestion or not getattr(suggestion, "title", None):
-        return None, subtitle_override
-    return suggestion.title, getattr(suggestion, "subtitle", None) or subtitle_override
+        return None, subtitle_override, None
+    subtitle = getattr(suggestion, "subtitle", None) or subtitle_override
+    return suggestion.title, subtitle, TitleSource.MODEL

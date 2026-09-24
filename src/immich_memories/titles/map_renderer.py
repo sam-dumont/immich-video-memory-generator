@@ -355,10 +355,12 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     """Load a font at the given size, preferring Montserrat (OFL).
 
     The wheel carries Montserrat, so the pin labels never needed a download;
-    the user's own font directory still overrides it.
+    the user's own font directory still overrides it. A letter Montserrat
+    lacks, such as in a Greek place name, comes from the Noto chain (#1101).
     """
     from pathlib import Path
 
+    from immich_memories.titles.font_chain import title_font
     from immich_memories.titles.fonts import FontWeight, bundled_font_path
 
     weight: FontWeight = "Bold" if bold else "Regular"
@@ -366,7 +368,7 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     for montserrat in (bundled_font_path("Montserrat", weight), cached):
         if montserrat is not None and montserrat.exists():
             with contextlib.suppress(OSError):
-                return ImageFont.truetype(str(montserrat), size)
+                return title_font(montserrat, size, bold=bold)
 
     # System fallbacks
     fallbacks = [

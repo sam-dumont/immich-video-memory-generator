@@ -180,11 +180,10 @@ class TestMapLabelFont:
     """The pin labels take Montserrat out of the wheel, never off the network."""
 
     def test_get_font_uses_the_bundled_family(self, tmp_path, monkeypatch):
-        # WHY: cdn.jsdelivr.net is the host this must not need; a downloader that
-        # raises proves the label font is found without it.
+        # WHY: httpx is the only way to a font host; a client that fails proves
+        # the label font is found without one.
         monkeypatch.setattr(
-            "immich_memories.titles.fonts.download_font",
-            lambda *_a, **_k: pytest.fail("the map labels must not download a font"),
+            "httpx.Client", lambda *_a, **_k: pytest.fail("the map labels must not download a font")
         )
         monkeypatch.setenv("HOME", str(tmp_path))
         from immich_memories.titles.map_renderer import _get_font

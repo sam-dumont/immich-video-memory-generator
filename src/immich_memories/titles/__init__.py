@@ -48,13 +48,8 @@ from .encoding import (
 from .fonts import (
     FONT_DEFINITIONS,
     FontManager,
-    download_all_fonts,
-    download_font,
-    ensure_font_available,
-    get_available_fonts,
     get_font_path,
     get_fonts_cache_dir,
-    is_font_cached,
 )
 from .generator import (
     GeneratedScreen,
@@ -136,10 +131,5 @@ __all__ = [
     "FontManager",
     "get_font_path",
     "get_fonts_cache_dir",
-    "download_font",
-    "download_all_fonts",
-    "is_font_cached",
-    "ensure_font_available",
-    "get_available_fonts",
     "FONT_DEFINITIONS",
 ]

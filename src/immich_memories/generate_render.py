@@ -17,7 +17,11 @@ from immich_memories.generate_privacy import (
     anonymize_preset_params,
 )
 from immich_memories.generate_progress import _OperationalProgress, _PipelineProgress
-from immich_memories.generate_settings import _build_assembly_settings, _create_assembler
+from immich_memories.generate_settings import (
+    _build_assembly_settings,
+    _create_assembler,
+    announce_title_source,
+)
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
@@ -302,6 +306,8 @@ def render_local(
             assembly_clips,
             probe_cache=probe_cache,
         )
+        if settings.title_screens is not None:
+            announce_title_source(settings.title_screens, run_tracker)
         result_output_path = normalize_output_path(
             requested_output_path,
             cast(Literal["mp4", "mov"], settings.encoding_plan.container),

@@ -44,6 +44,10 @@ from immich_memories.analysis.editorial_structure_contract import (
 )
 from immich_memories.analysis.editorial_structure_material import Material, Wall
 from immich_memories.analysis.editorial_structure_record import shave_content_duration
+from immich_memories.analysis.editorial_unvouched_filler import (
+    FillerEvidence,
+    drop_unvouched_filler,
+)
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 
 
@@ -424,3 +428,27 @@ def apply_audience_gate(
     )
     gate.exclude_refused_members(before_privacy)
     return share_log
+
+
+def drop_filler_nothing_vouches_for(run: PlanRun, evidence: FillerEvidence, record) -> None:
+    """The no-model film's last pass: filler that shows nothing leaves, and no pass refills it."""
+    run.carriers, dropped = drop_unvouched_filler(run.carriers, evidence)
+    run.cut_carriers.extend(
+        carrier
+        | {
+            "reason": "Filler with no indicator that the frame head reads as showing nothing",
+            "review_stage": "unvouched-filler",
+        }
+        for carrier in dropped
+    )
+    run.selection_stages["after_unvouched_filler"] = len(run.carriers)
+    record(
+        "unvouched-filler",
+        {
+            "dropped": [
+                {"asset_id": c["asset_id"], "frame_kind": evidence.frame_kind_of(c["asset_id"])}
+                for c in dropped
+            ],
+            "kept": len(run.carriers),
+        },
+    )

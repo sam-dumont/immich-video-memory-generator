@@ -8,6 +8,7 @@ so tests work with any user's data.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date
 
 import pytest
@@ -35,7 +36,24 @@ def has_immich() -> bool:
         return False
 
 
-requires_immich = pytest.mark.skipif(not has_immich(), reason="Immich not reachable")
+# WHY: a skip reads as green. `make test-immich-gate` sets REQUIRE_IMMICH=1 so a
+# missing Immich fails the run instead of quietly skipping the tests meant to
+# prove the product talks to one.
+def immich_required() -> bool:
+    return os.environ.get("REQUIRE_IMMICH") == "1"
+
+
+requires_immich = pytest.mark.skipif(
+    not immich_required() and not has_immich(), reason="Immich not reachable"
+)
+
+
+def immich_unavailable(reason: str) -> None:
+    """Skip the test, or fail it when this run requires Immich (REQUIRE_IMMICH=1)."""
+    if immich_required():
+        pytest.fail(f"{reason} (REQUIRE_IMMICH=1: an unreachable Immich fails the run)")
+    pytest.skip(reason)
+
 
 # Preferred date ranges, tried in order. The first match wins.
 # Rationale: Jan 2025 = quiet month (static-ish data for Sam),
@@ -155,20 +173,14 @@ def _find_densest_cluster(clips, max_days: int):
     return best
 
 
-def make_immich_client(target_duration_seconds: float = 60.0):
-    """Create a SyncImmichClient + config from user's config, or skip.
-
-    Caps target_duration_seconds to keep integration tests fast (default 60s).
-    """
+def make_immich_client():
+    """Create a SyncImmichClient + config from user's config, or skip."""
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.config_loader import Config
 
     config = Config.from_yaml(Config.get_default_path())
     if not config.immich.url or not config.immich.api_key:
-        pytest.skip("Immich not configured")
-
-    # Cap duration so tests don't generate 3+ minute videos
-    config.defaults.target_duration_seconds = target_duration_seconds
+        immich_unavailable("Immich not configured")
 
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
@@ -179,6 +191,11 @@ def make_immich_client(target_duration_seconds: float = 60.0):
         resp = httpx.get(f"{config.immich.url}/api/server/ping", timeout=5)
         resp.raise_for_status()
     except Exception:
-        pytest.skip("Immich not reachable")
+        immich_unavailable("Immich not reachable")
 
     return client, config
+
+
+def live_video_ids(cluster) -> list[str]:
+    """The motion halves of a Live Photo cluster, in shutter order, for download."""
+    return [a.live_photo_video_id for a in cluster.assets if a.live_photo_video_id]

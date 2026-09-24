@@ -34,6 +34,7 @@ from immich_memories.processing.hdr_utilities import (
     detect_dominant_hdr_transfer,
     quality_encoder_preset,
 )
+from immich_memories.titles.title_source import TitleSource
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -207,6 +208,7 @@ def _build_title_settings(
         home_lat=params.memory_preset_params.get("home_lat"),
         home_lon=params.memory_preset_params.get("home_lon"),
         map_tiles=config.network.map_tiles,
+        title_source=TitleSource.PLACE if trip_title_text else TitleSource.FALLBACK,
     )
 
     if params.timeline_plan is not None:
@@ -227,11 +229,13 @@ def _build_title_settings(
         locale = resolve_caption_locale(settings.locale)
         settings.title_override = holiday_label(holiday, params.date_end.year, locale)
         settings.subtitle_override = TITLE_PATTERNS[locale]["on_this_day_subtitle"]
+        settings.title_source = TitleSource.OCCASION
 
     # Apply LLM-generated title overrides
     if params.title:
         settings.title_override = params.title
         settings.subtitle_override = params.subtitle
+        settings.title_source = params.title_source or TitleSource.OVERRIDE
         if settings.trip_title_text:
             # The trip map intro reads trip_title_text, not title_override, so
             # a curated title was being computed and then ignored on the one
@@ -240,6 +244,18 @@ def _build_title_settings(
             settings.trip_title_text = params.title
 
     return apply_map_tile_policy(settings)
+
+
+def announce_title_source(title_screens: TitleScreenSettings, run_tracker: RunTracker) -> None:
+    """Log, once, which source produced the opening title, and store it on the run.
+
+    A template title is not built until the title screen renders, so the line
+    names the template rather than quoting text it does not have yet.
+    """
+    source = title_screens.title_source
+    shown = title_screens.trip_title_text or title_screens.title_override
+    logger.info("Opening title from %s: %s", source, repr(shown) if shown else "the template")
+    run_tracker.record_title_source(source)
 
 
 def apply_map_tile_policy(settings: TitleScreenSettings) -> TitleScreenSettings:

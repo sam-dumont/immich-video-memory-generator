@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from immich_memories.titles.colors import ceil_white_for_hdr
+from immich_memories.titles.font_chain import title_font
 from immich_memories.titles.safe_zones import safe_text_width
 from immich_memories.titles.text_layout import (
     TextStack,
@@ -47,6 +48,11 @@ logger = logging.getLogger(__name__)
 # already leaves a gap, so this only ever answers a face drawn taller than the
 # line height it was measured at; one or two steps close that.
 _OVERLAP_ATTEMPTS = 4
+
+# How much smaller a title and its subtitle draw than a title alone, so that two
+# blocks sit where one did. Applied to both sizes: the config's ratios carry the
+# design's title-to-subtitle proportion, and this must not change it.
+_PAIR_SCALE = 0.65
 
 
 def _single_line(_text: str, _font_size: int) -> int:
@@ -206,10 +212,14 @@ class TitleTextRenderer:
     def render(self, t: float, progress: float, title: str, subtitle: str | None):
         """Render title and subtitle text onto the frame."""
         title_anim = self._compute_animation(t, progress, is_subtitle=False)
-        if self.use_sdf:
+        if self.use_sdf and self._sdf_draws(title, subtitle):
             self._render_text_sdf(title, subtitle, title_anim, t, progress)
         else:
             self._render_text_pil(title, subtitle, title_anim, t, progress)
+
+    def _sdf_draws(self, title: str, subtitle: str | None) -> bool:
+        """Whether the SDF atlas has every letter; the PIL layers draw anything else."""
+        return self._sdf_atlas is not None and self._sdf_atlas.draws(f"{title} {subtitle or ''}")
 
     def _base_sizes(self, subtitle: str | None) -> tuple[int, int]:
         """Title and subtitle font sizes before the layout gets a say.
@@ -218,9 +228,8 @@ class TitleTextRenderer:
         Same approach as map titles (rendering_service.py:180).
         """
         cfg = self.config
-        base = min(cfg.width, cfg.height)
-        ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
-        return int(base * ratio), int(base * cfg.subtitle_size_ratio)
+        base = min(cfg.width, cfg.height) * (_PAIR_SCALE if subtitle else 1.0)
+        return int(base * cfg.title_size_ratio), int(base * cfg.subtitle_size_ratio)
 
     def _stack(
         self,
@@ -433,10 +442,12 @@ class TitleTextRenderer:
 
         The fallback is asked for a size because the layout is measured in
         pixels: a face that ignores the size would place text nowhere near
-        where the stack expects it.
+        where the stack expects it. A letter the face lacks is drawn by the
+        next font of the Noto chain that has it (#1101).
         """
+        # WHY bold: _get_system_font takes the heaviest weight the family has.
         try:
-            return ImageFont.truetype(_get_system_font(self.config.font_family), font_size)
+            return title_font(_get_system_font(self.config.font_family), font_size, bold=True)
         except (OSError, ValueError):
             return ImageFont.load_default(size=font_size)
 

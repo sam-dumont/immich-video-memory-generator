@@ -1,13 +1,12 @@
 """What this install is allowed to contact outside the network it runs on."""
 
 from immich_memories.config import Config
-from immich_memories.config_models_network import FONT_HOST, GEOCODING_HOST, MAP_TILE_HOST
+from immich_memories.config_models_network import GEOCODING_HOST, MAP_TILE_HOST
 from immich_memories.preflight import CheckResult, CheckStatus
 
 _OUTSIDE_CALLS = (
     ("geocoding", GEOCODING_HOST, "trip names and place names in the film's language"),
     ("map_tiles", MAP_TILE_HOST, "the trip fly-over, the static map and location cards"),
-    ("font_downloads", FONT_HOST, "a title font that is neither bundled nor already local"),
 )
 
 
