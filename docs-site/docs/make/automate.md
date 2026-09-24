@@ -17,7 +17,7 @@ immich-memories auto run --dry-run      # the decision, without the render
 immich-memories auto run                # decide and do it
 ```
 
-It runs on every tier. On a NAS with no model, the films it makes are the same NAS cuts you get by hand.
+It works on a plain NAS, and makes the same cuts you would get by hand there; a GPU or a model makes them better.
 
 ## Docker: switch on the built-in timer
 

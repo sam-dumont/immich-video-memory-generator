@@ -10,7 +10,8 @@ Reader: power user.
 
 Four commands that run against the library rather than against one film: `prepare` does the pixel work up
 front, `people` works out who is in it, `discover-days` finds the days worth remembering, and a few small ones
-answer questions before you generate anything. None of them needs a model, except `prepare --overviews`.
+answer questions before you generate anything. All of them work on a plain NAS; `prepare --overviews` is the one
+that needs a model.
 
 ## `prepare`
 
@@ -75,7 +76,7 @@ months overnight. With `advanced.editorial.reader: rules` it is refused by name.
 ## `people`
 
 Works out who is in your library from the numbers Immich already holds, writes it to a file you can edit, and
-never overwrites an answer you gave it. No pixel, no model, no question.
+never overwrites an answer you gave it. It reads counts and dates only, and asks you nothing.
 
 ```bash
 immich-memories people scan     # build or refresh the file
@@ -132,7 +133,7 @@ immich-memories discover-days --since 2015
 A day ends when the pictures stop for five hours, not at midnight. Days inside a trip are skipped (the trip film
 tells that story), and so are holidays spent at home, which have their own type.
 
-**Without a model** (the default) nothing is asked. A day counts when one recorded fact is loud: most of its
+**On a plain NAS** (the default) nothing is asked. A day counts when one recorded fact is loud: most of its
 located pictures away from home, at least three favourites, at least three videos making half the day, or a
 long day (20 pictures over six active hours) with your close family on it. Each year keeps its strongest
 `advanced.automation.special_days_per_year` (6): days away first, the furthest first, then favourites, then

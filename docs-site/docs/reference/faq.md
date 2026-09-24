@@ -22,16 +22,12 @@ On a default install, nothing: the app talks to your Immich server and that's it
 place names in your language and the map fly-over are all opt-in, each one listed on
 [Privacy](../run/privacy.md) with what it sends.
 
-**Do I need a GPU or an AI model?**
-
-No. The default install cuts films on a NAS CPU with no model at all, from dates, places, favourites, people
-and what small local classifiers measure on each picture. A model or a GPU makes it better and faster; neither
-is required. See [What a model adds](../better/overview.md).
-
 **Will it run on my NAS?**
 
-If Immich runs there, very likely. Sizes and the one Synology trap are on [On a NAS](../run/nas.md) and
-[Requirements](../run/requirements.md).
+Yes, it works on a plain NAS: the default install cuts films on a NAS CPU from dates, places, favourites,
+people and what small local classifiers measure on each picture. A GPU or a model makes it better and faster
+([What a model adds](../better/overview.md)). Sizes and the one Synology trap are on
+[On a NAS](../run/nas.md) and [Requirements](../run/requirements.md).
 
 **Do I need face recognition?**
 

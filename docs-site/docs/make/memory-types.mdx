@@ -11,7 +11,7 @@ Reader: newcomer. What each kind of film covers, how long it runs, and what your
 hold for it to work.
 
 Ten types. Most are a date range with a filter on it. Trip, album, holiday and special day are not,
-and those are the ones worth reading about. Every type works with no model at all: the default
+and those are the ones worth reading about. Every type works on a plain NAS: the default
 install cuts each of them from what Immich already knows (dates, places, faces, favourites).
 
 | Type | Covers | Target | Needs |
@@ -285,7 +285,7 @@ immich-memories days-due          # what falls within three days of today
 immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
-[`discover-days`](./cli/prepare.md) walks the library a month at a time. With no model, a day is
+[`discover-days`](./cli/prepare.md) walks the library a month at a time. On a plain NAS, a day is
 kept when one recorded fact stands out: it was spent away from home, it holds three or more
 favourites, it is mostly video, or it ran long (20 pictures over 6 hours or more) with close family
 in it. Each year keeps its strongest `automation.special_days_per_year` (6), away days first. The
@@ -320,6 +320,6 @@ types:
   year.
 - An uncatalogued special day, and people and occasion films, get a title written from their facts.
   The reader invents no event name the facts do not carry.
-- A month or year gets a light polish on top of the no-model draft. What that polish does and costs
+- A month or year gets a light polish on top of the NAS draft. What that polish does and costs
   is on [What a model adds](../how-it-chooses/what-a-model-adds.md) and
   [Make it better](../better/overview.md).

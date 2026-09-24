@@ -22,7 +22,7 @@ of your camera roll:
 - **Location cards**: the city name between trip segments.
 - **Ending**: a fade to white, no text.
 
-None of this needs a model. Titles come from templates, the special-day catalogue and your album names; a
+All of this works on a plain NAS. Titles come from templates, the special-day catalogue and your album names; a
 reader only rewrites people and occasion titles (see [When a model names the film](#when-a-model-names-the-film)).
 
 `title_screens.enabled: false` turns every card off. The other keys are in the
