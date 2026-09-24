@@ -489,10 +489,27 @@ def _kernel_library_check() -> CheckResult:
             message=reason,
             details=_PIL_RENDERER_MESSAGE,
         )
+    return _kernel_backend_check()
+
+
+def _kernel_backend_check() -> CheckResult:
+    """Name the backend working kernels land on: a GPU, or the processor (#1202)."""
+    import platform
+
+    from immich_memories.titles.kernel_backend_probe import KERNEL_LIBRARY, gpu_backend
+
+    gpu, failures = gpu_backend(platform.system())
+    if gpu is None:
+        return CheckResult(
+            name="Title rendering",
+            status=CheckStatus.WARNING,
+            message=f"Kernels on the CPU ({KERNEL_LIBRARY}): no GPU backend started",
+            details="; ".join((*failures, "titles render markedly slower than on a GPU")),
+        )
     return CheckResult(
         name="Title rendering",
         status=CheckStatus.OK,
-        message=f"GPU kernels ({KERNEL_LIBRARY}): animated title screens",
+        message=f"GPU kernels on {gpu} ({KERNEL_LIBRARY}): animated title screens",
     )
 
 

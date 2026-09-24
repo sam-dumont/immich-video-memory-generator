@@ -122,12 +122,20 @@ findings are not, at any audience, and a carrier that draws one is replaced rath
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
 is ordinary family content, which keeps it from filing a bath as something worse, and the code holds
-all eight out of the cut regardless of what the model was told. Two of them need a fact under
-them, because the model's say-so has been wrong: an identifying record needs the document detector
-to call the picture a document, or the description to name one (an ID card, a passport, a patient
-wristband). Readable text alone, a race bib, a logo or a sign, holds nothing. Adult changing needs
-the description to say someone is undressing or exposed; without that, the picture stays
-family-only instead of being cut. The gate judges the finished cut
+all eight out of the cut regardless of what the model was told. Every one of them needs a fact
+under it in the description, because the model's say-so has been wrong: on 1,489 public captions it
+held a wedding kiss as sexual content, a woman feeding a child at a table as breastfeeding, hand
+washing as intimate hygiene, a coffin as a graphic medical procedure and an empty toilet as
+toileting. So each finding holds only when the description states the activity: a sexual act or
+exposed genitals; a breast, nursing, latching or pumping word; wiping, a nappy change or a private
+body part; an injury, a wound, surgery or blood on a person; a person on or using a toilet or potty;
+a person in a bath, tub, sink or shower, and never a pool, the sea, a lake or a river ("bathroom"
+alone is a room). Nudity needs an uncovered body described, and a sleeveless top is clothing. An
+identifying record needs the document detector to call the picture a document, or the description
+to name one (an ID card, a passport, a patient wristband): readable text alone, a race bib, a logo
+or a sign, holds nothing. Adult changing needs the description to say someone is undressing or
+exposed; without that, the picture stays family-only instead of being cut. These checks only stop
+the model's own claim from creating a hold: they never lift a detector's hold. The gate judges the finished cut
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 
@@ -519,6 +527,18 @@ or their stories hold nothing but favourites and the film is full, nobody is sea
 `derived-decisions/family-seat.private.json` says so, by relation only. Nothing is asked of a model
 on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
+
+### Filler nothing vouches for
+
+The draft sizes a film from its material, so a quiet month can have more slots than pictures anyone
+can vouch for, and the leftover slots go to whatever stands. When no model polishes the draft, the
+settled cut gets one last pass: a shot with no indicator of its own (not starred, not a video or a
+Live Photo whose motion plays, nobody Immich knows in it, no banked standing answer for it, not
+ticked on the pool page) that the `frame_kind` head reads as showing nothing (a lone everyday
+object, an empty room, a body-part close-up, a screen or a document) leaves the film. Nothing takes
+its place: the film goes short rather than keep a guess. A shot with any indicator, or one the head
+never read, is left alone. `derived-decisions/unvouched-filler.private.json` lists what left, by id
+and head label.
 
 ### Reading what a model already answered
 

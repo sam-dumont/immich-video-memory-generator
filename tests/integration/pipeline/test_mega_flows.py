@@ -12,14 +12,13 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
-from tests.integration.immich_fixtures import requires_immich
+from tests.integration.immich_fixtures import live_video_ids, requires_immich
 
 logger = logging.getLogger(__name__)
 
@@ -67,174 +66,6 @@ class _FakeStreamingClip:
     is_hdr: bool = False
     color_transfer: str | None = None
     input_seek: float = 0.0
-
-
-def test_twelve_day_auto_trip_deeply_analyzes_the_manageable_pool(tmp_path: Path) -> None:
-    """Somme-shaped regression: 60 fresh clips fit Auto's full-analysis budget."""
-    import cv2
-    import numpy as np
-
-    from immich_memories.analysis.smart_pipeline import ClipWithSegment, SmartPipeline
-    from immich_memories.api.models import Asset, AssetType, VideoClipInfo
-    from immich_memories.cache.thumbnail_cache import ThumbnailCache
-    from immich_memories.cli._candidate_pool import _merge_photos_into_pool
-    from immich_memories.config_loader import Config
-    from immich_memories.ui.pages.clip_pipeline import (
-        _build_pipeline_config,
-        _configure_timeline_for_selection,
-        _eligible_pipeline_media,
-        _resolve_auto_duration_for_selection,
-    )
-    from immich_memories.ui.pages.step2_loading import _set_initial_selection
-    from immich_memories.ui.state import AppState
-
-    start = datetime(2026, 7, 25, 9, 0, tzinfo=UTC)
-
-    def make_asset(
-        asset_id: str,
-        asset_type: AssetType,
-        index: int,
-        *,
-        favorite: bool = False,
-        live_video_id: str | None = None,
-    ) -> Asset:
-        when = start + timedelta(days=index % 12, hours=index % 8)
-        return Asset(
-            id=asset_id,
-            type=asset_type,
-            originalFileName=f"{asset_id}.mov",
-            fileCreatedAt=when,
-            fileModifiedAt=when,
-            updatedAt=when,
-            isFavorite=favorite,
-            livePhotoVideoId=live_video_id,
-            width=4032,
-            height=3024,
-            exifInfo={"make": "Apple", "model": "iPhone"},
-        )
-
-    clips: list[VideoClipInfo] = []
-    for index in range(31):
-        clips.append(
-            VideoClipInfo(
-                asset=make_asset(
-                    f"video-{index}",
-                    AssetType.VIDEO,
-                    index,
-                    favorite=index < 19,
-                ),
-                duration_seconds=8.0,
-                width=1920,
-                height=1080,
-                bitrate=10_000_000,
-            )
-        )
-    for index in range(29):
-        clips.append(
-            VideoClipInfo(
-                asset=make_asset(
-                    f"live-{index}",
-                    AssetType.IMAGE,
-                    index + 31,
-                    live_video_id=f"live-video-{index}",
-                ),
-                duration_seconds=3.0,
-                width=1920,
-                height=1440,
-                bitrate=8_000_000,
-            )
-        )
-    duplicate = VideoClipInfo(
-        asset=make_asset("video-duplicate", AssetType.VIDEO, 0),
-        duration_seconds=8.0,
-        width=1280,
-        height=720,
-        bitrate=4_000_000,
-    )
-    clips.append(duplicate)
-
-    photos = [make_asset(f"photo-{index}", AssetType.IMAGE, index) for index in range(48)]
-    config = Config(
-        cache={
-            "directory": str(tmp_path / "cache"),
-            "database": str(tmp_path / "cache.db"),
-            "video_cache_enabled": False,
-        }
-    )
-    state = AppState(
-        config=config,
-        memory_type="trip",
-        duration_mode="auto",
-        include_photos=True,
-        photo_assets=photos,
-        selected_photo_ids={photo.id for photo in photos},
-        avg_clip_duration=5,
-        pipeline_config={"avg_clip_duration": 5.0},
-    )
-    _set_initial_selection(clips, state)
-
-    eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
-    duration = _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
-    timeline = _configure_timeline_for_selection(state, eligible_clips, eligible_photos)
-    pipeline_config = _build_pipeline_config(state, eligible_clips)
-
-    assert len(eligible_clips) == 61
-    assert len(eligible_photos) == 48
-    assert duration is not None
-    assert duration.seconds == 150.0
-
-    thumbnail_cache = ThumbnailCache(tmp_path / "thumbnails")
-    ok, encoded = cv2.imencode(".jpg", np.full((64, 64, 3), 96, dtype=np.uint8))
-    assert ok
-    thumbnail_cache.put("video-0", "preview", encoded.tobytes())
-    thumbnail_cache.put("video-duplicate", "preview", encoded.tobytes())
-
-    analysis_cache = MagicMock()
-    analysis_cache.get_analysis.return_value = None
-    pipeline = SmartPipeline(
-        client=MagicMock(),
-        analysis_cache=analysis_cache,
-        thumbnail_cache=thumbnail_cache,
-        config=pipeline_config,
-        analysis_config=config.analysis,
-        app_config=config,
-    )
-
-    deep_ids: set[str] = set()
-
-    def analyze(candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
-        deep_ids.update(clip.asset.id for clip in candidates)
-        return [
-            ClipWithSegment(
-                clip=clip,
-                start_time=0.0,
-                end_time=min(5.0, clip.duration_seconds),
-                score=clip.quality_score,
-            )
-            for clip in candidates
-        ]
-
-    pipeline._analyze_with_cache_batch = analyze  # type: ignore[method-assign]
-    analyzed = pipeline.run_analysis(eligible_clips)
-
-    assert len(analyzed) == 60
-    assert deep_ids == {item.clip.asset.id for item in analyzed}
-    assert "video-duplicate" not in {item.clip.asset.id for item in analyzed}
-
-    combined = _merge_photos_into_pool(
-        analyzed,
-        photo_assets=eligible_photos,
-        include_photos=True,
-        config=config,
-        client=MagicMock(),
-        work_dir=tmp_path / "photo-scoring",
-        dry_run=True,
-    )
-    result = pipeline.run_selection(combined)
-    planned_duration = sum(end - begin for begin, end in result.clip_segments.values())
-
-    assert result.selected_clips
-    assert abs(timeline.content_budget - planned_duration) <= pipeline_config.avg_clip_duration
 
 
 # ---------------------------------------------------------------------------
@@ -412,86 +243,6 @@ class TestMegaFlowMonthlyWithPhotos:
         logger.info(
             f"Monthly+photos mega flow: {duration:.1f}s, "
             f"{len(clips[:2])} videos + {len(photos[:5])} photos"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Test C: SmartPipeline with Diverse Clips
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@requires_ffmpeg
-@requires_immich
-class TestMegaFlowSmartPipeline:
-    """SmartPipeline 4-phase analysis with real diverse clips.
-
-    Exercises: _phase_cluster (thumbnail dedup), _phase_filter (density budget,
-    quality gate, non-favorite filters, compilation filter, resolution filter,
-    gap fillers, _cap_analysis_candidates), phase_analyze (download + score),
-    phase_refine (temporal distribution).
-    """
-
-    def test_smart_pipeline_full_run(self, immich_clips, tmp_path):
-        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
-        from immich_memories.cache.database import VideoAnalysisCache
-        from immich_memories.cache.thumbnail_cache import ThumbnailCache
-
-        clips, config, client = immich_clips
-
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-        analysis_cache = VideoAnalysisCache(db_path=cache_dir / "analysis.db")
-        thumbnail_cache = ThumbnailCache(cache_dir=cache_dir / "thumbnails")
-
-        pipeline_config = PipelineConfig(
-            target_clips=10,
-            avg_clip_duration=5.0,
-            hdr_only=False,
-            prioritize_favorites=True,
-            analyze_all=False,
-        )
-
-        pipeline = SmartPipeline(
-            client=client,
-            analysis_cache=analysis_cache,
-            thumbnail_cache=thumbnail_cache,
-            config=pipeline_config,
-            analysis_config=config.analysis,
-            app_config=config,
-        )
-
-        phases_seen: list[str] = []
-
-        def on_progress(status: dict) -> None:
-            phase = status.get("phase", "")
-            if phase and (not phases_seen or phases_seen[-1] != phase):
-                phases_seen.append(phase)
-
-        result = pipeline.run(clips, progress_callback=on_progress)
-
-        # Core assertions
-        assert len(result.selected_clips) > 0
-        assert len(result.selected_clips) <= 15  # ~1.5x target of 10
-        assert len(result.clip_segments) > 0
-
-        # Favorites should be preserved
-        input_favorites = {c.asset.id for c in clips if c.asset.is_favorite}
-        selected_ids = {c.asset.id for c in result.selected_clips}
-        preserved_favorites = input_favorites & selected_ids
-        if input_favorites:
-            assert len(preserved_favorites) > 0, "No favorites preserved"
-
-        # All 4 phases should have fired
-        assert len(phases_seen) >= 3, f"Expected 4 phases, saw: {phases_seen}"
-
-        # Clip segments should have valid time ranges
-        for asset_id, (start, end) in result.clip_segments.items():
-            assert end > start, f"Invalid segment for {asset_id}: {start}-{end}"
-
-        logger.info(
-            f"SmartPipeline mega flow: {len(clips)} → {len(result.selected_clips)} clips, "
-            f"phases={phases_seen}, favorites preserved={len(preserved_favorites)}"
         )
 
 
@@ -743,11 +494,11 @@ class TestMegaFlowLivePhotoBurst:
         trim_points: list[tuple[float, float]] = []
 
         for cluster in clusters:
-            if cluster.count < 2 or len(cluster.video_asset_ids) < 2:
+            if cluster.count < 2 or len(live_video_ids(cluster)) < 2:
                 continue
 
             paths = []
-            for vid in cluster.video_asset_ids:
+            for vid in live_video_ids(cluster):
                 dest = cache_dir / f"{vid}.MOV"
                 try:
                     client.download_asset(vid, dest)

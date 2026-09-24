@@ -27,7 +27,7 @@ from .animations import (
 from .backgrounds import create_background_for_style
 from .backgrounds_animated import create_animated_background
 from .colors import ceil_white_for_hdr
-from .fonts import font_covering
+from .font_chain import title_font
 from .fonts import get_font_path as get_cached_font_path
 from .styles import TitleStyle
 
@@ -88,8 +88,8 @@ class TitleRenderer:
         self.fonts_dir = fonts_dir or Path(__file__).parent.parent / "fonts"
         self._background_image = background_image
 
-    def _get_font(self, size: int, text: str = "") -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        """The style's face at this size, or one that has every letter of `text` (#1101)."""
+    def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+        """The style's face at this size, backed by Noto for letters it lacks (#1101)."""
         weight = {
             "light": "Light",
             "regular": "Regular",
@@ -100,11 +100,11 @@ class TitleRenderer:
 
         cached_font = get_cached_font_path(self.style.font_family, weight)
         if cached_font and cached_font.exists():
-            return ImageFont.truetype(font_covering(cached_font, text, bold=bold), size)
+            return title_font(cached_font, size, bold=bold)
 
         font_path = self.style.get_font_path(self.fonts_dir)
         if font_path and font_path.exists():
-            return ImageFont.truetype(font_covering(font_path, text, bold=bold), size)
+            return title_font(font_path, size, bold=bold)
 
         system_fonts = [
             "/System/Library/Fonts/SFNSDisplay.ttf",
@@ -115,7 +115,7 @@ class TitleRenderer:
 
         for sys_font in system_fonts:
             if Path(sys_font).exists():
-                return ImageFont.truetype(font_covering(sys_font, text, bold=bold), size)
+                return title_font(sys_font, size, bold=bold)
 
         return ImageFont.load_default()
 
@@ -178,8 +178,8 @@ class TitleRenderer:
         title_size = int(self.settings.height * self.style.title_size_ratio)
         subtitle_size = int(title_size * self.style.subtitle_size_ratio)
 
-        title_font = self._get_font(title_size, title)
-        subtitle_font = self._get_font(subtitle_size, subtitle) if subtitle else None
+        title_font = self._get_font(title_size)
+        subtitle_font = self._get_font(subtitle_size) if subtitle else None
 
         preset = animation_preset or get_animation_preset(self.style.animation_preset)
 
@@ -255,7 +255,7 @@ class TitleRenderer:
         current_font = font
         while metrics.width > max_text_width and current_font.size > 20:
             new_size = int(current_font.size * 0.95)
-            current_font = self._get_font(new_size, text)
+            current_font = self._get_font(new_size)
             metrics = self._get_text_metrics(text, current_font)
         font = current_font
 
@@ -267,12 +267,12 @@ class TitleRenderer:
 
         scale = animation.get("scale", 1.0)
         if scale != 1.0:
-            scaled_font = self._get_font(int(font.size * scale), text)
+            scaled_font = self._get_font(int(font.size * scale))
             font = scaled_font
             metrics = self._get_text_metrics(text, font)
             while metrics.width > max_text_width and font.size > 20:
                 new_size = int(font.size * 0.95)
-                font = self._get_font(new_size, text)
+                font = self._get_font(new_size)
                 metrics = self._get_text_metrics(text, font)
             x = (self.settings.width - metrics.width) // 2
             y = self._calculate_y_position(metrics.height, is_title, has_subtitle)

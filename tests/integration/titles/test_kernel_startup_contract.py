@@ -53,12 +53,19 @@ def _expected_gpu() -> str | None:
     return None
 
 
-def test_the_title_renderer_starts_on_the_gpu_within_its_budget(tmp_path: Path) -> None:
-    expected = _expected_gpu()
-    if expected is None:
-        pytest.skip("no GPU this test knows how to demand here")
+def _no_gpu_device() -> bool:
+    """A Linux box with no card passed in: a container on Docker Desktop, or a bare CI runner."""
+    return (
+        platform.system() == "Linux"
+        and shutil.which("nvidia-smi") is None
+        and not Path("/dev/dri").exists()
+    )
+
+
+def _cold_start(home: Path) -> tuple[dict, str, float]:
+    """Start the title renderer in a fresh interpreter: where it landed, its log, and how long."""
     env = {k: v for k, v in os.environ.items() if k != "IMMICH_FORCE_CPU"}
-    env["HOME"] = str(tmp_path)
+    env["HOME"] = str(home)
 
     started = time.monotonic()
     completed = subprocess.run(
@@ -72,6 +79,31 @@ def test_the_title_renderer_starts_on_the_gpu_within_its_budget(tmp_path: Path) 
     elapsed = time.monotonic() - started
 
     assert completed.returncode == 0, completed.stderr[-2000:]
-    started_on = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert started_on["backend"] == expected, (started_on, completed.stderr[-2000:])
+    return json.loads(completed.stdout.strip().splitlines()[-1]), completed.stderr, elapsed
+
+
+def test_the_title_renderer_starts_on_the_gpu_within_its_budget(tmp_path: Path) -> None:
+    expected = _expected_gpu()
+    if expected is None:
+        pytest.skip("no GPU this test knows how to demand here")
+
+    started_on, log, elapsed = _cold_start(tmp_path)
+
+    assert started_on["backend"] == expected, (started_on, log[-2000:])
+    assert elapsed < _PROBE_TIMEOUT_SECONDS, f"cold start took {elapsed:.1f}s"
+
+
+@pytest.mark.skipif(not _no_gpu_device(), reason="only a Linux box with no GPU passed in")
+def test_a_container_without_a_gpu_says_its_titles_run_on_the_cpu(tmp_path: Path) -> None:
+    """The kernel library starts on the CPU when asked for a device it cannot find.
+
+    It says so only in a warning, and the probe used to take the working kernel
+    as proof: a Docker container with no card logged "on the CUDA backend" and
+    rendered on its processor (#1202). Here the kernels still run, on the CPU,
+    and every GPU backend passed over is named with its reason.
+    """
+    started_on, log, elapsed = _cold_start(tmp_path)
+
+    assert started_on["backend"] == "CPU", (started_on, log[-2000:])
+    assert [failure.split(":")[0] for failure in started_on["failures"]] == ["CUDA", "Vulkan"]
     assert elapsed < _PROBE_TIMEOUT_SECONDS, f"cold start took {elapsed:.1f}s"

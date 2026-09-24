@@ -19,7 +19,7 @@ you find a call that is not here,
 | Your Immich server | always | metadata, previews and originals down, and at preparation the index and three keyframes of each video's playback, by byte range; the finished video and an album up, only with upload-back | `upload.enabled: false` (default) |
 | `nominatim.openstreetmap.org` | only with `network.geocoding: true`: trip detection, and the places on the cut | each trip cluster's centroid, and the rounded coordinates of the places the film shows | off by default |
 | `server.arcgisonline.com` (World Imagery) | only with `network.map_tiles: true`: the trip fly-over, the static trip map, the background of location cards | tile requests covering the trip area and your home base | off by default |
-| `cdn.jsdelivr.net` (Fontsource) | only with `network.font_downloads: true`: a title font that is neither bundled nor in `~/.immich-memories/fonts/` | a font file, pinned to Fontsource 5.3.0 and written only if its SHA-256 matches the one in the code | off by default; `titles test --download-fonts` fetches on request whatever the switch says |
+| `raw.githubusercontent.com` (Noto fonts) | only when you run `titles fonts --install`, and while the Docker image is built; never during a render | nothing about your library: 42 font files, 43 MB, each checked against a pinned SHA-256 | don't run it: titles then draw what the wheel carries |
 | `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once; a strip of three keyframes of every video, and of every Live Photo whose motion plays, once; a `/models` probe; and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
 | `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names, plus the names of the Immich albums holding each episode's pictures | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `llm.base_url` | the opening title of a people or occasion memory, by default whenever a reader is configured (both the wizard and the CLI); trips only with `--llm-title` | text, no images: first names, birth dates and ages, the relationships your people file records between the people in the film, the people condition, the span, place names, the catalogue's words, the name of the Immich album most of the cut sits in (never a catch-all out of proportion to the film), and the clip descriptions on the trip path | `--no-llm-title`, `--title` of your own, or no reader configured |
@@ -67,7 +67,6 @@ Both are off, and both are worth turning on if you are comfortable with what the
 network:
   geocoding: false
   map_tiles: false
-  font_downloads: false
 ```
 
 **`geocoding`** sends each trip cluster's centroid to Nominatim, and the rounded coordinates
@@ -96,10 +95,20 @@ With it off, a trip opens on the ordinary title card carrying the trip title, an
 keep their text on the style's own background. In privacy mode the tiles are of the fake city, not
 of yours.
 
-**`font_downloads`** is the narrowest of the three. Five families ship inside the wheel
-(Josefin Sans, Montserrat, Outfit, Quicksand, Raleway) and every lookup starts there, then looks in
-`~/.immich-memories/fonts/`, then falls back to a font this host already has. The CDN is reached
-only for a family outside that list, and only with this switch on.
+## Fonts
+
+A render never downloads a font. The title families and Noto Sans (Latin, Greek, Cyrillic,
+Vietnamese) ship inside the wheel. The Noto faces for every other script (Arabic, Hebrew, the Indic
+scripts, Thai, Chinese, Japanese, Korean and more) are 43 MB, so they come from one explicit step:
+
+```bash
+immich-memories titles fonts --install
+```
+
+It fetches 42 files from `raw.githubusercontent.com` (the Noto project's own repositories, pinned to
+one commit and one tag) and refuses any file whose SHA-256 is not the one in the code. The Docker
+image runs the same step at build time, so a container has every script without ever asking. A
+title with letters no installed font has draws what it can and logs one line naming the step above.
 
 `preflight` prints one row per switch you turned on, naming the host it will contact. A default
 install gets no such row.

@@ -176,6 +176,25 @@ def git_checkout_factory() -> Callable[[Path, int], Path]:
     return build
 
 
+HDR_SAMPLES = Path(__file__).parent / "fixtures" / "hdr_samples"
+_LFS_POINTER_HEADER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def lfs_fixture(path: Path) -> Path:
+    """Return a Git LFS-tracked fixture, or skip the calling test when it is absent.
+
+    A clone without `git lfs pull` (or with GIT_LFS_SKIP_SMUDGE=1) checks out a
+    ~130-byte text pointer in place of the media, and a test reading it fails as
+    if the product were broken. Skipping names the real cause instead.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is missing: run `git lfs pull` to fetch the test media")
+    with path.open("rb") as handle:
+        if handle.read(len(_LFS_POINTER_HEADER)) == _LFS_POINTER_HEADER:
+            pytest.skip(f"{path.name} is a Git LFS pointer, not the file: run `git lfs pull`")
+    return path
+
+
 def make_asset(
     asset_id: str = "test-asset-001",
     *,

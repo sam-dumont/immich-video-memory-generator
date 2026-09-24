@@ -71,11 +71,15 @@ def _install_runner(monkeypatch: pytest.MonkeyPatch, run: _RecordedRun) -> _Reco
 class _FakeKernelLibrary:
     """Stand-in for the kernel library inside the probe child.
 
-    The worker only ever touches four things on it: an arch attribute, init(),
-    the @kernel decorator, and the ndarray type annotation.
+    The worker only ever touches five things on it: an arch attribute, init(),
+    the arch the runtime started on, the @kernel decorator, and the ndarray type
+    annotation. `falls_back` plays the real library on a host without the
+    requested device: init() succeeds and the runtime starts on the CPU.
     """
 
-    def __init__(self, *, effect, init_error: Exception | None = None) -> None:
+    def __init__(
+        self, *, effect, init_error: Exception | None = None, falls_back: bool = False
+    ) -> None:
         self.metal = object()
         self.cuda = object()
         self.vulkan = object()
@@ -84,25 +88,33 @@ class _FakeKernelLibrary:
         self.types = SimpleNamespace(ndarray=lambda **kwargs: object())  # noqa: ARG005
         self._effect = effect
         self._init_error = init_error
+        self._falls_back = falls_back
+        self._started_on: object = None
+        self.lang = SimpleNamespace(
+            impl=SimpleNamespace(current_cfg=lambda: SimpleNamespace(arch=self._started_on))
+        )
         self.init_calls: list[dict[str, object]] = []
 
     def init(self, **kwargs: object) -> None:
         if self._init_error is not None:
             raise self._init_error
         self.init_calls.append(kwargs)
+        self._started_on = self.cpu if self._falls_back else kwargs["arch"]
 
     def kernel(self, _fn):
         return self._effect
 
 
-def _run_worker(monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeKernelLibrary) -> object:
+def _run_worker(
+    monkeypatch: pytest.MonkeyPatch, fake_ti: _FakeKernelLibrary, backend: str = "metal"
+) -> object:
     from immich_memories.titles import kernel_backend_probe
 
     # WHY: the worker's whole job is driving the kernel runtime — the one
     # external boundary here. A real ti.init() would claim the GPU in-process,
     # which is exactly what running the probe in a child process avoids.
     monkeypatch.setattr(kernel_backend_probe, "ti", fake_ti)
-    return kernel_backend_probe._probe_worker("metal")
+    return kernel_backend_probe._probe_worker(backend)
 
 
 def test_worker_reports_success_when_the_kernel_runs(
@@ -156,6 +168,52 @@ def test_worker_names_the_exception_a_failing_backend_raised(
 
     assert result.outcome is KernelProbeOutcome.DISPATCH_FAILED
     assert result.detail == "RuntimeError"
+
+
+def _increments(values) -> None:
+    values[0] += 1
+
+
+def test_a_gpu_backend_the_runtime_swapped_for_the_cpu_did_not_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A container with no GPU: init(arch=cuda) succeeds and the kernel runs on the CPU.
+
+    The library says so only in a warning the probe silences, so a probe that
+    trusts the kernel result reported CUDA and Vulkan working in a container
+    without a card, and the run logged "on the CUDA backend" (#1202).
+    """
+    from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome
+
+    fake_ti = _FakeKernelLibrary(effect=_increments, falls_back=True)
+
+    result = _run_worker(monkeypatch, fake_ti, backend="cuda")
+
+    assert result.outcome is KernelProbeOutcome.DISPATCH_FAILED
+    assert result.detail == "fell_back_to_cpu"
+
+
+def test_the_log_says_a_swapped_backend_found_no_device() -> None:
+    """The warning line is read by someone deciding whether their GPU is broken."""
+    from immich_memories.titles.kernel_backend_probe import (
+        KernelProbeOutcome,
+        KernelProbeResult,
+        probe_failure_wording,
+    )
+
+    wording = probe_failure_wording(
+        KernelProbeResult(KernelProbeOutcome.DISPATCH_FAILED, "fell_back_to_cpu")
+    )
+
+    assert wording == "found no device (the kernel library started on the CPU)"
+
+
+def test_the_cpu_backend_starting_on_the_cpu_is_a_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome
+
+    fake_ti = _FakeKernelLibrary(effect=_increments, falls_back=True)
+
+    assert _run_worker(monkeypatch, fake_ti, backend="cpu").outcome is KernelProbeOutcome.SUCCESS
 
 
 def test_non_apple_hosts_try_cuda_then_vulkan_then_cpu(monkeypatch: pytest.MonkeyPatch) -> None:

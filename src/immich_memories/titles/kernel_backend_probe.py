@@ -47,6 +47,9 @@ ti: Any = None
 
 _PIL_FALLBACK = "titles fall back to the PIL renderer"
 
+# Probe detail for a GPU backend whose runtime quietly started on the CPU instead.
+_FELL_BACK_TO_CPU = "fell_back_to_cpu"
+
 
 def kernel_library_installed() -> bool:
     """Whether a kernel-library wheel exists here, asked without loading one.
@@ -171,6 +174,18 @@ def _silent_init(*, arch: object, **kwargs) -> None:
         _kernel_library().init(**arguments)
 
 
+def _fell_back_to_cpu(library: Any, backend_name: str) -> bool:
+    """Whether the runtime started on the CPU although a GPU backend was asked for.
+
+    On a host without the device, init(arch=cuda) or init(arch=vulkan) does not
+    raise: the library warns, on the stream the probe silences, and starts on
+    the CPU. Every kernel then runs and returns the right answer, so only the
+    arch the runtime reports tells a container without a card from one with it
+    (#1202).
+    """
+    return backend_name != CPU_PROBE_NAME and library.lang.impl.current_cfg().arch == library.cpu
+
+
 def _probe_worker(backend_name: str) -> KernelProbeResult:
     """Initialize one backend and dispatch a real kernel inside a child process."""
     try:
@@ -178,6 +193,8 @@ def _probe_worker(backend_name: str) -> KernelProbeResult:
             library = _kernel_library()
             backend = getattr(library, backend_name)
             library.init(**_init_arguments(backend))
+            if _fell_back_to_cpu(library, backend_name):
+                return KernelProbeResult(KernelProbeOutcome.DISPATCH_FAILED, _FELL_BACK_TO_CPU)
 
             @library.kernel
             def increment(values: library.types.ndarray(dtype=library.i32, ndim=1)):
@@ -359,22 +376,42 @@ def _signal_wording(detail: str | None) -> str:
     return detail.lower() if detail else "a fatal signal"
 
 
+def _gpu_probes(operating_system: str) -> tuple[tuple[str, str], ...]:
+    """The GPU backends worth trying on this OS, as (display name, probe name), best first."""
+    if operating_system == "Darwin":
+        return (("Metal", "metal"),)
+    return (("CUDA", "cuda"), ("Vulkan", "vulkan"))
+
+
 def _candidate_backends(*, force_cpu: bool, operating_system: str) -> list[tuple[object, str, str]]:
     """Return parent architecture objects and child-safe probe names in priority order."""
     library = _kernel_library()
-    if force_cpu:
-        return [(library.cpu, "CPU", CPU_PROBE_NAME)]
-    if operating_system == "Darwin":
-        return [(library.metal, "Metal", "metal"), (library.cpu, "CPU", CPU_PROBE_NAME)]
+    gpus = () if force_cpu else _gpu_probes(operating_system)
     return [
-        (library.cuda, "CUDA", "cuda"),
-        (library.vulkan, "Vulkan", "vulkan"),
+        *((getattr(library, probe), name, probe) for name, probe in gpus),
         (library.cpu, "CPU", CPU_PROBE_NAME),
     ]
 
 
+def gpu_backend(operating_system: str) -> tuple[str | None, tuple[str, ...]]:
+    """The GPU backend title kernels will start on, and why each one tried before it did not.
+
+    Asks the same cached child probes `init_kernels()` does, so `preflight` names
+    the backend a run will get without loading the library in this process.
+    """
+    failures: list[str] = []
+    for name, probe_name in _gpu_probes(operating_system):
+        probe = probe_backend_dispatch(probe_name)
+        if probe.outcome is KernelProbeOutcome.SUCCESS:
+            return name, tuple(failures)
+        failures.append(f"{name}: {probe_failure_wording(probe)}")
+    return None, tuple(failures)
+
+
 def probe_failure_wording(probe: KernelProbeResult) -> str:
     """One probe failure as a reader of the log would want it: what happened, and the detail."""
+    if probe.detail == _FELL_BACK_TO_CPU:
+        return "found no device (the kernel library started on the CPU)"
     wording = {
         KernelProbeOutcome.CHILD_SIGNALLED: f"crashed ({_signal_wording(probe.detail)})",
         KernelProbeOutcome.TIMED_OUT: f"did not start within {_PROBE_TIMEOUT_SECONDS:.0f}s",

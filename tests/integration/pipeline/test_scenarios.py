@@ -15,7 +15,7 @@ import pytest
 
 from tests.conftest import make_clip
 from tests.integration.conftest import requires_ffmpeg
-from tests.integration.immich_fixtures import requires_immich
+from tests.integration.immich_fixtures import live_video_ids, requires_immich
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
@@ -187,7 +187,6 @@ class TestLivePhotoBurst:
         from immich_memories.timeperiod import DateRange
 
         config = Config.from_yaml(Config.get_default_path())
-        config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
         client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
         # Find live photos with video components
@@ -218,7 +217,9 @@ class TestLivePhotoBurst:
             max_age_days=1,
         )
 
-        result = download_clip(client, video_cache, clip, tmp_path)
+        # WHY: download_clip takes a cache batch; production opens one per run.
+        with video_cache.begin_batch() as batch:
+            result = download_clip(client, batch, clip, tmp_path)
 
         # Should produce a merged file (or fallback to single download)
         assert result is not None
@@ -249,7 +250,6 @@ class TestLivePhotoMergeReal:
         from immich_memories.timeperiod import DateRange
 
         config = Config.from_yaml(Config.get_default_path())
-        config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
         client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
         # Broad date range to find any live photos
@@ -273,7 +273,7 @@ class TestLivePhotoMergeReal:
             pytest.skip("No live photo clusters with 2+ photos found")
 
         # Download the video components
-        burst_ids = merge_cluster.video_asset_ids
+        burst_ids = live_video_ids(merge_cluster)
         if len(burst_ids) < 2:
             pytest.skip("Cluster video components missing live photo video IDs")
 
@@ -374,6 +374,9 @@ class TestTripTitleSettings:
 
         clip = _make_test_clip(short_clip)
         config = Config()
+        # WHY: map tiles are an outside call and off by default; without them a trip
+        # opens on the ordinary card and carries no pins (apply_map_tile_policy).
+        config.network.map_tiles = True
 
         params = GenerationParams(
             clips=[clip],

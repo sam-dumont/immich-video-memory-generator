@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 # Named here so the docs, the preflight rows and the code cannot drift apart.
 GEOCODING_HOST = "nominatim.openstreetmap.org"
 MAP_TILE_HOST = "server.arcgisonline.com"
-FONT_HOST = "cdn.jsdelivr.net"
 
 
 class NetworkConfig(BaseModel):
@@ -33,12 +32,5 @@ class NetworkConfig(BaseModel):
             f"Fetch satellite tiles from {MAP_TILE_HOST}: the trip fly-over, the static "
             "trip map and the map behind location cards. Sends tile coordinates covering "
             "the trip area and the home base"
-        ),
-    )
-    font_downloads: bool = Field(
-        default=False,
-        description=(
-            f"Fetch a title font from {FONT_HOST} when it is neither bundled with the "
-            "app nor in ~/.immich-memories/fonts"
         ),
     )

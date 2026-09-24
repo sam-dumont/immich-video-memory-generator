@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from immich_memories.titles.colors import ceil_white_for_hdr
-from immich_memories.titles.fonts import font_covering
+from immich_memories.titles.font_chain import title_font
 from immich_memories.titles.safe_zones import safe_text_width
 from immich_memories.titles.text_layout import (
     TextStack,
@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 # already leaves a gap, so this only ever answers a face drawn taller than the
 # line height it was measured at; one or two steps close that.
 _OVERLAP_ATTEMPTS = 4
+
+# How much smaller a title and its subtitle draw than a title alone, so that two
+# blocks sit where one did. Applied to both sizes: the config's ratios carry the
+# design's title-to-subtitle proportion, and this must not change it.
+_PAIR_SCALE = 0.65
 
 
 def _single_line(_text: str, _font_size: int) -> int:
@@ -223,9 +228,8 @@ class TitleTextRenderer:
         Same approach as map titles (rendering_service.py:180).
         """
         cfg = self.config
-        base = min(cfg.width, cfg.height)
-        ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
-        return int(base * ratio), int(base * cfg.subtitle_size_ratio)
+        base = min(cfg.width, cfg.height) * (_PAIR_SCALE if subtitle else 1.0)
+        return int(base * cfg.title_size_ratio), int(base * cfg.subtitle_size_ratio)
 
     def _stack(
         self,
@@ -433,18 +437,17 @@ class TitleTextRenderer:
             smoothing,
         )
 
-    def _font(self, font_size: int, text: str):
+    def _font(self, font_size: int):
         """The configured face at this size, or Pillow's own when it is missing.
 
         The fallback is asked for a size because the layout is measured in
         pixels: a face that ignores the size would place text nowhere near
-        where the stack expects it. A face without one of the text's letters
-        gives way to one that has them all (#1101).
+        where the stack expects it. A letter the face lacks is drawn by the
+        next font of the Noto chain that has it (#1101).
         """
         # WHY bold: _get_system_font takes the heaviest weight the family has.
-        path = font_covering(_get_system_font(self.config.font_family), text, bold=True)
         try:
-            return ImageFont.truetype(path, font_size)
+            return title_font(_get_system_font(self.config.font_family), font_size, bold=True)
         except (OSError, ValueError):
             return ImageFont.load_default(size=font_size)
 
@@ -454,9 +457,7 @@ class TitleTextRenderer:
         safe_width = safe_text_width(self.config.width, self.config.height)
 
         def count(text: str, font_size: int) -> int:
-            return len(
-                _split_text_for_rendering(draw, text, self._font(font_size, text), safe_width)
-            )
+            return len(_split_text_for_rendering(draw, text, self._font(font_size), safe_width))
 
         return count
 
@@ -470,7 +471,7 @@ class TitleTextRenderer:
         w, h = self.config.width, self.config.height
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        font = self._font(font_size, text)
+        font = self._font(font_size)
 
         safe_width = safe_text_width(w, h)
         bbox = draw.textbbox((0, 0), text, font=font)
