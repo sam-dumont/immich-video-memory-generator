@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import contextvars
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from immich_memories.cli._live_display import LiveDisplay
+    from immich_memories.config_loader import Config
 
 console = Console()
 
@@ -106,3 +110,16 @@ def print_info(message: str) -> None:
         _logger.info(message)
     else:
         console.print(f"[blue]\u2139[/blue] {message}")
+
+
+def refuse_blocked_host(config: Config, *, output_directory: Path | None) -> None:
+    """Exit with every pre-run install error (models, output directory), before any Immich call."""
+    from rich.markup import escape
+
+    from immich_memories.preflight_run import run_blockers
+
+    blockers = run_blockers(config, output_directory=output_directory)
+    for blocker in blockers:
+        print_error(escape(f"{blocker.message}: {blocker.details}"))
+    if blockers:
+        sys.exit(1)

@@ -631,6 +631,7 @@ markers = [
     "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",
     "demo: renders a docs demo asset (run with: make demo-output)",
+    "install_checks: meets the real pre-run install checks instead of an install that ran models fetch",
 ]
 # `-p no:quadrants`: the quadrants distribution registers a pytest11 plugin, so
 # merely having it installed pulls its C++ runtime into every pytest session,

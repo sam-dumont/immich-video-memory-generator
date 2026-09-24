@@ -79,7 +79,7 @@ jobs:
   # ── CI benchmarks (Linux only) ─────────────────────────────────────────────
   bench-linux:
     name: Benchmark (Linux CI)
-    if: github.event_name != 'workflow_dispatch'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name != 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -193,7 +193,7 @@ jobs:
   # ── Ingest results from local runners (Mac, Synology, GPU, etc.) ───────────
   ingest:
     name: Ingest (${{ github.event.inputs.runner }})
-    if: github.event_name == 'workflow_dispatch'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     # A dispatched ingest has no PR to comment on; it only writes the cache.
     permissions:

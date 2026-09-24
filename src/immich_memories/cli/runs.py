@@ -101,6 +101,18 @@ def _print_run_details_table(run, format_duration) -> None:
     console.print(table)
 
 
+def _print_cut_checks(cache_dir: Path, run_id: str) -> None:
+    """How many promises the run's finished cut broke, when its cut recorded the check."""
+    from immich_memories.analysis.editorial_cut_invariants import broken_promises
+    from immich_memories.operations.run_index import attempt_dir_for_run
+
+    count = broken_promises(attempt_dir_for_run(cache_dir, run_id))
+    if count is None:
+        return
+    style = "green" if count == 0 else "yellow"
+    console.print(f"Cut checks: [{style}]{count} broken promise(s)[/{style}]")
+
+
 def _print_run_llm_totals(run) -> None:
     """What the run spent on the model, if it used one.
 
@@ -297,6 +309,7 @@ def register_runs_commands(main: click.Group) -> None:
         console.print()
 
         _print_run_details_table(run, format_duration)
+        _print_cut_checks(get_config().cache.cache_path, run.run_id)
 
         if run.phases:
             _print_run_phases_table(run, format_duration)

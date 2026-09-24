@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import logging
 import sys
@@ -523,81 +522,6 @@ def _platform_tag() -> str:
     )
 
 
-def check_encoder(config: Config) -> CheckResult:
-    """Report the digest-pinned DINOv2 export the eight context heads run on."""
-    if not config.editorial.preparation.demands_models:
-        return CheckResult(
-            name="Encoder", status=CheckStatus.SKIPPED, message="Not required by metadata_only"
-        )
-    from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
-
-    path = config.triage.encoder_path
-    if not path.is_file():
-        return CheckResult(
-            name="Encoder",
-            status=CheckStatus.ERROR,
-            message="Pinned DINOv2 export missing",
-            details=f"{path}; run: immich-memories models fetch",
-        )
-    with path.open("rb") as handle:
-        digest = hashlib.file_digest(handle, "sha256").hexdigest()
-    if digest != DINOV2_SMALL_ONNX_SHA256:
-        return CheckResult(
-            name="Encoder",
-            status=CheckStatus.ERROR,
-            message="Not the pinned DINOv2 export",
-            details=f"{path}: {digest[:12]} is not {DINOV2_SMALL_ONNX_SHA256[:12]}",
-        )
-    return CheckResult(
-        name="Encoder",
-        status=CheckStatus.OK,
-        message="Pinned DINOv2 export verified",
-        details=str(path),
-    )
-
-
-def check_detector_export(config: Config) -> CheckResult:
-    """Report the digest-pinned sensitive-content export the flag detector runs on.
-
-    It is checked here because the alternative is finding out during the cut:
-    the detector worker is a separate process reached hours into preparation.
-    """
-    if not config.editorial.preparation.demands_models:
-        return CheckResult(
-            name="Sensitive-content detector",
-            status=CheckStatus.SKIPPED,
-            message="Not required by metadata_only",
-        )
-    from immich_memories.analysis.editorial_preparation_detectors import (
-        MARQO_ONNX_ID,
-        MARQO_ONNX_SHA256,
-    )
-
-    path = config.editorial.preparation.marqo_onnx_path
-    if not path.is_file():
-        return CheckResult(
-            name="Sensitive-content detector",
-            status=CheckStatus.ERROR,
-            message=f"Pinned {MARQO_ONNX_ID} export missing",
-            details=f"{path}; run: immich-memories models fetch",
-        )
-    with path.open("rb") as handle:
-        digest = hashlib.file_digest(handle, "sha256").hexdigest()
-    if digest != MARQO_ONNX_SHA256:
-        return CheckResult(
-            name="Sensitive-content detector",
-            status=CheckStatus.ERROR,
-            message=f"Not the pinned {MARQO_ONNX_ID} export",
-            details=f"{path}: {digest[:12]} is not {MARQO_ONNX_SHA256[:12]}",
-        )
-    return CheckResult(
-        name="Sensitive-content detector",
-        status=CheckStatus.OK,
-        message="Pinned sensitive-content export verified",
-        details=str(path),
-    )
-
-
 # Nothing ships a captioner, so a failing row has to say where the recipes are.
 # A path, not a URL: the docs travel with the checkout and with the image.
 CAPTION_SETUP_PAGE = "docs/better/captions.md"
@@ -675,7 +599,7 @@ def check_caption_endpoint(config: Config) -> CheckResult:
 # it still names an interpreter under /Users, or a models directory on a volume
 # the new box does not mount, and the failure lands hours later inside a worker.
 # The encoder and the sensitive-content export are deliberately absent: they get
-# their own rows above, with the digest and the command that fixes them.
+# their own rows (preflight_run), with the digest and the command that fixes them.
 HOST_PATH_KEYS = (
     "output.directory",
     "audio.local_music_dir",
@@ -741,6 +665,11 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
     from immich_memories.preflight_homebase import check_homebase
     from immich_memories.preflight_network import outside_call_checks
     from immich_memories.preflight_render import check_render_worker
+    from immich_memories.preflight_run import (
+        check_detector_export,
+        check_encoder,
+        check_output_directory,
+    )
 
     return [
         check_immich(config),
@@ -751,6 +680,7 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_detector_export(config),
         check_caption_endpoint(config),
         check_host_paths(config),
+        check_output_directory(config.output.output_path),
         check_notifications(config),
         check_render_worker(config),
         check_hardware(),

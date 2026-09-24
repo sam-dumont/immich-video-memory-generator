@@ -27,7 +27,9 @@ immich-memories runs show 20260105_1430
 ```
 
 Status, clip counts, output file size, the phase-by-phase timing, and the machine it ran on (CPU,
-GPU, RAM, FFmpeg version).
+GPU, RAM, FFmpeg version). A run whose cut was checked against its promises also prints
+`Cut checks: N broken promise(s)`; the rows are in the attempt's
+`derived-decisions/cut-invariants.private.json` (see [the pipeline](../../being-rewritten/pipeline.md#the-finished-cut-is-checked-against-its-promises)).
 
 A partial run id matches if it is unambiguous among the 100 most recent runs. Older than that, a
 unique prefix still reports "Run not found": use the full id.

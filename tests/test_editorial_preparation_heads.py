@@ -62,5 +62,5 @@ def test_a_bundle_at_another_head_version_stops_preparation(tmp_path):
 
 
 def test_a_missing_encoder_stops_preparation_instead_of_silently_skipping_the_facts(tmp_path):
-    with pytest.raises(FileNotFoundError, match="set triage.encoder"):
+    with pytest.raises(FileNotFoundError, match="immich-memories models fetch"):
         prepare(tmp_path, dict(PUBLIC_HEAD_VERSIONS))

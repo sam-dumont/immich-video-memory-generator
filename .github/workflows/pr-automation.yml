@@ -32,7 +32,7 @@ jobs:
   validate-title:
     name: Validate PR Title
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     permissions:
       contents: read
       pull-requests: read
@@ -64,7 +64,7 @@ jobs:
   size:
     name: PR Size
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     permissions:
       contents: read
       pull-requests: write
@@ -87,7 +87,7 @@ jobs:
   breaking-change-check:
     name: Breaking Change Review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     permissions:
       contents: read
       pull-requests: write
@@ -124,7 +124,7 @@ jobs:
   welcome:
     name: Welcome
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request' && github.event.action == 'opened')
     permissions:
       contents: read
       pull-requests: write
@@ -156,7 +156,7 @@ jobs:
   private-terms:
     name: Private terms
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && (github.event_name == 'pull_request')
     permissions:
       contents: read
     env:
