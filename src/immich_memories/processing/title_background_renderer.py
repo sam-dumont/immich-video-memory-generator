@@ -13,7 +13,7 @@ from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 from immich_memories.processing.hardware_encode import apply_hardware_encode
-from immich_memories.processing.hdr_utilities import _get_colorspace_filter
+from immich_memories.processing.hdr_utilities import get_colorspace_filter
 from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class TitleBackgroundRenderer:
             "-s", f"{target_w}x{target_h}", "-r", str(fps),
             *input_color_args,
             "-i", "pipe:0",
-            "-vf", _get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
+            "-vf", get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
             *encoder_args,
             "-an", "-movflags", "+faststart",
             str(output_path),

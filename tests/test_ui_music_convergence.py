@@ -147,7 +147,7 @@ async def test_choosing_no_music_never_reaches_the_music_phase(
         ran.append(True)
 
     # WHY: the shared phase is the boundary under inspection; it must not be entered.
-    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", spy)
+    monkeypatch.setattr("immich_memories.generate_settings.run_music_phase", spy)
     # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
     monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
 
@@ -211,7 +211,7 @@ async def test_choosing_bundled_asks_the_shared_phase_for_bundled(
         return callback(*args, **kwargs)
 
     # WHY: the shared phase is the boundary; only which source it is handed matters here.
-    monkeypatch.setattr("immich_memories.generate_settings._run_music_phase", spy)
+    monkeypatch.setattr("immich_memories.generate_settings.run_music_phase", spy)
     # WHY: ffprobe and ffmpeg read the film; these bytes are a placeholder.
     monkeypatch.setattr(output_contract.subprocess, "run", output_tools(payload_of(_probe())))
     monkeypatch.setattr(step4.run, "io_bound", io_bound)

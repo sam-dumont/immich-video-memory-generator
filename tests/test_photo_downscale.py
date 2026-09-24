@@ -139,7 +139,7 @@ def test_the_pipeline_caps_the_source_at_1_5x_output(monkeypatch, tmp_path) -> N
     import contextlib
 
     with contextlib.suppress(RuntimeError):
-        photo_pipeline._render_single_photo(  # noqa: SLF001 — the cap lives on this path
+        photo_pipeline.render_single_photo(  # noqa: SLF001 — the cap lives on this path
             asset,
             config=MagicMock(),
             target_w=3840,

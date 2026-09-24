@@ -157,7 +157,7 @@ cell is reclaimed three times, treat it as a resource problem rather than luck.
 
 ## Hardware encoders are absent on CI
 
-`_render_single_photo` picks its encoder from `check_zscale_available()`: with zscale it uses
+`render_single_photo` picks its encoder from `check_zscale_available()`: with zscale it uses
 `hevc_videotoolbox`, without it `libx264`. VideoToolbox writes no file inside CI's macOS VM, and
 the function returns `None` when encoding produces nothing, so the failure surfaces as whatever the
 test asserted next, not as an encoder error. Any unit test that reaches the photo encoder needs the

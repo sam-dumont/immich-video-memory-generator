@@ -30,7 +30,7 @@ def _raise_404(*args: object, **kwargs: object) -> bytes:
 
 
 def test_rendering_skips_a_photo_whose_original_is_gone(tmp_path: Path) -> None:
-    """`_render_single_photo` returns None for a skip; callers do `if clip:`."""
+    """`render_single_photo` returns None for a skip; callers do `if clip:`."""
     asset = pytest.importorskip("immich_memories.api.models").Asset(
         id="gone",
         type="IMAGE",
@@ -42,7 +42,7 @@ def test_rendering_skips_a_photo_whose_original_is_gone(tmp_path: Path) -> None:
     )
     config = photo_pipeline.PhotoConfig()
 
-    result = photo_pipeline._render_single_photo(
+    result = photo_pipeline.render_single_photo(
         asset, config, 1920, 1080, tmp_path, download_fn=_raise_404
     )
 

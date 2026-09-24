@@ -90,7 +90,7 @@ def _ken_burns_params(asset: Asset, prepared: Any, fps: int, duration: float) ->
     )
 
 
-def _render_single_photo(
+def render_single_photo(
     asset: Asset,
     config: PhotoConfig,
     target_w: int,
@@ -148,7 +148,7 @@ def _render_single_photo(
         return None
 
 
-def _photo_filter_chain(
+def photo_filter_chain(
     *, gain_map_hdr: bool, has_zscale: bool, peak_nits: int, primaries: str
 ) -> tuple[str, str]:
     """The pipe format and zscale chain for one photo clip.
@@ -210,7 +210,7 @@ def _stream_render_to_mp4(
     # is what iPhone video is, and the assembler converts between the two.
     transfer = "smpte2084"
     encoder_args = _get_photo_encoder_args(transfer) if has_zscale else _get_sdr_encoder_args()
-    pix_fmt, vf = _photo_filter_chain(
+    pix_fmt, vf = photo_filter_chain(
         gain_map_hdr=gain_map_hdr, has_zscale=has_zscale, peak_nits=peak_nits, primaries=primaries
     )
 

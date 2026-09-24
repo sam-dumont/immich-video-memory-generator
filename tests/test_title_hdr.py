@@ -159,7 +159,7 @@ class TestVideoEncodingPlan:
 
         with (
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=False,
             ),
             pytest.raises(RuntimeError) as exc_info,
@@ -174,7 +174,7 @@ class TestVideoEncodingPlan:
         from immich_memories.titles.video_encoding import _get_best_encoder
 
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
             _, video_filter = _get_best_encoder(_hardware_h265_hdr_plan())
@@ -188,7 +188,7 @@ class TestVideoEncodingPlan:
         from immich_memories.titles.encoding import title_color_filter
 
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
             video_filter = title_color_filter(_hardware_h265_hdr_plan())
@@ -202,7 +202,7 @@ class TestVideoEncodingPlan:
 
         with (
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=False,
             ),
             pytest.raises(RuntimeError, match="zscale"),
@@ -215,7 +215,7 @@ class TestVideoEncodingPlan:
         from immich_memories.titles.video_encoding import _get_best_encoder
 
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
             encoder_args, video_filter = _get_best_encoder(_software_h265_pq_plan())

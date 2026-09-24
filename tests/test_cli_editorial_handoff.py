@@ -38,7 +38,7 @@ def test_cli_passes_exact_selected_carriers_and_editorial_decisions_to_generatio
     # WHY: replaces clip conversion, the selection pipeline, and the render step reached here.
     with (
         # WHY: forces the exact `clip` object through so identity checks on params.clips hold.
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
+        patch("immich_memories.generate_clips.assets_to_clips", return_value=[clip]),
         # WHY: the pipeline is a stand-in configured to hand back the pre-built result.
         patch("immich_memories.analysis.editorial_runtime.build_smart_pipeline") as pipeline_type,
         # WHY: replaces the FFmpeg render; the test inspects the params it was called with.

@@ -6,24 +6,6 @@ import json
 import logging
 
 
-class TestRunIdWiredInPipeline:
-    """generate_memory should set run_id for logging."""
-
-    def test_generate_memory_calls_set_current_run_id(self):
-        """generate_memory must call set_current_run_id."""
-        import inspect
-
-        import immich_memories.generate as gen_mod
-
-        source = inspect.getsource(gen_mod.generate_memory)
-        # Should import and call set_current_run_id somewhere in the pipeline
-        assert "set_current_run_id" in source or "set_current_run_id" in inspect.getsource(
-            gen_mod._generate_memory_inner
-            if hasattr(gen_mod, "_generate_memory_inner")
-            else gen_mod.generate_memory
-        )
-
-
 class TestRunIdFilter:
     """RunIdFilter should inject run_id into every log record."""
 

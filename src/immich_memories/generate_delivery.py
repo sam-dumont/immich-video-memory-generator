@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, NoReturn
 
 from immich_memories.delivery_timestamp import film_capture_instant
 from immich_memories.generate_progress import _report
-from immich_memories.generate_settings import _upload_to_immich
+from immich_memories.generate_settings import upload_to_immich
 from immich_memories.operations.phases import OperationalPhase
 from immich_memories.processing.output_contract import InvalidOutputArtifact
 from immich_memories.security import configured_secret_values, sanitize_error_message
@@ -102,7 +102,7 @@ def deliver_completed_artifact(
     delivery_error: DeliveryError | None = None
     asset_id: str | None = None
     try:
-        result = _upload_to_immich(
+        result = upload_to_immich(
             params.client,
             result_path,
             params.upload_album,

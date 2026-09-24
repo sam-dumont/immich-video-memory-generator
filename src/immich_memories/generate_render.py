@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from immich_memories.filename_builder import normalize_output_path
-from immich_memories.generate_clips import _cleanup_temp_clips, _extract_clips
+from immich_memories.generate_clips import cleanup_temp_clips, extract_clips
 from immich_memories.generate_privacy import (
     anonymize_clips_for_privacy,
     anonymize_name,
@@ -18,9 +18,9 @@ from immich_memories.generate_privacy import (
 )
 from immich_memories.generate_progress import _OperationalProgress, _PipelineProgress
 from immich_memories.generate_settings import (
-    _build_assembly_settings,
-    _create_assembler,
     announce_title_source,
+    build_assembly_settings,
+    create_assembler,
 )
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
@@ -110,7 +110,7 @@ def _build_settings_with_optional_probe_cache(
     probe_cache: ProbeCache,
 ):
     return _call_with_optional_probe_cache(
-        _build_assembly_settings,
+        build_assembly_settings,
         params,
         assembly_clips,
         probe_cache=probe_cache,
@@ -124,7 +124,7 @@ def _create_assembler_with_optional_probe_cache(
     probe_cache: ProbeCache,
 ):
     return _call_with_optional_probe_cache(
-        _create_assembler,
+        create_assembler,
         settings,
         config,
         probe_cache=probe_cache,
@@ -142,14 +142,14 @@ def _extract_clips_with_optional_prefetch(
     coordinator = _build_download_coordinator(params, cache_batch, output_dir)
     if coordinator is None:
         return _call_with_optional_probe_cache(
-            _extract_clips,
+            extract_clips,
             params,
             cache_batch,
             output_dir,
             probe_cache=probe_cache,
         )
     return _call_with_optional_probe_cache(
-        _extract_clips,
+        extract_clips,
         params,
         cache_batch,
         output_dir,
@@ -354,6 +354,6 @@ def render_local(
         )
     finally:
         try:
-            _cleanup_temp_clips(assembly_clips)
+            cleanup_temp_clips(assembly_clips)
         except OSError:
             logger.debug("Temp clip cleanup failed", exc_info=True)

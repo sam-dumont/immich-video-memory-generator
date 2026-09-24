@@ -187,7 +187,7 @@ def _configure_timeline_for_selection(
 ) -> TimelinePlan:
     """Persist one preliminary timeline and apply its content budget."""
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.processing.timeline_budget import plan_timeline
 
     config = state.config
@@ -207,7 +207,7 @@ def _configure_timeline_for_selection(
         date_end=date_range.end if date_range else None,
         memory_preset_params=state.memory_preset_params,
     )
-    title_settings = _build_title_settings(planning_params, config, [])
+    title_settings = build_title_settings(planning_params, config, [])
     plan = plan_timeline(
         [*clips, *photos],
         title_settings,

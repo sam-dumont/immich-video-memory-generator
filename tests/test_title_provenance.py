@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import date
 
 from immich_memories.config_loader import Config
-from immich_memories.generate import GenerationParams, _build_title_settings
+from immich_memories.generate import GenerationParams
+from immich_memories.generate_settings import build_title_settings
 
 
 def _params(tmp_path, **overrides) -> GenerationParams:
@@ -21,7 +22,7 @@ def _params(tmp_path, **overrides) -> GenerationParams:
 
 
 def test_a_film_nobody_named_opens_on_the_template(tmp_path):
-    settings = _build_title_settings(_params(tmp_path), Config(), [])
+    settings = build_title_settings(_params(tmp_path), Config(), [])
 
     assert settings is not None
     assert settings.title_source == "fallback"
@@ -30,7 +31,7 @@ def test_a_film_nobody_named_opens_on_the_template(tmp_path):
 def test_a_holiday_is_named_by_its_occasion(tmp_path):
     params = _params(tmp_path, memory_type="holiday", memory_preset_params={"holiday": "christmas"})
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_source == "occasion"
@@ -47,7 +48,7 @@ def test_a_trip_is_named_by_its_place(tmp_path):
         },
     )
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_source == "place"
@@ -56,7 +57,7 @@ def test_a_trip_is_named_by_its_place(tmp_path):
 def test_a_title_the_run_was_handed_keeps_the_source_it_came_with(tmp_path):
     params = _params(tmp_path, title="A summer by the sea", title_source="model")
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_override == "A summer by the sea"
@@ -66,7 +67,7 @@ def test_a_title_the_run_was_handed_keeps_the_source_it_came_with(tmp_path):
 def test_a_title_with_no_stated_source_is_an_override(tmp_path):
     params = _params(tmp_path, title="Our year")
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_source == "override"

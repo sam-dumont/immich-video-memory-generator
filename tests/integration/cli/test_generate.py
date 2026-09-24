@@ -135,7 +135,7 @@ class TestGenerateMemoryPipeline:
 
     def test_automation_memory_key_override_is_authoritative(self, tmp_path) -> None:
         from immich_memories.config_loader import Config
-        from immich_memories.generate import GenerationParams, _build_memory_key
+        from immich_memories.generate import GenerationParams, build_memory_key
 
         params = GenerationParams(
             clips=[],
@@ -144,7 +144,7 @@ class TestGenerateMemoryPipeline:
             memory_key_override="candidate:exact:key",
         )
 
-        assert _build_memory_key(params) == "candidate:exact:key"
+        assert build_memory_key(params) == "candidate:exact:key"
 
     def test_two_clips_crossfade(self, tmp_path, fixture_mp4):
         """2 clips → generate_memory completes with valid output."""
@@ -968,7 +968,7 @@ class TestPipelineRunner:
 
         with (
             # WHY: mock assets_to_clips — real one needs Asset.duration from Immich metadata
-            patch("immich_memories.generate.assets_to_clips", return_value=clips),
+            patch("immich_memories.generate_clips.assets_to_clips", return_value=clips),
             # WHY: replaces the editorial planner, which reads the owner's annotation store
             patch(
                 "immich_memories.analysis.editorial_runtime.build_smart_pipeline"
@@ -1035,7 +1035,7 @@ class TestPipelineRunner:
 
         with (
             # WHY: mock assets_to_clips — real one needs Asset.duration from Immich metadata
-            patch("immich_memories.generate.assets_to_clips", return_value=clips),
+            patch("immich_memories.generate_clips.assets_to_clips", return_value=clips),
             # WHY: a dry run must never reach the planner; failing loudly proves it
             patch(
                 "immich_memories.analysis.editorial_runtime.build_smart_pipeline",

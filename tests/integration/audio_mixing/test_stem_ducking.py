@@ -105,7 +105,7 @@ def test_shared_music_phase_mixes_generated_music(tmp_path, monkeypatch, use_ste
     from immich_memories.audio.music_generator_models import GeneratedMusic, MusicStems
     from immich_memories.config import Config
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
     from tests.test_music_output_paths import _h264_output_plan
 
     time = np.arange(3 * RATE) / RATE
@@ -149,7 +149,7 @@ def test_shared_music_phase_mixes_generated_music(tmp_path, monkeypatch, use_ste
     config.ace_step.enabled = True
     # WHY: replace run-history writes; the real music phase still validates its output.
     tracker = MagicMock()
-    outcome = _run_music_phase(
+    outcome = run_music_phase(
         GenerationParams(clips=[], output_path=video, config=config),
         [],
         video,

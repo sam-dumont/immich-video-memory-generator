@@ -153,13 +153,13 @@ class TestTheRendererAsksWhatTheCandidateCarries:
         # was taken, not what it produced.
         with (
             patch(
-                "immich_memories.generate_photos._render_photo_as_clip", return_value=rendered
+                "immich_memories.generate_photos.render_photo_as_clip", return_value=rendered
             ) as render_photo,
             patch("immich_memories.generate_downloads.download_clip") as download,
         ):
-            from immich_memories.generate_clips import _extract_clips
+            from immich_memories.generate_clips import extract_clips
 
-            _extract_clips(params, None, tmp_path)
+            extract_clips(params, None, tmp_path)
 
         render_photo.assert_called_once()
         download.assert_not_called()

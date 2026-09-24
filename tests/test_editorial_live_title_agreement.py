@@ -10,7 +10,7 @@ import pytest
 from immich_memories.api.models import AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
-from immich_memories.generate_settings import _build_assembly_settings
+from immich_memories.generate_settings import build_assembly_settings
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
@@ -206,12 +206,12 @@ def test_generation_settings_bind_actual_source_certificate(tmp_path, monkeypatc
         lambda *_a, **_kw: HdrTransfer.NONE,
     )
     rendered = content("still")
-    settings = _build_assembly_settings(params, [rendered])
+    settings = build_assembly_settings(params, [rendered])
     assert settings.certified_content_intervals == {"still": (0.25, 4.25)}
     with pytest.raises(ValueError, match="Certified editorial Live interval changed"):
-        _build_assembly_settings(params, [replace(rendered, duration=3.5)])
+        build_assembly_settings(params, [replace(rendered, duration=3.5)])
     source.editorial_live_manifest = None
-    assert _build_assembly_settings(params, [rendered]).certified_content_intervals == {}
+    assert build_assembly_settings(params, [rendered]).certified_content_intervals == {}
     from immich_memories.processing.editorial_timing import (
         bind_editorial_timeline,
         timing_policy_for_params,
@@ -221,6 +221,6 @@ def test_generation_settings_bind_actual_source_certificate(tmp_path, monkeypatc
     policy = timing_policy_for_params(params)
     timeline = policy.resolve([{"asset_id": "still", "seconds": 4}], {"still": source.asset})
     params.editorial_render_timing = bind_editorial_timeline(policy, timeline, ["still"])
-    assert _build_assembly_settings(params, [rendered]).certified_content_intervals == {
+    assert build_assembly_settings(params, [rendered]).certified_content_intervals == {
         "still": (0.0, 4.0)
     }

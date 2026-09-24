@@ -6,7 +6,7 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.generate import GenerationParams
-from immich_memories.generate_settings import _build_assembly_settings
+from immich_memories.generate_settings import build_assembly_settings
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
@@ -100,7 +100,7 @@ def test_generation_keeps_french_captions_when_titles_are_disabled(tmp_path):
         add_date_overlay=True,
         add_place_overlay=True,
     )
-    settings = _build_assembly_settings(params, [])
+    settings = build_assembly_settings(params, [])
     assert settings.title_screens is None
     clips = [
         AssemblyClip(tmp_path / "one.mp4", 4.0, date="2025-08-10", location_name="Nice, France"),

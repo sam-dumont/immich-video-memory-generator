@@ -15,28 +15,12 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, overload
 
-from immich_memories.generate_clips import (
-    MIN_CLIP_DURATION,
-    _cleanup_temp_clips,
-    _cleanup_temp_dirs,
-    _extract_clips,
-    _probe_file_duration,
-    assets_to_clips,
-)
+from immich_memories.generate_clips import cleanup_temp_clips, cleanup_temp_dirs
 from immich_memories.generate_delivery import (
     _deliver_with_operational_progress,
     _safe_delivery_message,
 )
-from immich_memories.generate_photos import (
-    _detect_photo_resolution,
-    _render_photo_as_clip,
-)
-from immich_memories.generate_settings import (
-    _build_assembly_settings,
-    _build_title_settings,
-    _create_assembler,
-    _run_music_phase,
-)
+from immich_memories.generate_settings import run_music_phase
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.operations.run_index import record_run_attempt
 from immich_memories.processing.output_canvas import OutputCanvas
@@ -64,29 +48,6 @@ from immich_memories.generate_progress import (  # noqa: E402
 )
 
 logger = logging.getLogger(__name__)
-
-# Re-export all extracted symbols so existing callers continue to work
-__all__ = [
-    "GenerationParams",
-    "PreparedGeneration",
-    "GenerationError",
-    "DeliveryError",
-    "PipelineLock",
-    "generate_memory",
-    "check_disk_space",
-    "assets_to_clips",
-    "MIN_CLIP_DURATION",
-    "_detect_photo_resolution",
-    "_render_photo_as_clip",
-    "_probe_file_duration",
-    "_extract_clips",
-    "_cleanup_temp_clips",
-    "_cleanup_temp_dirs",
-    "_build_assembly_settings",
-    "_build_title_settings",
-    "_create_assembler",
-    "_run_music_phase",
-]
 
 
 @dataclass
@@ -330,7 +291,7 @@ def generate_memory(
         )
 
 
-def _build_memory_key(params: GenerationParams) -> str | None:
+def build_memory_key(params: GenerationParams) -> str | None:
     """Compute deterministic dedup key from generation params, or None if incomplete."""
     if params.memory_key_override is not None:
         return params.memory_key_override
@@ -362,7 +323,7 @@ def _complete_music_phase(
 
     operational.emit(OperationalPhase.MUSIC, 0, 1, "Generating music")
     progress.report("music", 0.0, "Generating music...")
-    result = _run_music_phase(
+    result = run_music_phase(
         params,
         assembly_clips,
         result_path,
@@ -412,12 +373,12 @@ def _clear_run_intermediates(
 ) -> None:
     """Cleanup never masks the outcome of the run it is closing."""
     try:
-        _cleanup_temp_clips(assembly_clips)
+        cleanup_temp_clips(assembly_clips)
     except OSError:
         logger.debug("Temp clip cleanup failed", exc_info=True)
     try:
         if not params.debug_preserve_intermediates:
-            _cleanup_temp_dirs(run_output_dir)
+            cleanup_temp_dirs(run_output_dir)
     except OSError:
         logger.debug("Temp dir cleanup failed", exc_info=True)
 
@@ -461,7 +422,7 @@ def _generate_memory_inner(
             params.target_duration_seconds or _total_clip_duration(params)
         ),
         memory_type=params.memory_type,
-        memory_key=_build_memory_key(params),
+        memory_key=build_memory_key(params),
         memory_category=params.memory_category,
         memory_people=params.memory_people,
         source=params.source,
