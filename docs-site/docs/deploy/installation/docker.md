@@ -26,9 +26,11 @@ IMMICH_API_KEY=your-api-key-here
 ```
 
 Get the key from Immich: **Account Settings > API Keys > New API Key**. Pick **All**, or a minimal
-key: read on assets, people, albums, timeline and search, plus asset upload and album create/update
-for upload-back. Your originals are never touched. Asset delete is optional and only lets
-upload-back trash the previous render of the same recipe; without it old copies pile up.
+key: read on assets, people, albums, timeline, search and tags, plus asset upload, album
+create/update and tag create/asset for upload-back. The tag marks each uploaded film as this app's
+own, so a later run never films it again and can tell it apart from your videos. Your originals are
+never touched. Asset delete is optional and only lets upload-back trash the previous render of the
+same recipe; without it old copies pile up.
 
 ```bash
 docker compose up -d

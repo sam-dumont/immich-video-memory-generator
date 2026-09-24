@@ -51,7 +51,10 @@ The client handles the three v3 wire changes that affect generation:
 
 - **Duration:** v2 duration strings and v3 integer milliseconds are normalized to seconds.
 - **Upload:** v2 keeps the device identity fields; v3 sends `filename` and omits the removed
-  `deviceAssetId` and `deviceId` fields. The schema is selected before bytes are uploaded.
+  `deviceAssetId` and `deviceId` fields. The schema is selected before bytes are uploaded. v3
+  assets no longer report a device either, so a re-render recognises its earlier upload by the
+  `immich-memories/generated` tag on both versions. A v3 render uploaded before the tag existed
+  is left in place.
 - **Search dates:** date bounds include a UTC offset, which v3 requires.
 
 After upgrading Immich:
