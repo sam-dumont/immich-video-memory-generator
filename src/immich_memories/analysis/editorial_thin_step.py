@@ -13,6 +13,7 @@ from functools import partial
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_carrier_eligibility import people_moment
 from immich_memories.analysis.editorial_story_candidates import story_candidates
+from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingBankFile, StandingGate
 from immich_memories.analysis.editorial_structure_material import Material, Wall
 from immich_memories.analysis.editorial_thin_gates import ThinGates
@@ -91,4 +92,5 @@ def polish_the_draft(
         content_cap=run.final_content_cap,
         protected=source.owner_required_asset_ids,
         subject=source.intent.subject or "",
+        close_family=film_close_family(source),
     )

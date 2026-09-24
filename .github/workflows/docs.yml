@@ -94,6 +94,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     needs: build
     runs-on: ubuntu-latest
     # The deploy-pages contract: pages to publish, id-token to prove which

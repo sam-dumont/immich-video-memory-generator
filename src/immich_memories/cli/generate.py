@@ -45,6 +45,7 @@ from immich_memories.cli.generate_resolution import (
     _validate_album_scope,
     announce_people_window,
     name_from_catalogue,
+    refuse_unfinishable_run,
     resolve_inclusion,
     resolve_people_condition,
     resolve_people_memory_window,
@@ -310,6 +311,7 @@ def register_generate_commands(main: click.Group) -> None:
                 person_expression=people_condition,
                 special_event_id=(special_day or {}).get("event_id"),
             )
+        refuse_unfinishable_run(config, output_path, dry_run=dry_run, no_render=no_render)
 
         if not quiet:
             console.print()

@@ -22,14 +22,13 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
-from immich_memories.analysis.editorial_story_replies import close_family_on, people_on
+from immich_memories.analysis.editorial_story_replies import close_family_on, film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
 from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 from immich_memories.speech.cuts import minimum_duration
 
 FAMILY_SEAT_VERSION = "family-seat-v1"
-PERSON_FILMS = frozenset({"person_spotlight", "multi_person"})
 
 
 @dataclass(frozen=True)
@@ -193,25 +192,22 @@ def _weakest_replaceable(
     return min(victims, key=lambda c: (inputs.score_of(c["asset_id"]), c.get("taken") or ""))
 
 
-def film_close_family(source: StructurePlanningInput) -> Callable[[str], Mapping[str, str]]:
-    """Who on a line counts as close family in this film.
+def film_refusal(
+    source: StructurePlanningInput,
+    excluded: Mapping[str, str],
+    withheld: Callable[[str], bool],
+) -> Callable[[str], bool]:
+    """Whether this film refuses a picture as a carrier: a carrier rule, a banked refusal, or
+    (for a film shared beyond the family) the exposure head's hold."""
 
-    The owner's partner, children and parents always do. A film about people adds each
-    subject's own partner, children and parents, as the people file links them: in a film of
-    the owner's partner, their parents are close family though the owner calls them in-laws.
-    """
-    if source.case.product not in PERSON_FILMS or source.people is None or not source.case.people:
-        return close_family_on
-    theirs = source.people.close_family_of(source.case.people)
+    def refused(asset: str) -> bool:
+        heads = source.audience_annotations.get(asset)
+        shared_hold = source.audience != "family" and exposure_flagged(
+            dict(heads.heads) if heads else {}
+        )
+        return asset in excluded or withheld(asset) or shared_hold
 
-    def close_family(line: str) -> Mapping[str, str]:
-        found = close_family_on(line)
-        for name in people_on(line):
-            if name in theirs:
-                found[name] = f"{theirs[name]} of the film's subject"
-        return found
-
-    return close_family
+    return refused
 
 
 @dataclass(frozen=True)
@@ -264,14 +260,7 @@ def seat_in_film(
         gate.ensure([asset])
         return gate.stands(asset, story["weight"], story["key"])
 
-    withheld = withheld_by_bank(film.banked, favourite=favourite)
-
-    def refused(asset: str) -> bool:
-        heads = source.audience_annotations.get(asset)
-        shared_hold = source.audience != "family" and exposure_flagged(
-            dict(heads.heads) if heads else {}
-        )
-        return asset in excluded or withheld(asset) or shared_hold
+    refused = film_refusal(source, excluded, withheld_by_bank(film.banked, favourite=favourite))
 
     def has_room(cut: list[dict]) -> bool:
         if len(cut) > selection.slots:

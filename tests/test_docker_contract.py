@@ -653,3 +653,27 @@ def test_the_captioner_on_a_card_keeps_the_memory_limit_and_takes_no_cpu_quota()
     assert shipped["limits"]["memory"]
     assert "cpus" not in shipped["limits"]
     assert "limits" not in cuda["deploy"]["resources"], "the variant must not restate the limits"
+
+
+def test_no_page_passes_an_extends_overlay_to_compose_as_a_file() -> None:
+    """docker/hwaccel.*.yml hold `extends:` targets with no image, so `-f` on one
+    fails to parse (`service "cpu" has neither an image nor a build context`)."""
+    pages = [REPO_ROOT / "README.md", *(REPO_ROOT / "docs-site" / "docs").rglob("*.md*")]
+
+    offenders = [page.name for page in pages if "-f docker/hwaccel" in page.read_text()]
+
+    assert offenders == []
+
+
+def test_the_documented_cuda_override_extends_the_captioner_overlay() -> None:
+    """The heredoc caption-server.md writes, read back: it has to name a real target."""
+    page = (REPO_ROOT / "docs-site/docs/deploy/installation/caption-server.md").read_text()
+    start = page.index("cat > captioner.cuda.yml <<'EOF'\n") + len(
+        "cat > captioner.cuda.yml <<'EOF'\n"
+    )
+    override = yaml.safe_load(page[start : page.index("\nEOF\n", start)])
+
+    extends = override["services"][CAPTIONER_SERVICE]["extends"]
+
+    assert (REPO_ROOT / extends["file"]).resolve() == HWACCEL_CAPTIONER.resolve()
+    assert extends["service"] in yaml.safe_load(HWACCEL_CAPTIONER.read_text())["services"]

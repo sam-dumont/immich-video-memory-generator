@@ -323,6 +323,21 @@ def sample_config() -> Config:
 
 
 @pytest.fixture(autouse=True)
+def _an_install_that_ran_models_fetch(request, monkeypatch):
+    """Every run in the suite starts on a host that can finish it.
+
+    The pinned exports are 110 MB and cannot live in the repo, so without this every
+    CLI test would stop at the pre-run install checks. A test marked `install_checks`
+    meets the real ones.
+    """
+    if request.node.get_closest_marker("install_checks"):
+        return
+    # WHY: model files and the output volume are install-time host state, not
+    # what the CLI tests are about.
+    monkeypatch.setattr("immich_memories.preflight_run.run_blockers", lambda *_args, **_kwargs: [])
+
+
+@pytest.fixture(autouse=True)
 def _forget_learned_endpoints():
     """Clear what one test taught the transport about a server, before the next runs.
 
@@ -354,6 +369,28 @@ def _open_the_throttle_gate():
     provider_failure.THROTTLE._until = 0.0
     yield
     provider_failure.THROTTLE._until = 0.0
+
+
+@pytest.fixture(autouse=True)
+def _finished_cuts_keep_their_promises(monkeypatch):
+    """Fail any planner test whose finished cut breaks a promise one of its passes made.
+
+    In a run a broken promise is logged and recorded, and the cut ships. In a test it is a
+    failure, so a change that lets a later pass undo an earlier one is caught by whichever
+    planner fixture shows it.
+    """
+    from immich_memories.analysis import editorial_cut_invariants
+
+    report = editorial_cut_invariants.report_violations
+
+    def strict(violations, record):
+        report(violations, record)
+        assert not violations, "the finished cut breaks its promises:\n" + "\n".join(
+            f"  {v.invariant}: {v.subject}: {v.detail} (last pass: {v.last_pass})"
+            for v in violations
+        )
+
+    monkeypatch.setattr(editorial_cut_invariants, "report_violations", strict)
 
 
 @pytest.fixture(autouse=True)

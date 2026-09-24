@@ -20,8 +20,6 @@ from immich_memories.preflight import (
     CheckResult,
     CheckStatus,
     check_caption_endpoint,
-    check_detector_export,
-    check_encoder,
     check_host_paths,
     check_immich,
     check_llm,
@@ -29,6 +27,7 @@ from immich_memories.preflight import (
     check_title_rendering,
     run_preflight_checks,
 )
+from immich_memories.preflight_run import check_detector_export, check_encoder
 
 
 def test_immich_api_error_returns_sanitized_diagnostic_result() -> None:

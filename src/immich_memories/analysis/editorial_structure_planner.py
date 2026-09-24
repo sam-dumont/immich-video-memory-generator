@@ -23,13 +23,10 @@ from immich_memories.analysis.editorial_block_votes import (
     save_vote_bank,
     worth_criterion_v44,
 )
+from immich_memories.analysis.editorial_cut_invariants import check_finished_cut
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
-from immich_memories.analysis.editorial_family_seat import (
-    FilmSeatSource,
-    film_close_family,
-    seat_in_film,
-)
+from immich_memories.analysis.editorial_family_seat import FilmSeatSource, seat_in_film
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_owner_required import admit_owner_required
 from immich_memories.analysis.editorial_picture_ladders import depth_cap
@@ -52,6 +49,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_story_standing import (
     StandingBankFile,
     standing_row,
@@ -540,6 +538,7 @@ def _select(
         ),
     )
     check_empty_attached(ports, observed)
+    check_finished_cut(source, selection, material, run, gate, banked, share_log, record_story)
     return PlanOutcome(
         contract=contract,
         carriers=run.carriers,

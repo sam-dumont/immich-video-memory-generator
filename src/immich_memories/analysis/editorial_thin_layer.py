@@ -28,6 +28,7 @@ from immich_memories.analysis.editorial_block_votes import (
     load_vote_bank,
     save_vote_bank,
 )
+from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
     ThinCatalogue,
@@ -49,6 +50,7 @@ from immich_memories.analysis.editorial_thin_short import (
     with_records,
 )
 from immich_memories.analysis.editorial_thin_vote import (
+    CloseFamily,
     classify_fit,
     is_protected,
     sole_family_shots,
@@ -158,12 +160,15 @@ class ThinPolish:
         content_cap: float = 0.0,
         protected: Sequence[str] = (),
         subject: str = "",
+        close_family: CloseFamily = close_family_on,
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
         A period the library has no account of is not polished at all: the film is the rules
         draft, and one log line and the record say why (`unread` when the read itself failed).
-        `subject` is who the film is about, which the vote reads beside the account.
+        `subject` is who the film is about, which the vote reads beside the account, and
+        `close_family` who on a line is close family in this film: the owner's, and in a film
+        about people the subject's own as well.
         """
         if catalogue is None or not carriers:
             return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
@@ -171,7 +176,7 @@ class ThinPolish:
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
-        fit = _FitQuestion(judge, catalogue, contract, line_of, subject)
+        fit = _FitQuestion(judge, catalogue, contract, line_of, subject, close_family)
         kept, verdicts, rounds = self._voted(admitted, fit)
         slots = plan_slots(
             kept,
@@ -202,7 +207,7 @@ class ThinPolish:
             offers=lambda key: [dict(u) for u in candidates_of(key) if u["asset_id"] not in seen],
             refill=refill,
             content_cap=content_cap,
-            line_of=line_of,
+            fit=fit,
         )
         if short_slots:
             final, late = self._checked(topped, final, short_slots, partition, fit)
@@ -247,7 +252,7 @@ class ThinPolish:
         offers: Callable[[str], list[dict[str, Any]]],
         refill: ThinRefill,
         content_cap: float,
-        line_of: Callable[[str], str],
+        fit: _FitQuestion,
     ) -> tuple[list[dict[str, Any]], list[ThinSlot], dict[str, Any]]:
         """The cut after a short film read a few unread episodes and seated what they recorded.
 
@@ -263,8 +268,9 @@ class ThinPolish:
             catalogue=catalogue,
             offers=offers,
             reads=self.short,
-            line_of=line_of,
+            line_of=fit.line_of,
             limit=2 * seats,
+            close_family=fit.close_family,
         )
         wanted = list(chain.from_iterable(episodes))
         records = dict(self.short.records(wanted)) if wanted else {}
@@ -310,7 +316,7 @@ class ThinPolish:
             return filled, set()
         newcomers = {row["asset_id"] for row in fresh}
         by_asset = {row["asset_id"]: row for row in filled}
-        family = sole_family_shots(filled, fit.line_of)
+        family = sole_family_shots(filled, fit.line_of, fit.close_family)
         votes: dict[str, tuple[int, str]] = {}
         for group in rejoined_blocks(partition, filled, newcomers, outcomes):
             block = [by_asset[asset] for asset in group]
@@ -334,7 +340,7 @@ class ThinPolish:
     def _voted(
         self, carriers: list[dict[str, Any]], fit: _FitQuestion
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
-        family = sole_family_shots(carriers, fit.line_of)
+        family = sole_family_shots(carriers, fit.line_of, fit.close_family)
         votes, rounds = self._ask(carriers, fit, family)
         verdicts = classify_fit(carriers, votes, family)
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
@@ -371,6 +377,7 @@ class ThinPolish:
             thesis=fit.catalogue.thesis,
             contract=fit.contract,
             subject=fit.subject,
+            close_family=fit.close_family,
             story_of=lambda asset: story_of(asset, "") or "",
             bank=bank,
             save=lambda: save_vote_bank(self._bank_path(), bank),
@@ -386,6 +393,7 @@ class _FitQuestion:
     contract: str
     line_of: Callable[[str], str]
     subject: str
+    close_family: CloseFamily
 
 
 def thin_budget(draft: int, seats: int) -> int:
