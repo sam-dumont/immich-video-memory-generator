@@ -80,7 +80,14 @@
   position: relative;
 }
 
+.heroCredit {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin-top: 0.5rem;
+}
+
 .heroScreenshot {
+  display: block;
   width: 100%;
   border-radius: 10px;
   box-shadow: var(--im-shadow-md);
@@ -344,9 +351,11 @@
     justify-content: center;
   }
 
+  /* Film first: on one column the video leads, above the title and the pitch. */
   .heroVisual {
     max-width: 600px;
     margin: 0 auto;
+    order: -1;
   }
 
   .quickstartGrid {
