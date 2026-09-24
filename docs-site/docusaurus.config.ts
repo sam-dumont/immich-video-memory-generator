@@ -94,10 +94,6 @@ const config: Config = {
               to: '/docs/get-started/quick-start',
             },
             {
-              label: 'Installation',
-              to: '/docs/run/docker',
-            },
-            {
               label: 'CLI Reference',
               to: '/docs/reference/cli-reference',
             },
