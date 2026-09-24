@@ -19,8 +19,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from immich_memories.analysis.special_day import (
-    MIN_ACTIVE_HOURS,
-    MIN_PHOTOS,
     SpecialDay,
     active_hours,
     ask_if_special,
@@ -33,13 +31,13 @@ from immich_memories.analysis.special_day import (
 )
 from immich_memories.analysis.special_day_sequence import (
     MIN_FILM_SECONDS,
-    close_family_on,
     filmable_seconds,
     read_in_sequence,
 )
 from immich_memories.analysis.special_day_title import honest_title
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
+from immich_memories.automation.special_day_facts import ranked_occasions
 from immich_memories.config_models_analysis import AnalysisConfig
 from immich_memories.config_models_automation import TripsConfig
 from immich_memories.config_models_render import PhotoConfig
@@ -182,6 +180,7 @@ def scan_year(
     still_seconds: float | None = None,
     reader: Literal["model", "rules"] = "model",
     close_family: Mapping[str, str] | None = None,
+    per_year: int = 6,
 ) -> list[DiscoveredDay]:
     """Find the days in one year's assets that were occasions, and name them.
 
@@ -194,7 +193,9 @@ def scan_year(
     With `reader="rules"` (no model configured) nothing is asked at all: a run is an
     occasion when one of its recorded facts is loud (`_occasion_by_facts`), and it is
     titled from its own place. The film floor applies the same on both tiers.
-    `close_family` maps Immich person ids to close family roles (`close_family_roles`).
+    `close_family` maps Immich person ids to close family roles (`close_family_roles`). The
+    no-model tier keeps only the `per_year` strongest (`special_day_facts`); the model tier
+    names every occasion it reads.
 
     Anything generation would throw away is removed first, so the scan judges
     the same library a memory could actually be cut from. Measured on a real
@@ -253,8 +254,13 @@ def scan_year(
 
     clip_seconds = (analysis_config or AnalysisConfig()).optimal_clip_duration
     stills = PhotoConfig().duration if still_seconds is None else still_seconds
+    # The no-model tier walks its occasions strongest first and stops at the year's few; the
+    # model tier names every one it read.
+    limit = per_year if reader == "rules" else len(occasions)
     found: list[DiscoveredDay] = []
-    for day, what in sorted(occasions.items()):
+    for day, what in occasions.items():
+        if len(found) >= limit:
+            break
         items = candidates[day]
         if filmable_seconds(items, still_seconds=stills, clip_seconds=clip_seconds) < (
             MIN_FILM_SECONDS
@@ -274,7 +280,7 @@ def scan_year(
         outcome = _day_from(day, items, verdict, what)
         if outcome is not None:
             found.append(outcome)
-    return found
+    return sorted(found, key=lambda entry: entry.day)
 
 
 def _occasions(
@@ -291,11 +297,7 @@ def _occasions(
 ) -> dict[date, str]:
     """The occasions among these runs and what each was: read by the model, or by the facts."""
     if reader == "rules":
-        return {
-            day: what
-            for day, items in candidates.items()
-            if (what := _occasion_by_facts(items, home, away_km, family))
-        }
+        return ranked_occasions(candidates, home=home, away_km=away_km, family=family)
     reading = read_in_sequence(
         candidates, captions=captions, llm_config=llm_config, cache_path=cache_path, family=family
     )
@@ -307,39 +309,7 @@ def _occasions(
     )
     if reading.unread_months:
         raise YearNotRead(year, reading.unread_months)
-    return reading.found
-
-
-# A run loud on one of these facts is an occasion to the no-model tier: the single loud axes the
-# owner's confirmed occasions showed (#1093). The long-day bar measured on labelled days is not
-# one on its own: a long day counts only with close family on a large share of it (#1220).
-FAMILY_SHARE_OF_A_LONG_DAY = 0.30
-_FAVOURITES_OF_AN_OCCASION = 3
-_VIDEOS_OF_AN_OCCASION = 3
-_VIDEO_SHARE_OF_AN_OCCASION = 0.5
-
-
-def _occasion_by_facts(
-    items: list, home: tuple[float, float] | None, away_km: float, family: Mapping[str, str]
-) -> str:
-    """What the loudest recorded fact says this run was, or "" when none is loud."""
-    hours = active_hours(items)
-    _roles, with_family = close_family_on(items, family)
-    if (
-        len(items) >= MIN_PHOTOS
-        and hours >= MIN_ACTIVE_HOURS
-        and with_family >= FAMILY_SHARE_OF_A_LONG_DAY * len(items)
-    ):
-        return f"a long day with close family, {hours} active hours"
-    if home and _kept_away_from_home(items, home, away_km):
-        return "a day away from home"
-    stars = sum(1 for a in items if getattr(a, "is_favorite", False))
-    if stars >= _FAVOURITES_OF_AN_OCCASION:
-        return f"{stars} favourites"
-    videos = sum(1 for a in items if getattr(a, "is_video", False))
-    if videos >= _VIDEOS_OF_AN_OCCASION and videos >= _VIDEO_SHARE_OF_AN_OCCASION * len(items):
-        return "a day mostly on video"
-    return ""
+    return dict(sorted(reading.found.items()))
 
 
 class YearNotRead(RuntimeError):

@@ -238,3 +238,62 @@ def test_without_a_model_one_loud_fact_is_enough(starred, videos, what):
     found = scan_year(day, llm_config=None, home=None, reader="rules")
 
     assert [d.what for d in found] == ([what] if what else [])
+
+
+def _thirty_loud_days():
+    """Thirty runs in one year, each loud on one fact, with strengths that rank them."""
+    runs = []
+    for n in range(30):
+        start = datetime(2021, 1 + n // 3, 3 + (n % 3) * 9, 10, tzinfo=UTC)
+        spread = [
+            p
+            for hour in (0, 3, 6)
+            for p in _day(start + timedelta(hours=hour), pictures=4, hours=1, city="Someplace")
+        ]
+        kind = n % 3
+        if kind == 0:  # away from home, further each time
+            for p in spread:
+                p.exif_info.latitude, p.exif_info.longitude = HOME_AT[0] - 0.5 - n / 100, HOME_AT[1]
+        elif kind == 1:  # favourites, more each time
+            for p in spread[: 3 + n // 3]:
+                p.is_favorite = True
+        else:  # a long family day at home
+            spread = _day(start, pictures=24, hours=8, city="Someplace", at=HOME_AT)
+            _with(spread[: 4 + n // 3], "p-son")
+        runs.append((n, kind, spread))
+    return runs
+
+
+def test_without_a_model_a_year_yields_its_strongest_few(no_model):
+    runs = _thirty_loud_days()
+    assets = [p for _n, _k, day in runs for p in day]
+
+    found = scan_year(
+        assets, llm_config=None, home=HOME_AT, reader="rules", close_family=FAMILY, per_year=6
+    )
+
+    # Away days rank first, the furthest first; ten of them are loud that way.
+    furthest = sorted((n for n, kind, _ in runs if kind == 0), reverse=True)[:6]
+    expected = {runs[n][2][0].file_created_at.date() for n in furthest}
+    assert {d.day for d in found} == expected
+    assert {d.what for d in found} == {"a day away from home"}
+
+
+def test_the_model_tier_is_not_capped_by_the_shortlist(reader):
+    days = [
+        _day(
+            datetime(2021, 1 + n // 3, 3 + (n % 3) * 9, 10, tzinfo=UTC),
+            pictures=18,
+            hours=4,
+            city="Hastière",
+            videos=3,
+        )
+        for n in range(30)
+    ]
+    captions = {p.id: "children at a summer camp" for day in days for p in day}
+
+    found = scan_year(
+        [p for d in days for p in d], llm_config=None, home=None, captions=captions, per_year=6
+    )
+
+    assert len(found) == 30

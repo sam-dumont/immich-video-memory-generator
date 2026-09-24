@@ -219,14 +219,17 @@ named correctly and still be dropped. It is
 checked last, after the day was read, and the log says the day was dropped for want of material. A
 day that is kept is then named from its own pictures' lines, the way it always was.
 
-Without a model (`editorial.reader: rules`, or a blank `llm.model`) nothing is asked. A day is kept
+Without a model (`editorial.reader: rules`, or a blank `llm.model`) nothing is asked. A day counts
 when one recorded fact is loud: most of its located pictures away from home (the `trips:` distance),
 at least three favourites, at least three videos making half the day, or a long day (at least 20
-pictures across six active hours) with your close family on at least 30 % of its pictures. A long
-day on its own is not enough: without the family share it found a busy ordinary day at home as
-readily as an occasion. Without a `people.yaml`, a long day at home is not found on this tier. It is titled after its place ("A day in ..."), and the same 30-second floor
-applies. The facts cannot tell a long ordinary day from an occasion; reading the day is what the
-model adds.
+pictures across six active hours) with your close family on it. A long day with none of your close
+family in it does not count: that is the busy ordinary day at home. Each year then keeps only its
+strongest few, `advanced.automation.special_days_per_year` (6 by default): days away first, the
+furthest first, then the most favourites, then the largest share of video, then the longest day
+weighted by the share of it your close family is on, with picture count breaking ties. A kept day is
+titled after its place ("A day in ...") and the same 30-second floor applies. Without a
+`people.yaml`, a long day at home is not found on this tier. A model reading has no yearly cap: it
+names every occasion it finds.
 
 A day ends when the photographs stop for five hours, not at midnight, so a wedding that runs past
 one is one occasion. Days inside a detected trip are skipped, because a trip memory already tells

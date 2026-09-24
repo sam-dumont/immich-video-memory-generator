@@ -226,6 +226,7 @@ def _scan_one_year(
         still_seconds=config.photos.duration,
         reader=config.editorial.resolve_reader(config.llm.model),
         close_family=_close_family(),
+        per_year=config.automation.special_days_per_year,
     ):
         found.append(record_for(day))
         if day.judged:

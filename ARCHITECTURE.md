@@ -678,6 +678,7 @@ src/immich_memories/
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
 │   ├── special_day_scan.py     # Scheduled scan for days worth resurfacing (skips holidays and trips)
+│   ├── special_day_facts.py    # No-model day scan: one loud fact per day, ranked, a few a year
 │   ├── variety.py              # Cadence and rotation rules for candidates
 │   ├── failure_backoff.py      # Keep a candidate that keeps failing out of the nightly slot
 │   ├── models.py               # Typed values returned/persisted by automation
