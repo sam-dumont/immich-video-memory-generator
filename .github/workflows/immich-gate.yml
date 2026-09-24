@@ -1,0 +1,99 @@
+name: Immich Gate
+
+# Every PR runs the product against a real Immich, v2 and v3, in Docker on a
+# hosted runner, before it can merge. Until this existed the only real-Immich
+# runs were on the private mirror after a push to main, and the suites that
+# need Immich skipped (green) whenever it was absent. Here an Immich that does
+# not come up FAILS the job: `make test-immich-gate` sets REQUIRE_IMMICH=1.
+#
+# The library is the CC0 fixture month (tests/e2e/fixtures/library) plus
+# synthesized paging pictures; never anyone's photos.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  immich:
+    name: Real Immich (${{ matrix.immich }})
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        immich: [v2, v3]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Pulled in the background while Python and FFmpeg install: the server
+      # image is the slowest thing this job fetches. The step after the setup
+      # waits for it, so a failed pull still fails the job.
+      - name: Pull pinned Immich images (background)
+        run: |
+          ( start=$(date +%s)
+            make immich-gate-pull IMMICH_GATE_VERSION=${{ matrix.immich }} > "$RUNNER_TEMP/pull.log" 2>&1
+            echo $? > "$RUNNER_TEMP/pull.status"
+            echo "pull took $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/pull.log" ) &
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          prune-cache: false
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: make dev-test
+
+      - name: Cache gate media
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .immich-gate/media
+          key: immich-gate-media-${{ hashFiles('tests/e2e/fixtures/library/**', 'tests/e2e/fake_library.py', 'tests/integration/immich_gate/media.py') }}
+
+      - name: Wait for the image pull
+        timeout-minutes: 8
+        run: |
+          until [ -f "$RUNNER_TEMP/pull.status" ]; do sleep 2; done
+          cat "$RUNNER_TEMP/pull.log"
+          exit "$(cat "$RUNNER_TEMP/pull.status")"
+
+      - name: Real-Immich gate (${{ matrix.immich }})
+        run: make test-immich-gate IMMICH_GATE_VERSION=${{ matrix.immich }}
+
+      - name: Upload Immich logs
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: immich-gate-${{ matrix.immich }}-logs
+          if-no-files-found: ignore
+          path: |
+            .immich-gate/*.log
+            tests/immich-gate-*-junit.xml
+
+  # The one check branch protection requires. A matrix job reports one check
+  # per version; this folds them into a name that survives adding a version.
+  gate:
+    name: Immich Gate
+    needs: [immich]
+    if: always() && github.repository == 'sam-dumont/immich-video-memory-generator'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every Immich version passed
+        run: |
+          if [[ "${{ needs.immich.result }}" != "success" ]]; then
+            echo "Real-Immich gate did not pass: ${{ needs.immich.result }}"
+            exit 1
+          fi

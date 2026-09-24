@@ -41,7 +41,10 @@ anyway. Which renderer your machine gets is on
 ## Styles
 
 All styles use dark cinematic palettes with white text. Every title is Montserrat: there is no font
-choice, and the `preferred_fonts` list in the style definitions is read by nothing.
+choice, and the `preferred_fonts` list in the style definitions is read by nothing. A letter
+Montserrat lacks (a place geocoded in its own script, say) comes from Noto Sans, word by word; see
+[Other alphabets](#other-alphabets). A letter no installed font has is logged as a warning rather
+than drawn as a silent gap.
 
 | Style | Palette | Character |
 |-------|---------|-----------|
@@ -70,14 +73,41 @@ immich-memories titles test --month 6 --year 2025 --type month
 immich-memories titles test --year 2025 --locale fr --orientation portrait
 ```
 
-Before you spend time on `titles fonts`: titles are Montserrat, and Outfit is used only for the
-date and place captions burned onto clips. Raleway, Josefin Sans and Quicksand ship and are never
-selected. All five families are OFL-1.1 and live inside the package, so titles render on a fresh
-install with no network. `--download` mirrors the same files from the Fontsource CDN into
-`~/.immich-memories/fonts/`; it is there for inspecting what ships, not for making titles work and
-not for replacing them, because for any of the five known families the bundled file wins before the
-cache is consulted. The listing reads the cache directory only, so on a fresh install it says **Not
-downloaded** for all five while titles render perfectly from the bundle.
+Titles are Montserrat, and Outfit is used only for the date and place captions burned onto clips.
+Raleway, Josefin Sans and Quicksand ship and are never selected. All five families are OFL-1.1 and
+live inside the package. `titles fonts` lists what is bundled and how many of the Noto script fonts
+are installed; `titles fonts --install` adds the missing ones.
+
+## Other alphabets
+
+Montserrat draws Latin, including Polish, Czech, Turkish and Vietnamese letters. Any letter it lacks
+comes from the Noto Sans family, letter by letter, so `DEUX SEMAINES EN CRÈTE · Κρήτη` keeps its
+French in Montserrat and draws the Greek in Noto. A word never switches typeface halfway through.
+
+| Script | Where the font comes from |
+|---|---|
+| Latin, Greek, Cyrillic, Vietnamese | bundled (Noto Sans, 311 KB per weight) |
+| Arabic, Hebrew, Thaana, Devanagari, Bengali, Gujarati, Gurmukhi, Oriya, Tamil, Telugu, Kannada, Malayalam, Sinhala, Thai, Lao, Khmer, Myanmar, Armenian, Georgian, Ethiopic | `titles fonts --install` (3.8 MB for all of them) |
+| Chinese, Japanese, Korean | `titles fonts --install` (Noto Sans CJK, 39.5 MB) |
+
+The Docker image already has all of them. On a pip or uv install, run the step once:
+
+```bash
+immich-memories titles fonts --install
+```
+
+A title whose letters no installed font has renders anyway, with those letters as boxes, and logs
+one line naming that command. Nothing is downloaded during a render.
+
+Arabic and Hebrew are laid out right to left and Arabic letters join; Devanagari and the other
+Indic scripts form their clusters. That shaping is HarfBuzz and FriBiDi through Pillow. The Docker
+image has both. Elsewhere Pillow brings HarfBuzz and needs FriBiDi from the system:
+`apt install libfribidi0` on Debian or Ubuntu, `brew install fribidi` on macOS (then start the app
+with `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` so Pillow finds it). Without it, such a title
+still draws its letters, unjoined, and the log says so once.
+
+Chinese characters use the Simplified Chinese forms unless the title has kana (Japanese forms) or
+Hangul (Korean).
 
 ## Date and place captions
 
@@ -140,11 +170,15 @@ renderer also knows `osm` and `topo` for the pin-and-label frames, but both are 
 
 Immich geocodes with GeoNames and stores English, so every city and country it hands over is
 English. Country names are translated offline (CLDR, through babel) wherever a viewer reads one:
-the trip title, the clip overlays, the map pin labels and the location cards. A French film says
-`DEUX SEMAINES À ESPAGNE`, not `À SPAIN`.
+the trip title, the clip overlays, the map pin labels and the location cards. A French trip title
+also takes the country's own preposition: `DEUX SEMAINES EN ESPAGNE`, `AU PORTUGAL`,
+`AUX ÉTATS-UNIS`, `À CHYPRE`, not `À SPAIN`. A city keeps `À`.
 
-City names have no offline table. They stay as Immich stored them unless `network.geocoding: true`
-lets Nominatim answer in the film's language, one request per distinct place on the cut. See
+The islands and regions a trip is named after have a short offline table too (`Crète`,
+`Pouilles`, `Majorque`, `Saxe`), and two regions are joined in the film's language
+(`Utah et Nevada`). City names have no offline table. They stay as Immich stored them unless
+`network.geocoding: true` lets Nominatim answer in the film's language, one request per distinct
+place on the cut. See
 [Network & Privacy](../deploy/configuration/network-and-privacy.md#geocoding-and-maps).
 
 ### Trip titles and classification
@@ -232,6 +266,28 @@ which is what a contact-sheet matrix wants so runs months apart stay comparable.
 
 Two known limits. A single grandparent can come back plural, because the people file records no
 gender. Four or five children in one condition is enough for the model to start inventing roles.
+
+### Where the title came from
+
+Every render logs one line saying which source produced the opening title, and stores it on the
+run, where `immich-memories runs show <run-id>` prints it as **Title From**:
+
+| Source | The title is |
+|---|---|
+| `override` | what you typed: `--title`, or your edit in the wizard |
+| `album` | an album memory's album name |
+| `occasion` | a holiday's name, or the special-day catalogue's title |
+| `model` | what the title reader wrote |
+| `place` | a trip's title, built from where it went |
+| `fallback` | the template: the year, the dates, the people |
+
+```text
+Opening title from place: 'A WEEK IN CRETE, GREECE'
+Opening title from fallback: the template
+```
+
+A `fallback` on a film you expected the model to name means the reader was not asked, failed, or
+had its title refused, not that it wrote a plain title.
 
 ## Music
 

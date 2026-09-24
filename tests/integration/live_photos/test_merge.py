@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import subprocess
 from datetime import date
-from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -40,7 +39,6 @@ def _has_immich() -> bool:
 
 
 requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reachable")
-requires_scipy = pytest.mark.skipif(find_spec("scipy") is None, reason="SciPy is not installed")
 
 
 @pytest.fixture(scope="module")
@@ -114,7 +112,6 @@ def second_live_photo_burst(live_photo_burst):
 
 
 @requires_immich
-@requires_scipy
 class TestLivePhotoSpectrogram:
     """End-to-end spectrogram-aligned burst merge with real Immich data."""
 

@@ -74,6 +74,15 @@ class SDFFontAtlas:
     # SDF parameters
     spread: int = 8  # Distance field spread in pixels
 
+    def draws(self, text: str) -> bool:
+        """Whether every letter of `text` has a glyph here.
+
+        The layout advances a space for a letter it has no glyph for, so a
+        Greek place name would come out as a gap; a renderer asks this first
+        and draws such text some other way (#1101).
+        """
+        return all(char.isspace() or char in self.glyphs for char in text)
+
 
 # =============================================================================
 # Font Discovery
@@ -180,7 +189,7 @@ def find_font(family: str, weight: str = "regular", _seen: set[str] | None = Non
 
     # The bundled families are named latin-<n>-normal.ttf, which no candidate
     # spelling matches, so searching the directories first walked straight past
-    # the fonts the wheel ships and out to the CDN.
+    # the fonts the wheel ships.
     named_weight = _WEIGHT_NAMES.get(weight, "Regular")
     with contextlib.suppress(Exception):
         from immich_memories.titles.fonts import bundled_font_path
@@ -193,14 +202,6 @@ def find_font(family: str, weight: str = "regular", _seen: set[str] | None = Non
     result = _search_font_paths(candidates)
     if result:
         return result
-
-    # Only now the CDN, and only when network.font_downloads allows it.
-    with contextlib.suppress(Exception):
-        from immich_memories.titles.fonts import get_font_path
-
-        cdn_result = get_font_path(family, named_weight)  # type: ignore[arg-type]
-        if cdn_result:
-            return cdn_result
 
     # System fallback
     for fallback in ("Helvetica", "Arial", "SF Pro"):

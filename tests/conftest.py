@@ -176,6 +176,25 @@ def git_checkout_factory() -> Callable[[Path, int], Path]:
     return build
 
 
+HDR_SAMPLES = Path(__file__).parent / "fixtures" / "hdr_samples"
+_LFS_POINTER_HEADER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def lfs_fixture(path: Path) -> Path:
+    """Return a Git LFS-tracked fixture, or skip the calling test when it is absent.
+
+    A clone without `git lfs pull` (or with GIT_LFS_SKIP_SMUDGE=1) checks out a
+    ~130-byte text pointer in place of the media, and a test reading it fails as
+    if the product were broken. Skipping names the real cause instead.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is missing: run `git lfs pull` to fetch the test media")
+    with path.open("rb") as handle:
+        if handle.read(len(_LFS_POINTER_HEADER)) == _LFS_POINTER_HEADER:
+            pytest.skip(f"{path.name} is a Git LFS pointer, not the file: run `git lfs pull`")
+    return path
+
+
 def make_asset(
     asset_id: str = "test-asset-001",
     *,
@@ -365,3 +384,27 @@ def pytest_collection_modifyitems(items) -> None:
     for item in items:
         if "tests/integration" in item.path.as_posix():
             item.add_marker("integration")
+
+
+@pytest.fixture()
+def every_run_an_occasion(monkeypatch):
+    """A day-sequence reader that names every run it is offered as an occasion.
+
+    For the special-day tests whose subject is what happens to a day after it is found:
+    which runs the reader picks is `test_special_day_sequence.py`'s subject, not theirs.
+    """
+    import json
+    import re
+
+    # WHY: the sequence reader is a text-model call; these tests are about what follows it.
+    monkeypatch.setattr(
+        "immich_memories.analysis.special_day_sequence._read",
+        lambda prompt, *_a, **_k: json.dumps(
+            {
+                "occasions": [
+                    {"run": run, "what": "an occasion"}
+                    for run in re.findall(r"^(R\d+) \|", prompt, re.MULTILINE)
+                ]
+            }
+        ),
+    )

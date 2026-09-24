@@ -91,6 +91,8 @@ class TitleScreenSettings:
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None
     subtitle_override: str | None = None
+    # Which source the opening title came from: a TitleSource value.
+    title_source: str = "fallback"
 
     # Trip map settings (used when memory_type == "trip")
     memory_type: str | None = None  # "trip" enables map intro + location cards

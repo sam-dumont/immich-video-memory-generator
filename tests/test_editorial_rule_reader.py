@@ -31,6 +31,7 @@ def test_reader_resolution_preserves_explicit_choice_and_uses_rules_without_mode
         "holiday",
         "album",
         "on_this_day",
+        "custom",
     ],
 )
 def test_rules_finish_product_selection_without_constructing_inference(tmp_path, product):
@@ -174,7 +175,7 @@ def test_rules_refuse_free_text_subjects_before_creating_an_annotation_store(tmp
 
     database = tmp_path / "annotations.sqlite"
     config = Config(editorial={"reader": "rules", "annotation_database": str(database)})
-    with pytest.raises(ValueError, match="custom subjects.*model reader"):
+    with pytest.raises(ValueError, match="written subject needs a model reader"):
         build_editorial_planner(
             client=object(),
             config=config,
@@ -186,6 +187,7 @@ def test_rules_refuse_free_text_subjects_before_creating_an_annotation_store(tmp
                 (_window(2024, 2, 1),),
                 60,
                 tmp_path / "artifacts",
+                base_brief="Pictures about perseverance",
             ),
         )
     assert not database.exists()

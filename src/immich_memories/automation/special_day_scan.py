@@ -16,9 +16,10 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from immich_memories.analysis.special_day import (
+    SpecialDay,
     active_hours,
     ask_if_special,
     candidate_days,
@@ -28,13 +29,22 @@ from immich_memories.analysis.special_day import (
     run_extent,
     window_that_holds_the_day,
 )
+from immich_memories.analysis.special_day_sequence import (
+    MIN_FILM_SECONDS,
+    filmable_seconds,
+    read_in_sequence,
+)
+from immich_memories.analysis.special_day_title import honest_title
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.analysis.trip_detection import detect_trips, haversine_km
+from immich_memories.automation.special_day_facts import ranked_occasions
+from immich_memories.config_models_analysis import AnalysisConfig
 from immich_memories.config_models_automation import TripsConfig
+from immich_memories.config_models_render import PhotoConfig
 from immich_memories.memory_types.date_builders import KNOWN_HOLIDAYS, resolve_holiday
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -162,14 +172,30 @@ def scan_year(
     *,
     llm_config: Any,
     home: tuple[float, float] | None,
-    ask: int = 6,
     extra_holidays: Iterable[str] = (),
     analysis_config: Any = None,
     trips_config: TripsConfig | None = None,
     captions: dict[str, str] | None = None,
     judgment_cache_path: Path | None = None,
+    still_seconds: float | None = None,
+    reader: Literal["model", "rules"] = "model",
+    close_family: Mapping[str, str] | None = None,
+    per_year: int = 6,
 ) -> list[DiscoveredDay]:
-    """Find the days in one year's assets that stand out, and name them.
+    """Find the days in one year's assets that were occasions, and name them.
+
+    Every run of activity off a trip is read, a month at a time and in order, and the reader
+    says which were occasions (`special_day_sequence`); no bar decides what it may see. Each
+    occasion a film could be cut from is then named from its own pictures' lines. A month the
+    reader could not read raises `YearNotRead` so the year is scanned again, not recorded
+    half-read; the months it did read are banked and cost nothing the second time.
+
+    With `reader="rules"` (no model configured) nothing is asked at all: a run is an
+    occasion when one of its recorded facts is loud (`_occasion_by_facts`), and it is
+    titled from its own place. The film floor applies the same on both tiers.
+    `close_family` maps Immich person ids to close family roles (`close_family_roles`). The
+    no-model tier keeps only the `per_year` strongest (`special_day_facts`); the model tier
+    names every occasion it reads.
 
     Anything generation would throw away is removed first, so the scan judges
     the same library a memory could actually be cut from. Measured on a real
@@ -207,29 +233,93 @@ def scan_year(
 
     off_trip = candidate_days(assets, away_days=away)
     candidates = _drop_the_holidays_it_actually_was(off_trip, holidays, home, trips.min_distance_km)
+    occasions = _occasions(
+        candidates,
+        year=year,
+        reader=reader,
+        home=home,
+        away_km=trips.min_distance_km,
+        captions=captions,
+        llm_config=llm_config,
+        cache_path=judgment_cache_path,
+        family=close_family or {},
+    )
     logger.info(
-        "%d: %d candidate days, %d dates covered by trips, %d dropped as the holiday they fell on",
+        "%d: %d occasions, %d dates covered by trips, %d dropped as the holiday they fell on",
         year,
-        len(candidates),
+        len(occasions),
         len(away),
         len(off_trip) - len(candidates),
     )
 
+    clip_seconds = (analysis_config or AnalysisConfig()).optimal_clip_duration
+    stills = PhotoConfig().duration if still_seconds is None else still_seconds
+    # The no-model tier walks its occasions strongest first and stops at the year's few; the
+    # model tier names every one it read.
+    limit = per_year if reader == "rules" else len(occasions)
     found: list[DiscoveredDay] = []
-    for day, items in sorted(candidates.items(), key=lambda kv: -len(kv[1]))[:ask]:
-        day_captions = {
-            asset.id: captions[asset.id] for asset in items if captions and captions.get(asset.id)
-        }
-        verdict = ask_if_special(
-            items, llm_config, captions=day_captions, judgment_cache_path=judgment_cache_path
+    for day, what in occasions.items():
+        if len(found) >= limit:
+            break
+        items = candidates[day]
+        if filmable_seconds(items, still_seconds=stills, clip_seconds=clip_seconds) < (
+            MIN_FILM_SECONDS
+        ):
+            logger.info("%s read as %r, dropped for want of material to film", day, what)
+            continue
+        verdict = (
+            SpecialDay(special=True, title=honest_title(items, what=what, evidence=""), what=what)
+            if reader == "rules"
+            else ask_if_special(
+                items,
+                llm_config,
+                captions={a.id: captions[a.id] for a in items if captions and captions.get(a.id)},
+                judgment_cache_path=judgment_cache_path,
+            )
         )
-        outcome = _day_from(day, items, verdict)
+        outcome = _day_from(day, items, verdict, what)
         if outcome is not None:
             found.append(outcome)
-    return found
+    return sorted(found, key=lambda entry: entry.day)
 
 
-def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
+def _occasions(
+    candidates: dict[date, list],
+    *,
+    year: int,
+    reader: str,
+    home: tuple[float, float] | None,
+    away_km: float,
+    captions: dict[str, str] | None,
+    llm_config: Any,
+    cache_path: Path | None,
+    family: Mapping[str, str],
+) -> dict[date, str]:
+    """The occasions among these runs and what each was: read by the model, or by the facts."""
+    if reader == "rules":
+        return ranked_occasions(candidates, home=home, away_km=away_km, family=family)
+    reading = read_in_sequence(
+        candidates, captions=captions, llm_config=llm_config, cache_path=cache_path, family=family
+    )
+    logger.info(
+        "%d: %d runs read, %d with nothing recorded beyond the clock",
+        year,
+        reading.offered,
+        reading.silent,
+    )
+    if reading.unread_months:
+        raise YearNotRead(year, reading.unread_months)
+    return dict(sorted(reading.found.items()))
+
+
+class YearNotRead(RuntimeError):
+    """Some months of a year could not be read; the year is scanned again rather than kept."""
+
+    def __init__(self, year: int, months: list[str]) -> None:
+        super().__init__(f"{year}: {len(months)} month(s) could not be read ({', '.join(months)})")
+
+
+def _day_from(day: date, items: list, verdict: Any, what: str = "") -> DiscoveredDay | None:
     """One candidate day's row, or nothing when there is nothing honest to write.
 
     A title, not just something written about the day. Every reader of the
@@ -240,7 +330,7 @@ def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
     title; nothing left after that means nothing truthful to call the day.
     """
     from immich_memories import __version__
-    from immich_memories.analysis.special_day import PROMPT_VERSION
+    from immich_memories.analysis.special_day_sequence import SCAN_VERSION
 
     started, ended = run_extent(items) or (None, None)
     if not verdict.judged:
@@ -252,10 +342,11 @@ def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
             photos=len(items),
             window=None,
             judged=False,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=SCAN_VERSION,
             app_version=__version__,
         )
-    if not verdict.special or not verdict.title:
+    # The sequence reading decided this was an occasion; the day's own lines only name it.
+    if not verdict.title:
         return None
     # The model read the day's own timestamps and what the lines said was in
     # the frames; event_window only knows where the pictures were. Either way
@@ -265,14 +356,14 @@ def _day_from(day: date, items: list, verdict: Any) -> DiscoveredDay | None:
         day=day,
         title=verdict.title,
         subtitle=verdict.subtitle,
-        what=verdict.what,
+        what=verdict.what or what,
         photos=len(items),
         window=window,
         active_hours=active_hours(items),
         run_start=started,
         run_end=ended,
         window_photos=pictures_inside(window, items),
-        prompt_version=PROMPT_VERSION,
+        prompt_version=SCAN_VERSION,
         app_version=__version__,
     )
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 
@@ -12,6 +14,37 @@ from immich_memories.api.models import Asset, AssetFace
 
 RequestFn = Callable[..., Any]
 DEFAULT_DOWNLOAD_LIMIT = 25 * 1024**3
+
+TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
+_TRANSFER_ATTEMPTS = 3
+_BACKOFF_BASE = 1.0
+_T = TypeVar("_T")
+
+logger = logging.getLogger(__name__)
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in TRANSIENT_STATUS
+    return isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError))
+
+
+async def _retrying(label: str, attempt: Callable[[], Awaitable[_T]]) -> _T:
+    """Run one idempotent GET, again after a transient failure, at most three times.
+
+    A timeout, a dropped connection, 429 or a 5xx is worth another try; a 404
+    or a size mismatch answers the same every time, so it raises at once.
+    """
+    for number in range(1, _TRANSFER_ATTEMPTS):
+        try:
+            return await attempt()
+        except httpx.HTTPError as exc:
+            if not _is_transient(exc):
+                raise
+            backoff = _BACKOFF_BASE * 2 ** (number - 1)
+            logger.warning("%s failed (%s), retrying in %.0fs", label, type(exc).__name__, backoff)
+            await asyncio.sleep(backoff)
+    return await attempt()
 
 
 def large_original_size(asset: Asset) -> int | None:
@@ -63,7 +96,11 @@ class AssetService:
         return f"{self._base_url}/api/assets/{asset_id}/original"
 
     async def get_video_playback(self, asset_id: str) -> bytes:
-        """Get video playback data (transcoded preview)."""
+        """The whole playback rendition, in memory.
+
+        Sized for Live Photo companions (a few seconds); a full video goes to
+        disk through `download_playback` instead.
+        """
         return await self._request("GET", f"/assets/{asset_id}/video/playback")
 
     async def get_video_playback_range(
@@ -75,11 +112,16 @@ class AssetService:
         from it, so the caller sees the same answer either way. A refusal raises
         ``httpx.HTTPStatusError`` with the server's status.
         """
-        response = await self._get_client().get(
-            f"/api/assets/{asset_id}/video/playback",
-            headers={"Range": f"bytes={start}-{start + length - 1}"},
-        )
-        response.raise_for_status()
+
+        async def attempt() -> httpx.Response:
+            answer = await self._get_client().get(
+                f"/api/assets/{asset_id}/video/playback",
+                headers={"Range": f"bytes={start}-{start + length - 1}"},
+            )
+            answer.raise_for_status()
+            return answer
+
+        response = await _retrying(f"Playback range of {asset_id}", attempt)
         if response.status_code != 206:
             return response.content[start : start + length], len(response.content)
         return response.content, int(response.headers["content-range"].rpartition("/")[2])
@@ -101,30 +143,55 @@ class AssetService:
             ValueError: If download exceeds its bound or differs from the expected size.
         """
         max_size_bytes = _download_bound(max_size_bytes, expected_size_bytes)
+        return await self._stream_to(
+            f"/api/assets/{asset_id}/original",
+            asset_id,
+            output_path,
+            max_size_bytes,
+            expected_size_bytes,
+        )
+
+    async def download_playback(self, asset_id: str, output_path: Path) -> Path:
+        """Stream the video's playback rendition to a file, never holding it in memory."""
+        return await self._stream_to(
+            f"/api/assets/{asset_id}/video/playback",
+            asset_id,
+            output_path,
+            DEFAULT_DOWNLOAD_LIMIT,
+            None,
+        )
+
+    async def _stream_to(
+        self,
+        url: str,
+        asset_id: str,
+        output_path: Path,
+        max_size_bytes: int,
+        expected_size_bytes: int | None,
+    ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        async with self._get_client().stream(
-            "GET",
-            f"/api/assets/{asset_id}/original",
-        ) as response:
-            response.raise_for_status()
-            _check_content_length(
-                response.headers.get("content-length", ""),
-                asset_id,
-                max_size_bytes,
-                expected_size_bytes,
-            )
-            complete = False
-            try:
-                await _write_bounded(
-                    response, output_path, asset_id, max_size_bytes, expected_size_bytes
+        async def attempt() -> Path:
+            async with self._get_client().stream("GET", url) as response:
+                response.raise_for_status()
+                _check_content_length(
+                    response.headers.get("content-length", ""),
+                    asset_id,
+                    max_size_bytes,
+                    expected_size_bytes,
                 )
-                complete = True
-            finally:
-                if not complete:
-                    output_path.unlink(missing_ok=True)
+                complete = False
+                try:
+                    await _write_bounded(
+                        response, output_path, asset_id, max_size_bytes, expected_size_bytes
+                    )
+                    complete = True
+                finally:
+                    if not complete:
+                        output_path.unlink(missing_ok=True)
+            return output_path
 
-        return output_path
+        return await _retrying(f"Download of {asset_id}", attempt)
 
 
 def _download_bound(max_size_bytes: int, expected_size_bytes: int | None) -> int:

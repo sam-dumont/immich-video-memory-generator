@@ -111,6 +111,8 @@ class GenerationParams:
     # Title settings
     title: str | None = None
     subtitle: str | None = None
+    # Who wrote `title`: a TitleSource value; None reads as a plain override.
+    title_source: str | None = None
     memory_type: str | None = None
     memory_preset_params: dict = field(default_factory=dict)
     person_name: str | None = None

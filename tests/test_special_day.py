@@ -33,18 +33,13 @@ def test_a_day_spread_over_many_hours_is_a_candidate() -> None:
     assert candidate_days(day)
 
 
-def test_one_hour_of_shooting_is_not_a_candidate() -> None:
-    """166 photos of a work shoot, all inside a single hour."""
-    day = [_asset(14, m % 60) for m in range(0, 160)]
+def test_every_run_is_read_whatever_its_size() -> None:
+    """No bar decides what the reader sees (#1093): one hour of 160 pictures and a
+    long day of a dozen snaps are both read, and the reader says what they were."""
+    shoot = [_asset(14, m % 60) for m in range(0, 160)]
+    thin = [_asset(h, day=6) for h in range(8, 20)]
 
-    assert not candidate_days(day), "volume is not the question"
-
-
-def test_a_long_but_thin_day_is_not_a_candidate() -> None:
-    """Hours alone are not enough either — a handful of snaps is not an event."""
-    day = [_asset(h) for h in range(8, 20)]
-
-    assert not candidate_days(day)
+    assert set(candidate_days(shoot + thin)) == {date(2021, 4, 4), date(2021, 4, 6)}
 
 
 def test_two_bursts_on_one_date_both_belong_to_that_day() -> None:
@@ -97,18 +92,6 @@ def test_a_model_that_answers_with_nothing_is_not_a_verdict() -> None:
 
     assert verdict.special is False
     assert verdict.title == ""
-
-
-def test_the_bar_sits_between_the_weakest_occasion_and_the_busiest_ordinary_day() -> None:
-    """Measured on labelled days: the weakest occasion ran seven active hours,
-    and the busiest day that was not one ran five. Both of these clear the
-    photograph count comfortably, so what is being tested is the hours rule.
-    """
-    seven_hours = [_asset(h, m) for h in range(9, 16) for m in (0, 20, 40)]
-    five_hours = [_asset(h, m, day=6) for h in range(9, 14) for m in (0, 15, 30, 45)]
-
-    assert candidate_days(seven_hours), "an occasion this short still counts"
-    assert not candidate_days(five_hours), "a long ordinary day is still ordinary"
 
 
 class TestTitlesStayGrounded:

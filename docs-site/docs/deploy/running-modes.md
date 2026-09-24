@@ -31,7 +31,7 @@ would have cost 2.6 hours of facts before anything was selected. Match it to the
 
 | `reader` | Needs | What you get | What you lose |
 |---|---|---|---|
-| `rules` | Nothing beyond the app | The ten standard memory types, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero reader requests. On a library a model has read before, the draft also reads what it answered: a picture an earlier cut of any scope refused for the same audience, or a banked episode reading culled, is not offered, and a picture that reading named leads its episode. Still zero reader requests | No story thesis. Custom free-text subjects are refused. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
+| `rules` | Nothing beyond the app | The ten standard memory types and a custom date range, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero reader requests. On a library a model has read before, the draft also reads what it answered: a picture an earlier cut of any scope refused for the same audience, or a banked episode reading culled, is not offered, and a picture that reading named leads its episode. Still zero reader requests | No story thesis. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
 | `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader on 15 September, and 29 min on 17 September on a machine other work was sharing |
 | `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
 
@@ -381,8 +381,8 @@ judged less focused than the shorter metadata cut.
 
 ## What leaves your network, per mode
 
-Nothing in this table leaves by default. The three third-party hosts (Nominatim, ArcGIS tiles,
-jsDelivr fonts) are `network:` switches, all off, and
+Nothing in this table leaves by default. The two third-party hosts (Nominatim and ArcGIS tiles)
+are `network:` switches, both off, and a render never downloads a font, and
 [Network & Privacy](configuration/network-and-privacy.md) says what each one sends.
 
 | Mode | To the caption server | To the reader | Elsewhere |
@@ -450,7 +450,7 @@ The only line that leaves your network is the hosted reader's.
 | Configuration | Hardware | First run: 2024 prepared (13,544 pictures), February cut | Every run after | What the cut carries | Tokens at list |
 |---|---|---|---|---|---|
 | Mac, everything local | one Apple Silicon Mac, 32 GB or more. `reader: model`, `tier: full` | 2 h 19 min with two other runs on the machine, 1 h 14 min on a quiet one | 32 min | a story thesis and a written reason under each picture. The reference cut | nothing |
-| Cluster, rules reader | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 12 min | 8 min | dates, places, favourites, known people and classifier facts. No thesis, no reason, no custom subjects. 17 % overlap with the reference cut | nothing |
+| Cluster, rules reader | a Kubernetes Job plus the [inference service](./installation/inference-service.md) on a card. `reader: rules`, `tier: no_captions` | 1 h 12 min | 8 min | dates, places, favourites, known people and classifier facts. No thesis, no reason. 17 % overlap with the reference cut | nothing |
 | Cluster, hosted reader | the same, with a provider URL and key | 1 h 22 min | 19 min | a thesis and reasons, no description under a picture, and a gate that can refuse but never clear | no price for this account |
 
 Both Mac figures are real and they bracket the answer. 2 h 19 min is the 17 September sum, measured

@@ -514,7 +514,7 @@ configured. Rules cover the ten standard memory products, including albums and r
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
 Photos as stills, and write no semantic model banks. Saved plans identify the producer as
-`rules-v1`. A custom free-text subject ("pictures about perseverance") needs the model reader.
+`rules-v1`. A custom `--start`/`--end` range is cut the same way as a month or a year.
 
 ### The thin model layer
 
@@ -649,24 +649,22 @@ trips:
 
 ## Outside calls
 
-Every switch here is off. A run with all three off reaches your Immich server, the endpoints you
+Every switch here is off. A run with both off reaches your Immich server, the endpoints you
 wrote down yourself, and nothing else.
 
 ```yaml
 network:
   geocoding: false        # nominatim.openstreetmap.org
   map_tiles: false        # server.arcgisonline.com (World Imagery)
-  font_downloads: false   # cdn.jsdelivr.net (Fontsource)
 ```
 
 | Key | What it sends | What you get |
 |---|---|---|
 | `geocoding` | each trip cluster's centroid, and the rounded coordinates of the places on the cut | trip names from the map instead of from EXIF, and place names in the film's language |
 | `map_tiles` | tile coordinates covering the trip area and your home base | the trip fly-over, the static trip map, and a satellite background behind location cards |
-| `font_downloads` | a request for one font file | a title family the app does not bundle |
 
-Five families ship in the wheel (Josefin Sans, Montserrat, Outfit, Quicksand, Raleway), so
-`font_downloads` buys nothing unless you name a font outside that list. `preflight` prints a row
+Fonts are not a switch: a render never downloads one, and `titles fonts --install` is the one
+step that does ([Fonts](../deploy/configuration/network-and-privacy.md#fonts)). `preflight` prints a row
 for each switch you turn on, naming the host it will contact.
 
 ## Cache
@@ -781,6 +779,7 @@ automation:
   detect_person_spotlight: true   # per-person highlight candidates
   detect_activity_burst: true     # unusually active months
   burst_threshold: 2.0            # multiplier above rolling average to trigger burst
+  special_days_per_year: 6        # days a year discover-days keeps without a model, strongest first
 ```
 
 ## Authentication

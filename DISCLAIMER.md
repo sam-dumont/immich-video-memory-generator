@@ -2,13 +2,19 @@
 
 ## Built With AI, On Purpose
 
-This entire codebase was written with AI (Claude by Anthropic). That's the experiment: how far AI-assisted development goes when every change has to survive a full verification stack before it lands.
+Claude (Anthropic's model) writes most of this codebase: the code, the tests, most of the docs, and the PRs. That's the experiment: how far AI-assisted development goes when every change has to survive a full verification stack before it lands.
 
-The human half is architecture decisions, code review, and spotting when the AI is confidently wrong. The gates below catch the rest.
+### Who does what
+
+- **Claude** writes the change, runs the gates below, opens the PR, and fixes whatever comes back red.
+- **I (the maintainer)** set the direction and rule on the product calls: what a good film is, what may be shown to whom, what runs by default. I review the results, meaning the films, the contact sheets and the measurements on a real library, and I read the diffs of the PRs I pick, usually the ones that touch those calls.
+- **A merge train** squash-merges green PRs to `main` without asking me each time. Claude runs it under a standing permission I gave. A red PR does not merge, and a check that fails twice comes back as work, not as a retry.
+
+Said plainly: not every PR diff is read by a human. What stands between a change and `main` is the gate list below, plus my review of what the change does to real films. When a film comes out wrong, the fix is another PR through the same gates.
 
 ### The quality bar
 
-The AI writes code. I make sure it's good. Every line goes through:
+Every change goes through:
 
 - A unit suite and an integration suite; `uv run pytest tests/ --collect-only -q` prints the current split. No count is written down here, because it moves every week and a written one is wrong within days
 - Ruff linting and formatting on every PR
@@ -61,4 +67,4 @@ Open a GitHub Discussion.
 
 ---
 
-*Last updated: 2026-09-11*
+*Last updated: 2026-09-24*

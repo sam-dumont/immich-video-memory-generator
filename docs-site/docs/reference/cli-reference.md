@@ -197,7 +197,9 @@ catalogue is a memory nobody asked for (five years to the day since
 the wedding), and that needs the days found in advance.
 
 Days inside a trip are skipped, since a trip memory already tells that
-story, and so are holidays, which have their own.
+story, and so are holidays, which have their own. Every other day is
+read, a month at a time and in order, and the model says which were
+occasions; no picture count or active-hours bar decides what it sees.
 
 Resumes by default: years already in the catalogue are not scanned
 again, which matters for a command that runs for hours. --rescan
@@ -218,7 +220,6 @@ immich-memories discover-days [OPTIONS]
 | --- | --- | --- | --- |
 | `--since` | integer | 2007 | First year to scan |
 | `--until` | integer | 2026 | Last year to scan |
-| `--per-year` | integer | 6 | Busiest candidates to ask about |
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
 | `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |
@@ -688,9 +689,12 @@ immich-memories titles [OPTIONS]
 
 Manage title screen fonts.
 
-Five OFL-1.1 families ship inside the wheel. Anything else is fetched
-from the Fontsource CDN into ~/.immich-memories/fonts/, which is also
-where you can drop your own TTFs.
+Five OFL-1.1 families and Noto Sans (Latin, Greek, Cyrillic, Vietnamese)
+ship inside the wheel. `--install` adds the Noto faces for every other
+script a title can hold (Arabic, Hebrew, Indic, Thai, CJK and more) from
+raw.githubusercontent.com, each file checked against a pinned SHA-256.
+It is the only step that downloads a font; a render never does. The
+Docker image runs it at build time.
 
 ```bash
 immich-memories titles fonts [OPTIONS]
@@ -698,9 +702,9 @@ immich-memories titles fonts [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--download`, `-d` | boolean | false | Download all fonts |
-| `--clear` | boolean | false | Clear font cache |
-| `--list` | boolean | false | List cached fonts (the default) |
+| `--install` | boolean | false | Download the pinned Noto script fonts (about 43 MB, most of it CJK) |
+| `--clear` | boolean | false | Clear ~/.immich-memories/fonts |
+| `--list` | boolean | false | List title fonts (the default) |
 
 ### `titles test`
 
@@ -749,7 +753,6 @@ immich-memories titles test [OPTIONS]
 | `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
 | `--output`, `-o`, `-O` | path | - | Output file path |
 | `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |
-| `--download-fonts` | boolean | false | Fetch every supported family from cdn.jsdelivr.net before generating |
 | `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |
 
 ## `ui`

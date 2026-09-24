@@ -39,6 +39,7 @@ import threading
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -259,13 +260,20 @@ def _phase_of(line: str) -> str | None:
     return next((marker for marker in PHASE_MARKERS if marker in line), None)
 
 
-def stream_container(argv: list[str], *, container: str, timeout: int) -> ContainerRun:
+def stream_container(
+    argv: list[str],
+    *,
+    container: str,
+    timeout: int,
+    clock: Callable[[], float] = time.monotonic,
+) -> ContainerRun:
     """Run the container, echoing each line as it arrives and timing the phases.
 
     The job log is the only witness a failed release leaves behind, so nothing
-    here waits for the process to exit before printing.
+    here waits for the process to exit before printing. Every offset is `clock`
+    read when the line reaches the gate, minus `clock` read at the start.
     """
-    started = time.monotonic()
+    started = clock()
     tail: deque[str] = deque(maxlen=TAIL_LINES)
     phases: list[tuple[str, float]] = []
     expired = threading.Event()
@@ -286,7 +294,7 @@ def stream_container(argv: list[str], *, container: str, timeout: int) -> Contai
     watchdog.start()
     try:
         for line in proc.stdout or ():
-            elapsed = time.monotonic() - started
+            elapsed = clock() - started
             print(f"[{elapsed:7.1f}s] {line}", end="", flush=True)
             tail.append(line.rstrip("\n"))
             phase = _phase_of(line)
@@ -297,7 +305,7 @@ def stream_container(argv: list[str], *, container: str, timeout: int) -> Contai
         watchdog.cancel()
     return ContainerRun(
         returncode=returncode,
-        elapsed=time.monotonic() - started,
+        elapsed=clock() - started,
         tail=tuple(tail),
         phases=tuple(phases),
         timed_out=expired.is_set(),

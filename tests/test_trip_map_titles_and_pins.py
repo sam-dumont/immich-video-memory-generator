@@ -64,7 +64,7 @@ def test_trip_template_uses_the_caption_language_and_inclusive_days() -> None:
     settings = _build_title_settings(_trip_params(config=config), config, [])
 
     assert settings is not None
-    assert settings.trip_title_text == "DEUX SEMAINES À ESPAGNE, JUILLET 2025"
+    assert settings.trip_title_text == "DEUX SEMAINES EN ESPAGNE, JUILLET 2025"
 
 
 def _gps_clip(lat: float, lon: float, name: str | None) -> AssemblyClip:

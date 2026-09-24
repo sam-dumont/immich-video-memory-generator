@@ -9,6 +9,7 @@ import pytest
 from PIL import Image, UnidentifiedImageError
 
 from immich_memories.photos import animator
+from tests.conftest import HDR_SAMPLES, lfs_fixture
 
 
 @pytest.mark.parametrize(
@@ -80,9 +81,7 @@ def test_heif_dispatch_preserves_the_hdr_converter_result(
 
 
 def test_mislabeled_ultrahdr_jpeg_retains_its_gain_map_and_cap(tmp_path):
-    fixture = Path(__file__).parent / "fixtures/hdr_samples/gain_mapped-photo-tokyo.jpg"
-    if not fixture.exists():
-        pytest.skip("UltraHDR fixture not available")
+    fixture = lfs_fixture(HDR_SAMPLES / "gain_mapped-photo-tokyo.jpg")
     source = tmp_path / "source.HEIC"
     source.write_bytes(fixture.read_bytes())
 

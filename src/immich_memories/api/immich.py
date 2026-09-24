@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from immich_memories.api.album_service import AlbumRef, AlbumService, FilmScope
 from immich_memories.api.all_assets_service import AllAssetsService
-from immich_memories.api.asset_service import AssetService
+from immich_memories.api.asset_service import TRANSIENT_STATUS, AssetService
 from immich_memories.api.compatibility import (
     ApiVersionPolicy,
     ResolvedApiVersion,
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_RETRYABLE_STATUS = TRANSIENT_STATUS
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0
 
@@ -244,6 +244,8 @@ class ImmichClient:
         self,
         method: str,
         endpoint: str,
+        *,
+        before_retry: Callable[[], Awaitable[Any]] | None = None,
         **kwargs,
     ) -> dict | list | bytes:
         """Make an API request with retry on transient failures.
@@ -251,6 +253,11 @@ class ImmichClient:
         Retries up to _MAX_RETRIES times on timeout, network errors, and
         retryable status codes (429, 500-504). Non-retryable errors (401, 404,
         other 4xx) raise immediately.
+
+        ``before_retry`` runs after each backoff, before the request is sent
+        again; anything it returns other than None is taken as the answer and
+        nothing is re-sent. A write that may already have landed uses it to look
+        before repeating itself.
         """
         url = f"/api{endpoint}"
         logger.debug(f"Request: {method} {url}")
@@ -278,6 +285,8 @@ class ImmichClient:
                     f"retrying in {backoff:.1f}s"
                 )
                 await asyncio.sleep(backoff)
+                if before_retry is not None and (settled := await before_retry()) is not None:
+                    return settled
 
         raise last_exception or ImmichAPIError("Request failed after retries")
 
@@ -525,6 +534,9 @@ class ImmichClient:
 
     async def get_video_playback(self, asset_id: str) -> bytes:
         return await self.assets.get_video_playback(asset_id)
+
+    async def download_playback(self, asset_id: str, output_path: Path) -> Path:
+        return await self.assets.download_playback(asset_id, output_path)
 
     async def get_video_playback_range(
         self, asset_id: str, start: int, length: int

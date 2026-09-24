@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from immich_memories.cache.judgment_cache import verdicts_beside
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.titles.llm_titles import generate_title_with_llm, memory_title_facts
+from immich_memories.titles.title_source import TitleSource
 
 if TYPE_CHECKING:
     from datetime import date
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
 logger = logging.getLogger(__name__)
+
+# What the template title is built from, when it is more than dates and people.
+_TEMPLATE_SOURCES: dict[str | None, TitleSource] = {
+    MemoryType.ALBUM: TitleSource.ALBUM,
+    MemoryType.SPECIAL_DAY: TitleSource.OCCASION,
+    MemoryType.HOLIDAY: TitleSource.OCCASION,
+    MemoryType.TRIP: TitleSource.PLACE,
+}
 
 # Month names for template titles (avoids locale dependency)
 _MONTH_NAMES = [
@@ -281,6 +290,7 @@ def _apply_suggestion(state: AppState, suggestion) -> None:
     """Write TitleSuggestion fields into AppState."""
     state.title_suggestion_title = suggestion.title
     state.title_suggestion_subtitle = suggestion.subtitle
+    state.title_suggestion_source = TitleSource.MODEL
     state.title_suggestion_trip_type = suggestion.trip_type
     state.title_suggestion_map_mode = suggestion.map_mode
     logger.info("LLM title generated: %r", suggestion.title)
@@ -361,6 +371,9 @@ async def generate_title_after_pipeline(state: AppState) -> None:
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle
+    state.title_suggestion_source = _TEMPLATE_SOURCES.get(state.memory_type, TitleSource.FALLBACK)
+    if state.memory_type == MemoryType.ALBUM and not state.album_name:
+        state.title_suggestion_source = TitleSource.FALLBACK
 
     if state.memory_type == MemoryType.ALBUM and state.album_name:
         # Matches the CLI, where the album name is a title_override: a name the
