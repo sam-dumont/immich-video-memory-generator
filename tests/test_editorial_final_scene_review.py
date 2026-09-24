@@ -175,3 +175,43 @@ def test_a_frame_with_no_scene_print_is_kept_and_named():
 
     assert _ids(survivors) == ["path", "beach", "unprinted"]
     assert record["scene"]["unavailable"] == ["unprinted"]
+
+
+# The partner is on "path-again" alone: it is her only shot in the cut.
+FAMILY = {"path-again": {"Partner"}, "path-third": {"Partner"}}
+
+
+def test_a_close_family_members_only_shot_stays_and_the_other_of_the_pair_leaves():
+    cut = [_carrier("path", day=4), _carrier("beach", day=6), _carrier("path-again", day=11)]
+
+    survivors, record = _review(cut, close_family_of=lambda a: FAMILY.get(a, set()))
+
+    assert _ids(survivors) == ["beach", "path-again"]
+    assert [(r["asset_id"], r["keeper"]) for r in record["removals"]] == [("path", "path-again")]
+
+
+def test_an_only_shot_repeating_a_favourite_stays_beside_it():
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("beach", day=6),
+        _carrier("path-again", day=11),
+    ]
+
+    survivors, record = _review(cut, close_family_of=lambda a: FAMILY.get(a, set()))
+
+    assert _ids(survivors) == ["path", "beach", "path-again"]
+    assert record["removals"] == []
+    assert record["kept_only_shots"] == ["path-again"]
+
+
+def test_an_only_shot_is_refilled_only_by_a_picture_that_still_shows_the_person():
+    cut = [_carrier("path", day=4, favourite=True), _carrier("path-again", day=11)]
+    offers = [("moment", _carrier("kitchen", day=11)), ("moment", _carrier("beach", day=11))]
+    shows = {"path-again": {"Partner"}, "beach": {"Partner"}}
+
+    survivors, record = _review(
+        cut, replacements_for=lambda _c: offers, close_family_of=lambda a: shows.get(a, set())
+    )
+
+    assert _ids(survivors) == ["path", "beach"]
+    assert record["removals"][0]["replacement"] == "beach"

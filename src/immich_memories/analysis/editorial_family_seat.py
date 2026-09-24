@@ -41,12 +41,17 @@ class FamilySeatPolicy:
         return pictures >= self.min_pictures or (scope > 0 and pictures / scope >= self.min_share)
 
 
+def _never(_asset_id: str) -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class FamilySeatInputs:
     """What the seat reads. `candidates_of(story_key)` is every picture of a story as a carrier
     row; `stands(asset, story)` is the story's standing bar, `score_of` the rule standing that
     ranks a person's frames, `refused` every hold that applies to this film, and `has_room`
-    whether the film can take one more carrier without dropping one."""
+    whether the film can take one more carrier without dropping one. `held` is a costlier
+    check (the audience gate's own verdict), asked only of the frames about to be seated."""
 
     stories: Sequence[Mapping[str, Any]]
     candidates_of: Callable[[str], list[dict]]
@@ -57,6 +62,7 @@ class FamilySeatInputs:
     refused: Callable[[str], bool]
     has_room: Callable[[list[dict]], bool]
     policy: FamilySeatPolicy = FamilySeatPolicy()
+    held: Callable[[str], bool] = _never
 
 
 def seat_close_family(
@@ -112,9 +118,10 @@ def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str,
             and not inputs.refused(row["asset_id"])
             and inputs.stands(row["asset_id"], story)
         ]
-        if not frames:
+        ranked = sorted(frames, key=lambda row: -inputs.score_of(row["asset_id"]))
+        best = next((row for row in ranked if not inputs.held(row["asset_id"])), None)
+        if best is None:
             continue
-        best = max(frames, key=lambda row: inputs.score_of(row["asset_id"]))
         seat = best | {"family_seat": True}
         if inputs.has_room([*film, seat]):
             film.append(seat)
@@ -169,8 +176,12 @@ def seat_in_film(
     life: Callable[[str], bool],
     excluded: Mapping[str, str],
     record: Callable[[str, Mapping[str, Any]], None],
+    held: Callable[[str], bool] = _never,
 ) -> list[dict]:
-    """Run the seat over a planned cut with the rules' own standing: no model is asked."""
+    """Run the seat over a planned cut with the rules' own standing: no model is asked.
+
+    `held` refuses a frame the seat is about to take, for a film whose audience gate has
+    already run and will not see the seat."""
     source, selection = film.source, film.selection
     unit_by_asset = {u["asset_id"]: (f, u) for f, rows in film.units.items() for u in rows}
 
@@ -225,6 +236,7 @@ def seat_in_film(
             refused=refused,
             has_room=has_room,
             policy=FamilySeatPolicy(policy.seat_min_pictures, policy.seat_min_share),
+            held=held,
         ),
     )
     record("family-seat", audit)

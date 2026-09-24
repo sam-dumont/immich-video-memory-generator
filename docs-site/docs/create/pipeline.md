@@ -519,6 +519,18 @@ or their stories hold nothing but favourites and the film is full, nobody is sea
 on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
 
+The passes after the draft cannot quietly undo a seat. The duplicate review never removes a close
+family member's only shot: of two look-alikes where one is somebody's only appearance, the other
+one leaves; a slot it refills must still show them; and when neither works both frames stay (the
+record names them under `kept_only_shots`). The model's sampled review treats such a frame as
+protected. After every review has run, the finished film is checked once more, and anyone who lost
+their only shot anyway (to the family-viewing gate or the timing trim) is seated again, through the
+same rules plus the family-viewing gate's own verdict on the frame. That second pass is recorded in
+`derived-decisions/family-seat-after-review.private.json`. Measured on a real February: the draft
+had the partner in one still, the scene review swapped it for a frame of the same moment that did
+not show her, and the film shipped without her. It now swaps it for a frame of that moment that
+does.
+
 ### Reading what a model already answered
 
 On a fresh install the draft has nothing to read and cuts exactly the film it cut before. On an

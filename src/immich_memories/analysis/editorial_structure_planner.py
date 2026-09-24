@@ -45,6 +45,7 @@ from immich_memories.analysis.editorial_story_lookalike import (
     picture_pair_relation,
 )
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
+from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_story_standing import (
     StandingBankFile,
     StandingGate,
@@ -72,9 +73,11 @@ from immich_memories.analysis.editorial_structure_finishing import (
     apply_audience_gate,
     check_empty_attached,
     final_duplicate_review,
+    held_by_gate,
     observe_attached,
     replacement_offers,
     resolve_motion_and_timing,
+    seat_again_after_review,
     trim_to_timing,
 )
 from immich_memories.analysis.editorial_structure_material import (
@@ -441,14 +444,14 @@ def _select(
             contract=contract,
             record=record_story,
         )
-    run.carriers = seat_in_film(
-        run.carriers,
-        FilmSeatSource(source, ports.rules, selection, material.units, banked),
+    seat = partial(
+        seat_in_film,
+        film=FilmSeatSource(source, ports.rules, selection, material.units, banked),
         candidates_of=story_candidates(selection, wall, pool, material.units),
         life=lambda asset_id: _shows_life(material, unit_of, asset_id),
         excluded=material.document_sources,
-        record=record_story,
     )
+    run.carriers = seat(run.carriers, record=record_story)
     required = frozenset(source.owner_required_asset_ids)
     if required:
         # After the read, never before it: the owner's ticks change no prompt.
@@ -509,6 +512,16 @@ def _select(
         quality=material.builder.quality,
         pixel_facts=source.pixel_facts,
         owner_required=source.owner_required_asset_ids,
+        close_family_of=lambda asset_id: close_family_on(selection.lines.get(asset_id, "")),
+    )
+    seat_again_after_review(
+        run,
+        ports,
+        seat=lambda cut: seat(
+            cut,
+            record=lambda _name, audit: record_story("family-seat-after-review", audit),
+            held=held_by_gate(gate, unit_of),
+        ),
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")

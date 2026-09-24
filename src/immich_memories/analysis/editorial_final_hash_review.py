@@ -18,6 +18,11 @@ same couple's selfie a week apart or the same stage filmed twice in one evening 
 strangers, yet a viewer sees the film say one thing twice. The scene is read further than the
 hash: across stories, within two weeks, because that is where such a repeat sits.
 
+A close family member's only shot in the cut never leaves it: of a pair where one frame is
+somebody's only appearance, the other frame goes, a refill must still show them, and when
+neither can happen both frames stay. A seat given to someone the period is full of is not
+taken back by a pass that only asked whether two frames look alike.
+
 A refused frame does not simply leave a hole. The film asks the moment it came from for
 another picture, then the story for a moment it has not shown, and only takes the shortfall
 when neither has one that is not itself a repeat.
@@ -27,7 +32,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -59,14 +64,17 @@ SCENE_WINDOW_DAYS = 14
 ScenePrint = Callable[[str], "np.ndarray | None"]
 
 
-def _keep_first(carrier: Mapping[str, Any], protected: frozenset[str]) -> tuple:
+def _keep_first(
+    carrier: Mapping[str, Any], protected: frozenset[str], only_shots: frozenset[str]
+) -> tuple:
     """Which of two look-alikes stays: the owner's tick, then the star, then motion (a true
-    video before a Live Photo's clip), then the earlier frame. A video product never drops the
-    clip of a thing for a still of it."""
+    video before a Live Photo's clip), then a close family member's only shot, then the
+    earlier frame. A video product never drops the clip of a thing for a still of it."""
     return (
         carrier["asset_id"] not in protected,
         not carrier.get("favourite"),
         _MOTION_RANK.get(str(carrier.get("kind")), len(_MOTION_RANK)),
+        carrier["asset_id"] not in only_shots,
         _taken(carrier),
         carrier["asset_id"],
     )
@@ -235,10 +243,22 @@ def _refill(
     return None, None
 
 
+FamilyOf = Callable[[str], Collection[str]]
+
+
+def _no_family(_asset_id: str) -> Collection[str]:
+    return ()
+
+
 class _Cut:
     """The film as the review settles it, one carrier at a time in keeping order."""
 
-    def __init__(self, carriers, repeats: _Repeats, thumbnail_hash, content_floor: float) -> None:
+    def __init__(
+        self, carriers, repeats: _Repeats, thumbnail_hash, content_floor: float, family_of: FamilyOf
+    ) -> None:
+        self.family_of = family_of
+        self.shots = Counter(p for c in carriers for p in set(family_of(c["asset_id"])))
+        self.kept_only_shots: list[str] = []
         self.repeats = repeats
         self.thumbnail_hash = thumbnail_hash
         self.content_floor = content_floor
@@ -257,6 +277,9 @@ class _Cut:
         removal: dict[str, Any] = {"asset_id": carrier["asset_id"], "keeper": keeper}
         if similarity is not None:
             removal["same_scene"] = round(similarity, 3)
+        alone = {p for p in set(self.family_of(carrier["asset_id"])) if self.shots[p] == 1}
+        if alone:
+            offers = [o for o in offers if alone <= set(self.family_of(str(o[1].get("asset_id"))))]
         rung, replacement = _refill(
             carrier,
             offers,
@@ -272,10 +295,16 @@ class _Cut:
             self.kept.append(replacement)
             self.added.append(replacement)
             self.content += _seconds(replacement)
+            self.shots.update(set(self.family_of(replacement["asset_id"])))
+        elif alone:
+            self.kept.append(carrier)
+            self.kept_only_shots.append(carrier["asset_id"])
+            return
         elif similarity is not None and self.content - _seconds(carrier) < self.content_floor:
             self.kept.append(carrier)
             return
         self.content -= _seconds(carrier)
+        self.shots.subtract(set(self.family_of(carrier["asset_id"])))
         self.removals.append(removal)
 
 
@@ -289,6 +318,7 @@ def review_cut_by_cached_hashes(
     | None = None,
     scene_print: ScenePrint | None = None,
     content_floor: float = math.inf,
+    close_family_of: FamilyOf = _no_family,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Drop the frames of a finished cut that repeat one it already holds, and refill the slot.
 
@@ -301,12 +331,21 @@ def review_cut_by_cached_hashes(
     A scene repeat is less certain than a hash repeat, so it only leaves when its slot can be
     spent elsewhere: a replacement takes it, or the film keeps ``content_floor`` seconds without
     it (the film has other material). A film already short of its target keeps its repeats.
+
+    ``close_family_of`` names the close family members a frame shows. A frame that is one of
+    them's only shot is kept ahead of its look-alike, is refilled only by a picture that still
+    shows them, and otherwise stays (named under ``kept_only_shots``).
     """
     protected = frozenset(protected_asset_ids)
     hashes, unavailable = _cached_hashes(carriers, thumbnail_hash)
     repeats = _Repeats(hashes, distance, scene_print)
-    cut = _Cut(carriers, repeats, thumbnail_hash, content_floor)
-    for carrier in sorted(carriers, key=lambda c: _keep_first(c, protected)):
+    cut = _Cut(carriers, repeats, thumbnail_hash, content_floor, close_family_of)
+    only_shots = frozenset(
+        c["asset_id"]
+        for c in carriers
+        if any(cut.shots[p] == 1 for p in set(close_family_of(c["asset_id"])))
+    )
+    for carrier in sorted(carriers, key=lambda c: _keep_first(c, protected, only_shots)):
         if carrier["asset_id"] in protected:
             cut.kept.append(carrier)
         else:
@@ -325,6 +364,7 @@ def review_cut_by_cached_hashes(
         "output_carriers": len(survivors),
         "removals": removals,
         "replaced_from": dict(rungs),
+        "kept_only_shots": cut.kept_only_shots,
         "unavailable": sorted(unavailable),
         "incomplete": bool(unavailable),
     }

@@ -10,8 +10,10 @@ that build one.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections import Counter
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import chain
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
@@ -224,6 +226,15 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
         run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
 
 
+def _only_shots(
+    carriers: Sequence[Mapping[str, Any]], close_family_of: Callable[[str], Collection[str]]
+) -> set[str]:
+    """The frames that are some close family member's only shot in the film."""
+    shows = {c["asset_id"]: set(close_family_of(c["asset_id"])) for c in carriers}
+    shots = Counter(chain.from_iterable(shows.values()))
+    return {asset for asset, people in shows.items() if any(shots[p] == 1 for p in people)}
+
+
 def _both_reviews(hash_record: dict, sampled: dict | None) -> dict:
     """One record for a film that ran both passes: the sampled one, over the hashes' survivors.
 
@@ -254,9 +265,13 @@ def final_duplicate_review(
     owner_required: Sequence[str] = (),
     replacements_for: Callable[[Mapping[str, Any]], Sequence[tuple[str, Mapping[str, Any]]]]
     | None = None,
+    close_family_of: Callable[[str], Collection[str]] = lambda _asset: (),
 ) -> None:
     """Audit the completed film, including later contributions and the actual
-    resolved render kinds. Nothing may refill a removed duplicate afterward."""
+    resolved render kinds. Nothing may refill a removed duplicate afterward.
+
+    A close family member's only shot never leaves: the free review keeps it ahead of its
+    look-alike, and the sampled review over its survivors treats it as protected."""
     protected = sorted(
         (prior_assets - set(prior.get("review_proposed_assets", [])) if prior else set())
         | set(owner_required)
@@ -271,6 +286,7 @@ def final_duplicate_review(
         protected_asset_ids=protected,
         replacements_for=replacements_for,
         scene_print=ports.scene_print,
+        close_family_of=close_family_of,
         # A scene repeat nothing replaces leaves only while the film still reaches its target
         # within the shortfall the owner accepts: a film short of material keeps it.
         content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
@@ -288,7 +304,7 @@ def final_duplicate_review(
             episode_relation=episode_relation,
             picture_records=picture_records,
             attached=attached,
-            protected=protected,
+            protected=sorted({*protected, *_only_shots(run.carriers, close_family_of)}),
             quality=quality,
             pixel_facts=pixel_facts,
         )
@@ -312,6 +328,43 @@ def final_duplicate_review(
     _settle_replacements(
         run, ports, [row["replacement"] for row in removed.values() if "replacement" in row]
     )
+
+
+def held_by_gate(gate: AudienceGate, unit_of: Mapping[str, Mapping[str, Any]]):
+    """Whether the audience gate refuses a picture for this film, asked one picture at a time."""
+
+    def held(asset_id: str) -> bool:
+        verdict = gate.verdict_of(unit_of[asset_id])
+        return verdict is not None and not _share.allowed(verdict, gate.audience)
+
+    return held
+
+
+def seat_again_after_review(
+    run: PlanRun, ports: StructurePlannerPorts, seat: Callable[[list[dict]], list[dict]]
+) -> None:
+    """Seat a close family member again when a pass after the seat took their only shot.
+
+    The seat runs on the draft; the audience gate, the timing trim and the duplicate reviews
+    all come after it and can each remove a frame. The finished film is checked once more, a
+    frame that gives up its place is on the cut record, and a new seat is resolved and fitted
+    like any refilled slot.
+    """
+    before = run.carriers
+    seated = seat(before)
+    known = {c["asset_id"] for c in before}
+    kept = {c["asset_id"] for c in seated}
+    run.cut_carriers.extend(
+        carrier
+        | {
+            "reason": "Gave its place to a close family member's only shot",
+            "review_stage": "family-seat",
+        }
+        for carrier in before
+        if carrier["asset_id"] not in kept
+    )
+    run.carriers = sorted(seated, key=lambda c: str(c.get("taken", "")))
+    _settle_replacements(run, ports, [c["asset_id"] for c in seated if c["asset_id"] not in known])
 
 
 def check_empty_attached(ports: StructurePlannerPorts, observed: bool) -> None:
