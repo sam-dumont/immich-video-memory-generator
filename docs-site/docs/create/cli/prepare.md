@@ -192,36 +192,50 @@ Finds the days something happened on and writes them down, so a memory can arriv
 without you asking. Run it occasionally, not per video. What it produces and how a day comes back is
 on [Memory types](../memory-types.mdx#special-day-surprise-me).
 
-Volume is not what makes a day stand out. In a real library the densest single day is 166 photos of
-a work shoot inside one hour, and another holds 413 of one street performer. What separates them is
-how long the day stayed alive:
+No bar decides which days are looked at. Eight days one library's owner confirmed as occasions are
+each loud on one thing and quiet on the rest: a camp day of 18 pictures across 4 hours, a
+renovation with no favourites, a festival that is half video, a marathon of fifty strangers. A
+floor of twenty pictures across six active hours, and asking only about the six busiest days that
+cleared it, lost most of them, so both are gone.
 
-| day | photos | active hours | occasion |
-|---|---|---|---|
-| a long occasion | 289 | 18 | yes |
-| a wedding party | 48 | 12 | yes |
-| a track day | 133 | 7 | yes |
-| an apartment viewing | 258 | 5 | no |
-| a street performer | 413 | 3 | no |
-| a work shoot | 166 | 1 | no |
+Every run of activity is read instead, a month at a time and in the order it happened. Each run is
+one line of what the library already records about it: when it ran, how many hours of the clock it
+was active, how many pictures, videos and favourites, where it was (or `place: not recorded`), who
+Immich recognised in it, which of your close family were there and on how many pictures (by role
+only, for example `close family: partner, son on 34 of 60 pictures`), and up to three of the captions
+written about its pictures. Close family is you and the partner, child and parent roles you confirmed
+in `people.yaml`, the same set the film's people rules use. Nothing on the
+line is a judgement, and nothing is looked at as pixels. A run with nothing recorded beyond the clock
+is not offered. The model reads the month's lines together, with the question after them, and names
+the occasions among them: the kind of day the people in it would tell other people about afterwards,
+a birth, a wedding, a race, a festival, a concert, a camp, a first, a ceremony. A good day is not an
+occasion. An afternoon at home, a walk, a meal, a park or a day spent photographing one subject is
+ordinary however pleasant it was and however many pictures it left.
 
-No overlap, but the rule is loose on its own: 22 % of days in that library clear six hours. So it is
-a filter, not a verdict, and it keeps the model off the other 78 %, which is what makes asking about
-the rest affordable. A 20-photo floor sits beside it. What passes goes to the model as text: one
-line per sampled picture, with its capture time and whatever the library records about it, and never
-as pixels.
+An occasion is kept only if a film of it can run 30 seconds. That is counted episode by episode (the
+editor's own 90-minute groups, a group that ran on for hours taken 90 minutes at a time): an episode
+counts at most four stills plus its clips, and fills at most 30 seconds, so a day of one burst can be
+named correctly and still be dropped. It is
+checked last, after the day was read, and the log says the day was dropped for want of material. A
+day that is kept is then named from its own pictures' lines, the way it always was.
 
-The question it is asked is whether the day was an occasion, the kind of day the people in it would
-tell other people about afterwards: a birth, a wedding, a race, a festival, a concert, a first, a
-day of a trip, a ceremony. A good day is not an occasion. An afternoon at home, a walk, a meal, a
-park or a day spent photographing one subject is ordinary however pleasant it was and however many
-pictures it left.
+Without a model (`editorial.reader: rules`, or a blank `llm.model`) nothing is asked. A day counts
+when one recorded fact is loud: most of its located pictures away from home (the `trips:` distance),
+at least three favourites, at least three videos making half the day, or a long day (at least 20
+pictures across six active hours) with your close family on it. A long day with none of your close
+family in it does not count: that is the busy ordinary day at home. Each year then keeps only its
+strongest few, `advanced.automation.special_days_per_year` (6 by default): days away first, the
+furthest first, then the most favourites, then the largest share of video, then the longest day
+weighted by the share of it your close family is on, with picture count breaking ties. A kept day is
+titled after its place ("A day in ...") and the same 30-second floor applies. Without a
+`people.yaml`, a long day at home is not found on this tier. A model reading has no yearly cap: it
+names every occasion it finds.
 
 A day ends when the photographs stop for five hours, not at midnight, so a wedding that runs past
 one is one occasion. Days inside a detected trip are skipped, because a trip memory already tells
 that story, and so are holidays, which have their own type. A holiday is only skipped when the day's
 pictures agree it was one, taken around home: a day that merely lands on the same date and was spent
-67 km away at a race circuit goes to the model like any other candidate. Both filters read the
+67 km away at a race circuit is read like any other day. Both filters read the
 thresholds under `trips:`, so this command and the rest of the app agree on what "away" means.
 
 Some days are an event and some contain one. A track day put most of its pictures in one place
@@ -250,7 +264,6 @@ immich-memories discover-days
 |---|---|---|
 | `--since` | 2007 | first year to scan |
 | `--until` | this year | last year to scan |
-| `--per-year` | 6 | how many of the busiest candidate days to ask the model about |
 | `--also-skip` | – | a holiday name or `MM-DD` your library keeps that the defaults miss |
 | `--out` | `~/.immich-memories/special-days.json` | where to write the catalogue |
 | `--rescan` | off | start over, replacing the whole catalogue |
@@ -258,21 +271,22 @@ immich-memories discover-days
 
 The scan takes hours across twenty years, so it resumes by default: years already in the catalogue
 are not scanned again, and a run that finds nothing will not replace a catalogue that has something
-in it. Each year costs up to `--per-year` days' worth of model calls and a paged metadata fetch per
-month.
+in it. Each year costs one text call per month that holds a readable run, one naming call per
+occasion kept, and a paged metadata fetch per month. Answers are banked, so a month read once is not
+paid for again. A year where a month could not be read is left out of the catalogue's scanned years
+and read again on the next run.
 
-### What a day is judged on
+### What a day is named from
 
-Text, and only text. A day the caption bank has been over is judged from those captions. Any other
-day is judged from what the library already records about it: capture times, place names,
-coordinates, recognised names, which pictures are favourites, which are videos, and whatever
-captions the day does have. A day whose lines say nothing at all beyond the hour is recorded as
-unjudged instead of being asked about, because a reader handed a column of bare clock times answers
-from the calendar date. Unjudged days are written to the catalogue under `unjudged` rather than
-`day`, so nothing offers them as a memory and a later run can see they were reached.
+Text, and only text. Once the month's reading names a day, it is titled from its own pictures: from
+the captions when the caption bank has been over it, otherwise from what the library records about
+each picture (capture time, place, coordinates, recognised names, favourites, videos and whatever
+captions it has). A day whose lines say nothing beyond the hour is recorded as unjudged, under
+`unjudged` rather than `day`, so nothing offers it as a memory and a later run can see it was
+reached.
 
-Run `immich-memories -v discover-days` to see the lines a judgement read when a day you expected
-comes back ordinary.
+Run `immich-memories -v discover-days` to see the lines a reading used when a day you expected
+is missing.
 
 ### Rebuilding a catalogue that drifted
 

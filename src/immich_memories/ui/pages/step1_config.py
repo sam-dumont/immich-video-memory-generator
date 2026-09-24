@@ -24,7 +24,7 @@ from immich_memories.ui.pages.step1_tabs import (
     _render_duration_tab,
     _render_year_tab,
 )
-from immich_memories.ui.state import apply_api_key_entry
+from immich_memories.ui.state import apply_connection_entry
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,12 @@ def render_immich_connection(state) -> None:
                 ui.label(f"Connected as: {state.connected_user}").style("color: var(--im-success)")
 
         # URL and API key inputs
+        state.immich_url_entry = state.immich_url
         with ui.row().classes("w-full gap-4"):
             ui.input(
                 "Immich Server URL",
                 placeholder="https://photos.example.com",
-            ).classes("flex-1").bind_value(state, "immich_url")
+            ).classes("flex-1").bind_value(state, "immich_url_entry")
 
             # WHY the entry field: a binding is two-way, so binding the stored
             # key would send it to every browser that loads this page --
@@ -72,9 +73,9 @@ def render_immich_connection(state) -> None:
         with ui.row().classes("gap-2 mt-1"):
 
             async def test_connection() -> None:
-                apply_api_key_entry(state)
-                if not state.immich_url or not state.immich_api_key:
-                    status_label.set_text("Please enter both URL and API key")
+                problem = _connection_problem(state)
+                if problem:
+                    status_label.set_text(problem)
                     status_label.style("color: var(--im-error)")
                     return
 
@@ -121,22 +122,41 @@ def render_immich_connection(state) -> None:
                     status_label.set_text(f"Error: {sanitize_error_message(str(e))}")
                     status_label.style("color: var(--im-error)")
 
-            def save_config() -> None:
-                apply_api_key_entry(state)
-                config = state.config
-                config.immich.url = state.immich_url
-                config.immich.api_key = state.immich_api_key
-                config_path = get_config_path()
-                config.save_yaml(config_path)
-                set_config(config, path=config_path)
-                ui.notify("Configuration saved!", type="positive")
-
             im_button("Test Connection", variant="secondary", on_click=test_connection, icon="wifi")
-            im_button("Save Config", variant="secondary", on_click=save_config, icon="save")
+            im_button(
+                "Save Config",
+                variant="secondary",
+                on_click=lambda: _save_connection(state),
+                icon="save",
+            )
 
         # Auto-connect on page load if credentials are prefilled but not yet connected
         if state.immich_url and state.immich_api_key and not state.connected_user:
             ui.timer(0.1, test_connection, once=True)
+
+
+def _connection_problem(state) -> str | None:
+    """Apply the typed URL and key; say why a connection cannot be tried, if it cannot."""
+    refusal = apply_connection_entry(state)
+    if refusal:
+        return refusal
+    if not state.immich_url or not state.immich_api_key:
+        return "Please enter both URL and API key"
+    return None
+
+
+def _save_connection(state) -> None:
+    refusal = apply_connection_entry(state)
+    if refusal:
+        ui.notify(refusal, type="negative")
+        return
+    config = state.config
+    config.immich.url = state.immich_url
+    config.immich.api_key = state.immich_api_key
+    config_path = get_config_path()
+    config.save_yaml(config_path)
+    set_config(config, path=config_path)
+    ui.notify("Configuration saved!", type="positive")
 
 
 def _compute_date_range(state):

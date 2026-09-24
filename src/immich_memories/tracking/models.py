@@ -185,6 +185,8 @@ class RunMetadata:
     # What the run spent on the model. Run-level rather than per-phase because
     # analysis and selection are not tracked phases and spend most of it.
     llm_metrics: dict[str, float | int] = field(default_factory=dict)
+    # Which source produced the opening title: a TitleSource value.
+    title_source: str | None = None
 
     # System info
     system_info: SystemInfo | None = None
@@ -233,6 +235,7 @@ class RunMetadata:
             "immich_asset_id": self.immich_asset_id,
             "delivery_album": self.delivery_album,
             "warnings": self.warnings,
+            "title_source": self.title_source,
             "clips_analyzed": self.clips_analyzed,
             "clips_selected": self.clips_selected,
             "errors_count": self.errors_count,
@@ -284,6 +287,7 @@ class RunMetadata:
             immich_asset_id=data.get("immich_asset_id"),
             delivery_album=data.get("delivery_album"),
             warnings=list(data.get("warnings") or []),
+            title_source=data.get("title_source"),
             clips_analyzed=data.get("clips_analyzed", 0),
             clips_selected=data.get("clips_selected", 0),
             errors_count=data.get("errors_count", 0),

@@ -1,17 +1,13 @@
 """A vote bank must replay the same model question, including its positional labels."""
 
-import hashlib
 import json
 import re
 from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.analysis.editorial_block_votes import (
-    STANDING_PROMPT_VERSION,
-    judge_standing,
-    judge_worthiness,
-)
+from immich_memories.analysis.editorial_block_votes import judge_worthiness
+from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.config_models_llm import LLMConfig
 
 
@@ -48,8 +44,9 @@ def test_standing_keeps_a_pictures_rejection_when_its_company_changes():
     shifted = (*[f"b{i}" for i in range(12)], "a")
     assert standing(judge, bank, pictures=shifted)["a"][0] == 0
     # The vote is banked under the picture's own line, not under the label it wore, so the
-    # twelve newcomers are one block and "a" is not asked a third time.
-    assert len(judge.calls) == 4
+    # twelve newcomers are one block (nothing in it doubted, so no check) and "a" is not asked
+    # a third time.
+    assert len(judge.calls) == 3
     assert all("weak object" not in prompt for _stage, prompt in judge.calls[2:])
 
 
@@ -96,20 +93,6 @@ def test_an_adapter_can_supply_its_model_identity_explicitly():
     kwargs["model_identity"] = "adapter/model-b/settings-v1"
     judge_standing(judge, **kwargs)
     assert len(judge.calls) == 4
-
-
-def test_legacy_bank_is_ignored_without_changing_the_established_hashed_order():
-    judge = VoteJudge()
-    pictures = ("a", "b", "c")
-    lines = {"a": "weak object", "b": "people at b", "c": "people at c"}
-    seed = hashlib.sha256(
-        (STANDING_PROMPT_VERSION + "||" + "|".join(lines[a] for a in pictures)).encode()
-    ).hexdigest()
-    bank = {seed: {"source": {}, "hashed": {}}}
-    assert standing(judge, bank, pictures=pictures)["a"][0] == 0
-    order = sorted(pictures, key=lambda asset: hashlib.sha256((asset + seed).encode()).hexdigest())
-    expected = [f"P{pictures.index(asset) + 1:02d}" for asset in order]
-    assert re.findall(r"^(P\d+):", judge.calls[1][1], re.MULTILINE) == expected
 
 
 @pytest.mark.parametrize("change", ["near_home", "period", "criterion", "model"])
@@ -177,14 +160,14 @@ def test_a_banked_picture_is_answered_without_asking_it_in_new_company():
     assert len(judge.calls) == 2
 
     second = standing(judge, bank, pictures=("c", "d"))
-    assert len(judge.calls) == 4, "only the unbanked picture is worth a block"
+    assert len(judge.calls) == 3, "only the unbanked picture is worth a block"
     asked = [prompt for _stage, prompt in judge.calls[2:]]
     assert all("people at d" in prompt for prompt in asked)
     assert all("people at c" not in prompt for prompt in asked)
     assert second["c"] == first["c"]
 
 
-EXAMPLE = re.compile(r'on one line: (\{"weak":\{.*\}\})$', re.MULTILINE)
+EXAMPLE = re.compile(r'exactly once: (\{"weak":\{.*\}\})$', re.MULTILINE)
 
 
 def offered_and_example(prompt):

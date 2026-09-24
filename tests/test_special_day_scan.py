@@ -99,7 +99,6 @@ class TestAHolidayIsOnlySkippedWhenTheDayLooksLikeOne:
             _christmas_day(_AWAY),
             llm_config=None,
             home=_HOME,
-            ask=1,
             trips_config=_home_config(),
         )
 
@@ -111,7 +110,6 @@ class TestAHolidayIsOnlySkippedWhenTheDayLooksLikeOne:
             _christmas_day(_HOME),
             llm_config=None,
             home=_HOME,
-            ask=1,
             trips_config=_home_config(),
         )
 
@@ -124,7 +122,7 @@ class TestAHolidayIsOnlySkippedWhenTheDayLooksLikeOne:
             asset.exif_info.latitude = None
             asset.exif_info.longitude = None
 
-        found = scan_year(unplaced, llm_config=None, home=_HOME, ask=1, trips_config=_home_config())
+        found = scan_year(unplaced, llm_config=None, home=_HOME, trips_config=_home_config())
 
         assert found == []
 
@@ -153,7 +151,6 @@ def test_trip_detection_runs_with_the_thresholds_this_library_configured(monkeyp
         _a_full_day(),
         llm_config=None,
         home=_HOME,
-        ask=1,
         trips_config=TripsConfig(
             homebase_latitude=_HOME[0],
             homebase_longitude=_HOME[1],
@@ -204,7 +201,7 @@ def test_without_a_homebase_the_scan_excludes_no_days(monkeypatch) -> None:
         lambda *_a, **_k: pytest.fail("trip detection ran without a homebase"),
     )
 
-    found = scan_year(_a_full_day(), llm_config=None, home=None, ask=1)
+    found = scan_year(_a_full_day(), llm_config=None, home=None)
 
     assert [d.day for d in found] == [date(2021, 4, 13)]
 
@@ -255,7 +252,7 @@ def test_the_catalogue_records_how_long_the_day_stayed_awake(monkeypatch) -> Non
 
     evening = [_asset(h, m) for h in range(17, 23) for m in (0, 15, 30, 45)]
 
-    found = scan_year(evening, llm_config=None, home=None, ask=1)
+    found = scan_year(evening, llm_config=None, home=None)
 
     assert [d.active_hours for d in found] == [6]
 
@@ -278,7 +275,7 @@ def test_a_run_that_crossed_midnight_is_measured_as_the_one_night_it_was(monkeyp
     evening = [_asset(h, m, day=13) for h in (21, 22, 23) for m in (0, 15, 30, 45)]
     small_hours = [_asset(h, m, day=14) for h in (0, 1, 2) for m in (0, 15, 30, 45)]
 
-    found = scan_year(evening + small_hours, llm_config=None, home=None, ask=1)
+    found = scan_year(evening + small_hours, llm_config=None, home=None)
 
     assert [(d.day, d.active_hours) for d in found] == [(date(2021, 4, 13), 6)]
     assert found[0].run_start == datetime(2021, 4, 13, 21, 0, tzinfo=UTC)
@@ -511,19 +508,21 @@ def test_a_catalogue_nobody_can_read_is_not_a_catalogue(tmp_path) -> None:
 
 
 def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypatch) -> None:
-    """A day must not clear the bar on pictures somebody else took.
+    """A day must not be read, or counted, on pictures somebody else took.
 
     Measured on a real day the scan called special: 37 of its 223 assets were
     received or downloaded rather than shot. They pushed the day's volume and
     its active hours toward the thresholds, and they could be sampled into the
     prompt — so the model narrated pictures the owner never took.
     """
-    # WHY: ask_if_special is the LLM call; a day that reaches it is a day the
-    # filter failed to remove, which is the whole subject here.
-    monkeypatch.setattr(
-        "immich_memories.automation.special_day_scan.ask_if_special",
-        lambda *_a, **_k: SpecialDay(special=True, title="A day", subtitle="", what="out"),
-    )
+    seen: list[list] = []
+
+    # WHY: ask_if_special is the LLM call; what reaches it is the whole subject here.
+    def _name(items, *_a, **_k):
+        seen.append(items)
+        return SpecialDay(special=True, title="A day", subtitle="", what="out")
+
+    monkeypatch.setattr("immich_memories.automation.special_day_scan.ask_if_special", _name)
 
     shot = []
     for hour in range(9, 12):
@@ -540,18 +539,11 @@ def test_media_the_camera_never_shot_is_gone_before_the_day_is_counted(monkeypat
             asset.type = AssetType.IMAGE
             received.append(asset)
 
-    # Together they clear both bars; the nine the camera shot do not, so the
-    # day only becomes a candidate at all by counting the other twenty-seven.
-    assert (
-        scan_year(
-            shot + received,
-            llm_config=None,
-            home=None,
-            ask=1,
-            analysis_config=AnalysisConfig(),
-        )
-        == []
-    )
+    found = scan_year(shot + received, llm_config=None, home=None, analysis_config=AnalysisConfig())
+
+    # The day is the nine the camera shot; the other twenty-seven never reach a reader.
+    assert [d.photos for d in found] == [9]
+    assert [len(items) for items in seen] == [9]
 
 
 def test_december_does_not_reach_into_the_next_year() -> None:
@@ -605,3 +597,7 @@ def test_the_catalogue_never_defaults_into_the_working_directory():
             default = Path(param.default)
             assert default.is_absolute(), f"{command_name} --{param.name} defaults to CWD"
             assert Path.home() in default.parents
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

@@ -243,6 +243,11 @@ GPU backend that fails that test is skipped and the log says so once, naming it 
 Title rendering on CPU: CUDA: crashed (sigabrt); the kernel renderer runs on CPU instead.
 ```
 
+A container with no card passed in lands on the CPU backend. The kernel library does not fail when
+asked for CUDA or Vulkan there: it starts on the processor and warns. The app checks which backend
+the runtime actually started on, so the log line reads `CUDA: found no device (the kernel library
+started on the CPU)` and preflight's `Title rendering` row says `Kernels on the CPU`.
+
 Compiled kernels are cached in `~/.immich-memories/cache/kernels`, or in the temp directory when
 that is not writable. `IMMICH_FORCE_CPU=1` keeps the GPU renderer but forces it onto the processor, for a
 broken driver or a timing comparison.

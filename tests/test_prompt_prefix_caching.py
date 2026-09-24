@@ -80,7 +80,7 @@ def _worth_prompts() -> tuple[str, str]:
 
 
 def _standing_prompts() -> tuple[str, str]:
-    from immich_memories.analysis.editorial_block_votes import judge_standing
+    from immich_memories.analysis.editorial_standing_vote import judge_standing
 
     judge = RecordingJudge()
     judge_standing(
@@ -88,7 +88,7 @@ def _standing_prompts() -> tuple[str, str]:
         pictures=[f"a{i}" for i in range(24)],
         line_of=lambda a: f"2024-02-01 a picture of {a}",
     )
-    return judge.calls[0], judge.calls[2]
+    return judge.calls[0], judge.calls[1]
 
 
 def _audience_evidence(members: int, word: str) -> dict:
@@ -247,7 +247,7 @@ def _special_day_prompts() -> tuple[str, str]:
 # a variable slipped back into the middle of a preamble fails here.
 STAGES = [
     ("worthy", _worth_prompts, 400),
-    ("standing", _standing_prompts, 800),
+    ("standing", _standing_prompts, 700),
     ("shareability-activity", _activity_prompts, 2800),
     ("shareability-exposure", _exposure_prompts, 1000),
     ("story-episodes", _episode_page_prompts, 900),

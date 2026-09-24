@@ -51,34 +51,6 @@ WORTH_SUBJECT_CRITERION = (
     "words what it shows of the subject.\nSubject: {subject}"
 )
 
-# v6: the question no longer names the film's contract or period, so a picture's answer is the
-# library's and every cut that reaches the picture reads it (#1151). Every v5 row expires once.
-STANDING_PROMPT_VERSION = "picture-stands-v6-scope-free"
-STANDING_CRITERION = (
-    "Name the pictures that do NOT stand by themselves: pictures nobody would show on their own because they show "
-    "nothing worth showing. A close-up of a body part or an ailment, a screen, a document, a lone everyday object "
-    "with nobody in it, an empty room, a test shot, an accidental or unflattering frame. Judge what a picture shows, "
-    "not whether its subject is comfortable: people in a real moment stand whatever the setting, and so does a "
-    "place worth seeing. A row that names a video, or a Live Photo whose motion plays, is footage: judge what happens "
-    "across it, told by the sentence after its length, not whether one still frame would make a good photograph. "
-    "Name only the weak ones; say for each in at most 12 words why."
-)
-
-
-def standing_pass_version(motion_identity: str) -> str:
-    """The bank key for standing votes cast on these rows.
-
-    The criterion is half the question; the shape of the row it judges is the other half. A
-    moving picture's row now carries the motion sentence the caption seat banked at
-    preparation, so the seat that wrote those sentences belongs in the key: another seat writes
-    other sentences, and its predecessor's answers must not replay under them. #1064 settled
-    the same thing for cull verdicts and the reading behind them.
-    """
-    if not motion_identity:
-        return STANDING_PROMPT_VERSION
-    return f"{STANDING_PROMPT_VERSION}/{motion_identity}"
-
-
 TRIP_WORTH_CRITERION = (
     "Pick the parts that tell THIS TRIP as a journey: distinct legs and places, visits and activities, "
     "local architecture, landscapes, food and atmosphere that establish where the travellers went "
@@ -220,6 +192,7 @@ def _ask_orders(
     answer_key: str,
     label_of: Mapping[str, str],
     max_tokens: int,
+    picks: Callable[..., tuple[dict[str, str], str]] = _picks,
 ) -> dict[str, dict[str, str]]:
     votes: dict[str, dict[str, str]] = {}
     for order_name, order in orders:
@@ -228,7 +201,7 @@ def _ask_orders(
             stage=f"{stage}-{order_name}",
             prompt=prompts[order_name],
             max_tokens=max_tokens,
-            read=partial(_picks, answer_key=answer_key, allowed={label_of[x] for x in order}),
+            read=partial(picks, answer_key=answer_key, allowed={label_of[x] for x in order}),
         )
         votes[order_name] = picked
         votes[f"{order_name}_envelope"] = {"shape": envelope}
@@ -370,6 +343,7 @@ def vote_blocks(
     rows_version: str = "",
     settled: Settled | None = None,
     balanced: bool = False,
+    picks: Callable[..., tuple[dict[str, str], str]] = _picks,
 ) -> tuple[dict[str, tuple[int, str]], list[dict]]:
     """Votes per item (0, 1 or 2) with the first reason given, and one record per asked round.
     `row_of` renders the whole listing row including its label; `prompt_of` wraps a listing.
@@ -379,6 +353,7 @@ def vote_blocks(
 
     With `settled`, a block is asked in its source order first and in its hashed order only when
     one of its rows is not settled by that first answer; such a row's count is then out of one.
+    `picks` reads one order's answer into the labels it named, with their reasons.
     """
     identity = _judge_model_identity(judge, model_identity) if bank is not None else None
     reusable = bank if identity is not None else None
@@ -417,6 +392,7 @@ def vote_blocks(
             answer_key=answer_key,
             label_of=label_of,
             max_tokens=max_tokens,
+            picks=picks,
         )
 
     def read(child: object, asked: _Block) -> dict[str, dict[str, str]]:
@@ -605,8 +581,6 @@ def _warn_on_empty_rounds(rounds: Sequence[Mapping[str, object]]) -> None:
         )
 
 
-STANDING_MAX_TOKENS = 700
-
 _OFFERED_LABEL = re.compile(r"^(P\d+): ", re.MULTILINE)
 
 
@@ -619,104 +593,3 @@ def weak_example(listing: str) -> str:
     """
     labels = _OFFERED_LABEL.findall(listing)[:2]
     return json.dumps({"weak": dict.fromkeys(labels, "why")}, separators=(",", ":"))
-
-
-def standing_prompt(listing: str, subject: str = "") -> str:
-    """The whole standing question over one listing of rows.
-
-    Whether a picture stands by itself does not depend on which film offers it: a mug on a table
-    is as weak in May as in the year around it. The question therefore names no period and no
-    film contract, so one answer serves every cut that reaches the picture. The one exception is
-    a memory bound to a subject (a custom memory's topic, a person): there a picture of the
-    subject is the point, so the subject is part of the question and of its bank name.
-    """
-    about = (
-        f"This memory is about: {subject}. A picture that shows it, or a stage of it, is worth "
-        "showing.\n\n"
-        if subject
-        else ""
-    )
-    # Pictures last: see judge_worthiness.prompt_of (#981).
-    return (
-        f"{about}Below are single pictures, one line each: when it was taken and what it shows. "
-        f"Text only.\n\n{STANDING_CRITERION}\n\n"
-        f"Answer with one JSON object only, on one line: {weak_example(listing)}"
-        f"\n\nPICTURES\n{listing}"
-    )
-
-
-def _standing_row_key(asset_id: str, row: str, *, subject: str, version: str) -> str:
-    # One picture's own question: the whole prompt except the company it was offered in, the
-    # picture it was asked about, and the row that described it (a new caption is a new row).
-    question = version + "|" + standing_prompt("", subject) + "|"
-    return hashlib.sha256(f"{asset_id}\x00{question}{row}".encode()).hexdigest()
-
-
-def standing_row_name(
-    asset_id: str, row: str, *, identity: str, subject: str = "", motion_identity: str = ""
-) -> str:
-    """The name one picture's standing answer lives under in the library's per-row store.
-
-    A reader that wants to know what was already answered about a picture has to name that
-    answer exactly as the asking side named it: the criterion, the motion seat behind a moving
-    row, the model that replied, the picture and the row's own text. Both sides derive the name
-    here, so neither can drift away from the other. No film scope is part of it.
-    """
-    version = standing_pass_version(motion_identity)
-    return _vote_cache_key(
-        {"row": _standing_row_key(asset_id, row, subject=subject, version=version)},
-        identity,
-        STANDING_MAX_TOKENS,
-        "weak",
-        rows_version=version,
-    )
-
-
-def judge_standing(
-    judge,
-    *,
-    pictures: Sequence[str],
-    line_of: Callable[[str], str],
-    subject: str = "",
-    bank: MutableMapping[str, dict] | None = None,
-    save: Callable[[], None] | None = None,
-    model_identity: str | None = None,
-    motion_identity: str = "",
-    settled: Settled | None = None,
-) -> dict[str, tuple[int, str]]:
-    """Does each picture stand by itself? Reject-only: the model names the weak ones. Score per asset
-    id: 2 = named by neither order, 1 = by one, 0 = by both. `motion_identity` names the seat
-    whose sentences a moving picture's row carries, so its rows expire with it."""
-    label_of = {a: f"P{i + 1:02d}" for i, a in enumerate(pictures)}
-    version = standing_pass_version(motion_identity)
-
-    def prompt_of(listing: str) -> str:
-        return standing_prompt(listing, subject)
-
-    def bank_key(block: Sequence[str]) -> str:
-        return hashlib.sha256(
-            (version + "|" + subject + "|" + "|".join(line_of(a) for a in block)).encode()
-        ).hexdigest()
-
-    def row_key(asset: str) -> str:
-        return _standing_row_key(asset, line_of(asset), subject=subject, version=version)
-
-    rejections, _rounds = vote_blocks(
-        judge,
-        stage="standing",
-        items=pictures,
-        label_of=label_of,
-        row_of=lambda a: f"{label_of[a]}: {line_of(a)}",
-        prompt_of=prompt_of,
-        answer_key="weak",
-        bank_key=bank_key,
-        bank=bank,
-        save=save,
-        max_tokens=STANDING_MAX_TOKENS,
-        model_identity=model_identity,
-        row_key=row_key,
-        rows_version=version,
-        settled=settled,
-        balanced=True,
-    )
-    return {a: (2 - n, why) for a, (n, why) in rejections.items()}

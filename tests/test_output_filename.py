@@ -375,3 +375,34 @@ class TestBuildTitlePersonName:
             "person_spotlight", {}, "Riley Dumont", use_first_name_only=False
         )
         assert result == "Riley Dumont"
+
+
+class TestPersonNamesCannotLeaveTheOutputFolder:
+    """#1212: a person named `../../x` in Immich must not write outside the output folder."""
+
+    def test_cli_path_stays_in_the_output_folder(self, tmp_path):
+        from immich_memories.timeperiod import calendar_year
+
+        output_dir = tmp_path / "out"
+        path = build_memory_output_path(
+            output_dir=output_dir,
+            person_names=["../../x"],
+            memory_type="person_spotlight",
+            date_range=calendar_year(2025),
+            container="mp4",
+        )
+
+        assert path.parent == output_dir
+        assert path.resolve().is_relative_to(output_dir.resolve())
+        assert "/" not in path.name and ".." not in path.name
+
+    def test_ui_filename_has_no_path_separators(self):
+        name = build_output_filename(
+            memory_type="multi_person",
+            preset_params={"person_names": ["../../x", "a\\b"]},
+            person_name=None,
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
+        )
+
+        assert "/" not in name and "\\" not in name and ".." not in name

@@ -256,10 +256,34 @@ Detection is three stages, no clustering:
 3. **Discard the short ones**: a group survives if the nights it spans reach `min_duration_days`
    (default 2, so three calendar days). `1` catches a weekend away and is the floor.
 
-The name comes from the city and country Immich stored on the pictures themselves, which is what
-the title screen shows. Set `network.geocoding: true` and the centroid of the cluster goes to
-Nominatim instead, which names a region rather than whichever village the cluster happens to centre
-on, and names it in the film's language. The nightly `auto run` trip detector geocodes the same way.
+The name is the smallest place that holds at least 85% of the trip's located pictures, counted per
+picture. It walks up from the city, to an island, to the region, to two regions, to the country,
+and reads the city, region and country Immich stored on every picture from its own offline
+GeoNames data. No outside call.
+
+| The trip | Its name |
+|---|---|
+| A long weekend, nearly every picture in Las Vegas | `Las Vegas, United States` |
+| A hike through five towns of Saxon Switzerland | `Saxony, Germany` |
+| Two weeks across Heraklion, Rethymno and Chania | `Crete, Greece` (French film: `Crète, Grèce`) |
+| A week in Paphos, Limassol and Larnaca | `Cyprus` (`Chypre`) |
+| Bari, Polignano, Ostuni and Lecce | `Apulia, Italy` (`Pouilles, Italie`) |
+| A road trip, mostly Utah and Nevada, a day in Arizona | `Utah and Nevada, United States` |
+| Four states, none of them most of it | `United States` |
+
+An island wins over the administrative units it is filed under: Palma and Pollença make
+`Mallorca, Spain`, not `Balearic Islands`. The app carries a short offline list of islands for
+that (the Greek, Balearic and Canary islands, Madeira, Bali, the main Hawaiian islands and a few
+more); islands that are their own region or country (Crete, Sicily, Sardinia, Corsica, Cyprus) are
+named that way already. Administrative wording is dropped (`Limassol District` becomes `Limassol`),
+local spellings become the common name (`Puglia` becomes `Apulia`), and a region label in a script
+the title language does not use names the trip one scale up instead.
+
+Set `network.geocoding: true` and a trip that fits one city or one region is named by Nominatim
+instead, in the film's language: the town when the pictures sit within 25 km of each other, else
+the island or the state. Never the county, which in some countries is a regional unit with a long
+local-script name. Islands, two-region trips and countries always come from the pictures. The
+nightly `auto run` trip detector names trips the same way.
 
 ```yaml
 trips:

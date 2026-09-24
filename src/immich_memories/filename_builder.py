@@ -6,6 +6,7 @@ import calendar
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
@@ -24,6 +25,24 @@ _RECIPE_HASH_SUFFIX = re.compile(rf"_[0-9a-f]{{{_RECIPE_HASH_CHARS}}}$")
 # Segment boundaries are floats derived from analysis. A rerun landing a few
 # milliseconds apart is the same edit, so boundaries are compared at 10 ms.
 _BOUNDARY_PRECISION = 2
+
+
+_SLUG_STRIP = re.compile(r"[^a-z0-9-]+")
+
+
+def safe_slug(text: str, max_length: int = 40) -> str:
+    """Fold text to lowercase ASCII words joined by underscores, or "" if none survive.
+
+    Names come from Immich (people, albums, places), so they can hold `/`, `..`
+    or anything else; nothing but `[a-z0-9_-]` ever reaches a filename (#1212).
+    """
+    folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return _SLUG_STRIP.sub("_", folded.lower()).strip("_-")[:max_length].strip("_-")
+
+
+def _person_slug(name: str) -> str:
+    # A name with no ASCII letters (a CJK name) still needs its own file name.
+    return safe_slug(name) or "person-" + hashlib.sha256(name.encode()).hexdigest()[:8]
 
 
 def normalize_output_path(path: Path, container: Literal["mp4", "mov"]) -> Path:
@@ -46,11 +65,9 @@ def build_memory_output_path(
     person_expression: PersonExpression | None = None,
 ) -> Path:
     """The CLI's default file name for a memory: who is in it, what it covers."""
-    person_slug = (
-        "_".join(n.lower().replace(" ", "_") for n in person_names) if person_names else "all"
-    )
+    person_slug = "_".join(_person_slug(n) for n in person_names) if person_names else "all"
     if len(person_names) > 1 and person_match == "or" and memory_type != "multi_person":
-        person_slug = "_or_".join(n.lower().replace(" ", "_") for n in person_names)
+        person_slug = "_or_".join(_person_slug(n) for n in person_names)
     type_slug = memory_type or "memories"
     if memory_type == "multi_person" and person_match == "or":
         type_slug = "multi_person_or"
@@ -226,9 +243,9 @@ def _build_who_part(
         if names:
             joiner = "_or_" if preset_params.get("person_match", "and") == "or" else "_"
             if len(names) <= 3:
-                return joiner.join(n.lower() for n in names)
+                return joiner.join(_person_slug(n) for n in names)
             tail = "_or_others" if joiner == "_or_" else "_and_others"
-            return joiner.join(n.lower() for n in names[:3]) + tail
+            return joiner.join(_person_slug(n) for n in names[:3]) + tail
 
     # Trip: use "trip" as the who part
     if memory_type == "trip":
@@ -237,20 +254,18 @@ def _build_who_part(
     # Single person from preset params or state
     preset_names = preset_params.get("person_names", [])
     if preset_names:
-        return preset_names[0].lower()
+        return _person_slug(preset_names[0])
     if person_name:
-        return person_name.lower()
+        return _person_slug(person_name)
 
     return "everyone"
 
 
 def _when_trip(preset_params: dict, date_start: date | None, date_end: date | None) -> str:
     """Build 'when' part for trip memory type."""
-    import re
-
     location = preset_params.get("location_name")
     if location:
-        return re.sub(r"[^a-z0-9]+", "_", location.lower()).strip("_")
+        return safe_slug(location, max_length=60)
     if date_start and date_end:
         return _date_range_slug(date_start, date_end)
     return str(preset_params.get("year", ""))

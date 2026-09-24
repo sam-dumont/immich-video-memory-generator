@@ -244,7 +244,8 @@ class ChainFont(ImageFont.FreeTypeFont):
         self._fonts: dict[_Face, ImageFont.FreeTypeFont] = {}
 
     def _needs_chain(self, text: str) -> bool:
-        return not face_covers(str(self.path), text)
+        own = _codepoints(str(self.path), self.index)
+        return any(ord(c) not in own and not c.isspace() for c in text)
 
     def _run_font(self, face: _Face) -> ImageFont.FreeTypeFont:
         if face not in self._fonts:

@@ -197,7 +197,9 @@ catalogue is a memory nobody asked for (five years to the day since
 the wedding), and that needs the days found in advance.
 
 Days inside a trip are skipped, since a trip memory already tells that
-story, and so are holidays, which have their own.
+story, and so are holidays, which have their own. Every other day is
+read, a month at a time and in order, and the model says which were
+occasions; no picture count or active-hours bar decides what it sees.
 
 Resumes by default: years already in the catalogue are not scanned
 again, which matters for a command that runs for hours. --rescan
@@ -218,7 +220,6 @@ immich-memories discover-days [OPTIONS]
 | --- | --- | --- | --- |
 | `--since` | integer | 2007 | First year to scan |
 | `--until` | integer | 2026 | Last year to scan |
-| `--per-year` | integer | 6 | Busiest candidates to ask about |
 | `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
 | `--out` | file | ~/.immich-memories/special-days.json | Where to write the catalogue |
 | `--rescan` | boolean | false | Start over, ignoring and replacing the existing catalogue |

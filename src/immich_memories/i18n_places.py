@@ -85,17 +85,20 @@ def french_preposition(english_place: str) -> str:
 
 
 def localise_place(name: str | None, locale: str) -> str | None:
-    """Translate the country at the end of a "City, Country" label.
+    """Translate a "Place, Country" label: the country, and the place when it is known.
 
-    The city or region keeps whatever the source called it: CLDR has no city
-    names, and inventing one would be worse than showing the real one.
+    A city keeps whatever the source called it: CLDR has no city names, and
+    inventing one would be worse than showing the real one. Islands and
+    regions a trip is named after have a short offline table (`place_names`).
     """
+    from immich_memories.place_names import localise_place_part
+
     if not name:
         return name
     head, separator, tail = name.rpartition(", ")
     if not separator:
         return localise_country(name, locale)
-    return f"{head}, {localise_country(tail, locale)}"
+    return f"{localise_place_part(head, locale)}, {localise_country(tail, locale)}"
 
 
 def place_label(city: str | None, country: str | None, locale: str) -> str | None:

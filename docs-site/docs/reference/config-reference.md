@@ -514,7 +514,7 @@ configured. Rules cover the ten standard memory products, including albums and r
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
 Photos as stills, and write no semantic model banks. Saved plans identify the producer as
-`rules-v1`. A custom free-text subject ("pictures about perseverance") needs the model reader.
+`rules-v1`. A custom `--start`/`--end` range is cut the same way as a month or a year.
 
 ### The thin model layer
 
@@ -779,6 +779,7 @@ automation:
   detect_person_spotlight: true   # per-person highlight candidates
   detect_activity_burst: true     # unusually active months
   burst_threshold: 2.0            # multiplier above rolling average to trigger burst
+  special_days_per_year: 6        # days a year discover-days keeps without a model, strongest first
 ```
 
 ## Authentication
