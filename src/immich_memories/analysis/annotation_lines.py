@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
+from immich_memories.analysis.annotation_line_fields import FLAGGED, STARRED
 from immich_memories.analysis.editorial_carrier_eligibility import CARRYING_KINDS
 from immich_memories.analysis.editorial_clip_frames import (
     CLIP_FRAMES_HEAD,
@@ -308,7 +309,7 @@ def _render_line(
     if head_bits:
         parts.append(", ".join(head_bits))
     if candidate.favourite:
-        parts.append("STARRED by the photographer")
+        parts.append(STARRED)
     parts.extend(_flag_notes(facts))
     parts.extend(_pixel_warnings(facts))
     parts.extend(
@@ -353,7 +354,7 @@ def _head_bits(facts: StoredAssetAnnotationFacts, head_versions: Mapping[str, st
 
 def _flag_notes(facts: StoredAssetAnnotationFacts) -> list[str]:
     return [
-        f"FLAGGED {flag.flag}{f' ({flag.reason})' if flag.reason else ''}"
+        f"{FLAGGED}{flag.flag}{f' ({flag.reason})' if flag.reason else ''}"
         for flag in facts.flags
         if flag.flag
     ]

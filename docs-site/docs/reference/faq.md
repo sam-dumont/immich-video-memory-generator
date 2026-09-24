@@ -8,8 +8,9 @@ title: FAQ
 
 Not unless you ask it to. It reads metadata and previews and downloads copies of the selected
 originals to cut from. With `--upload-to-immich` (or the Export page's upload switch) the finished
-video is uploaded as a new asset, optionally into an album; a re-render into the same album sends
-the copy it replaces to Immich's trash. Nothing else is written.
+video is uploaded as a new asset, optionally into an album, and tagged `immich-memories/generated`;
+a re-render into the same album sends the copy it replaces to Immich's trash. Nothing else is
+written.
 
 **What leaves my machine?**
 

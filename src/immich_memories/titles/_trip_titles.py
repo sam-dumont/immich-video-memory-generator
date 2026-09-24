@@ -9,7 +9,9 @@ from __future__ import annotations
 from datetime import date
 
 from immich_memories.i18n import get_month_name
-from immich_memories.i18n_places import french_preposition, localise_place
+from immich_memories.i18n_places import localise_country, localise_place
+from immich_memories.place_phrases import Place, place_phrase
+from immich_memories.place_phrases.place import infer_place_kind
 from immich_memories.processing.clip_caption import resolve_caption_locale
 from immich_memories.titles.letter_case import display_upper
 
@@ -87,23 +89,38 @@ def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str
     return f"{season} {years}"
 
 
+def _localised(place: Place, locale: str) -> str:
+    if place.kind == "countries":
+        return " → ".join(localise_country(c, locale) for c in place.english.split(" → "))
+    return localise_place(place.english, locale) or place.english
+
+
 def generate_trip_title(
     location_name: str,
     start_date: date,
     end_date: date,
     locale: str = "en",
+    kind: str | None = None,
 ) -> str:
     """Generate a trip title string for a map overview frame.
 
+    `kind` is the scale trip naming chose ("city", "island", "region",
+    "regions", "country", "countries"); a label from before it was recorded
+    has it inferred. The phrase comes from the language's own rules
+    (`place_phrases`); a language or a place with none gets a title with no
+    preposition, place first, so a wrong one never reaches the screen.
+
     Examples:
-        "TWO WEEKS IN ÎLE D'OLÉRON, FRANCE, SUMMER 2025"
-        "A WEEKEND IN BARCELONA, SPAIN, SPRING 2025"
-        "10 DAYS IN LANZAROTE, SPAIN, DECEMBER 2024"
+        "TWO WEEKS IN THE NETHERLANDS, SUMMER 2025"
+        "DEUX SEMAINES EN CRÈTE, GRÈCE, ÉTÉ 2025"
+        "CRÈTE, GRÈCE · DEUX SEMAINES, ÉTÉ 2025" (no phrase for it)
     """
     locale = resolve_caption_locale(locale)
     days = (end_date - start_date).days + 1
     duration = _get_duration_label(days, locale)
     time_label = _get_time_label(start_date, end_date, locale)
-    location_upper = display_upper(localise_place(location_name, locale) or location_name)
-    preposition = display_upper(french_preposition(location_name)) if locale == "fr" else "IN"
-    return f"{duration} {preposition} {location_upper}, {time_label}"
+    place = Place(location_name, kind or infer_place_kind(location_name))
+    phrase = place_phrase(locale, place)
+    if phrase is None:
+        return f"{display_upper(_localised(place, locale))} · {duration}, {time_label}"
+    return f"{duration} {display_upper(phrase)}, {time_label}"

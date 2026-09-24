@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
 from immich_memories.people.context import PersonPromptContext
+from immich_memories.people.relationships import CLOSE_FAMILY_KINDS, owner_role, reciprocal_kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,26 @@ class EditorialPeople(Mapping[str, EditorialPersonFact]):
     def token_for_person_id(self, person_id: str) -> str | None:
         """Resolve an Immich identity without exposing it to editorial callers."""
         return self._token_by_person_id.get(person_id)
+
+    def close_family_of(self, subjects: Sequence[str]) -> dict[str, str]:
+        """Each partner, child and parent of the subjects, by name, with their relation to them.
+
+        A subject is named as the people file or Immich names them, or by an Immich ID. The
+        confirmed links are read from both sides, so a parent recorded only on the subject's
+        entry is found as well as one recorded only on the parent's own.
+        """
+        tokens = {token for token, fact in self._facts_by_token.items() if fact.name in subjects}
+        tokens |= {self._token_by_person_id[s] for s in subjects if s in self._token_by_person_id}
+        found: dict[str, str] = {}
+        for token, fact in self._facts_by_token.items():
+            for link in fact.links:
+                if link.source != "confirmed" or link.kind not in CLOSE_FAMILY_KINDS:
+                    continue
+                if token in tokens and link.target_token not in tokens:
+                    found[link.target_name] = owner_role(reciprocal_kind(link.kind)) or link.kind
+                elif link.target_token in tokens and token not in tokens:
+                    found[fact.name] = owner_role(link.kind) or link.kind
+        return found
 
     def fact_for_person_id(self, person_id: str) -> EditorialPersonFact | None:
         """Resolve every merged Immich ID to its one logical person fact."""

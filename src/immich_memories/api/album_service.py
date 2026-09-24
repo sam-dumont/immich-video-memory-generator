@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.api.compatibility import ResolvedApiVersion
+from immich_memories.api.generated_asset_tags import GENERATED_MEMORY_TAG, generated_asset_ids
 
 RequestFn = Callable[..., Any]
 ApiVersionFn = Callable[[], Awaitable[ResolvedApiVersion]]
@@ -22,7 +23,9 @@ _UPLOAD_MEDIA_TYPES = {
 }
 
 # The device identity the V2 upload stamps on its own assets. Read back by the
-# cleanup below, so the two must stay the same string.
+# cleanup below, so the two must stay the same string. Immich v3 dropped
+# deviceId from both the upload form and the asset response, so on v3 only the
+# provenance tag says a render is ours.
 _UPLOAD_DEVICE_ID = "immich-memories"
 
 
@@ -383,6 +386,24 @@ class AlbumService:
             page = int(found["nextPage"]) if found.get("nextPage") else None
         return assets
 
+    async def tag_as_generated(self, asset_id: str) -> None:
+        """File one asset under this app's provenance tag, creating the tag if needed.
+
+        The tag is how a later run knows the film is ours on any API version: it
+        refuses it as source footage and may replace it with a re-render.
+        """
+        tags = await self._request("PUT", "/tags", json={"tags": [GENERATED_MEMORY_TAG]})
+        tag_id = next(
+            tag["id"]
+            for tag in tags
+            if isinstance(tag, dict) and tag.get("value") == GENERATED_MEMORY_TAG
+        )
+        await self._request("PUT", f"/tags/{tag_id}/assets", json={"ids": [asset_id]})
+
+    async def generated_asset_ids(self) -> frozenset[str]:
+        """Every asset the library holds under this app's provenance tag."""
+        return await generated_asset_ids(self._request)
+
     async def trash_assets(self, asset_ids: list[str]) -> None:
         """Move assets to Immich's trash. Recoverable; never a hard delete."""
         await self._request("DELETE", "/assets", json={"ids": asset_ids, "force": False})
@@ -399,6 +420,12 @@ class AlbumService:
         Reuses existing album if one with the same name exists.
         """
         asset_id = await self.upload_asset(video_path, captured_at=captured_at)
+        # WHY: the upload has already succeeded; a key without tag scope loses
+        # provenance for this film, not the film itself.
+        try:
+            await self.tag_as_generated(asset_id)
+        except Exception as exc:
+            logger.warning("Could not tag the uploaded film as this app's own: %s", exc)
 
         album_id = None
         if album_name:
@@ -433,6 +460,14 @@ def _is_our_upload(asset: dict) -> bool:
     ).startswith(f"{_UPLOAD_DEVICE_ID}-")
 
 
+async def _tagged_ids(client) -> frozenset[str]:
+    try:
+        return await client.generated_asset_ids()
+    except Exception as exc:  # WHY: unreadable tags only keep an old render
+        logger.warning("Could not read the provenance tag; earlier renders kept: %s", exc)
+        return frozenset()
+
+
 async def supersede_previous_renders(
     client,
     *,
@@ -452,20 +487,27 @@ async def supersede_previous_renders(
     exactly this filename, never the asset we just created, and only ones
     carrying this app's own upload identity. A matching name is not proof of
     authorship -- a custom `output.filename` can name a video the user shot
-    themselves, and trashing that is not ours to do. V3 uploads carry no device
-    identity, so their older renders are kept until there is durable provenance
-    for them. Immich's trash is recoverable, so this is reversible by the user.
+    themselves, and trashing that is not ours to do. Ours means the v2 device
+    identity or the provenance tag; v3 keeps no device identity, so there the
+    tag alone decides, and a v3 render uploaded before tagging is kept. Immich's
+    trash is recoverable, so this is reversible by the user.
     """
     if not album_id:
         return []
 
     assets = await client.list_album_assets(album_id)
-    superseded = [
-        asset["id"]
+    same_recipe = [
+        asset
         for asset in assets
-        if asset.get("originalFileName") == filename
-        and asset.get("id") != keep_asset_id
-        and _is_our_upload(asset)
+        if asset.get("originalFileName") == filename and asset.get("id") != keep_asset_id
+    ]
+    tagged = (
+        await _tagged_ids(client)
+        if any(not _is_our_upload(asset) for asset in same_recipe)
+        else frozenset()
+    )
+    superseded = [
+        asset["id"] for asset in same_recipe if _is_our_upload(asset) or asset["id"] in tagged
     ]
     if superseded:
         await client.trash_assets(superseded)

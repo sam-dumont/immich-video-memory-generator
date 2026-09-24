@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from immich_memories.analysis.annotation_line_fields import UNOBSERVED
 from immich_memories.analysis.annotation_lines import AssetAnnotationLine
 from immich_memories.analysis.editorial_shareability import (
     _fallback_audience_annotation,
@@ -108,11 +109,7 @@ class PictureEvidenceOverlay:
         selected_line = " | ".join(
             [
                 *metadata,
-                (
-                    f"picture observations: {selected_description}"
-                    if available
-                    else "picture observations unavailable"
-                ),
+                (f"picture observations: {selected_description}" if available else UNOBSERVED),
             ]
         )
         self.annotations[asset_id] = AssetAnnotationLine(

@@ -198,3 +198,8 @@ def localise_place_part(name: str, locale: str) -> str:
     if locale == "fr":
         parts = [_FRENCH.get(part, part) for part in parts]
     return _AND.get(locale, _AND["en"]).join(parts)
+
+
+def is_known_area(english_name: str) -> bool:
+    """Whether this is an island or region the tables above name."""
+    return english_name in _FRENCH or any(i.name == english_name for i in _ISLANDS)

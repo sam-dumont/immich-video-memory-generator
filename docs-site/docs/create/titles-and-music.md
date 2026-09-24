@@ -179,9 +179,25 @@ renderer also knows `osm` and `topo` for the pin-and-label frames, but both are 
 
 Immich geocodes with GeoNames and stores English, so every city and country it hands over is
 English. Country names are translated offline (CLDR, through babel) wherever a viewer reads one:
-the trip title, the clip overlays, the map pin labels and the location cards. A French trip title
-also takes the country's own preposition: `DEUX SEMAINES EN ESPAGNE`, `AU PORTUGAL`,
-`AUX ÉTATS-UNIS`, `À CHYPRE`, not `À SPAIN`. A city keeps `À`.
+the trip title, the clip overlays, the map pin labels and the location cards.
+
+A trip title says where it went the way its language does:
+
+| Trip | English | French |
+|---|---|---|
+| A country | `IN THE NETHERLANDS`, `IN ITALY` | `AUX PAYS-BAS`, `EN ITALIE`, `AU PORTUGAL` |
+| An island | `IN CRETE, GREECE`, `IN CYPRUS` | `EN CRÈTE, GRÈCE`, `À CHYPRE`, `À MAJORQUE, ESPAGNE` |
+| A region | `IN APULIA, ITALY`, `IN THE CANARY ISLANDS, SPAIN` | `DANS LES POUILLES, ITALIE`, `EN SAXE, ALLEMAGNE` |
+| Two regions | `IN UTAH AND NEVADA, UNITED STATES` | `DANS L'UTAH ET AU NEVADA, ÉTATS-UNIS` |
+| A city | `IN LAS VEGAS, UNITED STATES` | `À LAS VEGAS, ÉTATS-UNIS` |
+| Several countries | `ACROSS BELGIUM → SPAIN` | no phrase (see below) |
+
+English gives the article to the names that take it (the Netherlands, the United States, the
+Philippines, the Maldives, every "Islands" and "Republic"). French countries follow their gender and
+number; an island or region takes the phrase listed for it, because no rule holds ("en Crète" but "à
+Majorque", "au Nevada" but "dans l'Utah"). A place French has no phrase for, and any title language
+without phrase rules, gets a title with no preposition at all, place first:
+`NORDLAND, NORVÈGE · DEUX SEMAINES, JUILLET 2025`. A wrong preposition never reaches the screen.
 
 The islands and regions a trip is named after have a short offline table too (`Crète`,
 `Pouilles`, `Majorque`, `Saxe`), and two regions are joined in the film's language
@@ -194,6 +210,11 @@ place on the cut. See
 
 A template gives you "TWO WEEKS IN SPAIN, SUMMER 2025". The model gives you "Sous les falaises de
 grès". English and French are the two locales the app ships.
+
+When the model names a trip, the prompt carries the trip's place as trip detection named it, and
+the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,
+Greece"). A title about somewhere else is refused and the template names the trip; the run's
+**Title From** then says `place`, not `model`.
 
 The model never sees coordinates. The selected material's GPS points are clustered greedily within
 5 km, each cluster is reverse-geocoded to a city name, and the prompt is one line per day: the place

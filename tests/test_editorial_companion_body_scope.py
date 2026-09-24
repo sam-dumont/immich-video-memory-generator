@@ -9,9 +9,17 @@ from tests.test_editorial_audience_evidence import Judge, activity, annotation, 
 from tests.test_editorial_visual_body_audience import picture_record
 
 
-def evidence(*, records=None, flags=None, two=False, caption=None, warning="head"):
+def evidence(
+    *,
+    records=None,
+    flags=None,
+    two=False,
+    caption=None,
+    warning="head",
+    still="A fully clothed person waves.",
+):
     videos = ["private-video-a", "private-video-b"] if two else ["private-video-a"]
-    annotations = {"private-still": annotation("A fully clothed person waves.", nsfw_marqo="yes")}
+    annotations = {"private-still": annotation(still, nsfw_marqo="yes")}
     rows = dict(flags or {})
     for video in videos:
         annotations[video] = annotation(caption, nsfw_marqo="yes" if warning == "head" else "no")
@@ -69,7 +77,11 @@ def test_valid_companion_no_resolves_only_its_warning_and_keeps_activity_authori
     assert shared["finding"] == "exposure_evidence"
     assert shared["companion_body_warnings"][0]["body_observation"]["record_identity"] == "1" * 64
     private = Judge(activity("toileting_or_changing"))
-    held = share.check_audience(private, item, "audience")
+    on_toilet = evidence(
+        records={"private-video-a": picture_record("no")},
+        still="A fully clothed person sits on a toilet.",
+    )
+    held = share.check_audience(private, on_toilet, "audience")
     assert held["finding"] == "private_activity" and held["verdict"] == "do_not_show"
     assert not share.allowed(held["verdict"], "family")
     assert not share.allowed(held["verdict"], "sendable")

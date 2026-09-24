@@ -6,6 +6,8 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from immich_memories.analysis.annotation_line_fields import content_of
+
 # The kinds of frame that carry nothing a film can show, against the ones that do. This is
 # the `frame_kind` head's label set, split the way the standing gate reads it.
 NOTHING_KINDS = frozenset(
@@ -129,20 +131,21 @@ _IDENTICAL_GRID = re.compile(
 )
 
 
-def medical_care(line: str) -> bool:
-    """An ailment or a care item on a person: intimate care, never a carrier."""
-    return bool(_MEDICAL_CARE.search(line))
+def medical_care(content: str) -> bool:
+    """An ailment or a care item on a person: intimate care, never a carrier. Reads the
+    picture's content (`content_of`), not the whole line."""
+    return bool(_MEDICAL_CARE.search(content))
 
 
-def identical_grid(line: str) -> bool:
+def identical_grid(content: str) -> bool:
     """A sheet of identical portraits is an identification document, whatever the detector called it."""
-    return bool(_IDENTICAL_GRID.search(line))
+    return bool(_IDENTICAL_GRID.search(content))
 
 
-def face_close_up(line: str) -> bool:
+def face_close_up(content: str) -> bool:
     """The detector's composition fact says close-up of a face part: a picture that needs an
     explanation, never a carrier (it stays evidence)."""
-    return bool(_FACE_CLOSE_UP.search(line))
+    return bool(_FACE_CLOSE_UP.search(content))
 
 
 def screenshot_by_resolution(line: str) -> bool:
@@ -165,19 +168,23 @@ def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
     """
     excluded = {}
     for asset_id, line in annotations.items():
+        # The heads and the pixel size are our own fields and are read as such; the words a
+        # rule looks for are read only where the picture's content is, so a burst that
+        # "stitches to a clip", a place or a person's name never matches them (#1256).
+        content = content_of(line)
         document = _DOCUMENT_FIELD.search(line)
         if document and document.group(1) in SCREEN_DOCUMENT_LABELS:
             excluded[asset_id] = f"document-head:{document.group(1)}"
         elif screen_flagged_on_line(line):
             excluded[asset_id] = "screen-head"
-        elif _SCREEN_TEXT.search(line):
+        elif _SCREEN_TEXT.search(content):
             excluded[asset_id] = "screen-description"
         elif screenshot_by_resolution(line):
             excluded[asset_id] = "screenshot-resolution"
-        elif face_close_up(line):
+        elif face_close_up(content):
             excluded[asset_id] = "face-close-up"
-        elif medical_care(line):
+        elif medical_care(content):
             excluded[asset_id] = "medical-care"
-        elif identical_grid(line):
+        elif identical_grid(content):
             excluded[asset_id] = "identical-grid"
     return excluded
