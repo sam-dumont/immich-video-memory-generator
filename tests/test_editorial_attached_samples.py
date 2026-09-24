@@ -283,14 +283,8 @@ def test_payload_modified_between_intervals_is_not_decoded_under_its_old_digest(
     assert len(effects.fetches) == len(effects.decodes) == 1
 
 
-def test_acquired_sample_uses_actual_observation_and_adapter_with_exact_blocked_warm(
-    tmp_path, monkeypatch
-):
-    from immich_memories.analysis.editorial_sampled_pair_confirmation import (
-        CachedSampledPairConfirmer,
-    )
-    from immich_memories.analysis.selection_trace import Trace
-    from tests.test_editorial_picture_facts import config, fake_transport
+def test_acquired_sample_uses_actual_observation_with_exact_blocked_warm(tmp_path, monkeypatch):
+    from tests.test_editorial_picture_facts import fake_transport
     from tests.test_editorial_picture_facts import provider as reader
 
     effects = Effects()
@@ -298,38 +292,14 @@ def test_acquired_sample_uses_actual_observation_and_adapter_with_exact_blocked_
         "video", parent_ids=("still",), start=1, end=3
     )
     assert result is not None
-    sample, frame, video = result
+    sample, frame, _video = result
     calls = fake_transport(monkeypatch)
     observed = reader(tmp_path, read=lambda _: pytest.fail("no parent/poster fetch"))
     try:
         facts = observed.observe_sample(sample, frame)
     finally:
         observed.close()
-
-    parents, _ = source()
-
-    def adapter():
-        return CachedSampledPairConfirmer(
-            assets=parents,
-            allowed_ids=parents.keys(),
-            llm_config=config(),
-            cache_path=tmp_path / "facts.sqlite",
-            image_dir=tmp_path / "picture-facts-images",
-            trace=Trace(),
-            sheet_dir=tmp_path / "pair-sheets",
-        )
-
-    cold = adapter()
-    try:
-        cold.bind_sample(sample, video)
-        hashes = cold.preview_hashes([sample.key], {sample.key: facts})
-        assert set(hashes) == {sample.key}
-        assert cold.preview_hashes(["video"], {"video": facts}) == {}
-    finally:
-        cold.close()
-    assert (
-        len(calls) == 1
-    )  # Only the controlled own-frame observation; no pair/model inference here.
+    assert len(calls) == 1  # Only the controlled own-frame observation.
 
     async def no_model(*_args, **_kwargs):
         pytest.fail("warm observation must not call a model")
@@ -343,13 +313,8 @@ def test_acquired_sample_uses_actual_observation_and_adapter_with_exact_blocked_
     )
     assert warm_sample == result
     warm_reader = reader(tmp_path, read=lambda _: pytest.fail("warm poster fetch"))
-    warm_adapter = adapter()
     try:
         assert warm_reader.observe_sample(sample, frame) == facts
-        warm_adapter.bind_sample(sample, video)
-        assert warm_adapter.preview_hashes([sample.key], {sample.key: facts}) == hashes
         assert warm_reader.metrics()["inference_calls"] == 0
-        assert warm_adapter.metrics()["preview_hashes_computed"] == 0
     finally:
         warm_reader.close()
-        warm_adapter.close()

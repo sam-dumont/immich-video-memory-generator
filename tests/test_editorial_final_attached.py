@@ -10,11 +10,8 @@ from immich_memories.analysis.editorial_final_attached import (
     AttachedMaterialEvidence,
     FinalAttachedPictures,
 )
-from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
-from immich_memories.analysis.selection_same_picture import SamePicturePairDecision
-from immich_memories.analysis.selection_trace import Trace
 from immich_memories.processing.live_material import LiveRenderMaterial, LiveSourceEntry
 from tests.conftest import make_asset
 from tests.editorial_story_fixtures import ControlledStoryJudge
@@ -22,7 +19,7 @@ from tests.test_editorial_attached_samples import Effects
 from tests.test_editorial_attached_samples import provider as samples_provider
 from tests.test_editorial_attached_samples import source as media
 from tests.test_editorial_duration_planner_integration import source
-from tests.test_editorial_picture_facts import config, fake_transport
+from tests.test_editorial_picture_facts import fake_transport
 from tests.test_editorial_picture_facts import provider as pictures_provider
 from tests.test_editorial_visual_body_audience import picture_record
 
@@ -55,29 +52,14 @@ def test_actual_final_acquisition_uses_clipped_segment_retains_zero_alias_and_re
     def run(effects):
         samples = samples_provider(tmp_path / "material", effects)
         pictures = pictures_provider(tmp_path)
-        pairs = CachedSampledPairConfirmer(
-            assets=parents,
-            allowed_ids=parents,
-            llm_config=config(),
-            cache_path=tmp_path / "facts.sqlite",
-            image_dir=tmp_path / "picture-facts-images",
-            trace=Trace(),
-            sheet_dir=tmp_path / "pairs",
-        )
         try:
-            result = FinalAttachedPictures(samples, pictures, pairs)([carrier])
-            return (
-                result,
-                samples.metrics(),
-                pairs.preview_hashes(tuple(result.records), result.records),
-            )
+            return FinalAttachedPictures(samples, pictures)([carrier]), samples.metrics()
         finally:
             pictures.close()
-            pairs.close()
 
-    first, _metrics, hashes = run(effects)
+    first, _metrics = run(effects)
     assert carrier == before and not first.gaps
-    assert len(first.records) == len(hashes) == 1
+    assert len(first.records) == 1
     record = next(iter(first.records.values()))
     assert record["sample_binding"]["parent_ids"] == ["alias", "still"]
     assert record["sample_binding"]["start"] == 1.5
@@ -92,8 +74,8 @@ def test_actual_final_acquisition_uses_clipped_segment_retains_zero_alias_and_re
         def extract(self, *_args, **_kwargs):
             pytest.fail("exact final sample replay decoded a frame")
 
-    second, metrics, warm_hashes = run(Forbidden())
-    assert second == first and warm_hashes == hashes and len(calls) == 1
+    second, metrics = run(Forbidden())
+    assert second == first and len(calls) == 1
     assert metrics["fetch_attempts"] == metrics["frame_decodes"] == 0
 
 
@@ -165,11 +147,6 @@ def test_actual_planner_checks_final_live_intervals_and_does_not_refill_a_sample
             **picture_record(),
             "description": "A clothed person moves furniture.",
         },
-        confirm_sampled_pairs=lambda pairs, _records, **_distances: (
-            tuple(SamePicturePairDecision(*pair, False) for pair in pairs),
-            {},
-        ),
-        sampled_preview_hashes=lambda ids, _records: dict.fromkeys(ids, "0000000000000000"),
         observe_attached_material=inspect,
     )
     plan = plan_structure(captured, ports).plan

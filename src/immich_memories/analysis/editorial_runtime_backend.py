@@ -25,7 +25,6 @@ from immich_memories.analysis.editorial_runtime_ports import (
     EditorialRuntimePorts,
     production_attached_pictures,
     production_live_clock_offsets,
-    production_sampled_pair_confirmer,
     production_speech_resolver,
     production_story_motion,
 )
@@ -244,16 +243,8 @@ class ProductionPostCardBackend:
             preview_bytes=read_preview,
         )
         resources.callback(picture_facts.close)
-        sampled_pairs = production_sampled_pair_confirmer(
-            source, cache_path=self._store_path, trace=trace
-        )
-        resources.callback(sampled_pairs.close)
         final_pictures, attached_samples = production_attached_pictures(
-            source,
-            cache_path=self._store_path,
-            pictures=picture_facts,
-            pairs=sampled_pairs,
-            resources=resources,
+            source, cache_path=self._store_path, pictures=picture_facts, resources=resources
         )
         story_motion = production_story_motion(source, cache_path=self._store_path)
         return StructurePlannerPorts(
@@ -273,11 +264,6 @@ class ProductionPostCardBackend:
             observe_story_motion=story_motion.observe,
             story_motion_identity=story_motion.producer,
             story_motion_metrics=story_motion.metrics,
-            confirm_sampled_pairs=sampled_pairs,
-            confirm_episode_pairs=sampled_pairs.confirm_episode_pairs,
-            confirm_story_pairs=sampled_pairs.confirm_story_pairs,
-            sampled_pair_metrics=sampled_pairs.metrics,
-            sampled_preview_hashes=sampled_pairs.preview_hashes,
             picture_facts_metrics=(
                 lambda: (
                     picture_facts.metrics() | {"preview_acquisition": demanded_previews.metrics()}
@@ -446,7 +432,7 @@ def _write_visual_requests(artifact_dir: Path, trace: Trace, request_start: int)
         json.dumps(
             {
                 "scope": "all structure-stage visual requests; provenance.pass_name "
-                "distinguishes picture facts from sampled pair confirmation",
+                "names the picture-facts stage of each request",
                 "requests": trace.as_dict()["requests"][request_start:],
             },
             indent=2,

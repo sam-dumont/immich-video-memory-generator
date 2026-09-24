@@ -1,11 +1,10 @@
-"""A no-model cut ends with the same shape of duplicate review a model cut gets."""
+"""Every cut ends with the same duplicate review, whatever reader made it."""
 
 from immich_memories.analysis.editorial_final_hash_review import (
     POLICY,
     STANDALONE_REPEAT_DISTANCE,
     review_cut_by_cached_hashes,
 )
-from immich_memories.analysis.selection_same_picture import SELECTS_MAX_CORROBORATION
 
 HASHES = {
     "early": "ffffffffffffffff",
@@ -53,13 +52,12 @@ def test_a_pair_past_the_corroboration_distance_is_not_a_repeat():
     assert [c["asset_id"] for c in survivors] == ["early", "far"]
 
 
-def test_a_pair_the_reader_would_have_been_asked_about_is_not_cut_on_its_own():
-    """Eight bits apart is inside the reader-corroboration cap and outside this one."""
+def test_a_pair_eight_bits_apart_is_not_cut_on_the_hash_alone():
+    """Nothing confirms a pair here, so the hash has to be close enough to carry it alone."""
     survivors, record = _review([_carrier("early", minute=0), _carrier("faint", minute=30)])
 
     assert [c["asset_id"] for c in survivors] == ["early", "faint"]
-    assert record["maximum_hash_distance"] == STANDALONE_REPEAT_DISTANCE
-    assert STANDALONE_REPEAT_DISTANCE < SELECTS_MAX_CORROBORATION
+    assert record["maximum_hash_distance"] == STANDALONE_REPEAT_DISTANCE < 8
 
 
 def test_two_frames_sharing_neither_a_story_nor_a_day_are_never_a_repeat():
