@@ -285,3 +285,66 @@ def test_a_person_film_over_twenty_years_is_polished_over_one_account_a_year(tmp
     with closing(sqlite3.connect(bank)) as connection:
         kinds = {kind for (kind,) in connection.execute("SELECT kind FROM library_overviews")}
     assert not kinds & {"month", "month-part"}
+
+
+def test_a_season_is_polished_over_one_account_of_its_own_window(tmp_path):
+    """A spring film reads one account for March to May, not a year's and a window's."""
+    import sqlite3
+
+    from immich_memories.analysis.editorial_structure_contract import EpisodeReadingCard
+    from immich_memories.analysis.editorial_thin_layer import catalogued_period
+    from tests.conftest import make_asset
+
+    bank = tmp_path / "annotations.sqlite"
+    month = whole_month(source(tmp_path, seconds=60, pictures=3), bank)
+    spring = DateRange(
+        start=datetime(2020, 3, 1, tzinfo=UTC), end=datetime(2020, 5, 31, 23, 59, tzinfo=UTC)
+    )
+    march = make_asset("a-march-walk", file_created_at=datetime(2020, 3, 14, tzinfo=UTC))
+    quiet = EpisodeReadingCard(
+        episode_id="a-march-walk",
+        evidence_key="facts",
+        what_happened="a walk in the rain in March",
+        representative_asset_ids=(march.id,),
+        cache_hit=False,
+    )
+    captured = replace(
+        month,
+        case=replace(month.case, ranges=(spring,)),
+        assets={**month.assets, march.id: march},
+        episode_readings={**month.episode_readings, "M900": quiet},
+    )
+    model_reader(captured.config)
+    reader = Reader()
+
+    period = catalogued_period(captured.case.ranges)
+    polish = backend_for(captured, reader, BankedDemand(bank, IDENTITY))._thin_polish(captured)
+    account, _records = polish["thin"].read_period({"S1": tuple(month.assets)})
+
+    assert period == "2020-03-01..2020-05-31"
+    assert account and account == library_period_account(bank, period)
+    assert len(reader.prompts) == 1
+    with closing(sqlite3.connect(bank)) as connection:
+        nodes = connection.execute("SELECT kind, period FROM library_overviews").fetchall()
+    assert ("span", period) in nodes
+    assert not {kind for kind, _period in nodes} & {"year", "year-part", "month", "month-part"}
+
+
+def test_a_period_read_that_fails_once_is_asked_again(tmp_path):
+    """One dropped call must not ship the draft without its polish."""
+
+    class FlakyOnce(BankedDemand):
+        def readings_for(self, asset_ids):
+            if not self.asked:
+                self.asked.append(("dropped",))
+                raise RuntimeError("the reader dropped the call")
+            return super().readings_for(asset_ids)
+
+    bank = tmp_path / "annotations.sqlite"
+    captured = whole_month(source(tmp_path, seconds=60, pictures=3), bank)
+    model_reader(captured.config)
+
+    polish = backend_for(captured, Reader(), FlakyOnce(bank, IDENTITY))._thin_polish(captured)
+    account, _records = polish["thin"].read_period({"S1": tuple(captured.assets)})
+
+    assert account and account == library_period_account(bank, "2020-05")

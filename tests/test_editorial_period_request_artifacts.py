@@ -215,7 +215,12 @@ def test_production_episode_recording_follows_each_active_attempt_even_on_failur
         30,
         tmp_path / "artifacts",
     )
-    config = Config(llm={"model": "test-model"}, cache={"directory": str(tmp_path / "cache")})
+    # The whole-film planner's up-front episode stage; the polish route reads on demand.
+    config = Config(
+        llm={"model": "test-model"},
+        cache={"directory": str(tmp_path / "cache")},
+        editorial={"thin_model_layer": False},
+    )
     planner = runtime.build_editorial_planner(
         client=object(),
         thumbnail_cache=object(),
@@ -261,7 +266,12 @@ def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch
         30,
         tmp_path / "artifacts",
     )
-    config = Config(llm={"model": "test-model"}, cache={"directory": str(tmp_path / "cache")})
+    # The whole-film planner's up-front episode stage; the polish route reads on demand.
+    config = Config(
+        llm={"model": "test-model"},
+        cache={"directory": str(tmp_path / "cache")},
+        editorial={"thin_model_layer": False},
+    )
     planner = runtime.build_editorial_planner(
         client=object(),
         thumbnail_cache=object(),

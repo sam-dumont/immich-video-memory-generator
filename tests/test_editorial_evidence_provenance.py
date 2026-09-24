@@ -135,7 +135,12 @@ def test_the_runtime_records_evidence_into_the_attempt_that_is_running(
         client=object(),
         thumbnail_cache=object(),
         context=context,
-        config=Config(llm={"model": "test-model"}, cache={"directory": str(tmp_path / "cache")}),
+        # The whole-film planner's up-front reader; the polish route reads on demand.
+        config=Config(
+            llm={"model": "test-model"},
+            cache={"directory": str(tmp_path / "cache")},
+            editorial={"thin_model_layer": False},
+        ),
         ports=runtime.EditorialRuntimePorts(load_people=lambda: {}),
     )
     built: dict[str, object] = {}

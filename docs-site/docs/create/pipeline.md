@@ -687,8 +687,12 @@ once: both are keyed by exactly what they summarise and by the model that wrote 
 cut of the same draft asks nothing. The no-model reader writes no account at all, because there is
 no thesis without a reader.
 
-Any other span inside one calendar year has no account: a film over a fortnight, a trip. Those plan the film with the story-first planner exactly as they always have, so a
-library is never left without a film.
+Any other single window, a season, a trip, a fortnight, is its own period and gets its own
+account the same way, one request for a window inside one year. A film over several windows (the
+same day across years) has no one account to read, and the model plans it whole with the
+story-first planner. When the account cannot be read, the read is asked once more; a second
+failure ships the rules draft as the no-model film, and the run log and the `thin-polish` record
+say why.
 `advanced.editorial.thin_model_layer: false` makes the model plan the whole film even when an
 account exists.
 

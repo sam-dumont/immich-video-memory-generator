@@ -76,6 +76,8 @@ class PlanRun:
     )
     # Binds a kept carrier's unmeasured Live stitch to its measurement (`measured_stitch`).
     bind_stitch: Callable[[dict], dict] | None = None
+    # Whether the model polish ran on the rules draft; a draft it did not touch is the no-model film.
+    polished: bool = False
 
 
 def resolve_motion_and_timing(

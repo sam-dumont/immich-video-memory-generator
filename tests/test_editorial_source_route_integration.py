@@ -52,6 +52,9 @@ def setup_runtime(
             "enabled": True,
             "annotation_database": str(store),
             "description_model": "student-v1",
+            # This file tests the whole-film model planner; the one-window polish route
+            # reads on demand and has its own tests (test_editorial_thin_account_fallback).
+            "thin_model_layer": False,
         },
         analysis={"min_source_short_side": 0},
     )
