@@ -88,6 +88,7 @@ def arm_cut(state: AppState, before: Callable[[], None] | None = None) -> bool:
             before()
         state.active_cut_key = None
         state.cut_stage_log.clear()
+        state.cut_failure = None
         # Attempt records carry whole seconds; an attempt started in this same second is ours.
         state.cut_armed_at = datetime.now(UTC).replace(microsecond=0)
         state.cancel_requested = False
@@ -329,7 +330,7 @@ def _launch(state: AppState, progress_state: dict[str, Any]) -> None:
 def _finish(state: AppState, progress_state: dict[str, Any]) -> None:
     error = progress_state.get("error")
     if error:
-        ui.notify(f"Cut failed: {sanitize_error_message(str(error))}", type="negative")
+        state.cut_failure = f"The last cut failed: {sanitize_error_message(str(error))}"
     elif state.pipeline_result is not None:
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
@@ -345,12 +346,12 @@ async def _load_pool_for_cut(state: AppState, rows: _PhaseRows) -> bool:
     except Exception as exc:  # WHY: UI graceful degradation
         logger.exception("Loading the pool for a cut failed")
         state.pipeline_running = False
-        ui.notify(f"Could not load media: {sanitize_error_message(str(exc))}", type="negative")
+        state.cut_failure = f"Could not load media: {sanitize_error_message(str(exc))}"
         ui.navigate.to("/")
         return False
     if not state.clips and not state.photo_assets:
         state.pipeline_running = False
-        ui.notify("No media found for this brief.", type="warning")
+        state.cut_failure = "No media found for this brief."
         ui.navigate.to("/")
         return False
     return True
