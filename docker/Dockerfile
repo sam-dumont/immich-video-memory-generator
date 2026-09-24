@@ -16,21 +16,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY pyproject.toml README.md uv.lock ./
-COPY src/ ./src/
-COPY packages/ ./packages/
-COPY services/render-worker/ ./services/render-worker/
-COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
+# Layer order is for the build cache: everything up to the dependency wheels
+# depends only on the lockfile, the build tooling and the build arguments that
+# do not change per commit. The source tree and APP_VERSION (a new value on
+# every commit) come after, so a code-only change rebuilds only the app wheels.
 COPY docker/uv-requirements.txt ./docker/uv-requirements.txt
+COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
+COPY pyproject.toml README.md uv.lock ./
 
-# hatch-vcs needs git history to detect version, which isn't available in Docker.
-# The caller must provide the release identity explicitly.
-ARG APP_VERSION
 ARG INSTALL_EXTRAS=all
 ARG TARGETARCH
-RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
 # WHY constraints from uv.lock (#345): a bare `pip wheel` re-resolves every
 # dependency at build time, so the published image could ship a set CI never
@@ -71,12 +66,36 @@ RUN mkdir -p /torch-cpu && \
                 --constraint /constraints.txt torch ;; \
     esac
 
+# The dependency wheels for INSTALL_EXTRAS, fetched from the lock alone so this
+# layer survives a code-only commit. They go to /deps, not /wheels: the wheel
+# step below still resolves the app exactly as before and only takes each file
+# from here instead of the index. The torch family stays out: torch comes from
+# /torch-cpu above, and the CUDA stack only follows PyPI's torch.
+RUN python docker/validate_install_extras.py "${INSTALL_EXTRAS}" >/dev/null && \
+    if [ "${INSTALL_EXTRAS}" = "none" ]; then extras=""; else extras="--extra ${INSTALL_EXTRAS}"; fi && \
+    uv export --frozen --no-dev ${extras} --no-emit-project \
+        --no-emit-package immich-memories-music --no-hashes \
+        --format requirements-txt -o /deps.txt && \
+    grep -E '^[A-Za-z0-9_.[-]+==' /deps.txt \
+        | grep -vE '^(torch|torchaudio|triton|nvidia-[a-z0-9-]+|cuda-[a-z-]+)==' > /deps.pins && \
+    pip wheel --no-cache-dir --no-deps --wheel-dir=/deps -r /deps.pins
+
+COPY src/ ./src/
+COPY packages/ ./packages/
+COPY services/render-worker/ ./services/render-worker/
+
+# hatch-vcs needs git history to detect version, which isn't available in Docker.
+# The caller must provide the release identity explicitly.
+ARG APP_VERSION
+RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
+
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt ./packages/immich-memories-music
 
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --find-links=/torch-cpu --constraint /constraints.txt "${INSTALL_TARGET}"
+    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --find-links=/deps --find-links=/torch-cpu --constraint /constraints.txt "${INSTALL_TARGET}"
 
 # The worker uses the app and HTTP dependencies already built above.
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir=/wheels ./services/render-worker
@@ -84,16 +103,6 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir=/wheels ./services/render-wor
 
 # Stage 2: Runtime image
 FROM python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b863fc1ccf447956138ca466d99
-
-ARG APP_VERSION
-ARG VCS_REF=unknown
-ARG SOURCE_URL=https://github.com/sam-dumont/immich-video-memory-generator
-
-LABEL maintainer="Immich Memories Contributors"
-LABEL description="Create video compilations from your Immich library"
-LABEL org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="${SOURCE_URL}"
 
 WORKDIR /app
 
@@ -178,3 +187,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Default command: run the UI
 CMD ["immich-memories", "ui", "--host", "0.0.0.0"]
+
+# Last on purpose: every RUN after an ARG sees it, so a per-commit APP_VERSION
+# declared at the top of this stage would rebuild the FFmpeg layer every time.
+ARG APP_VERSION
+ARG VCS_REF=unknown
+ARG SOURCE_URL=https://github.com/sam-dumont/immich-video-memory-generator
+
+LABEL maintainer="Immich Memories Contributors"
+LABEL description="Create video compilations from your Immich library"
+LABEL org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="${SOURCE_URL}"

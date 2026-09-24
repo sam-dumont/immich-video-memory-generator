@@ -653,3 +653,38 @@ def test_the_captioner_on_a_card_keeps_the_memory_limit_and_takes_no_cpu_quota()
     assert shipped["limits"]["memory"]
     assert "cpus" not in shipped["limits"]
     assert "limits" not in cuda["deploy"]["resources"], "the variant must not restate the limits"
+
+
+def _stage_instructions(source: str) -> list[list[str]]:
+    lines = [
+        line.strip()
+        for line in _logical_instructions(source).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    stages: list[list[str]] = []
+    for line in lines:
+        if line.startswith("FROM "):
+            stages.append([])
+        if stages:
+            stages[-1].append(line)
+    return stages
+
+
+def _first(stage: list[str], predicate) -> int:
+    return next(index for index, line in enumerate(stage) if predicate(line))
+
+
+def test_a_code_only_commit_reuses_the_dependency_layers() -> None:
+    """Source and the per-commit APP_VERSION come after every dependency download (#1280)."""
+    builder, runtime = _stage_instructions(_dockerfile())
+
+    deps = _first(builder, lambda line: "--wheel-dir=/deps" in line)
+    torch = _first(builder, lambda line: "--wheel-dir=/torch-cpu" in line)
+    source = _first(builder, lambda line: line.startswith("COPY src/"))
+    version = _first(builder, lambda line: line == "ARG APP_VERSION")
+    assert max(deps, torch) < source < version
+    app_wheels = _first(builder, lambda line: "INSTALL_TARGET=" in line)
+    assert "--find-links=/deps" in builder[app_wheels]
+
+    system_packages = _first(runtime, lambda line: "apt-get install" in line)
+    assert system_packages < _first(runtime, lambda line: line == "ARG APP_VERSION")
