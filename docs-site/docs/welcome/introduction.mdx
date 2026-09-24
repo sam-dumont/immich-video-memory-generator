@@ -36,15 +36,15 @@ Immich Memories reads a period of your self-hosted [Immich](https://immich.app) 
 month, a year, a trip, one person across the years), picks the pictures and videos that tell it,
 keeps them in the order they were taken, and renders the film with titles, maps and music.
 
-## Runs on your NAS. No GPU, no AI service.
+## Works on a plain NAS, better with a GPU or a model
 
 The default install is one container on the box that already runs Immich. It cuts the film from
 what your library already knows: dates, places, favourites, the people Immich recognised, and
 what a few small pinned classifiers say about each picture (a screen, a document, sensitive
-content, who is in frame). Those run on the CPU and are fetched once with `models fetch`. No
-model server, no API key, no account.
+content, who is in frame). Those run on the CPU and are fetched once with `models fetch`.
+Nothing else to host, no API key, no account.
 
-That cut is the product, not a fallback. It needs two things from you: where home is, so a week
+That already makes a film worth sharing. It needs two things from you: where home is, so a week
 away counts as a trip, and who is who, so close family gets its place in the film.
 [Teach it your family](../get-started/who-is-who.md) covers both.
 
@@ -70,10 +70,11 @@ How it decides is written down: [How it chooses](../how-it-chooses/overview.md) 
 rule with diagrams, and [Overrule it](../how-it-chooses/overrule-it.md) lists every lever you
 have.
 
-## Make it better (optional)
+## What a GPU or a model adds
 
-None of these is needed for a good film. Each one plugs into the same install, and what it adds
-is banked next to what the NAS already worked out, so switching one off later costs nothing.
+Each of these makes the film better or faster, and all of them are optional. They plug into the
+same install, and what they add is banked next to what the NAS already worked out, so switching
+one off later costs nothing.
 
 | Add | What it buys | Where it runs |
 |---|---|---|

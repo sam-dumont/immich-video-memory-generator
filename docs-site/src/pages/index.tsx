@@ -22,8 +22,8 @@ function HeroSection() {
               taken, and renders the film with titles, maps and music.
             </p>
             <p className={styles.heroSubtitle}>
-              <strong>Runs on your NAS. No GPU, no AI service.</strong> A GPU or a model
-              makes it faster or polishes the draft, if you have one.
+              <strong>Works on a plain NAS. A GPU or a model makes it better.</strong> A
+              GPU makes it faster, and a model polishes the cut.
             </p>
             <div className={styles.heroCtas}>
               <Link className={styles.ctaPrimary} to="/docs/get-started/quick-start">
@@ -90,11 +90,11 @@ docker compose exec immich-memories \\
               </pre>
             </div>
             <p className={styles.quickstartAlt}>
-              That is the whole stack: one container next to Immich, on the NAS you already
-              have. No model server, no API key. The{' '}
+              One container next to Immich, on the NAS you already have, is enough for a good
+              film. The{' '}
               <Link to="/docs/get-started/quick-start">Quick start</Link> walks it step by step,
-              and <Link to="/docs/better/overview">Make it better</Link> covers the optional
-              GPU and model add-ons.
+              and <Link to="/docs/better/overview">Make it better</Link> covers what a GPU
+              or a model adds.
             </p>
           </div>
           <div className={styles.quickstartSteps}>
@@ -272,7 +272,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich library into memory films: a month, a year, a trip, one person. Runs on your NAS with no GPU and no AI service. Titles, maps and music, self-hosted.">
+      description="Turn your Immich library into memory films: a month, a year, a trip, one person. Works on a plain NAS, better with a GPU or a model. Titles, maps and music, self-hosted.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />
