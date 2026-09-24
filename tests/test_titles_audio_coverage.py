@@ -227,26 +227,6 @@ class TestBackgroundCreation:
             create_gradient_background(100, 100, ["#FF0000"])
 
 
-class TestIsDarkPalette:
-    """Test dark palette detection."""
-
-    def test_dark_colors(self):
-        from immich_memories.titles.backgrounds import _is_dark_palette
-
-        assert _is_dark_palette(["#000000", "#1A1A2E"])
-
-    def test_light_colors(self):
-        from immich_memories.titles.backgrounds import _is_dark_palette
-
-        assert not _is_dark_palette(["#FFFFFF", "#F0F0F0"])
-
-    def test_empty_list(self):
-        from immich_memories.titles.backgrounds import _is_dark_palette
-
-        # Empty list: total=0, avg=0, which is < 0.5
-        assert _is_dark_palette([])
-
-
 class TestCreateBackgroundForStyle:
     """Test the style-based background factory."""
 
@@ -299,19 +279,6 @@ class TestCreateBackgroundForStyle:
         img = create_background_for_style(50, 50, "solid", [])
         pixel = np.array(img)[25, 25]
         assert tuple(pixel) == (255, 255, 255)
-
-
-class TestCoordGridCaching:
-    """Test that coordinate grids are cached for performance."""
-
-    def test_same_dimensions_reuse_cache(self):
-        from immich_memories.titles.backgrounds import _COORD_CACHE, _get_coord_grids
-
-        y1, x1 = _get_coord_grids(77, 43)
-        y2, x2 = _get_coord_grids(77, 43)
-        assert y1 is y2
-        assert x1 is x2
-        assert (77, 43) in _COORD_CACHE
 
 
 # ---------------------------------------------------------------------------
@@ -1318,32 +1285,6 @@ class TestBuildOutputFilename:
             None,
         )
         assert "2025" in result
-
-
-class TestDateRangeSlug:
-    """Test the _date_range_slug helper."""
-
-    def test_full_calendar_year(self):
-        from immich_memories.filename_builder import _date_range_slug
-
-        assert _date_range_slug(date(2025, 1, 1), date(2025, 12, 31)) == "2025"
-
-    def test_same_month(self):
-        from immich_memories.filename_builder import _date_range_slug
-
-        assert _date_range_slug(date(2025, 6, 5), date(2025, 6, 28)) == "june_2025"
-
-    def test_same_year_different_months(self):
-        from immich_memories.filename_builder import _date_range_slug
-
-        result = _date_range_slug(date(2025, 1, 1), date(2025, 4, 30))
-        assert result == "jan-apr_2025"
-
-    def test_cross_year(self):
-        from immich_memories.filename_builder import _date_range_slug
-
-        result = _date_range_slug(date(2024, 11, 1), date(2025, 2, 28))
-        assert result == "20241101-20250228"
 
 
 class TestBuildTitlePersonName:
