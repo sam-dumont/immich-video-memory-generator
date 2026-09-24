@@ -113,6 +113,22 @@ def banked_readings(bank, events) -> None:
         store.remember([event.reading for event in events])
 
 
+class FencedReader(Reader):
+    """Wraps its JSON in a Markdown fence, as several local and hosted readers do."""
+
+    def __call__(self, prompt: str) -> str:
+        return f"```json\n{super().__call__(prompt)}\n```"
+
+
+def test_a_fenced_account_reply_is_read_like_a_bare_one(tmp_path) -> None:
+    asked = FencedReader()
+
+    months = catalogued(tmp_path / "annotations.sqlite", FEBRUARY, asked)
+
+    assert months["2024-02"].account
+    assert len(asked.prompts) == 1
+
+
 def test_a_month_account_is_written_where_a_film_reads_it(tmp_path) -> None:
     bank = tmp_path / "annotations.sqlite"
 
