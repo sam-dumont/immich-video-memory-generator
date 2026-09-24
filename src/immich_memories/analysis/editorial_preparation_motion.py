@@ -38,6 +38,7 @@ from immich_memories.analysis.editorial_preparation_captions import (
     CAPTION_KEY_HINT,
     REFUSED_CODES,
     bearer_headers,
+    open_caption_url,
 )
 from immich_memories.analysis.editorial_story_pick_contract import measured_motion
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
@@ -218,7 +219,7 @@ def seat_asker(base_url: str, *, api_key: str, timeout: float) -> Callable[[byte
         body: object = None
         started = time.monotonic()
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            with open_caption_url(request, timeout=timeout) as response:
                 body = json.loads(response.read())
         except urllib.error.HTTPError as exc:
             if exc.code in REFUSED_CODES:

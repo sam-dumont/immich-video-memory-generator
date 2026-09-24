@@ -41,7 +41,10 @@ anyway. Which renderer your machine gets is on
 ## Styles
 
 All styles use dark cinematic palettes with white text. Every title is Montserrat: there is no font
-choice, and the `preferred_fonts` list in the style definitions is read by nothing.
+choice, and the `preferred_fonts` list in the style definitions is read by nothing. A letter
+Montserrat lacks (a place geocoded in its own script, say) comes from Noto Sans, word by word; see
+[Other alphabets](#other-alphabets). A letter no installed font has is logged as a warning rather
+than drawn as a silent gap.
 
 | Style | Palette | Character |
 |-------|---------|-----------|

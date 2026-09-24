@@ -50,7 +50,7 @@ def _scanned(monkeypatch, day: list, window: tuple[datetime, datetime] | None) -
             special=True, title="A long night", subtitle="", what="a long occasion", window=window
         ),
     )
-    found = scan_year(day, llm_config=None, home=None, ask=1)
+    found = scan_year(day, llm_config=None, home=None)
     assert len(found) == 1
     return found[0]
 
@@ -116,3 +116,7 @@ def test_a_row_written_before_the_rule_keeps_its_window_until_it_is_rebuilt(
 
     assert (scope_window(stamped) == window) is kept
     assert scope_window(unstamped) == window
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

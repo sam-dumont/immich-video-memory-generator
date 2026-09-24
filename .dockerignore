@@ -36,6 +36,7 @@ node_modules
 
 # Renders and anything marked private stay on the machine that made them
 output
+.immich-gate
 *.private.*
 .env
 *.log

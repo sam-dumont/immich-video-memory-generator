@@ -237,7 +237,8 @@ not an invented occasion.
 **Emergent, not queried.** Nothing searches your library for "beach" or "dog". The
 [special days catalogue](./cli/prepare.md#discover-days) is built by looking at what your days actually
 contain and asking whether anything happened, which is how it finds the day that mattered with 30
-photos. A day has to clear 20 photos and six active hours before the question is worth a model call.
+photos. No day has to clear a bar first: every day is read beside the others in its month, and what
+it was decides.
 
 ## Judging content, not pixels
 

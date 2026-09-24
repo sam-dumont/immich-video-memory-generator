@@ -196,9 +196,9 @@ def judged_by_this_build(entry: DiscoveredDay) -> bool:
     judged against let a pleasant afternoon at home into one real catalogue.
     They read as stale, which is the only honest reading of an unstamped row.
     """
-    from immich_memories.analysis.special_day import PROMPT_VERSION
+    from immich_memories.analysis.special_day_sequence import SCAN_VERSION
 
-    return entry.prompt_version == PROMPT_VERSION
+    return entry.prompt_version == SCAN_VERSION
 
 
 def rows_outside(rows: list[dict], since: int, until: int) -> tuple[list[dict], int]:
