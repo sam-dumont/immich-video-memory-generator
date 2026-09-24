@@ -25,7 +25,7 @@ _RECLAIMABLE_VM_STAT_LABELS = frozenset(
     {"Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"}
 )
 
-# Checkpoint sizes published in docs-site/docs/make/titles-maps-music.md, in its disk
+# Checkpoint sizes published in docs-site/docs/better/music.md, in its disk
 # table. The test is deliberately the *weights*, not the ~53 GB peak the same page
 # reports for a full XL/4B render: most of that peak is cache the OS reclaims under
 # pressure, so testing against it would refuse renders that complete today. Weights have

@@ -431,7 +431,7 @@ CoreML: measured on the pinned export, CoreML claims 274 of the 513 nodes and sp
 memory. Set `provider: coreml` to re-measure it. The choice is operational: it does not enter the
 encoder key, so changing it re-derives nothing.
 
-Editorial preparation uses `triage.encoder` with the public six-head bundle from
+Editorial preparation uses `triage.encoder` with the public eight-head bundle from
 `editorial.preparation.head_bundle`, and checks its digest on load. Missing required head facts
 stop selection; `triage.enabled: false` does not bypass preparation.
 
@@ -471,7 +471,7 @@ editorial:
     caption_timeout_seconds: 90
     caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
-    head_bundle: ""              # packaged public six-head bundle
+    head_bundle: ""              # packaged public eight-head bundle
     detector_python: ""          # current Python interpreter
     detector_cache_dir: ""       # normal Hugging Face Hub cache
     marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx  # digest-pinned sensitive-content export
