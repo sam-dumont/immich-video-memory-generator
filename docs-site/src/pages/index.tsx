@@ -23,7 +23,7 @@ function HeroSection() {
               screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
-              <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
+              <Link className={styles.ctaPrimary} to="/docs/being-rewritten/self-hosting">
                 Get started
               </Link>
               <Link className={styles.ctaSecondary} to="/docs/">
@@ -81,7 +81,7 @@ immich-memories preflight`}
               Step 3 is the real cost: the editor reads your pictures before it cuts them, and it
               refuses to guess without them. The cheapest thing anyone has run end to end is one
               32 GB Apple Silicon Mac. The{' '}
-              <Link to="/docs/deploy/self-hosting">self-hosting guide</Link> walks all of it in
+              <Link to="/docs/being-rewritten/self-hosting">self-hosting guide</Link> walks all of it in
               order.
             </p>
           </div>
@@ -244,10 +244,10 @@ function CtaSection() {
           Three services, all of them yours. The self-hosting guide is one page, in order.
         </p>
         <div className={styles.heroCtas}>
-          <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
+          <Link className={styles.ctaPrimary} to="/docs/being-rewritten/self-hosting">
             Get started
           </Link>
-          <Link className={styles.ctaSecondary} to="/docs/deploy/self-hosting">
+          <Link className={styles.ctaSecondary} to="/docs/being-rewritten/self-hosting">
             Self-hosting guide
           </Link>
         </div>

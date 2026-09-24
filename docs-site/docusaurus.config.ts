@@ -1,6 +1,7 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import {redirects} from './redirects';
 
 const config: Config = {
   title: 'Immich Memories',
@@ -28,6 +29,8 @@ const config: Config = {
   },
 
   themes: ['@docusaurus/theme-mermaid'],
+
+  plugins: [['@docusaurus/plugin-client-redirects', {redirects}]],
 
   i18n: {
     defaultLocale: 'en',
@@ -87,12 +90,12 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Self-hosting',
-              to: '/docs/deploy/self-hosting',
+              label: 'Quick start',
+              to: '/docs/get-started/quick-start',
             },
             {
               label: 'Installation',
-              to: '/docs/deploy/installation/docker',
+              to: '/docs/run/docker',
             },
             {
               label: 'CLI Reference',

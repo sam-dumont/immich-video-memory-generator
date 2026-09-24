@@ -17,7 +17,7 @@ written.
 By default nothing but requests to your Immich server. The caption server and the reader can
 receive pictures and annotation text; both default to `localhost`. Nominatim geocoding and satellite
 map tiles are two switches under `network:`, both off, and a render never downloads a font.
-[Network & Privacy](../deploy/configuration/network-and-privacy.md) says what each one sends.
+[Network & Privacy](../run/privacy.md) says what each one sends.
 
 **Do I need a model?**
 
@@ -25,7 +25,7 @@ No. `reader` ships as `auto`, which resolves to the rules reader while `llm.mode
 ten standard memory types are then cut from dates, places, favourites, people and whatever image
 facts the tier produced. It is a simpler editor: no thesis, and it can miss an occasion in a broad
 recap. What it keeps per memory type, measured against the model editor, is on
-[Rules mode](../create/pipeline.md#editing-without-a-language-model).
+[Rules mode](../being-rewritten/pipeline.md#editing-without-a-language-model).
 
 **How long does a cut take?**
 
@@ -34,7 +34,7 @@ the render. Measured for a 60-second month of 1,440 pictures, selection only: 55
 warm on a workstation with rules, 279 s cold and 11 s warm on a Celeron NAS. With a model reader,
 a 60-second February 2024 cost 55 model calls and 3.7 minutes cold, and 40 seconds warm with no
 model call at all, because a period read once is answered from the bank a month at a time. The
-per-host table is on [Running modes](../deploy/running-modes.md).
+per-host table is on [Running modes](../being-rewritten/running-modes.md).
 
 **How much disk?**
 
@@ -57,7 +57,7 @@ Yes. Without a person, a period covers everyone. Face recognition only narrows t
 Included by default. The editor treats a Live Photo as a photograph carrying motion it may play
 when the motion earns it; burst-captured ones are merged into a single moment. Tested on iPhones;
 Samsung and Pixel motion photos are untested.
-See [Live Photos](../create/photos-and-live-photos.md#live-photos).
+See [Live Photos](../make/photos-and-live-photos.md#live-photos).
 
 **Which formats?**
 
@@ -72,7 +72,7 @@ terminal.
 **Is it safe for production?**
 
 It is beta, and the code was written with AI assistance as a deliberate experiment
-([Built with AI](../welcome/built-with-ai.md)). The output is an editor's judgment. Review a cut
+([Built with AI](../being-rewritten/built-with-ai.md)). The output is an editor's judgment. Review a cut
 before showing it at a family party.
 
 **Does it work on Apple Silicon?**

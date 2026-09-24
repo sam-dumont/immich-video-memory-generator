@@ -180,7 +180,7 @@ Like the inference overlay it does not list `../../base`: it holds no credential
 to Immich. Point the app at `http://captioner:8092/v1` in the same namespace.
 `caption_concurrency` defaults to 1, which is what a CPU captioner wants; raise it to 4 on a card.
 The recipe, the flags that carry the contract and the measured per-picture cost are on the
-[caption server page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/caption-server).
+[caption server page](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/captions).
 
 ## Ingress
 

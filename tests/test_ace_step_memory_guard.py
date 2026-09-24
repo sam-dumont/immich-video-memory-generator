@@ -40,7 +40,7 @@ _XL = "acestep-v15-xl-turbo"
 _SMALL = "acestep-v15-turbo"
 _LM_4B = "acestep-5Hz-lm-4B"
 
-# The peak a full XL/4B render reaches, per docs-site/docs/create/titles-and-music.md.
+# The peak a full XL/4B render reaches, per docs-site/docs/make/titles-maps-music.md.
 _DOCUMENTED_XL_PEAK = 53 * _GIB
 
 
