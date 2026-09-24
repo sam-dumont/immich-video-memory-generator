@@ -34,18 +34,26 @@ jobs:
           find / -xdev \( -path /proc -o -path /sys -o -path /tmp -o -path /dev \) -prune -o -type f -print0 2>/dev/null \
             | sort -z | xargs -0 sha256sum 2>/dev/null | grep -vE '\.pyc$|__pycache__'
           SH
-          for v in old new; do
-            f=docker/Dockerfile; [ $v = old ] && f="$RUNNER_TEMP/Dockerfile.old"
+          # old twice: the second, uncached, shows what differs between two builds
+          # of the very same Dockerfile (timestamps, wheels built from sdists).
+          for v in old old-again new; do
+            f=docker/Dockerfile; [ $v != new ] && f="$RUNNER_TEMP/Dockerfile.old"
+            extra=(); [ $v = old-again ] && extra=(--no-cache)
             start=$(date +%s)
-            docker buildx build "${args[@]}" -f "$f" -t "parity:$v" --load . > "$RUNNER_TEMP/build-$v.log" 2>&1 || { tail -50 "$RUNNER_TEMP/build-$v.log"; exit 1; }
+            docker buildx build "${args[@]}" "${extra[@]}" -f "$f" -t "parity:$v" --load . > "$RUNNER_TEMP/build-$v.log" 2>&1 || { tail -50 "$RUNNER_TEMP/build-$v.log"; exit 1; }
             echo "$v cold build: $(( $(date +%s) - start ))s"
             docker run --rm --user 0 --entrypoint sh -v "$RUNNER_TEMP/m.sh:/m.sh:ro" "parity:$v" /m.sh > "$RUNNER_TEMP/content-$v.txt"
             docker image inspect "parity:$v" --format '{{.Size}} {{json .Config.Labels}} {{json .Config.Env}} {{json .Config.Cmd}} {{json .Config.User}} {{json .Config.WorkingDir}} {{json .Config.ExposedPorts}} {{json .Config.Healthcheck}}' > "$RUNNER_TEMP/config-$v.txt"
             wc -l "$RUNNER_TEMP/content-$v.txt"
           done
-          echo "--- config diff"; diff "$RUNNER_TEMP/config-old.txt" "$RUNNER_TEMP/config-new.txt" && echo "config identical"
-          echo "--- content diff (pip freeze + sha256 of every file outside /proc /sys /tmp /dev, .pyc excluded)"
-          diff "$RUNNER_TEMP/content-old.txt" "$RUNNER_TEMP/content-new.txt" | head -60 && echo "content identical"
+          echo "--- config diff old vs new"; diff "$RUNNER_TEMP/config-old.txt" "$RUNNER_TEMP/config-new.txt" && echo "config identical" || true
+          for pair in "old old-again" "old new"; do
+            set -- $pair
+            diff "$RUNNER_TEMP/content-$1.txt" "$RUNNER_TEMP/content-$2.txt" | grep -E '^[<>]' | awk '{print $NF}' | sort -u > "$RUNNER_TEMP/differ-$1-vs-$2.txt" || true
+            echo "--- files differing, $1 vs $2: $(wc -l < "$RUNNER_TEMP/differ-$1-vs-$2.txt")"; cat "$RUNNER_TEMP/differ-$1-vs-$2.txt"
+          done
+          echo "--- in old-vs-new but not in old-vs-old-again:"
+          comm -13 "$RUNNER_TEMP/differ-old-vs-old-again.txt" "$RUNNER_TEMP/differ-old-vs-new.txt"
       - name: Code-only commit against the local layer cache
         run: |
           set -euo pipefail
