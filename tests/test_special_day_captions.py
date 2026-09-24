@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+import pytest
 
 from immich_memories.analysis.special_day import PROMPT_VERSION, ask_if_special
 from immich_memories.automation.special_day_scan import scan_year
@@ -48,7 +49,6 @@ def test_a_prepared_day_is_answered_once_and_then_from_the_bank(tmp_path):
             assets,
             llm_config=config,
             home=None,
-            ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
         )
@@ -56,7 +56,6 @@ def test_a_prepared_day_is_answered_once_and_then_from_the_bank(tmp_path):
             assets,
             llm_config=config,
             home=None,
-            ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
         )
@@ -119,7 +118,6 @@ def test_a_day_the_bank_barely_touched_is_not_guessed_at(tmp_path):
             assets,
             llm_config=LLMConfig(model="text-reader", provider="ollama"),
             home=None,
-            ask=1,
             captions=captions,
             judgment_cache_path=tmp_path / "judgments.db",
         )
@@ -190,3 +188,7 @@ def test_a_fenced_answer_is_still_an_answer_without_a_bank():
         )
     assert verdict.special
     assert verdict.title == "At the finish line"
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

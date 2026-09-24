@@ -23,7 +23,7 @@ from tests.integration.conftest import (
     has_stream,
     requires_ffmpeg,
 )
-from tests.integration.immich_fixtures import requires_immich
+from tests.integration.immich_fixtures import live_video_ids, requires_immich
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
@@ -606,7 +606,6 @@ class TestLivePhotoFullPipeline:
         from immich_memories.timeperiod import DateRange
 
         config = Config.from_yaml(Config.get_default_path())
-        config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
         client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
         live_assets = client.get_live_photos_for_date_range(
@@ -621,7 +620,7 @@ class TestLivePhotoFullPipeline:
         if merge_cluster is None:
             pytest.skip("No live photo clusters with 2+ photos found")
 
-        burst_ids = merge_cluster.video_asset_ids
+        burst_ids = live_video_ids(merge_cluster)
         if len(burst_ids) < 2:
             pytest.skip("Cluster missing video component IDs")
 

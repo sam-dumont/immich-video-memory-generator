@@ -44,6 +44,9 @@ class AppState:
     # key because this one is bound to a widget, and a binding is two-way:
     # whatever it holds is sent to the browser.
     api_key_entry: str = ""
+    # What the user typed into the URL field. The stored key is paired with
+    # immich_url; a typed URL only replaces it through apply_connection_entry.
+    immich_url_entry: str = ""
     immich_api_version: ApiVersionPolicy = ApiVersionPolicy.AUTO
 
     # Time period selection
@@ -145,6 +148,8 @@ class AppState:
     # LLM-generated title (shown in Step 3, used in Step 4)
     title_suggestion_title: str | None = None
     title_suggestion_subtitle: str | None = None
+    # Who wrote title_suggestion_title: a TitleSource value.
+    title_suggestion_source: str | None = None
     title_suggestion_trip_type: str | None = None
     title_suggestion_map_mode: str | None = None
 
@@ -368,6 +373,7 @@ class AppState:
         self.review_selected_mode = False
         self.title_suggestion_title = None
         self.title_suggestion_subtitle = None
+        self.title_suggestion_source = None
         self.cancel_requested = False
         self.discard_music_preview()
 
@@ -408,17 +414,31 @@ class AppState:
         return decision.seconds if decision is not None else self.target_duration * 60.0
 
 
-def apply_api_key_entry(state: AppState) -> None:
-    """Move a newly typed API key into the stored one, then forget the entry.
+def _same_server(a: str, b: str) -> bool:
+    return a.strip().rstrip("/") == b.strip().rstrip("/")
 
-    An empty field means "unchanged" rather than "clear it": the field always
-    loads empty, because filling it would mean sending the stored key to the
-    browser.
+
+def apply_connection_entry(state: AppState) -> str | None:
+    """Move the typed URL and API key into the stored pair, or refuse and say why.
+
+    An empty key field means "unchanged" rather than "clear it": the field
+    always loads empty, because filling it would mean sending the stored key
+    to the browser. The stored key only ever goes to the URL it was stored
+    with: a different URL is taken only together with a key typed for it,
+    otherwise whoever reaches the page could point the stored key at their
+    own server and read it off the wire (#1212).
     """
-    typed = state.api_key_entry.strip()
-    if typed:
-        state.immich_api_key = typed
+    typed_key = state.api_key_entry.strip()
+    typed_url = state.immich_url_entry.strip()
     state.api_key_entry = ""
+    moved = typed_url and not _same_server(typed_url, state.immich_url)
+    if moved and state.immich_api_key and not typed_key:
+        return "The server URL changed: enter the API key for the new server."
+    if moved or not typed_url:
+        state.immich_url = typed_url
+    if typed_key:
+        state.immich_api_key = typed_key
+    return None
 
 
 # Session store: maps session_id → AppState

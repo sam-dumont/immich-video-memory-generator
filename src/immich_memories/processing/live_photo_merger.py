@@ -502,11 +502,9 @@ def _find_audio_offsets(
     Only aligns overlapping pairs (shutter gap < clip duration).
     Non-overlapping pairs use the shutter timestamp gap as fallback.
     """
-    from scipy.signal import stft
-
     sr, nfft, hop = 48000, 1024, 256
     audios = _extract_audio_raw(clip_paths, durations)
-    specs = [abs(stft(a, fs=sr, nperseg=nfft, noverlap=nfft - hop)[2]) for a in audios]
+    specs = [_magnitude_spectrogram(a, nfft, hop) for a in audios]
 
     starts = [0.0]
     for i in range(len(specs) - 1):
@@ -517,6 +515,24 @@ def _find_audio_offsets(
             offset = shutter_abs[i + 1] - shutter_abs[i] if shutter_abs else durations[i]
         starts.append(starts[i] + offset)
     return starts
+
+
+def _magnitude_spectrogram(audio: np.ndarray, nfft: int, hop: int) -> np.ndarray:
+    """|STFT| as scipy.signal.stft computes it by default, in numpy alone.
+
+    Periodic Hann window, half a window of zeros at each end, the tail padded
+    to a whole hop, spectrum scaling; frequencies by rows, frames by columns.
+    SciPy is not a dependency of this package, so importing it here broke
+    every burst merge on a default install.
+    """
+    import numpy as np
+
+    window = np.hanning(nfft + 1)[:-1]
+    # Half a window each side keeps len(padded) >= nfft for any input.
+    padded = np.pad(np.asarray(audio, dtype=np.float64), nfft // 2)
+    padded = np.pad(padded, (0, -(len(padded) - nfft) % hop))
+    frames = np.lib.stride_tricks.sliding_window_view(padded, nfft)[::hop]
+    return np.abs(np.fft.rfft(frames * window, axis=1) / window.sum()).T
 
 
 def _clips_overlap(shutter_abs: list[float] | None, durations: list[float], i: int) -> bool:

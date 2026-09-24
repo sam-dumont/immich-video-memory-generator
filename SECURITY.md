@@ -31,9 +31,13 @@ the vulnerability.
 
 ## Deployment posture (short version)
 
-- Authentication is **off by default**; the container listens on `0.0.0.0:8080`. Enable
+- Authentication is **off by default**. Outside Docker the UI then binds `127.0.0.1` unless you
+  name another address. The container listens on `0.0.0.0:8080` and the shipped compose file
+  publishes `127.0.0.1:8080:8080`, so the port mapping is the boundary. Enable
   [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
   before exposing the port beyond localhost, and put a TLS reverse proxy in front.
+- The UI never sends the saved Immich key to a URL typed into it: a new server URL needs its key
+  typed in too. Whoever reaches an unauthenticated UI can still use your library through it.
 - Read access is enough to generate a local video. Upload-back needs upload/album scopes.
   Cleanup can also move an older generated copy to Immich's trash when the album, filename
   and this app's own upload identity all match; it requires delete permission and never

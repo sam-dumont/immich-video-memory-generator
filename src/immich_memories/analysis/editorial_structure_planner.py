@@ -71,6 +71,7 @@ from immich_memories.analysis.editorial_structure_finishing import (
     announce_count,
     apply_audience_gate,
     check_empty_attached,
+    drop_filler_nothing_vouches_for,
     final_duplicate_review,
     observe_attached,
     replacement_offers,
@@ -95,6 +96,7 @@ from immich_memories.analysis.editorial_structure_record import (
     shave_content_duration,
 )
 from immich_memories.analysis.editorial_thin_gates import ThinGates
+from immich_memories.analysis.editorial_unvouched_filler import filler_evidence
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -512,6 +514,9 @@ def _select(
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")
+    if ports.rules is not None and ports.thin is None:
+        # Last, so no replacement pass can bring a removed filler's like back in.
+        drop_filler_nothing_vouches_for(run, filler_evidence(source, banked), record_story)
     check_empty_attached(ports, observed)
     return PlanOutcome(
         contract=contract,

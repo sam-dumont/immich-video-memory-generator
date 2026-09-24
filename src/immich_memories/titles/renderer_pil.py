@@ -27,6 +27,7 @@ from .animations import (
 from .backgrounds import create_background_for_style
 from .backgrounds_animated import create_animated_background
 from .colors import ceil_white_for_hdr
+from .font_chain import title_font
 from .fonts import get_font_path as get_cached_font_path
 from .styles import TitleStyle
 
@@ -88,21 +89,22 @@ class TitleRenderer:
         self._background_image = background_image
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        """Get font at specified size."""
+        """The style's face at this size, backed by Noto for letters it lacks (#1101)."""
         weight = {
             "light": "Light",
             "regular": "Regular",
             "medium": "Medium",
             "semibold": "SemiBold",
         }.get(self.style.font_weight, "Regular")
+        bold = weight == "SemiBold"
 
         cached_font = get_cached_font_path(self.style.font_family, weight)
         if cached_font and cached_font.exists():
-            return ImageFont.truetype(str(cached_font), size)
+            return title_font(cached_font, size, bold=bold)
 
         font_path = self.style.get_font_path(self.fonts_dir)
         if font_path and font_path.exists():
-            return ImageFont.truetype(str(font_path), size)
+            return title_font(font_path, size, bold=bold)
 
         system_fonts = [
             "/System/Library/Fonts/SFNSDisplay.ttf",
@@ -113,7 +115,7 @@ class TitleRenderer:
 
         for sys_font in system_fonts:
             if Path(sys_font).exists():
-                return ImageFont.truetype(sys_font, size)
+                return title_font(sys_font, size, bold=bold)
 
         return ImageFont.load_default()
 

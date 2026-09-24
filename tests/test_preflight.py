@@ -262,16 +262,46 @@ def test_title_rendering_preflight_says_what_the_pil_fallback_costs() -> None:
     assert f"{sys.platform}/{platform.machine()}" in details
 
 
-def test_title_rendering_preflight_names_the_renderer_it_will_use() -> None:
+def _probes(*working: str):
+    """The dispatch probe's answers on a machine where only `working` backends start."""
+    from immich_memories.titles.kernel_backend_probe import KernelProbeOutcome, KernelProbeResult
+
+    def probe(name: str) -> KernelProbeResult:
+        if name in working:
+            return KernelProbeResult(KernelProbeOutcome.SUCCESS)
+        return KernelProbeResult(KernelProbeOutcome.DISPATCH_FAILED, "fell_back_to_cpu")
+
+    return probe
+
+
+def test_title_rendering_preflight_names_the_gpu_the_kernels_start_on() -> None:
     # WHY: the dispatch probe is a child process; a unit test must not spawn one.
     with patch(
-        "immich_memories.titles.kernel_backend_probe.kernel_dispatch_failure",
-        return_value=None,
+        "immich_memories.titles.kernel_backend_probe.probe_backend_dispatch",
+        _probes("cpu", "metal", "cuda", "vulkan"),
     ):
         result = check_title_rendering(Config())
 
+    gpu = "Metal" if platform.system() == "Darwin" else "CUDA"
     assert result.status is CheckStatus.OK
-    assert result.message == "GPU kernels (quadrants): animated title screens"
+    assert result.message == f"GPU kernels on {gpu} (quadrants): animated title screens"
+
+
+def test_title_rendering_preflight_says_a_container_without_a_gpu_draws_on_the_cpu() -> None:
+    """A Docker container with no card passed in: the kernels run, on the processor (#1202).
+
+    The row used to say "GPU kernels" there, because it only asked whether the
+    CPU could run a kernel at all.
+    """
+    # WHY: the dispatch probe is a child process; this is what a GPU-less container answers.
+    with patch(
+        "immich_memories.titles.kernel_backend_probe.probe_backend_dispatch", _probes("cpu")
+    ):
+        result = check_title_rendering(Config())
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Kernels on the CPU (quadrants): no GPU backend started"
+    assert "found no device" in (result.details or "")
 
 
 def test_title_rendering_preflight_reports_a_cpu_that_cannot_run_a_kernel() -> None:

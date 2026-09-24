@@ -16,10 +16,12 @@ alive:
     street performer   413 photos    3 active hours   -
     work shoot         166 photos    1 active hour    -
 
-No overlap. But the rule is loose on its own — 22% of days in that library
-clear six hours — so it is a filter, not a verdict. What passes goes to the
-model, which is asked the question a person would ask: was this an occasion,
-the kind of day you tell other people about afterwards?
+No overlap on those six, and still no use as a gate: most days a library's
+owner confirms as occasions are loud on one other thing and quiet on these
+(#1093). So no bar decides which days are read any more. Every run is read in
+sequence (`special_day_sequence`), and a day found there is named here, by the
+question a person would ask: what was this occasion, the kind of day you tell
+other people about afterwards?
 
 It is asked in text. The day arrives as what the library already records about
 it — times, places, coordinates, recognised names, favourites, videos and
@@ -58,8 +60,9 @@ from immich_memories.analysis.special_day_title import (
 
 logger = logging.getLogger(__name__)
 
-# A day has to stay alive this long, and hold this much, to be worth asking
-# about. Both sit below every labelled positive and above every negative.
+# How much of a day its captions must cover before the day is answered from the
+# caption bank's contract rather than its recorded facts (`_captioned_assets`).
+# Measured as a specialness bar, which it no longer is (#1093).
 MIN_ACTIVE_HOURS = 6
 MIN_PHOTOS = 20
 
@@ -113,10 +116,13 @@ def candidate_days(
     *,
     away_days: Container[date] = frozenset(),
 ) -> dict[date, list]:
-    """Days worth asking the model about, by the cheap structural test.
+    """Every run of activity worth reading, keyed by the date it began: no bar.
 
-    Keeps the model off the other 78% of days, which is what makes asking
-    affordable at all.
+    This used to keep a run only at twenty pictures across six active hours,
+    which lost most confirmed occasions (a camp day of eighteen pictures, a
+    renovation with nothing loud about it) because each is quiet on nearly
+    every axis and loud on one (#1093). What a run was is now read, in order,
+    by `special_day_sequence`; nothing here decides it.
 
     away_days are excluded: a holiday is full of days that clear every bar
     here, and a trip memory already tells that story end to end. What is left
@@ -127,14 +133,13 @@ def candidate_days(
     a trip departed on used to carry the trip's first hours with it — and since
     the run's extent is what a memory of the day is scoped to, the film would
     have been cut across both. The trip owns its dates; what is left of the run
-    is still this day's, and has to clear the bars on its own.
+    is still this day's.
     """
     kept: dict[date, list] = {}
     for day, items in _runs_of_activity(assets).items():
         if day in away_days:
             continue
-        ours = [a for a in items if a.file_created_at.date() not in away_days]
-        if len(ours) >= MIN_PHOTOS and active_hours(ours) >= MIN_ACTIVE_HOURS:
+        if ours := [a for a in items if a.file_created_at.date() not in away_days]:
             kept[day] = ours
     return kept
 

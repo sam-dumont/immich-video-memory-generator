@@ -17,12 +17,23 @@ class PersonService:
         self._request = request_fn
 
     async def get_all_people(self, with_hidden: bool = False) -> list[Person]:
-        """Get all people from Immich."""
-        params = {"withHidden": str(with_hidden).lower()}
-        data = await self._request("GET", "/people", params=params)
+        """Every person Immich knows, following its pages until it says there are no more.
 
-        people_data = data.get("people", []) if isinstance(data, dict) else data
-        return [Person(**p) for p in people_data]
+        /people answers 500 at a time by default (1000 at most), and a library
+        with years of face recognition holds thousands.
+        """
+        people: list[Person] = []
+        page = 1
+        while True:
+            params = {"withHidden": str(with_hidden).lower(), "page": page, "size": 1000}
+            data = await self._request("GET", "/people", params=params)
+            if not isinstance(data, dict):
+                # WHY: a server answering a bare list has no pages to follow
+                return people + [Person(**p) for p in data]
+            people.extend(Person(**p) for p in data.get("people", []))
+            if not data.get("hasNextPage"):
+                return people
+            page += 1
 
     async def get_person(self, person_id: str) -> Person:
         """Get a specific person by ID."""

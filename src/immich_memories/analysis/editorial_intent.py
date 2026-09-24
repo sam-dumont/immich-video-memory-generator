@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from operator import itemgetter
 
+from immich_memories.analysis.editorial_product_brief import written_subject
 from immich_memories.analysis.special_event_scope import SpecialEventAdmission
 from immich_memories.timeperiod import DateRange
 
@@ -109,9 +110,9 @@ class EditorialIntent:
 
     def story_prompt_block(self) -> str:
         """The type part: what an episode is for this memory type, what is central, what more time adds."""
-        return f"STORY PART ({self.product}): " + _STORY_PARTS.get(
-            self.product, _STORY_PART_DEFAULT
-        )
+        # A custom range with no written subject is a period film; its story part names no subject.
+        part = "" if self.product == "custom" and not self.subject else self.product
+        return f"STORY PART ({self.product}): " + _STORY_PARTS.get(part, _STORY_PART_DEFAULT)
 
     def admission_prompt_block(self, ranges: Sequence[DateRange]) -> str:
         """Judge the requested occurrences before applying the final per-year cut limit."""
@@ -321,19 +322,35 @@ def _accepted_special_day(product, spans, whole, *, brief, who):
 
 
 def _custom(product, spans, whole, *, brief, who):
+    subject = written_subject(brief)
+    scope = f"{whole[0].isoformat()}..{whole[1].isoformat()}" + (
+        f" in {len(spans)} ranges" if len(spans) > 1 else ""
+    )
+    # owner ruling 2026-09-05: a multi-range custom memory (works periods across years) must give every
+    # year of its span a voice; one year of a ten-year renovation is not the memory that was asked for
+    partitions = _per_year(whole, required=True) if len(spans) > 1 else _single(whole)
+    every_year = (
+        ("every year of the span that holds material has a voice",) if len(spans) > 1 else ()
+    )
+    if subject is None:
+        period = _generic(product, spans, whole, brief=brief, who=who)
+        return replace(
+            period,
+            scope=scope,
+            partitions=partitions,
+            coverage_requirements=period.coverage_requirements + every_year,
+            voice_per_partition=len(spans) > 1,
+        )
     return EditorialIntent(
         product=product,
-        scope=f"{whole[0].isoformat()}..{whole[1].isoformat()}"
-        + (f" in {len(spans)} ranges" if len(spans) > 1 else ""),
+        scope=scope,
         narrative_objective="exactly what was asked for, chronologically, from beginning to result",
-        # owner ruling 2026-09-05: a multi-range custom memory (works periods across years) must give every
-        # year of its span a voice; one year of a ten-year renovation is not the memory that was asked for
-        partitions=_per_year(whole, required=True) if len(spans) > 1 else _single(whole),
+        partitions=partitions,
         coverage_requirements=(
             "every funded beat visibly concerns the requested subject",
             "beginning and result state where the ask implies progression",
-        )
-        + (("every year of the span that holds material has a voice",) if len(spans) > 1 else ()),
+            *every_year,
+        ),
         selection_priorities=(
             "material that shows the subject",
             "stages of progression",
@@ -341,7 +358,7 @@ def _custom(product, spans, whole, *, brief, who):
         ),
         allowed_texture="only what concerns the subject",
         abstention_policy="the subject is not visible in the material: insufficient_material, not a film about something else",
-        subject=brief.strip(),
+        subject=subject,
         voice_per_partition=len(spans) > 1,
     )
 

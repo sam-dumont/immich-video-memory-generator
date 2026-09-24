@@ -5,7 +5,12 @@ Raleway    — Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida (OFL-1.1)
 Josefin Sans — Santiago Orozco (OFL-1.1) — https://github.com/ThomasJocworksource/JosefinSans
 Quicksand  — Andrew Paglinawan (OFL-1.1) — https://github.com/alexeiva/quicksand
 Montserrat — Julieta Ulanovsky, Sol Matas, Juan Pablo del Peral, Jacques Le Bailly (OFL-1.1)
+Noto Sans  — The Noto Project Authors (OFL-1.1) — https://github.com/notofonts/latin-greek-cyrillic
+             noto-sans/core-{400,700}-normal.ttf: NotoSans-{Regular,Bold}.ttf (unhinted) from
+             notofonts/notofonts.github.io at e0ad9f160a2942bcdd249bb1958e8336742edef3, cut with
+             fontTools pyftsubset to Latin, Latin Extended, Greek, Cyrillic and Vietnamese.
 
+Montserrat latin-ext-* and vietnamese-* are Fontsource 5.3.0 subsets.
 Downloaded from Fontsource CDN (https://fontsource.org), which redistributes
 Google Fonts under their original open-source licenses.
 

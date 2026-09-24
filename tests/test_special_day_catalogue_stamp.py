@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, date, datetime
 
-from immich_memories.analysis.special_day import PROMPT_VERSION
+import pytest
+
+from immich_memories.analysis.special_day_sequence import SCAN_VERSION
 from immich_memories.automation.catalogue import (
     entries_from,
     judged_by_this_build,
@@ -71,7 +73,7 @@ def test_a_day_the_scan_judged_says_which_scan_judged_it(tmp_path, monkeypatch) 
 
     entry = entries_from(path)[0]
 
-    assert entry.prompt_version == PROMPT_VERSION
+    assert entry.prompt_version == SCAN_VERSION
     assert entry.app_version == __version__
     assert judged_by_this_build(entry)
 
@@ -112,3 +114,7 @@ def test_rebuilding_a_period_keeps_everything_outside_it() -> None:
 
     assert dropped == 3
     assert kept == [rows[0], rows[4]]
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

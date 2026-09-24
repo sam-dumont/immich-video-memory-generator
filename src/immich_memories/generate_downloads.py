@@ -362,7 +362,7 @@ def _try_merge_burst(
                 valid_paths, shutter_timestamps[: len(valid_paths)], durations
             )
             valid_trims = video_trims  # Use frame-aligned trims for video
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
+        except Exception as e:  # WHY: alignment only refines trims the burst already has
             logger.warning(f"Spectrogram alignment failed, using timestamp trims: {e}")
             audio_trims = None
 
