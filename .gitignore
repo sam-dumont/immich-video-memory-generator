@@ -163,3 +163,6 @@ people*.yaml
 
 # Local screenshots from real-library UI checks do not belong in a release.
 /*.jpeg
+
+# Real-Immich PR gate: generated media, seeded config, logs (make test-immich-gate)
+.immich-gate/
