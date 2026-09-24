@@ -98,6 +98,25 @@ def test_a_second_still_of_the_same_live_video_stays_a_photograph_without_ending
     assert renderings[first.id].video_ids.count(first.live_photo_video_id) == 1
 
 
+def test_two_files_of_one_live_photo_both_carry_its_motion() -> None:
+    """A shared album holds a downscaled copy of a Live Photo at the same instant, pointing at
+    the same video. Whichever copy the cut keeps (the full-size favourite, usually) plays the
+    video: the copy is an alias of the same rendering, never a photograph the UUID order chose."""
+    original = _live(1)
+    copy = _live(0)
+    copy.live_photo_video_id = original.live_photo_video_id
+    other = _live(3, seconds=2.0)
+
+    renderings = motion_renderings([original, copy, other], _config())
+
+    assert renderings[copy.id] is renderings[original.id]
+    rendering = renderings[original.id]
+    assert set(rendering.still_ids) == {copy.id, original.id, other.id}
+    assert rendering.video_ids == (original.live_photo_video_id, other.live_photo_video_id)
+    alone = motion_renderings([original, other], _config())[original.id]
+    assert rendering.trim_points == alone.trim_points
+
+
 def test_a_discarded_companion_alias_cannot_bridge_nonoverlapping_sources() -> None:
     first = _live(1)
     twin = _live(2, seconds=2.5)
