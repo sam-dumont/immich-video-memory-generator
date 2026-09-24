@@ -109,6 +109,45 @@ still draws its letters, unjoined, and the log says so once.
 Chinese characters use the Simplified Chinese forms unless the title has kana (Japanese forms) or
 Hangul (Korean).
 
+## Languages
+
+`title_screens.locale` sets the language of everything the film prints: titles, month and
+weekday names, trip cards, holiday names. `auto` (the default) follows the host's own locale.
+
+| Language | Code | Trip titles |
+|---|---|---|
+| English | `en` | full: "A WEEK IN THE NETHERLANDS" |
+| French | `fr` | full: "UNE SEMAINE AUX PAYS-BAS" |
+| Dutch | `nl` | full: "op Kreta", "in de Verenigde Staten" |
+| German | `de` | full: "auf Kreta", "in der Schweiz" |
+| Spanish | `es` | full: "en el Reino Unido" |
+| Italian | `it` | full: "a Creta", "negli Stati Uniti" |
+| Portuguese (Brazil) | `pt-BR` | full: "na Itália", "nos Estados Unidos" |
+| Portuguese (Portugal) | `pt-PT` | full: "em França", "no Japão" |
+| Polish | `pl` | full for the places it lists ("na Krecie", "we Włoszech"); others use the fallback design |
+| Swedish | `sv` | full: "på Kreta", "i Italien" |
+| Russian | `ru` | fallback design |
+| Japanese | `ja` | fallback design |
+| Chinese (Simplified) | `zh-Hans` | fallback design |
+| Korean | `ko` | fallback design |
+
+Dates, months and weekdays come from CLDR, so they are right in every language. The rest of the
+wording lives in one catalogue per language under `src/immich_memories/locales/`. English and French
+are written by hand. **Every other catalogue, and the preposition rules for Dutch, German, Spanish,
+Italian, Portuguese, Polish and Swedish, were drafted by an AI** and checked by tests, not by native
+speakers yet; each file says so at the top. A correction is a one-line pull request.
+
+"Fallback design" means the trip card never guesses a preposition: the place is the big line and
+the duration and date go under it. A language gets prepositions only once its rules are written
+down and tested. Titles in Russian, Japanese, Chinese and Korean draw with the Noto fonts (see
+[Other alphabets](#other-alphabets)).
+
+Why these fourteen: Immich publishes no usage numbers per language. Its translation project on
+[Hosted Weblate](https://hosted.weblate.org/projects/immich/) has 44 languages at 95 % or more, so
+completeness does not separate them. The first ten are the languages of Western Europe and the
+Americas with the most speakers among those, plus Dutch; the last four are the largest non-Latin
+ones.
+
 ## Date and place captions
 
 `generate --add-date --add-place` burns small translucent context onto clips: 48 px on a 1080p frame
@@ -170,9 +209,25 @@ renderer also knows `osm` and `topo` for the pin-and-label frames, but both are 
 
 Immich geocodes with GeoNames and stores English, so every city and country it hands over is
 English. Country names are translated offline (CLDR, through babel) wherever a viewer reads one:
-the trip title, the clip overlays, the map pin labels and the location cards. A French trip title
-also takes the country's own preposition: `DEUX SEMAINES EN ESPAGNE`, `AU PORTUGAL`,
-`AUX ÉTATS-UNIS`, `À CHYPRE`, not `À SPAIN`. A city keeps `À`.
+the trip title, the clip overlays, the map pin labels and the location cards.
+
+A trip title says where it went the way its language does:
+
+| Trip | English | French |
+|---|---|---|
+| A country | `IN THE NETHERLANDS`, `IN ITALY` | `AUX PAYS-BAS`, `EN ITALIE`, `AU PORTUGAL` |
+| An island | `IN CRETE, GREECE`, `IN CYPRUS` | `EN CRÈTE, GRÈCE`, `À CHYPRE`, `À MAJORQUE, ESPAGNE` |
+| A region | `IN APULIA, ITALY`, `IN THE CANARY ISLANDS, SPAIN` | `DANS LES POUILLES, ITALIE`, `EN SAXE, ALLEMAGNE` |
+| Two regions | `IN UTAH AND NEVADA, UNITED STATES` | `DANS L'UTAH ET AU NEVADA, ÉTATS-UNIS` |
+| A city | `IN LAS VEGAS, UNITED STATES` | `À LAS VEGAS, ÉTATS-UNIS` |
+| Several countries | `ACROSS BELGIUM → SPAIN` | no phrase (see below) |
+
+English gives the article to the names that take it (the Netherlands, the United States, the
+Philippines, the Maldives, every "Islands" and "Republic"). French countries follow their gender and
+number; an island or region takes the phrase listed for it, because no rule holds ("en Crète" but "à
+Majorque", "au Nevada" but "dans l'Utah"). A place French has no phrase for, and any title language
+without phrase rules, gets a title with no preposition at all, place first:
+`NORDLAND, NORVÈGE · DEUX SEMAINES, JUILLET 2025`. A wrong preposition never reaches the screen.
 
 The islands and regions a trip is named after have a short offline table too (`Crète`,
 `Pouilles`, `Majorque`, `Saxe`), and two regions are joined in the film's language
@@ -184,7 +239,17 @@ place on the cut. See
 ### Trip titles and classification
 
 A template gives you "TWO WEEKS IN SPAIN, SUMMER 2025". The model gives you "Sous les falaises de
-grès". English and French are the two locales the app ships.
+grès". See [Languages](#languages) for the languages a film can speak.
+
+When the model names a trip, the prompt carries the trip's place as trip detection named it, and
+the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,
+Greece"). A title about somewhere else is refused and the template names the trip; the run's
+**Title From** then says `place`, not `model`.
+
+When the model names a trip, the prompt carries the trip's place as trip detection named it, and
+the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,
+Greece"). A title about somewhere else is refused and the template names the trip; the run's
+**Title From** then says `place`, not `model`.
 
 The model never sees coordinates. The selected material's GPS points are clustered greedily within
 5 km, each cluster is reverse-geocoded to a city name, and the prompt is one line per day: the place

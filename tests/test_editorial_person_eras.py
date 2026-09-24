@@ -35,3 +35,46 @@ def test_a_year_film_keeps_its_one_partition_whatever_the_material():
     )
 
     assert [p.key for p in intent.partitions] == ["scope"]
+
+
+def _planned_lifetime(tmp_path):
+    """A person film over five years, the rules reading it. The last year is full of starred
+    days; one quiet day two years earlier holds her too, with nothing starred."""
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
+    from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
+    from immich_memories.analysis.editorial_structure_planner import plan_structure
+    from tests.editorial_film_fixtures import film_source, home_days
+
+    busy = [
+        replace(day, moments=3)
+        for day in home_days(date(2024, 3, 2), 24, step=7, activity="Park day")
+    ]
+    quiet = home_days(date(2022, 6, 11), 1, activity="Garden afternoon")
+    source = film_source(
+        tmp_path,
+        [*quiet, *busy],
+        seconds=40,
+        span=(date(2020, 1, 1), date(2024, 12, 31)),
+        product="person_spotlight",
+        pictures=3,
+    )
+    for asset_id, asset in source.assets.items():
+        asset.is_favorite = asset.file_created_at.year == 2024 and asset_id.endswith("-p0")
+    plan = plan_structure(
+        source,
+        StructurePlannerPorts(
+            judge=NoModelJudge(),
+            thumbnail_hash=lambda _asset: None,
+            rules=RuleStructureReader(source),
+        ),
+    ).plan
+    return [source.assets[c["asset_id"]].file_created_at.year for c in plan["carriers"]]
+
+
+def test_a_year_that_holds_the_person_has_a_voice_in_her_film(tmp_path):
+    years = _planned_lifetime(tmp_path)
+
+    assert 2022 in years
+    assert years.count(2024) >= len(years) - 1

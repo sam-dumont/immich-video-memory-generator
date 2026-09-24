@@ -158,7 +158,22 @@ _ADMIN_PREFIXES = (
 _ADMIN_SUFFIXES = (" regional unit", " region", " province", " district", " governorate")
 
 # How "A and B" is joined in each title language.
-_AND = {"en": " and ", "fr": " et "}
+_AND = {
+    "en": " and ",
+    "fr": " et ",
+    "nl": " en ",
+    "de": " und ",
+    "es": " y ",
+    "it": " e ",
+    "pt-BR": " e ",
+    "pt-PT": " e ",
+    "pl": " i ",
+    "sv": " och ",
+    "ru": " и ",
+    "ja": "・",
+    "zh-Hans": "和",
+    "ko": " 및 ",
+}
 
 
 def _is_latin(text: str) -> bool:
@@ -194,7 +209,13 @@ def island_at(lat: float, lon: float, country: str) -> str | None:
 
 def localise_place_part(name: str, locale: str) -> str:
     """An English island or region name (or "A and B") in the film's language."""
-    parts = name.split(_AND["en"])
-    if locale == "fr":
-        parts = [_FRENCH.get(part, part) for part in parts]
+    from immich_memories.place_name_translations import TRANSLATIONS
+
+    names = _FRENCH if locale == "fr" else TRANSLATIONS.get(locale, {})
+    parts = [names.get(part, part) for part in name.split(_AND["en"])]
     return _AND.get(locale, _AND["en"]).join(parts)
+
+
+def is_known_area(english_name: str) -> bool:
+    """Whether this is an island or region the tables above name."""
+    return english_name in _FRENCH or any(i.name == english_name for i in _ISLANDS)

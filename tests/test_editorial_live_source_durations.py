@@ -114,14 +114,25 @@ def test_zero_slice_preserves_alias_but_does_not_request_displayed_video(last_vi
     photos, companions = material([0, 1, 1], [3, 3, 3], videos=["first", "middle", last_video])
     result = motion_renderings(photos, Config(), companion_assets=companions)["still-0"]
     assert result.still_ids == tuple(photo.id for photo in photos)
-    assert result.material.source_entries[1].start == result.material.source_entries[1].end == 1.5
+    empty = [e for e in result.material.source_entries if e.start == e.end]
+    assert [(e.start, e.end) for e in empty] == [(1.5, 1.5)]
     assert result.video_ids == ("first", last_video)
     assert result.duration_seconds == 4.0
     assert len(result.material.source_entries) == 3
     assert len(result.material.segments) == 2
 
 
-@pytest.mark.parametrize("times", [[0, 0], [0, 0.5]])
+def test_two_files_of_one_instant_share_one_offer_and_both_stay_selectable():
+    photos, companions = material([0, 0], [3, 3], videos=["shared", "shared"])
+    result = motion_renderings(photos, Config(), companion_assets=companions)
+    assert result["still-0"] is result["still-1"]
+    assert result["still-0"].video_ids == ("shared",)
+    assert len(result["still-0"].material.segments) == 1
+    _, candidates = demand([*photos, *companions.values()])
+    assert {row.clip.asset.id for row in candidates} == {"still-0", "still-1"}
+
+
+@pytest.mark.parametrize("times", [[0, 0.5]])
 def test_positive_repeated_companion_is_offered_once_and_other_still_remains_selectable(times):
     photos, companions = material(times, [3, 3], videos=["shared", "shared"])
     result = motion_renderings(photos, Config(), companion_assets=companions)

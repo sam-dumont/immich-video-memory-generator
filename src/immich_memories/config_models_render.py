@@ -220,9 +220,27 @@ class TitleScreenConfig(BaseModel):
     )
 
     # Localization
-    locale: Literal["en", "fr", "auto"] = Field(
+    locale: Literal[
+        "auto",
+        "en",
+        "fr",
+        "nl",
+        "de",
+        "es",
+        "it",
+        "pt-BR",
+        "pt-PT",
+        "pl",
+        "sv",
+        "ru",
+        "ja",
+        "zh-Hans",
+        "ko",
+    ] = Field(
         default="auto",
-        description="Language for title text (en, fr, or auto-detect)",
+        description=(
+            "Language of the film's text: titles, dates, trip cards (auto follows the host)"
+        ),
     )
 
     # Visual style

@@ -741,6 +741,7 @@ src/immich_memories/
 ├── i18n.py                     # Internationalization
 ├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── place_names.py              # Offline island boxes and short island/region names (en, fr)
+├── place_phrases/              # Per-language trip-title place phrases (en, fr); none = no preposition
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check

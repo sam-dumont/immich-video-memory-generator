@@ -407,6 +407,7 @@ def _render_trip_params(state: AppState) -> None:
                 p["trip_start"] = trip.start_date
                 p["trip_end"] = trip.end_date
                 p["location_name"] = trip.location_name
+                p["location_kind"] = trip.location_kind
                 p["asset_count"] = trip.asset_count
                 p["home_lat"] = trips_config.homebase_latitude
                 p["home_lon"] = trips_config.homebase_longitude

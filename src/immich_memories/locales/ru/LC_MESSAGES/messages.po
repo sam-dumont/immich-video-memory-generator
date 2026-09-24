@@ -1,0 +1,110 @@
+# Russian film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "season.spring"
+msgstr "Весна"
+
+msgid "season.summer"
+msgstr "Лето"
+
+msgid "season.autumn"
+msgstr "Осень"
+
+msgid "season.winter"
+msgstr "Зима"
+
+msgid "ordinal"
+msgstr "{n}-й"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal} год"
+
+msgid "title.month_year"
+msgstr "{month} {year}"
+
+msgid "title.month_range_same_year"
+msgstr "{start_month} – {end_month_lc} {year}"
+
+msgid "title.month_range_different_year"
+msgstr "{start_month} {start_year} – {end_month_lc} {end_year}"
+
+msgid "title.season_year"
+msgstr "{season} {year}"
+
+msgid "title.season_year_span"
+msgstr "{season} {start_year}–{end_year}"
+
+msgid "title.on_this_day"
+msgstr "{day} {month_of}"
+
+msgid "title.on_this_day_subtitle"
+msgstr "Сквозь годы"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "{person}: твой год"
+
+msgid "trip.day"
+msgstr "Один день"
+
+msgid "trip.weekend"
+msgstr "Выходные"
+
+msgid "trip.week"
+msgstr "Неделя"
+
+msgid "trip.two_weeks"
+msgstr "Две недели"
+
+msgid "trip.three_weeks"
+msgstr "Три недели"
+
+msgid "trip.month"
+msgstr "Месяц"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n} день"
+msgstr[1] "{n} дня"
+msgstr[2] "{n} дней"
+
+msgid "holiday.new_year"
+msgstr "Новый год"
+
+msgid "holiday.valentines"
+msgstr "День святого Валентина"
+
+msgid "holiday.easter"
+msgstr "Пасха"
+
+msgid "holiday.mothers_day"
+msgstr "День матери"
+
+msgid "holiday.fathers_day"
+msgstr "День отца"
+
+msgid "holiday.halloween"
+msgstr "Хэллоуин"
+
+msgid "holiday.thanksgiving"
+msgstr "День благодарения"
+
+msgid "holiday.christmas_eve"
+msgstr "Сочельник"
+
+msgid "holiday.christmas"
+msgstr "Рождество"
+
+msgid "holiday.new_years_eve"
+msgstr "Канун Нового года"

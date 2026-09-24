@@ -109,15 +109,10 @@ class ProductionPostCardBackend:
         source = self._apply_runtime_policy(source)
         rules = self._config.editorial.resolve_reader(self._config.llm.model) == "rules"
         if rules:
-            source = replace(
-                source,
-                allow_live_motion=False,
-                lineage={
-                    **source.lineage,
-                    "reader": "rules-v1",
-                    "render_policy": {"allow_live_motion": False},
-                },
-            )
+            # The rules reader keeps the run's Live Photo policy: motion is first class on
+            # every tier, and whether a clip plays is measured (its residual and whether its
+            # frames hold the subject), never asked of a model.
+            source = replace(source, lineage={**source.lineage, "reader": "rules-v1"})
         request_start = len(trace.requests)
         self.last_companion_assets = dict(source.companion_assets)
         resources = ExitStack()
@@ -239,6 +234,8 @@ class ProductionPostCardBackend:
                 thumbnail_metrics=thumbnail_hasher.metrics,
                 rules=RuleStructureReader(source),
                 resolve_speech=production_speech_resolver(source, resources=resources),
+                resolve_motion=production_motion_resolver(source),
+                clock_offsets=self.clock_offsets(source, resources),
             )
         picture_facts = PictureFactsProvider(
             llm_config=self._config.llm,

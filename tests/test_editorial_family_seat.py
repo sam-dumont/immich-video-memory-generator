@@ -254,6 +254,41 @@ def test_a_frame_the_audience_gate_holds_gives_the_seat_to_her_next_best():
     assert asked == ["p-12", "p-00"]
 
 
+def test_a_full_film_whose_stories_of_her_hold_no_shot_seats_her_in_place_of_its_weakest():
+    """Her story got no grant, so it holds nothing to replace: the film's weakest non-favourite
+    anywhere gives up its place, never the only shot of a story."""
+    lines, rows, film = _month()
+    film = [*rows["S1"], rows["S2"][-2], {"asset_id": "x-00", "story_episode": "S3"}]
+    film += [{"asset_id": "x-01", "story_episode": "S3"}]
+    rows["S2"] = [r for r in rows["S2"] if r["asset_id"] != "plain-s2"]
+
+    seated, record = seat_close_family(film, _inputs(lines, rows))
+
+    assert _shows_partner(lines, seated) == ["p-12"]
+    assert record["seats"][0]["placed"] == "replaced"
+    assert record["seats"][0]["replaced"] in {"x-00", "x-01"}
+    assert {c["asset_id"] for c in seated} >= {"fav-0", "fav-1", "fav-2", "fav-s2"}
+
+
+def test_someone_whose_every_picture_is_refused_is_owed_nothing_and_the_record_says_why():
+    lines, rows, film = _month()
+
+    seated, record = seat_close_family(
+        film, _inputs(lines, rows, refused={f"p-{n:02}" for n in range(50)})
+    )
+
+    assert seated == film
+    assert record["seats"] == [
+        {
+            "relation": "partner",
+            "pictures": 50,
+            "showable": 0,
+            "placed": None,
+            "reason": "every picture of them in this film is refused as a carrier",
+        }
+    ]
+
+
 _PEOPLE_FILE = """
 version: 1
 owner: {person_id: owner-id, identified: confirmed}

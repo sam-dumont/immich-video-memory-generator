@@ -81,8 +81,9 @@ asset that has already won its place.
 6. **Measured joins, only for the bursts the film keeps**: the draft plans every burst on its
    metadata, which puts each companion's shutter at the file's middle. Before a kept burst plays,
    its companions are downloaded once and cross-correlated to find where their content really
-   lines up, and the stitch is cut there. If the files share no content to line up on, the burst
-   ships as its photograph. The answer is banked per pair of companions, so the next film over the
+   lines up, and the stitch is cut there. If the files share no content to line up on, nothing is
+   stitched: the kept picture plays its own clip when that moves, and ships as its photograph
+   otherwise. The answer is banked per pair of companions, so the next film over the
    same pictures downloads nothing. A 2024 year holds about 1,300 companions in bursts; measuring
    all of them before the draft cost six and a half minutes on every run
 
@@ -101,6 +102,15 @@ still always works while a dead clip does not. Of the 127 Live Photos measured i
 far, 59% clear 1.5, 72% clear 1.2 and 88% clear 1.0. Motion is no gate on selection: a quiet burst
 still ships as its photograph. It decides whether a Live Photo plays, and a burst that plays is
 preferred over a still of the same moment.
+
+The same holds on every tier. The no-model editor used to render every Live Photo as its still,
+so a NAS film had no Live motion at all; it now keeps the `include_live_photos` setting and measures
+a kept clip exactly like a model film. On a real August it went from 0 of 4 Live Photos in the cut
+playing to 2: the two that play measured 2.4 and 6.4, the two that stay stills 1.1 and 0.8.
+
+One picture, two files: a shared album holds a downscaled copy of a Live Photo at the same instant,
+pointing at the same video. The video now belongs to both copies, so whichever the cut keeps (the
+full-size favourite, usually) plays it. Before, only the copy whose id sorted first could.
 
 The two config keys that decide anything are `live_photo_min_clip_seconds` (3.5) and
 `include_live_photos` (true). The CLI's `--include-live-photos` cannot turn the feature back on when

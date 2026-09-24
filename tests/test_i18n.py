@@ -38,7 +38,7 @@ class TestGetMonthName:
             get_month_name(13, "en")
 
     def test_unsupported_locale_falls_back_to_english(self):
-        assert get_month_name(3, "de") == "March"
+        assert get_month_name(3, "sw") == "March"
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ class TestGetOrdinal:
         assert get_ordinal(10, "fr") == "10ème"
 
     def test_unsupported_locale_falls_back_to_english(self):
-        assert get_ordinal(1, "de") == "1st"
+        assert get_ordinal(1, "sw") == "1st"
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,9 @@ class TestGetOrdinal:
 class TestDetectSystemLocale:
     def test_returns_supported_locale(self):
         result = detect_system_locale()
-        assert result in ("en", "fr")
+        from immich_memories.i18n import SUPPORTED_LOCALES
+
+        assert result in SUPPORTED_LOCALES
 
     def test_respects_lang_env(self):
         with (
@@ -91,7 +93,7 @@ class TestDetectSystemLocale:
 
     def test_unsupported_lang_falls_back(self):
         with (
-            patch.dict(os.environ, {"LANG": "zh_CN.UTF-8"}),
+            patch.dict(os.environ, {"LANG": "sw_KE.UTF-8"}),
             patch("immich_memories.i18n.locale.getdefaultlocale", return_value=(None, None)),
         ):
             assert detect_system_locale() == "en"

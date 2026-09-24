@@ -131,3 +131,19 @@ def test_a_kernel_title_in_arabic_is_not_boxes() -> None:
     boxed = renderer.plan_text_layers("" * 7, None).title_layer
 
     assert not np.array_equal(arabic, boxed)
+
+
+@pytest.mark.parametrize("locale", ["ja", "zh-Hans", "ko"])
+def test_a_cjk_film_title_has_every_letter(locale: str) -> None:
+    from datetime import date
+
+    from immich_memories.titles._trip_titles import _get_duration_label, _get_time_label
+    from immich_memories.titles.text_builder import SelectionType, generate_title
+
+    otd = generate_title(SelectionType.ON_THIS_DAY, start_date=date(2020, 7, 14), locale=locale)
+    trip = f"{_get_duration_label(10, locale)} {_get_time_label(date(2024, 6, 1), date(2024, 8, 1), locale)}"
+    text = f"{otd.main_title} {otd.subtitle} {trip}"
+
+    assert uncovered_letters(text, _montserrat(), bold=True) == ""
+    font = title_font(_montserrat(), 64, bold=True)
+    assert not np.array_equal(_mask(font, text), _mask(font, "" * len(text)))

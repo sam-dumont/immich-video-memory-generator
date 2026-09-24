@@ -41,9 +41,12 @@ _LOCALE_NAMES: dict[str, str] = {
     "it": "Italian",
     "nl": "Dutch",
     "pt": "Portuguese",
+    "pt-BR": "Brazilian Portuguese",
+    "pt-PT": "European Portuguese",
     "ja": "Japanese",
     "ko": "Korean",
     "zh": "Chinese",
+    "zh-Hans": "Simplified Chinese",
     "ru": "Russian",
     "pl": "Polish",
     "sv": "Swedish",
@@ -106,6 +109,8 @@ class MemoryTitleFacts:
     occasion_name: str | None = None
     album_name: str | None = None
     holiday: str | None = None
+    # The trip's place as trip naming chose it ("Crete, Greece"): the title must name it.
+    place: str | None = None
     people_path: Path | None = None
     today: date | None = None
 
@@ -214,6 +219,7 @@ def memory_title_facts(
         occasion_name=_occasion_name(preset),
         album_name=album_name or preset.get("album_name") or None,
         holiday=preset.get("holiday") or None,
+        place=preset.get("location_name") or None,
     )
 
 
@@ -477,6 +483,7 @@ def build_title_prompt(
         clip_descriptions=clip_descriptions,
         smart_objects=smart_objects,
         album_name=known.album_name,
+        place=known.place,
     )
 
 
@@ -493,8 +500,11 @@ def _trip_prompt(
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
     album_name: str | None = None,
+    place: str | None = None,
 ) -> TitlePrompt:
     context_lines: list[str] = []
+    if place:
+        context_lines.append(f"Place (name it, in the title's language): {place}")
     if album_name:
         context_lines.append(f"Album name in Immich: {album_name}")
     if daily_locations:
@@ -576,6 +586,39 @@ def _refusing_invented_names(
     return suggestion
 
 
+def names_the_place(title: str, place: str, locale: str) -> bool:
+    """Whether `title` names the trip's place, in English or in `locale`.
+
+    Any of the place's own words counts ("Crete" or "Crète" for "Crete,
+    Greece", "Utah" for "Utah and Nevada, United States"), spelled as close as
+    `_SAME_NAME_RATIO` allows.
+    """
+    from immich_memories.i18n_places import localise_place
+
+    spellings = f"{place} {localise_place(place, locale) or ''}".replace(" and ", " ")
+    known = {word.casefold() for word in _name_words(spellings) if len(word) > 2}
+    if not known:
+        return True
+    # WHY exact under four letters: "été" is as close to "Crete" as "Crète" is.
+    return any(
+        w.casefold() in known or (len(w) > 3 and _is_a_known_name(w, known))
+        for w in _name_words(title)
+    )
+
+
+def _requiring_the_place(
+    suggestion: TitleSuggestion | None, place: str | None, locale: str
+) -> TitleSuggestion | None:
+    if suggestion is None or not place or names_the_place(suggestion.title, place, locale):
+        return suggestion
+    logger.warning(
+        "Title %r does not name the trip's place %r; the template names this trip instead",
+        suggestion.title,
+        place,
+    )
+    return None
+
+
 async def generate_title_with_llm(
     memory_type: str,
     locale: str,
@@ -626,7 +669,10 @@ async def generate_title_with_llm(
             thinking=True,
             cache_path=cache_path,
         )
-        return _refusing_invented_names(parse_title_response(raw), prompt.facts)
+        suggestion = _refusing_invented_names(parse_title_response(raw), prompt.facts)
+        if memory_type in PEOPLE_MEMORY_TYPES or memory_type in OCCASION_MEMORY_TYPES:
+            return suggestion
+        return _requiring_the_place(suggestion, facts.place if facts else None, locale)
     except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:
         logger.warning("LLM title generation failed: %s", e, exc_info=True)
         return None

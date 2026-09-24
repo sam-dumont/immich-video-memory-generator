@@ -11,6 +11,7 @@ from rich.table import Table
 
 from immich_memories.cli._flags import output_path
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
+from immich_memories.i18n import SUPPORTED_LOCALES
 
 
 def _print_title_test_params(
@@ -128,7 +129,9 @@ def register_titles_commands(main: click.Group) -> None:
         default="1080p",
         help="Output resolution",
     )
-    @click.option("--locale", "-l", type=click.Choice(["en", "fr"]), default="en", help="Language")
+    @click.option(
+        "--locale", "-l", type=click.Choice(SUPPORTED_LOCALES), default="en", help="Language"
+    )
     @click.option(
         "--style",
         "-s",
