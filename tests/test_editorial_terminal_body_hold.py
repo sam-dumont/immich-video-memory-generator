@@ -211,8 +211,6 @@ def test_actual_planner_rejected_burst_stops_surviving_burst_is_complete_and_war
             StructurePlannerPorts(
                 judge=judge,
                 thumbnail_hash=lambda _: None,
-                rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-                reranker_identity={"endpoint": "test://local", "model": "controlled"},
                 observe_picture=observe,
             ),
         ).plan

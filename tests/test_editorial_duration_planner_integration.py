@@ -254,8 +254,6 @@ def run(source, judge):
         StructurePlannerPorts(
             judge=judge,
             thumbnail_hash=lambda _: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
         ),
     ).plan
 
@@ -294,8 +292,6 @@ def semantic_plan(plan):
         "calls",
         "calls_by_stage",
         "llm_metrics",
-        "reranker_metrics",
-        "reranker_calls",
         "motion_metrics",
         "thumbnail_metrics",
         "picture_facts_metrics",

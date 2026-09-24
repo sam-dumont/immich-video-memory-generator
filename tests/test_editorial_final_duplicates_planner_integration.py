@@ -75,8 +75,6 @@ def test_final_actual_planner_removes_un_nominated_repetition_after_completion(t
             StructurePlannerPorts(
                 judge=judge,
                 thumbnail_hash=_distinct_preview,
-                rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-                reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
                 observe_picture=observe,
                 confirm_sampled_pairs=confirm,
                 sampled_preview_hashes=get_hashes,
@@ -138,8 +136,6 @@ def test_a_nearby_episode_neighbour_is_cut_though_pixels_and_captions_differ(tmp
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
             thumbnail_hash=_distinct_preview,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             observe_picture=lambda asset_id: {
                 **picture_record(),
                 "description": captions[asset_id],
@@ -178,8 +174,6 @@ def test_a_film_with_a_model_loses_its_hash_twin_free_and_still_gets_its_sampled
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
             thumbnail_hash=previews.get,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             observe_picture=lambda _asset_id: picture_record(),
             confirm_sampled_pairs=confirm,
             sampled_preview_hashes=lambda ids, _records: {key: previews[key] for key in ids},
@@ -219,8 +213,6 @@ def test_the_finished_film_drops_a_scene_it_already_shows_when_it_has_room(tmp_p
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
             thumbnail_hash=_distinct_preview,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
             scene_print=prints.get,
         ),
     ).plan

@@ -286,7 +286,6 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
             "selected_carriers": len(outcome.carriers),
         },
         "semantic_reuse": SEMANTIC_REUSE,
-        "reranker_metrics": {"calls": 0},
         "worthiness_review": {},
         "schema_version": STORY_FIRST_VERSION,
         "person_period_facts": {
@@ -321,7 +320,6 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
         "worthy_reasons": {facts.anchor_label[f]: r for f, r in outcome.worth_reason.items() if r},
         "beats": outcome.beats,
         "threads": outcome.threads,
-        "reranker_calls": 0,
         "status": judged["report"].status
         if judged["report"].status != "ok"
         else "selection-awaiting-owner-review-not-rendered",

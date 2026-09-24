@@ -57,7 +57,12 @@ had been empty for every Live Photo. A flagged clip holds its still. The same sa
 go through the `frame_kind` head (`prepare_clip_frames` in `editorial_preparation_heads.py`), and
 `editorial_clip_frames.py` banks the clip's `clip_frames` fact: a clip that shows its moment in
 fewer than three frames of four reads `frames=subject_often_missing` on its line, which the rules
-reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model. No detector hold is ever lifted
+reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model.
+The same frames give a video its measured motion: `editorial_video_motion.py` runs the Live Photo
+optical-flow residual (`flow_residual` in `editorial_motion_facts.py`) over them and banks it in
+`motion_residuals` under its own producer; `UnitBuilder._video_unit` carries it, and
+`measured_motion` holds a measured video to the 1.5 bar, so `BankedMotionLines` withholds a still
+clip's sentence (never a favourite's) and counts it `unsupported`. No detector hold is ever lifted
 by a later reading (`_head_hold` in `editorial_shareability.py`); only the owner's clearance does.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
 flagged with at least three flagged captures in it, under the reason `exposure_chain`; a Live

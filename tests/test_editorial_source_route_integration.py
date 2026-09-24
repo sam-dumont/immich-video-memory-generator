@@ -107,8 +107,6 @@ def setup_runtime(
         return StructurePlannerPorts(
             judge=ControlledStoryJudge(judgments, require_hits=warm[0]),
             thumbnail_hash=lambda _: None,
-            rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 1.0),
-            reranker_identity={"model": "controlled", "endpoint": "test://local"},
             observe_picture=reader.observe,
             picture_facts_metrics=reader.metrics,
         )

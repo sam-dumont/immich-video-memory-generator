@@ -182,8 +182,6 @@ def _planned_month(tmp_path, *, seat: bool, seconds: float = 60):
         StructurePlannerPorts(
             judge=NoModelJudge(),
             thumbnail_hash=lambda _asset: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 0.0),
-            reranker_identity={"model": "rules-v1", "endpoint": "none"},
             rules=RuleStructureReader(source),
         ),
     ).plan

@@ -88,7 +88,8 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # 55, up from 50: speech detection restores five kaldi-native-fbank settings.
 # Its C++ extractor reads these attributes; the real FireRedVAD fixture exercises
 # them, but vulture can only see their Python setters.
-MAX_WHITELISTED_SYMBOLS = 55
+# 54: the reranker port's identity field went with the port itself (#964).
+MAX_WHITELISTED_SYMBOLS = 54
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

@@ -316,7 +316,14 @@ keyframes can describe somebody dancing in an empty room. A Live Photo's sentenc
 the gate and the pick only once its companion measured at least 1.5. Until then the Live Photo is
 judged as the photograph it is: its media kind is not evidence that anyone is in it. A Live Photo
 whose action differs from its still keeps its sentence once the measurement backs it. A true video
-always plays and keeps its sentence, because no residual is measured for videos.
+always plays, and is held to the same bar: preparation measures the same residual over the frames
+the exposure head already samples across it (no extra download, about 35 ms a clip on a laptop),
+banked as `motion-residual-v1@median-flow-v1-detector-frames-320x240`. A video whose frames measure
+under 1.5 is judged by those frames: its sentence is withheld and counted as `unsupported`, so a
+still clip of an empty room captioned with an action does not stand on the caption. A favourite
+video keeps its sentence, because the owner's star is never removed by a measurement. A video
+nobody has measured yet (a tier that samples no frames, or a failed read) keeps its sentence as
+before.
 
 Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be

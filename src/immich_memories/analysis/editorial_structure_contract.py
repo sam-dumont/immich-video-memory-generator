@@ -211,8 +211,6 @@ class StructurePlanningInput:
 class StructurePlannerPorts:
     judge: StructureJudge
     thumbnail_hash: Callable[[str], str | None]
-    rank: Callable[[str, tuple[str, ...]], Mapping[int, float]]
-    reranker_identity: Mapping[str, str]
     resolve_motion: (
         Callable[[list[dict[str, Any]]], tuple[list[dict[str, Any]], dict[str, Any]]] | None
     ) = None

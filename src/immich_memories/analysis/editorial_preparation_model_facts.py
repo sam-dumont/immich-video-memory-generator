@@ -24,6 +24,7 @@ from immich_memories.analysis.editorial_preparation_detectors import (
 )
 from immich_memories.analysis.editorial_preparation_heads import PUBLIC_HEAD_VERSIONS
 from immich_memories.analysis.remote_facts import offloaded_versions
+from immich_memories.api.models import Asset
 from immich_memories.config_models_inference import InferenceConfig
 from immich_memories.store.editorial_preparation import heads_missing_for
 
@@ -57,6 +58,10 @@ class ModelFactStage(Protocol):
     def remote_facts(self, pending: Mapping[str, Mapping[str, str]]) -> bool: ...
 
     def clip_frames(self, frame_paths: Mapping[str, Sequence[Path]]) -> None: ...
+
+    def video_motion(
+        self, frame_paths: Mapping[str, Sequence[Path]], videos: Mapping[str, Asset]
+    ) -> None: ...
 
     def previews(
         self, ids: Sequence[str], cache_path: Path, fetch_preview: Any
@@ -127,9 +132,12 @@ def acquire_model_facts(
     preview_paths: Mapping[str, Path],
     frames: DetectorFrames,
     clips: Sequence[str] = (),
+    motion: Mapping[str, Asset] | None = None,
 ) -> None:
-    """``clips`` are the videos that owe their frame reading; they share the exposure head's
-    sampled frames, so a clip is read off Immich once for both."""
+    """``clips`` are the videos that owe their frame reading and ``motion`` the ones that owe a
+    measured residual; they share the exposure head's sampled frames, so a clip is read off
+    Immich once for all three."""
+    motion = motion or {}
     head_versions, offloaded_exposure = _after_remote(
         stage, before, ids, available, head_versions, frames.video_ids
     )
@@ -140,10 +148,10 @@ def acquire_model_facts(
     if public_ids:
         stage.public_heads(public_ids, requested_public)
     detector_pending = _detector_pending(pending, head_versions, offloaded_exposure)
-    if detector_pending or clips:
+    if detector_pending or clips or motion:
         exposure = detector_pending.get(MARQO_HEAD, ())
         with frames.sampled(
-            tuple(dict.fromkeys((*exposure, *clips))),
+            tuple(dict.fromkeys((*exposure, *clips, *motion))),
             check=stage.check,
             report=stage.report,
             failures=stage.failures,
@@ -153,6 +161,8 @@ def acquire_model_facts(
                 stage.detectors(detector_pending, preview_paths, sampled)
             if owed := {clip: sampled[clip] for clip in clips if clip in sampled}:
                 stage.clip_frames(owed)
+            if measurable := {video: sampled[video] for video in motion if video in sampled}:
+                stage.video_motion(measurable, motion)
     _record_unpackaged_heads(pending, head_versions, stage.failures)
 
 
