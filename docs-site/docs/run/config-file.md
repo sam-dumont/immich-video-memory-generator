@@ -16,7 +16,7 @@ Docker you can skip the file entirely and use [environment variables](./environm
 
 ## Quick start config
 
-This is a full plain-NAS setup, every default kept except the two values that make a cut good
+A full plain-NAS setup, every default kept except the two values that make a cut good
 (where home is, and where films go).
 
 ```yaml

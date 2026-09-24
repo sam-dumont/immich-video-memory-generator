@@ -610,7 +610,7 @@ motion, and the ability to clear a flagged-but-innocent picture for sending.
 Measured against the model editor's reference cut over the same periods, the rules reader kept 100 %
 of the known occasions for a special day, on-this-day and album, 94 % for a person, 86 % for several
 people, 67 % for a trip, and between 43 % and 62 % for a month, a season or a year. The per-type
-table is on [Running modes](./running-modes.md#what-the-rules-cut-keeps-per-memory-type).
+table is on [Measured](../better/measured.md).
 
 Rules need nothing beyond the app on `tier: metadata_only`. With `tier: no_captions` and
 `immich-memories models fetch`, the two detectors and eight context heads give the standing and

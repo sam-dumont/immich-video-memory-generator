@@ -23,8 +23,8 @@ same way, panning toward the largest face Immich found. With no face on the pict
 the centre, which suits landscapes, food and the dog. The face boxes come from Immich; framing runs
 no face detector of its own.
 
-Video clips are never cropped. A landscape clip in a portrait film keeps its whole frame and the rest
-is filled by [`scale_mode`](../reference/config-reference.md): `blur` (default) puts a blurred, zoomed
+Video clips are never cropped. A landscape clip in a portrait film keeps its whole frame and
+[`scale_mode`](../reference/config-reference.md) fills the rest: `blur` (default) puts a blurred, zoomed
 copy behind the sharp one, `fit` uses black bars. Face-aware video cropping is not offered: a moving
 subject needs per-frame tracking, not one face position. An old `smart_crop` value loads as `blur`
 with a warning.
@@ -146,7 +146,7 @@ installed; a photograph whose headroom cannot be read renders at the brightness 
 **Android Ultra HDR.** A JPEG with an MPF gain map and `hdrgm` XMP metadata, rebuilt with its
 per-channel gamma and offsets.
 
-HEIC is decoded with `pillow-heif`, because FFmpeg only reads a HEIC's thumbnail tiles. Title text
+`pillow-heif` decodes HEIC, because FFmpeg only reads a HEIC's thumbnail tiles. Title text
 over HDR is drawn at HLG graphics white, so a caption does not glare above the picture.
 
 `output.hdr_mode` is `auto` (HDR when any selected source is HDR), `hdr` or `sdr`. HDR output is

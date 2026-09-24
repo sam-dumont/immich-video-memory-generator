@@ -14,8 +14,7 @@ first cut: about a minute of film, and the slow part (reading each picture once)
 what one month holds.
 
 This page assumes the [Quick start](./quick-start.md) is done: the container is up and
-`models fetch` has run. Without the models a cut refuses to start and says
-`Run immich-memories models fetch`. On pip, it's the same commands without the
+`models fetch` has run. On pip, it's the same commands without the
 `docker compose exec immich-memories` prefix: [uv or pip](../run/uv-pip.md).
 
 ## Pick a month
@@ -37,7 +36,7 @@ mid-cut lands on the same rows.
 
 If `immich-memories models fetch` has not run on this host, the cut does not start and nothing is
 asked of Immich. The brief comes back with a red card that names the missing model and the
-command to run, and it stays there until the next **Cut**.
+command to run (`Run immich-memories models fetch`), and it stays there until the next **Cut**.
 
 <ThemedScreenshot name="memory-cutting" alt="The cut in progress" />
 

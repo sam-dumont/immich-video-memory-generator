@@ -140,7 +140,7 @@ One POST starts the decision `auto run` would have made, on the same detectors, 
 You choose *when*, not *what*: an Immich workflow when an album fills up, a cron on another box, a phone
 shortcut, Home Assistant.
 
-The route is not served at all unless something can authenticate the caller, because this process holds your
+The app serves the route only when something can authenticate the caller, because this process holds your
 Immich API key.
 
 | `auth.enabled` | `server.trigger_token` | `POST /api/trigger` |
@@ -182,7 +182,7 @@ kubectl apply -f deploy/kubernetes/base/job.yaml
 ## A named memory on a named date: the scheduler daemon
 
 The one thing `auto` cannot say is "a year in review every 15 January". The `scheduler` command group, the
-advanced/legacy cron daemon, still does that, and nothing else in the app reads its `schedules:` section. It
+advanced/legacy cron daemon, does that, and nothing else in the app reads its `schedules:` section. It
 knows none of the rotation rules, back-off or upload retries above and needs `--foreground`, so prefer `auto`.
 
 ```yaml

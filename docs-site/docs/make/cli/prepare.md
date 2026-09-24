@@ -70,7 +70,7 @@ and writes one account per calendar month: a couple of sentences saying what the
 month reads it as its thesis instead of paying for it during the cut. It is banked by the readings it
 summarises and the model that wrote them, so a rerun over an unchanged month asks nothing. You never have to run
 it: a model cut that finds no account writes its own. It is worth it when you would rather pay for a year of
-months overnight. With `advanced.editorial.reader: rules` it is refused by name. What the account is for is on
+months overnight. With `advanced.editorial.reader: rules` the command refuses it by name. What the account is for is on
 [What a model adds](../../how-it-chooses/what-a-model-adds.md).
 
 ## `people`
@@ -151,8 +151,8 @@ the circuit inside a long day) when that window holds at least half its pictures
 
 The scan resumes by default: years already in the catalogue are skipped. `--rescan` starts over.
 `--replace --since 2024 --until 2024` re-scans those years and replaces what they hold, which is how you clean
-rows `days-due` marks `stale` (judged by an older version of the question). Without either flag the catalogue
-is only ever added to.
+rows `days-due` marks `stale` (judged by an older version of the question). Without either flag the scan only
+ever adds to the catalogue.
 
 ```bash
 immich-memories days-due              # anniversaries within three days, roundest first

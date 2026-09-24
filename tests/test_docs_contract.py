@@ -442,7 +442,6 @@ def test_kubernetes_and_terraform_docs_describe_the_fixed_manifests() -> None:
     for relative_path in (
         "docs-site/docs/run/kubernetes.md",
         "docs-site/docs/run/terraform.md",
-        "docs-site/docs/being-rewritten/kubernetes-gpu.md",
         "deploy/kubernetes/README.md",
         "deploy/terraform/README.md",
     ):

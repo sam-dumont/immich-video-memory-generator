@@ -1,40 +1,48 @@
 ---
-sidebar_position: 6
-title: Caption server
+title: Add captions
 ---
 
-# The caption server
+# Add captions
 
-`tier: full` writes one sentence under every picture before any editing happens. That sentence
-comes from an OpenAI-compatible endpoint nothing in this project ships, so you run one yourself:
-Apple Silicon, Docker or Kubernetes, with or without a card.
+Reader: power user.
 
-## What it does
-
-One 400 px JPEG tile per picture, one request, one 140-token answer, banked forever:
+The NAS tier, `no_captions`, runs without them. Captions put one sentence under every picture,
+written once by a 500M vision model and banked:
 
 ```json
 {"description": "A stack of wrapped gifts on a wooden table.", "setting": "insufficient evidence"}
 ```
 
-Two fields, both capped, at temperature 0 with a repetition penalty of 1.1 and a JSON schema the
-server has to honour; the whole contract is on
-[editorial annotation setup](../being-rewritten/editorial-preparation.md#captions). The picture never
-leaves as a full preview, which is a privacy contract and a speed one at once: sent whole it costs
-519 prompt tokens against the tile's 188. A library is captioned once, so a second memory over the
-same month sends nothing.
+What that buys:
 
-## Why the alias
+- **The family-viewing check can clear a picture.** Eight findings (a bath, a nappy change, an
+  identifying record and the rest) are only named by a sentence. Without one, the check refuses
+  what `full` refuses and can never clear, so a `sendable` export needs captions.
+- **A [reader](./reader.md) reads them**, and the [Laya pre-screen](./reader.md#the-laya-audience-pre-screen)
+  answers from them.
+
+What it costs: a server nothing in this project ships, which you run yourself (below), and time.
+A caption takes about 31 s on four Celeron cores and well under a second on a Mac or a GPU, which
+is why a NAS stays on `no_captions` or sends its captions to another box. Nothing leaves your
+network but a 400 px tile of each picture, to the server you name, once.
+
+## The contract
 
 Before a single library picture goes on the wire, the app checks that `GET /models` advertises
-`smolvlm2-500m-base-public`, then sends three synthetic control tiles, red, blue and grey, and
-requires a schema-valid answer to each.
+`smolvlm2-500m-base-public`, then sends three synthetic control tiles (red, blue, grey) and
+requires a schema-valid answer to each. Then each picture is one 400 px JPEG tile, one request at
+temperature 0 with a repetition penalty of 1.1, a 140-token cap and a JSON schema the server has to
+honour. Two invalid answers bank `caption unavailable`; a timeout, a missing model or a transport
+error stays outstanding and the next run picks it up.
 
-The alias is a promise about behaviour, not a model name lookup: any endpoint can claim it. It
-means the descriptions under that name came from the SmolVLM2-500M generation with this prompt and
-this schema, so a bank filled last month and one filled today are comparable. Alias a 30B vision
-model and the app will believe you, and the bank holds two things under one name. No commercial API
-advertises this alias, so a hosted captioner means your own server behind a URL.
+The alias is a promise about behaviour, not a name lookup: any endpoint can claim it. It means the
+descriptions under that name came from SmolVLM2-500M with this prompt and this schema, so a bank
+filled last month and one filled today are comparable. Alias a 30B vision model and the app will
+believe you, and the bank then holds two things under one name. No commercial API advertises this
+alias, so a hosted captioner means your own server behind a URL.
+
+`caption_api_key` goes out as `Authorization: Bearer <key>`; blank sends no header. The reader's
+`llm.api_key` is never borrowed for it.
 
 ## Accepted artifacts
 
@@ -252,49 +260,18 @@ On `no_captions` and `metadata_only` the row reads `SKIPPED`, and no endpoint is
 ## What a missing captioner costs
 
 On `full`, prepare stops: the description producer stays outstanding and the failure names
-`caption_base_url`. On the other two tiers nothing happens, because an absent description is not a
-missing fact. Dropping to `no_captions` is a real loss though: the family-viewing gate has eight
-findings only a description can name, so without captions it refuses what `full` refuses and can
-never clear a unit. What each tier keeps is on [Running modes](../being-rewritten/running-modes.md).
+`caption_base_url`. On the other two tiers nothing happens, because a missing description is not a
+missing fact there. What each tier runs: [Requirements and tiers](../run/requirements.md#the-preparation-tier).
 
 ## Knowing which build wrote a caption
 
-The alias is a contract, not a build identifier. Both recipes on this page advertise
-`smolvlm2-500m-base-public` on port 8092, so neither the model name nor the URL can tell a bank
-filled by mlx-serving from one filled by llama.cpp. New caption rows keep two things that came
-from the weights instead:
-
-- the served `/models` row, minus the `created` timestamp that llama.cpp answers with the current
-  clock. llama.cpp reports `owned_by=llamacpp`, `meta.ftype=Q8_0` and `meta.n_params`; mlxcel
-  reports `owned_by=user` and no `meta` at all.
-- a 16-character digest of the three schema controls the probe already sends before any of your
-  pictures. Greedy decoding makes it stable per build, and two builds that word a `setting`
-  differently cannot produce the same digest.
-
-An optional label of your own goes alongside them:
-
-```yaml
-advanced:
-  editorial:
-    preparation:
-      caption_artifact_id: "SmolVLM2-Q8_0@your-weight-revision"
-```
-
-`prepare` prints one line per run naming every distinct captioner behind the bank it just read,
-and the word `MIXED` when there is more than one:
-
-```
-caption origins: 2 distinct over 48689 captions MIXED [...]
-```
-
-All of this is a label for new rows. Changing the endpoint, the server or the artifact label does
-**not** re-caption anything already banked, and rows written before origins were recorded stay
-**unknown** rather than being credited to whatever is configured now.
-
-`immich-memories runs why <asset-id> --run <run-id>` shows the origin saved with that run, not the
-server configured today. Reader prompt text and bank identities are unchanged. For a deliberately
-fresh bank, choose a separate `editorial.annotation_database`; preparing it recomputes all the
-required facts, not only captions.
+The alias is a contract, not a build identifier: both recipes on this page advertise it on port
+8092. So each new caption row also keeps the server's `/models` row and a 16-character digest of
+its answers to the three controls, plus an optional label of your own
+(`advanced.editorial.preparation.caption_artifact_id`). `prepare` prints one line naming every
+captioner behind the bank, with `MIXED` when there is more than one, and
+`immich-memories runs why <asset-id> --run <run-id>` shows the one a run used. None of it
+re-captions anything already banked.
 
 ## Switching servers later
 

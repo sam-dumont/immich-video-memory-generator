@@ -9,8 +9,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 Reader: power user.
 
-Authentication is disabled by default, and because of that the web UI binds to `127.0.0.1` unless
-you decide otherwise. To listen beyond localhost, either enable authentication, name the address
+Authentication is disabled by default, so the web UI binds to `127.0.0.1` unless you decide
+otherwise. To listen beyond localhost, either enable authentication, name the address
 yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a `server.host` that is not the `0.0.0.0`
 wildcard), or set `server.allow_unauthenticated_lan: true`. A bare `server.host: 0.0.0.0` in a
 config file does not count; the loader ignores it with a warning. In Docker the image passes
@@ -47,7 +47,7 @@ advanced:
 ```
 
 `immich-memories --config PATH ui` uses `PATH` for every decision, authentication included: bind
-address, auth, the Immich connection and the settings pages all observe the one file, and a reload
+address, auth, the Immich connection and the settings pages all read the one file, and a reload
 reloads that same file.
 
 ## OIDC / SSO
@@ -105,8 +105,8 @@ advanced:
 ```
 
 Headers are read only when the immediate peer is in `trusted_proxies`; from anyone else the request
-is unauthenticated, and an empty `trusted_proxies` here fails validation at startup. Nothing is
-stripped, so a proxy that forwards the header from an untrusted source is your problem to fix.
+is unauthenticated, and an empty `trusted_proxies` here fails validation at startup. The app strips
+nothing, so a proxy that forwards the header from an untrusted source is your problem to fix.
 Authelia forwards `Remote-User` and `Remote-Email` by default.
 
 ## Behind a reverse proxy with TLS

@@ -8,7 +8,7 @@ status: measured; two cells absent by decision, two cells failed
 Eleven cells over the fixture month and four over a real month, one memory each, on three hosts.
 This page is the per-cell record: what every cell measured, what every cell did not, what failed
 and why. The reader-facing version is
-[Running modes and tradeoffs](../../docs-site/docs/being-rewritten/running-modes.md).
+[Running modes and tradeoffs](../../docs-site/docs/better/measured.md).
 
 Nothing from the owner's library is here beyond timings, counts and costs. No titles, no places, no
 people, no film names, no asset ids, no pictures.

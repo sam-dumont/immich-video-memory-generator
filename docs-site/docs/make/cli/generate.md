@@ -36,7 +36,7 @@ Use `landscape`, `portrait` or `square` to set the canvas yourself. Orientation 
 only; it does not change which pictures or video intervals are selected.
 
 Opening titles name the people or the occasion, never the query that produced them. With a reader
-configured, a people or occasion film is named by the model; `--llm-title` extends that to trips,
+configured, the model names a people or occasion film; `--llm-title` extends that to trips,
 `--no-llm-title` pins the template, and `--title` and `--subtitle` override all of it. `runs show` says which
 source the title came from. See [titles](../titles-maps-music.md#where-the-title-came-from).
 

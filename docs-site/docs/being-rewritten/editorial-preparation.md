@@ -13,8 +13,8 @@ This page is being split into the new docs. Its text moves to [Requirements and 
 # Editorial annotation setup
 
 Every pin, digest and contract behind preparation. For the stand-up in order, read the
-[self-hosting guide](./self-hosting.md); for what each tier costs and loses,
-[Running modes](./running-modes.md).
+[quick start](../get-started/quick-start.md); for what each tier costs and loses,
+[Requirements and tiers](../run/requirements.md).
 
 Selection prepares descriptions, context labels and pixel measurements for the whole period, reuses
 complete facts from the annotation database, and stops with a count per missing producer when
@@ -212,7 +212,7 @@ facts instead: its length, and the measured motion of a Live Photo that has one.
 
 `reader: rules` needs nothing beyond the app on `tier: metadata_only`. What it answers in place of
 a model is on [Rules mode](./pipeline.md#editing-without-a-language-model), and what it
-keeps per memory type is on [Running modes](./running-modes.md). Classifiers are not a guaranteed
+keeps per memory type is on [Requirements and tiers](../run/requirements.md). Classifiers are not a guaranteed
 upgrade: the measured season cut on `no_captions` got longer and chose more household objects.
 
 Preflight follows the choice: rules skip the reader, `no_captions` skips the caption alias and

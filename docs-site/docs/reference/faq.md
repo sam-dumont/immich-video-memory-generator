@@ -13,8 +13,8 @@ Reader: newcomer. The questions self-hosters ask before and after the first film
 
 It reads. The one write is the finished film, and only when you ask for it (`--upload-to-immich`, or the upload
 switch in the web UI): a new asset, tagged `immich-memories/generated`, optionally in an album. A re-render of
-the same film into the same album moves the copy it replaces to Immich's trash, never a hard delete. Nothing
-else is written.
+the same film into the same album moves the copy it replaces to Immich's trash, never a hard delete. It writes
+nothing else.
 
 **What leaves my network?**
 

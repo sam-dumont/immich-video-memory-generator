@@ -23,7 +23,7 @@ Remote readers can receive annotation text and selected image tiles. A LAN serve
 another host. Caption servers receive picture tiles for every newly requested caption.
 Choose endpoints and consent deliberately; changing the render GPU does not change these payloads.
 
-See [running modes](../../docs-site/docs/being-rewritten/running-modes.md),
+See [running modes](../../docs-site/docs/better/measured.md),
 [host measurements](2026-09-12-phase5-readiness.md), and the
 [anonymous cost data](2026-09-12-deployment-costs.data.json).
 

@@ -7,9 +7,9 @@ title: Teach it your family
 Reader: newcomer.
 
 Two steps, about ten minutes, once. On a plain NAS the editor cuts from dates, places, favourites and
-people. It can read the dates and the favourites off Immich. It can't guess where home is, or which
+people. It reads the dates and the favourites off Immich. It can't guess where home is, or which
 of the forty named faces in your library are your partner and your kids. These two steps tell it,
-and they make the biggest difference to a cut on a plain NAS.
+and nothing else changes the cut as much.
 
 ## 1. Where home is
 

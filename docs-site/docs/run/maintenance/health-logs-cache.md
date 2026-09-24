@@ -14,8 +14,8 @@ Reader: power user.
 | `GET /health/ready` | `200` with `status: ready` when configuration and authenticated Immich access work; `503` with `status: degraded` otherwise | readiness probe, Uptime Kuma, blackbox exporter |
 | `GET /health` | always `200`: a ready payload is rewritten to `ok`, a degraded one passes through as `degraded` | compatibility only, never a probe |
 
-`GET /health` always returns HTTP `200` for compatibility and rewrites a ready payload to `ok`,
-which is what makes it useless as a probe.
+Because `GET /health` always returns HTTP `200` and rewrites a ready payload to `ok`, it is
+useless as a probe.
 
 All three are unauthenticated, on purpose: a container runtime has no session. The Immich check is
 bounded at 5 seconds, and the answer is reused for up to 10 seconds so a busy poller doesn't hammer
