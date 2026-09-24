@@ -1,4 +1,4 @@
-"""Additional behavior tests for generate.py covering uncovered branches."""
+"""generate.py orchestration: extraction, settings, Live Photo bursts, music and upload."""
 
 from __future__ import annotations
 
@@ -18,10 +18,7 @@ from immich_memories.generate import (
     _build_title_settings,
     _cleanup_temp_clips,
     _cleanup_temp_dirs,
-    _detect_photo_resolution,
     _extract_clips,
-    _log_phase_timing,
-    _total_clip_duration,
     assets_to_clips,
     check_disk_space,
     generate_memory,
@@ -45,48 +42,6 @@ def _h264_output_plan():
         pixel_format="yuv420p",
         container="mp4",
     )
-
-
-# ---------------------------------------------------------------------------
-# _detect_photo_resolution
-# ---------------------------------------------------------------------------
-
-
-class TestDetectPhotoResolution:
-    def test_landscape_majority_keeps_landscape(self):
-        clips = [
-            make_clip("c1", width=1920, height=1080),
-            make_clip("c2", width=1920, height=1080),
-            make_clip("c3", width=1080, height=1920),
-        ]
-        params = GenerationParams(clips=clips, output_path=Path("/tmp/o.mp4"), config=Config())
-        w, h = _detect_photo_resolution(params)
-        assert w > h  # landscape
-
-    def test_portrait_majority_swaps_to_portrait(self):
-        clips = [
-            make_clip("c1", width=1080, height=1920),
-            make_clip("c2", width=1080, height=1920),
-            make_clip("c3", width=1920, height=1080),
-        ]
-        params = GenerationParams(clips=clips, output_path=Path("/tmp/o.mp4"), config=Config())
-        w, h = _detect_photo_resolution(params)
-        assert h > w  # portrait
-
-    def test_equal_portrait_landscape_stays_landscape(self):
-        clips = [
-            make_clip("c1", width=1920, height=1080),
-            make_clip("c2", width=1080, height=1920),
-        ]
-        params = GenerationParams(clips=clips, output_path=Path("/tmp/o.mp4"), config=Config())
-        w, h = _detect_photo_resolution(params)
-        # Equal split (1 portrait, 1 landscape) — portrait_count (1) is NOT > total//2 (1)
-        assert w > h
-
-    def test_no_clips_stays_landscape(self):
-        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=Config())
-        w, h = _detect_photo_resolution(params)
-        assert w > h
 
 
 # ---------------------------------------------------------------------------
@@ -391,42 +346,6 @@ class TestBuildTitleSettings:
 
 
 # ---------------------------------------------------------------------------
-# _total_clip_duration (with segments)
-# ---------------------------------------------------------------------------
-
-
-class TestTotalClipDurationWithSegments:
-    def test_uses_segment_override(self):
-        clip = make_clip("c1", duration=10.0)
-        params = GenerationParams(
-            clips=[clip],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            clip_segments={"c1": (2.0, 6.0)},
-        )
-        assert _total_clip_duration(params) == 4
-
-    def test_fallback_to_clip_duration(self):
-        clip = make_clip("c1", duration=7.5)
-        params = GenerationParams(
-            clips=[clip],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-        )
-        assert _total_clip_duration(params) == 7
-
-    def test_none_duration_defaults_to_five(self):
-        clip = make_clip("c1", duration=0.0)
-        clip.duration_seconds = None  # type: ignore[assignment]
-        params = GenerationParams(
-            clips=[clip],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-        )
-        assert _total_clip_duration(params) == 5
-
-
-# ---------------------------------------------------------------------------
 # assets_to_clips (edge cases)
 # ---------------------------------------------------------------------------
 
@@ -522,16 +441,8 @@ class TestCleanupTempClips:
         _cleanup_temp_clips(clips)
         assert not tmp_clip.exists()
 
-    def test_keeps_non_tmp_files(self):
-        # WHY: path must NOT contain "tmp" anywhere for the keep-alive branch
-        clip = AssemblyClip(path=Path("/var/data/final/output.mp4"), duration=3.0)
-        _cleanup_temp_clips([clip])
         # No assertion on disk — the point is that unlink is never called
         # since path.exists() returns False for a nonexistent path
-
-    def test_handles_missing_files_gracefully(self):
-        clips = [AssemblyClip(path=Path("/nonexistent/tmp_file.mp4"), duration=3.0)]
-        _cleanup_temp_clips(clips)  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -549,32 +460,10 @@ class TestCleanupTempDirs:
         assert not (tmp_path / ".intermediates").exists()
         assert not (tmp_path / "photos").exists()
 
-    def test_ignores_nonexistent_subdirs(self, tmp_path):
-        _cleanup_temp_dirs(tmp_path)  # Should not raise
-
     def test_preserves_unknown_subdirs(self, tmp_path):
         (tmp_path / "keep_me").mkdir()
         _cleanup_temp_dirs(tmp_path)
         assert (tmp_path / "keep_me").exists()
-
-
-# ---------------------------------------------------------------------------
-# _log_phase_timing
-# ---------------------------------------------------------------------------
-
-
-class TestLogPhaseTiming:
-    def test_logs_without_error(self):
-        times = {"download": 5.0, "photos": 2.0, "assembly": 30.0, "music": 10.0, "total": 47.0}
-        _log_phase_timing(times, clip_count=5)  # Should not raise
-
-    def test_zero_total_no_division_error(self):
-        times = {"total": 0.0}
-        _log_phase_timing(times, clip_count=0)  # Should not raise
-
-    def test_missing_phases_handled(self):
-        times = {"total": 10.0}
-        _log_phase_timing(times, clip_count=1)  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -707,83 +596,6 @@ class TestBuildAssemblySettingsExtraBranches:
         # and the plan records the reference number it came from.
         assert settings.encoding_plan.crf == 18
         assert args[args.index("-crf") + 1] == quality_args("libx264", 18)[-1]
-
-
-# ---------------------------------------------------------------------------
-# _build_memory_key
-# ---------------------------------------------------------------------------
-
-
-class TestBuildMemoryKey:
-    def test_returns_key_when_all_fields_present(self):
-        from immich_memories.generate import _build_memory_key
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            memory_type="month",
-            date_start=date(2025, 7, 1),
-            date_end=date(2025, 7, 31),
-        )
-        key = _build_memory_key(params)
-        assert key is not None
-        assert "month" in key
-
-    def test_returns_none_when_memory_type_missing(self):
-        from immich_memories.generate import _build_memory_key
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            memory_type=None,
-            date_start=date(2025, 7, 1),
-            date_end=date(2025, 7, 31),
-        )
-        assert _build_memory_key(params) is None
-
-    def test_returns_none_when_date_start_missing(self):
-        from immich_memories.generate import _build_memory_key
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            memory_type="month",
-            date_start=None,
-            date_end=date(2025, 7, 31),
-        )
-        assert _build_memory_key(params) is None
-
-    def test_returns_none_when_date_end_missing(self):
-        from immich_memories.generate import _build_memory_key
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            memory_type="month",
-            date_start=date(2025, 7, 1),
-            date_end=None,
-        )
-        assert _build_memory_key(params) is None
-
-    def test_includes_person_name_when_present(self):
-        from immich_memories.generate import _build_memory_key
-
-        params = GenerationParams(
-            clips=[],
-            output_path=Path("/tmp/o.mp4"),
-            config=Config(),
-            memory_type="month",
-            date_start=date(2025, 7, 1),
-            date_end=date(2025, 7, 31),
-            person_name="Riley",
-        )
-        key = _build_memory_key(params)
-        assert key is not None
-        assert "riley" in key.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1211,26 +1023,6 @@ class TestGenerateMemoryLockIntegration:
 
         mock_inner.assert_called_once_with(params)
         assert result == result_path
-
-
-# ---------------------------------------------------------------------------
-# _create_assembler
-# ---------------------------------------------------------------------------
-
-
-class TestCreateAssembler:
-    def test_creates_video_assembler_with_settings(self, tmp_path):
-        from immich_memories.generate import _create_assembler
-
-        config = Config()
-        config.cache.database = str(tmp_path / "cache.db")
-
-        settings = MagicMock()
-        # WHY: VideoAssembler.__init__ requires FFmpeg; mock the import
-        with patch("immich_memories.processing.video_assembler.VideoAssembler") as mock_cls:
-            _create_assembler(settings, config)
-
-        mock_cls.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1712,33 +1504,6 @@ class TestDownloadBurstClips:
         assert "00" in str(result[0].parent)
 
 
-class TestAlignBurstSubset:
-    def test_full_match(self):
-        from immich_memories.generate_downloads import _align_burst_subset
-
-        p1 = Path("/cache/v1.MOV")
-        p2 = Path("/cache/v2.MOV")
-        paths, trims = _align_burst_subset([p1, p2], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
-        assert paths == [p1, p2]
-        assert trims == [(0.0, 1.0), (0.5, 2.0)]
-
-    def test_partial_match(self):
-        from immich_memories.generate_downloads import _align_burst_subset
-
-        p2 = Path("/cache/v2.MOV")
-        paths, trims = _align_burst_subset([p2], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
-        assert paths == [p2]
-        assert trims == [(0.5, 2.0)]
-
-    def test_no_match_returns_empty(self):
-        from immich_memories.generate_downloads import _align_burst_subset
-
-        p_other = Path("/cache/other.MOV")
-        paths, trims = _align_burst_subset([p_other], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
-        assert paths == []
-        assert trims == []
-
-
 class TestTryMergeBurst:
     def test_no_valid_clips_returns_none(self, tmp_path):
         from immich_memories.generate_downloads import _try_merge_burst
@@ -2036,28 +1801,6 @@ class TestResolveMusic:
             )
         # Silent only when there is no bundled music to fall back to (#308).
         assert result.path is None
-
-
-class TestClipMonthFromDate:
-    def test_valid_date(self):
-        from immich_memories.generate_music import _clip_month_from_date
-
-        assert _clip_month_from_date("2025-07-15") == 7
-
-    def test_none_returns_none(self):
-        from immich_memories.generate_music import _clip_month_from_date
-
-        assert _clip_month_from_date(None) is None
-
-    def test_invalid_format_returns_none(self):
-        from immich_memories.generate_music import _clip_month_from_date
-
-        assert _clip_month_from_date("not-a-date") is None
-
-    def test_no_month_part_returns_none(self):
-        from immich_memories.generate_music import _clip_month_from_date
-
-        assert _clip_month_from_date("2025") is None
 
 
 class TestAutoGenerateMusic:

@@ -19,35 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
-def immich_clips():
-    """Broad set of clips from Immich (2025) for density budget tests.
-
-    Returns (clips, config, client). Fetches once per session so the analysis
-    cache is populated and reused across all pipeline test modules.
-    """
-    from datetime import date
-
-    from immich_memories.api.sync_client import SyncImmichClient
-    from immich_memories.config_loader import Config
-    from immich_memories.generate import assets_to_clips
-    from immich_memories.timeperiod import DateRange
-
-    config = Config.from_yaml(Config.get_default_path())
-    config.defaults.target_duration_seconds = 60
-    client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
-
-    dr = DateRange(start=date(2025, 1, 1), end=date(2025, 12, 31))
-    assets = client.get_videos_for_date_range(dr)
-
-    if len(assets) < 10:
-        pytest.skip("Need at least 10 videos in Immich for density budget test")
-
-    clips = assets_to_clips(assets)
-    logger.info(f"[session] Loaded {len(clips)} clips from Immich (2025)")
-    return clips, config, client
-
-
-@pytest.fixture(scope="session")
 def immich_short_clips():
     """Short clips (≤15s) from Immich for generate_memory() tests.
 

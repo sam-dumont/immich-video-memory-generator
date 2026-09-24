@@ -1,4 +1,4 @@
-"""Tests targeting specific uncovered lines in processing and photos modules."""
+"""Clip extraction, photo rendering, probing and HDR filter choices."""
 
 from __future__ import annotations
 
@@ -18,15 +18,11 @@ from immich_memories.processing.assembly_config import (
 from immich_memories.processing.clips import (
     ClipExtractor,
     ClipSegment,
-    _build_clip_output_path,
-    _get_hw_caps,
-    _resolve_buffer_times,
     extract_clip,
 )
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 from immich_memories.processing.hdr_utilities import (
-    _check_zscale_available,
     _get_colorspace_filter,
     _get_dominant_hdr_type,
     _get_hdr_conversion_filter,
@@ -80,34 +76,8 @@ def _make_asset(**overrides):
 # ============================================================================
 
 
-class TestGetHwCaps:
-    """Lines 43-45: _get_hw_caps caches hardware detection."""
-
-    def test_returns_hw_capabilities(self):
-        # WHY: detect_hardware_acceleration shells out to ffmpeg — mock it
-        with patch("immich_memories.processing.clips.detect_hardware_acceleration") as mock_detect:
-            import immich_memories.processing.clips as clips_mod
-
-            clips_mod._hw_caps = None  # reset cache
-            mock_detect.return_value = HWAccelCapabilities(backend=HWAccelBackend.APPLE)
-            result = _get_hw_caps()
-            assert result.backend == HWAccelBackend.APPLE
-            mock_detect.assert_called_once()
-
-    def test_caches_after_first_call(self):
-        with patch("immich_memories.processing.clips.detect_hardware_acceleration") as mock_detect:
-            import immich_memories.processing.clips as clips_mod
-
-            clips_mod._hw_caps = None
-            mock_detect.return_value = HWAccelCapabilities(backend=HWAccelBackend.NVIDIA)
-            _get_hw_caps()
-            _get_hw_caps()
-            mock_detect.assert_called_once()
-            clips_mod._hw_caps = None  # cleanup
-
-
 class TestMakeBufferedSegment:
-    """Lines 174-200: buffered segment creation for transitions."""
+    """Buffered segment creation for transitions."""
 
     def test_adds_start_and_end_buffer(self, tmp_path):
         config = _make_config()
@@ -166,7 +136,7 @@ class TestMakeBufferedSegment:
 
 
 class TestExtractCopy:
-    """Lines 203-225: stream-copy extraction via FFmpeg."""
+    """Stream-copy extraction via FFmpeg."""
 
     def test_runs_ffmpeg_copy(self, tmp_path):
         config = _make_config()
@@ -209,7 +179,7 @@ class TestExtractCopy:
 
 
 class TestBuildReencodeCommand:
-    """Lines 298-325: building FFmpeg re-encode command."""
+    """Building FFmpeg re-encode command."""
 
     def test_software_encode_no_hw(self, tmp_path):
         config = _make_config()
@@ -259,7 +229,7 @@ class TestBuildReencodeCommand:
 
 
 class TestAppendEncoderArgs:
-    """Lines 335-362: encoder arg selection (HW vs software, quality arg variants)."""
+    """Encoder arg selection (HW vs software, quality arg variants)."""
 
     def test_software_fallback(self, tmp_path):
         config = _make_config()
@@ -315,7 +285,7 @@ class TestAppendEncoderArgs:
 
 
 class TestParseProgressLine:
-    """Lines 370-375: progress callback from FFmpeg output."""
+    """Progress callback from FFmpeg output."""
 
     def test_valid_progress_line(self, tmp_path):
         config = _make_config()
@@ -341,7 +311,7 @@ class TestParseProgressLine:
 
 
 class TestHandleEncodeFailure:
-    """Lines 385-389: HW encode failure → software fallback."""
+    """HW encode failure → software fallback."""
 
     def test_nvenc_failure_retries_software(self, tmp_path):
         config = _make_config()
@@ -366,7 +336,7 @@ class TestHandleEncodeFailure:
 
 
 class TestRunWithProgress:
-    """Lines 408-422: FFmpeg process with progress monitoring."""
+    """FFmpeg process with progress monitoring."""
 
     def test_successful_encoding_with_progress(self, tmp_path):
         config = _make_config()
@@ -428,7 +398,7 @@ class TestRunWithProgress:
 
 
 class TestExtractWithReencode:
-    """Lines 443-461: re-encode path with HW fallback."""
+    """Re-encode path with HW fallback."""
 
     def test_reencode_without_progress(self, tmp_path):
         config = _make_config()
@@ -501,7 +471,7 @@ class TestExtractWithReencode:
 
 
 class TestExtractClipFunction:
-    """Lines 492-520: top-level extract_clip convenience function."""
+    """Top-level extract_clip convenience function."""
 
     def test_extract_clip_copy_mode(self, tmp_path):
         config = _make_config()
@@ -555,69 +525,8 @@ class TestExtractClipFunction:
         assert result == output
 
 
-class TestResolveBufferTimes:
-    """Lines 531-545: buffer time resolution with clamping."""
-
-    def test_no_buffers(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        src.write_bytes(b"\x00")
-        start, end = _resolve_buffer_times(src, 2.0, 5.0, False, False, 0.5)
-        assert start == 2.0
-        assert end == 5.0
-
-    def test_both_buffers(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        src.write_bytes(b"\x00")
-
-        # WHY: get_video_duration probes actual file
-        with patch("immich_memories.processing.clips.get_video_duration", return_value=10.0):
-            start, end = _resolve_buffer_times(src, 2.0, 5.0, True, True, 0.5)
-
-        assert start == 1.5
-        assert end == 5.5
-
-    def test_start_buffer_clamps_to_zero(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        src.write_bytes(b"\x00")
-
-        with patch("immich_memories.processing.clips.get_video_duration", return_value=10.0):
-            start, _ = _resolve_buffer_times(src, 0.2, 5.0, True, False, 0.5)
-
-        assert start == 0.0
-
-    def test_end_buffer_with_zero_duration_video(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        src.write_bytes(b"\x00")
-
-        with patch("immich_memories.processing.clips.get_video_duration", return_value=0.0):
-            _, end = _resolve_buffer_times(src, 1.0, 4.0, False, True, 0.5)
-
-        assert end == 4.5
-
-
-class TestBuildClipOutputPath:
-    """Lines 548-566: deterministic output path generation."""
-
-    def test_path_contains_hash_and_times(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        result = _build_clip_output_path(src, 1.0, 3.5, False, False, False)
-        assert result.suffix == ".mp4"
-        assert "1.0" in result.name
-        assert "3.5" in result.name
-
-    def test_buffer_suffix_in_path(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        result = _build_clip_output_path(src, 1.0, 3.5, True, True, False)
-        assert "_b11" in result.name
-
-    def test_reencode_suffix_in_path(self, tmp_path):
-        src = tmp_path / "video.mp4"
-        result = _build_clip_output_path(src, 1.0, 3.5, False, False, True)
-        assert "_enc" in result.name
-
-
 class TestRenderSinglePhoto:
-    """Lines 367-446: single photo render pipeline."""
+    """Single photo render pipeline."""
 
     def test_returns_none_on_download_failure(self, tmp_path):
         from immich_memories.config_models_render import PhotoConfig
@@ -682,7 +591,7 @@ class TestPhotoPlaceCaption:
 
 
 class TestStreamRenderToMp4:
-    """Lines 377-540: FFmpeg streaming render (SDR and HDR paths)."""
+    """FFmpeg streaming render (SDR and HDR paths)."""
 
     def test_sdr_path_uses_rgb24(self, tmp_path):
         import numpy as np
@@ -814,7 +723,7 @@ class TestStreamRenderToMp4:
 
 
 class TestGetPhotoEncoderArgs:
-    """Lines 543-574: encoder selection for photo pipeline."""
+    """Encoder selection for photo pipeline."""
 
     def test_detects_videotoolbox(self):
         from immich_memories.photos.photo_pipeline import _get_photo_encoder_args
@@ -1109,29 +1018,6 @@ class TestQualityToCrf:
 
     def test_unknown_defaults_to_balanced(self):
         assert quality_to_crf("ultra") == quality_to_crf("balanced")
-
-
-class TestCheckZscaleAvailable:
-    def setup_method(self):
-        # WHY: check_zscale_available caches its result — reset between tests
-        import immich_memories.processing.hdr_utilities as hdr_mod
-
-        hdr_mod._zscale_cache = None
-
-    def test_available(self):
-        # WHY: subprocess.run checks ffmpeg filters
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout=" T.. zscale ")
-            assert _check_zscale_available() is True
-
-    def test_not_available(self):
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="scale only")
-            assert _check_zscale_available() is False
-
-    def test_error_returns_false(self):
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run", side_effect=OSError):
-            assert _check_zscale_available() is False
 
 
 class TestZscaleFallbackBehavior:

@@ -106,20 +106,19 @@ class SpeechFacts:
             )
 
     def _measure(self, asset_id: str) -> Regions:
-        try:
-            payload = self.fetch(asset_id)
-        except Exception as error:
-            # WHY: any transport failure is "this source cannot be measured",
-            # which degrades the refinement; only a caller seeing this class
-            # may treat it as non-fatal.
-            raise SpeechMeasurementUnavailable(
-                f"playback for {asset_id} could not be fetched: {type(error).__name__}"
-            ) from error
-        if not payload:
-            raise SpeechMeasurementUnavailable(f"playback for {asset_id} was empty")
         with tempfile.TemporaryDirectory(prefix="editorial-speech-") as directory:
             path = Path(directory) / "source.mp4"
-            path.write_bytes(payload)
+            try:
+                self.fetch(asset_id, path)
+            except Exception as error:
+                # WHY: any transport failure is "this source cannot be measured",
+                # which degrades the refinement; only a caller seeing this class
+                # may treat it as non-fatal.
+                raise SpeechMeasurementUnavailable(
+                    f"playback for {asset_id} could not be fetched: {type(error).__name__}"
+                ) from error
+            if not path.exists() or not path.stat().st_size:
+                raise SpeechMeasurementUnavailable(f"playback for {asset_id} was empty")
             try:
                 probe = ProbeCache().get(path)
             except ProbeError as error:

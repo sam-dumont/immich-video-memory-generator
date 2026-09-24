@@ -343,6 +343,7 @@ src/immich_memories/
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
 │   ├── editorial_runtime_evidence.py # The film-time preparation a cut waits on, and the annotation store it reads
+│   ├── annotation_line_fields.py # Which parts of a picture's line are its content and which we wrote; content rules read only the first
 │   ├── editorial_film_reach.py # What a film prepares: its demanded pictures, their Live families and capture runs
 │   ├── editorial_orchestration.py  # TextEditorialPlanner: episodes -> cards -> edit
 │   ├── editorial_rule_episodes.py  # Factual episode cards / omitted thesis; no semantic-bank writes
@@ -353,6 +354,7 @@ src/immich_memories/
 │   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
+│   ├── editorial_unvouched_filler.py # No-model cut's last pass: filler with no indicator that shows nothing leaves, unreplaced
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
 │   │                               # held to 4 calls per 12 draft shots + 4 per seat (thin_budget)

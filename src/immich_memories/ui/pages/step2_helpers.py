@@ -184,9 +184,11 @@ def _download_immich_preview(
             api_key=immich_api_key,
             api_version=immich_api_version,
         ) as client:
-            video_bytes: bytes = client.get_video_playback(asset_id)
-        if video_bytes and len(video_bytes) > 10_000:
-            preview_path.write_bytes(video_bytes)
+            partial = preview_path.with_suffix(".part")
+            client.download_playback(asset_id, partial)
+        size = partial.stat().st_size
+        if size > 10_000:
+            partial.replace(preview_path)
             # This directory had no cap and no TTL; it reached 5.2 GB on a
             # real library. Enforced on write because that is the only
             # moment it grows. No run boundary: unlike thumbnails, the working
@@ -197,7 +199,8 @@ def _download_immich_preview(
                 pattern="*.mp4",
             )
             return preview_path
-        logger.warning(f"Immich preview too small for {asset_id}: {len(video_bytes)} bytes")
+        partial.unlink(missing_ok=True)
+        logger.warning(f"Immich preview too small for {asset_id}: {size} bytes")
     except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Failed to download preview from Immich for {asset_id}: {e}")
 

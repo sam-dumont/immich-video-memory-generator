@@ -6,7 +6,7 @@ from typing import Literal
 
 from immich_memories.timeperiod import DateRange
 
-__all__ = ["build_editorial_brief"]
+__all__ = ["build_editorial_brief", "written_subject"]
 
 # These are the generic stances used by the evaluated matrix. Keep them here so
 # native generation and validation ask the same editing question. Explicit user
@@ -138,6 +138,16 @@ _PRODUCT_FLAVORS = {
         "the owner's intent, never against it."
     ),
 }
+
+
+def written_subject(brief: str) -> str | None:
+    """The owner's own ask in a custom film's brief, or None when the brief is the default stance.
+
+    A custom date range with nothing written gets the generic stance as its brief. That text is
+    instructions, not a subject: the film is then about its window, like a month or a year.
+    """
+    text = brief.strip()
+    return None if not text or text == _BASE_BRIEF else text
 
 
 def build_editorial_brief(

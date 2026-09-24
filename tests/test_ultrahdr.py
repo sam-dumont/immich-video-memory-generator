@@ -14,17 +14,20 @@ from immich_memories.photos.ultrahdr import (
     is_ultra_hdr_jpeg,
     parse_hdrgm_metadata,
 )
+from tests.conftest import HDR_SAMPLES, lfs_fixture
 
-SAMPLE = Path("tests/fixtures/hdr_samples/ultrahdr_colorful_daisies.jpg")
-SAMPLE_GRAY = Path("tests/fixtures/hdr_samples/ultrahdr_gray_chart.jpg")
+
+@pytest.fixture
+def sample() -> Path:
+    return lfs_fixture(HDR_SAMPLES / "ultrahdr_colorful_daisies.jpg")
 
 
 class TestIsUltraHdrJpeg:
     """Tests for Ultra HDR detection."""
 
-    def test_detects_ultra_hdr_sample(self):
+    def test_detects_ultra_hdr_sample(self, sample):
         """Ultra HDR JPEG with gain map is detected."""
-        assert is_ultra_hdr_jpeg(SAMPLE) is True
+        assert is_ultra_hdr_jpeg(sample) is True
 
     def test_rejects_regular_jpeg(self, tmp_path):
         """Regular JPEG without gain map is not detected."""
@@ -38,17 +41,17 @@ class TestIsUltraHdrJpeg:
 class TestExtractGainMap:
     """Tests for MPF gain map extraction."""
 
-    def test_extracts_primary_and_gain_map(self):
+    def test_extracts_primary_and_gain_map(self, sample):
         """Extracts both primary SDR image and gain map from MPF container."""
-        primary, gain_map = extract_gain_map(SAMPLE)
+        primary, gain_map = extract_gain_map(sample)
         assert primary.size[0] > 0
         assert primary.size[1] > 0
         assert gain_map.size[0] > 0
         assert gain_map.size[1] > 0
 
-    def test_gain_map_is_smaller_than_primary(self):
+    def test_gain_map_is_smaller_than_primary(self, sample):
         """Gain map is typically lower resolution than primary."""
-        primary, gain_map = extract_gain_map(SAMPLE)
+        primary, gain_map = extract_gain_map(sample)
         primary_pixels = primary.size[0] * primary.size[1]
         gm_pixels = gain_map.size[0] * gain_map.size[1]
         assert gm_pixels <= primary_pixels
@@ -66,9 +69,9 @@ class TestExtractGainMap:
 class TestParseMetadata:
     """Tests for hdrgm XMP metadata parsing."""
 
-    def test_returns_defaults_when_fields_absent(self):
+    def test_returns_defaults_when_fields_absent(self, sample):
         """Samples with only Version=1.0 get default metadata values."""
-        meta = parse_hdrgm_metadata(SAMPLE)
+        meta = parse_hdrgm_metadata(sample)
         # ISO 21496-1 defaults
         assert meta.gain_map_min == [0.0]
         assert meta.gamma == [1.0]
@@ -113,12 +116,12 @@ class TestApplyGainMap:
         hdr = apply_gain_map(sdr, gain_map, meta)
         assert hdr.shape == (100, 100, 3)
 
-    def test_real_sample_produces_valid_output(self):
+    def test_real_sample_produces_valid_output(self, sample):
         """Real Ultra HDR sample produces sensible HDR output."""
-        primary, gm = extract_gain_map(SAMPLE)
+        primary, gm = extract_gain_map(sample)
         sdr = np.array(primary.convert("RGB"), dtype=np.float32) / 255.0
         gm_arr = np.array(gm.convert("L"), dtype=np.float32) / 255.0
-        meta = parse_hdrgm_metadata(SAMPLE)
+        meta = parse_hdrgm_metadata(sample)
         hdr = apply_gain_map(sdr, gm_arr, meta)
         assert hdr.shape[2] == 3
         assert hdr.min() >= 0.0

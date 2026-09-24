@@ -187,7 +187,7 @@ def test_speech_facts_transport_and_decode_failures_are_unavailable(tmp_path):
     def stub_detector():
         return type("Stub", (), {"detect": staticmethod(lambda *_a, **_k: [])})()
 
-    def failing_fetch(asset_id):
+    def failing_fetch(asset_id, path):
         raise httpx.ConnectError("server down")
 
     store = tmp_path / "annotations.sqlite"
@@ -196,7 +196,9 @@ def test_speech_facts_transport_and_decode_failures_are_unavailable(tmp_path):
     with pytest.raises(SpeechMeasurementUnavailable):
         facts("v")
 
-    facts = SpeechFacts(assets=assets, store_path=store, fetch=lambda _: None, config=config)
+    facts = SpeechFacts(
+        assets=assets, store_path=store, fetch=lambda _id, _path: None, config=config
+    )
     facts.detector = stub_detector()
     with pytest.raises(SpeechMeasurementUnavailable):
         facts("v")
@@ -247,7 +249,9 @@ def test_a_changed_source_retires_its_banked_speech_and_is_measured_again(tmp_pa
             store_path=store,
             # WHY: Immich playback is the one boundary replaced; the probe, the audio
             # extraction and the detector all run for real on the file below.
-            fetch=lambda asset_id: fetched.append(asset_id) or silent.read_bytes(),
+            fetch=lambda asset_id, path: (
+                fetched.append(asset_id) or path.write_bytes(silent.read_bytes())
+            ),
             config=config,
         )
 

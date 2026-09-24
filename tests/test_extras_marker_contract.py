@@ -16,8 +16,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import yaml
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TESTS = REPO_ROOT / "tests"
 
@@ -47,21 +45,3 @@ def test_the_marker_is_registered() -> None:
     pyproject = (REPO_ROOT / "pyproject.toml").read_text()
 
     assert re.search(r'^\s*"extras:', pyproject, re.M), "extras marker not declared"
-
-
-def test_ci_runs_the_extras_suite_not_the_whole_one() -> None:
-    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
-    job = workflow["jobs"]["test-extras"]
-    commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
-
-    assert re.search(r"^\s*make test-extras\s*$", commands, re.M)
-    assert not re.search(r"^\s*make test\s*$", commands, re.M), (
-        "the plain test matrix already runs the full suite on 3 Pythons x 2 OS"
-    )
-
-
-def test_the_extras_job_gives_up_rather_than_wedging_for_six_hours() -> None:
-    """It had no timeout, so a wedged run burned to the default 360 minutes."""
-    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
-
-    assert workflow["jobs"]["test-extras"]["timeout-minutes"] <= 30

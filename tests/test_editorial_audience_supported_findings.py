@@ -187,3 +187,142 @@ def test_bottle_feeding_is_not_breastfeeding():
     judge = Judge(activity("breastfeeding_or_expressing_milk"))
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
     assert result["verdict"] == "share"
+
+
+def _held(finding, caption, **detectors):
+    judge = Judge(activity(finding), exposure())
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no", **detectors), "test")
+    return result["verdict"] != "share"
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A woman is feeding a child at a table with a purple cup nearby.",
+        "A woman is feeding a child with her hand.",
+        "A woman is feeding her baby on a bed with white sheets.",
+    ],
+)
+def test_feeding_a_child_is_not_breastfeeding_without_a_breast_word(caption):
+    assert not _held("breastfeeding_or_expressing_milk", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A bride and groom share a kiss on their wedding day.",
+        "A man and woman embrace on a sidewalk, sharing a kiss.",
+        "A couple is dancing at a wedding reception.",
+        "A woman wearing a belly dancer costume dances in a room.",
+    ],
+)
+def test_a_kiss_a_hug_or_a_wedding_is_not_sexual_content(caption):
+    assert not _held("sexual_content", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Two naked adults are having sex on a bed.",
+        "A woman poses topless, exposing her genitals to the camera.",
+    ],
+)
+def test_described_sexual_activity_still_holds(caption):
+    assert _held("sexual_content", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A man and woman are washing their hands at a water source.",
+        "A young child is holding a toothbrush and brushing their teeth.",
+        "A person is washing their face with a white cloth.",
+        "A young girl stands in front of a bathroom sink.",
+    ],
+)
+def test_hand_washing_and_tooth_brushing_are_not_intimate_hygiene(caption):
+    assert not _held("intimate_hygiene", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "An adult wipes a baby's bottom on a changing mat.",
+        "A parent changes a toddler's nappy on the floor.",
+        "A woman washes a child's genital area in the bath.",
+    ],
+)
+def test_described_intimate_care_still_holds(caption):
+    assert _held("intimate_hygiene", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A woman is lying on her side inside a golden coffin.",
+        "A large metal bowl of molten lava is poured into a glass container.",
+        "A runner wears a shirt with a blood-red number and a black tie.",
+        "A newborn baby is lying on a hospital bed with medical equipment around it.",
+    ],
+)
+def test_a_coffin_lava_or_a_hospital_bed_is_not_a_graphic_medical_procedure(caption):
+    assert not _held("graphic_medical_procedure", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Surgeons operate on a patient's open abdomen in an operating room.",
+        "A man's leg has a deep bleeding wound after a fall.",
+        "A child's knee is covered in blood after a bike crash.",
+    ],
+)
+def test_described_surgery_or_wounds_still_hold(caption):
+    assert _held("graphic_medical_procedure", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A small bathroom with a toilet and a sink.",
+        "A pair of urinals with no water coming out.",
+        "A hallway with blue doors and a sign that reads 'MEN' on it.",
+        "A young child stands in front of a red toilet with a white seat.",
+        "A baby wearing only a diaper crawls across the living room floor.",
+    ],
+)
+def test_an_empty_toilet_a_sign_or_a_worn_diaper_is_not_toileting(caption):
+    assert not _held("toileting_or_changing", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A man is sitting on a toilet in a bathroom, reading a paper.",
+        "A toddler sits on a potty in the living room.",
+        "A parent changes a baby's diaper on a changing table.",
+    ],
+)
+def test_a_person_using_a_toilet_or_being_changed_still_holds(caption):
+    assert _held("toileting_or_changing", caption)
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A man and his baby are standing in a bathroom, smiling at each other.",
+        "A woman is bathing a child in a pool.",
+        "A child is bathing in the sea at sunset.",
+        "Two children bathe in a lake on a summer day.",
+    ],
+)
+def test_a_bathroom_alone_or_a_pool_or_the_sea_is_not_bathing(caption):
+    assert not _held("bathing", caption)
+
+
+def test_an_unsupported_text_hold_never_lifts_a_nsfw_head_hold():
+    caption = "A bride and groom share a kiss on their wedding day."
+    judge = Judge(activity("sexual_content"), exposure())
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="yes"), "test")
+    assert result["activity"]["supported"] is False
+    assert not share.allowed(result["verdict"], "sendable")
