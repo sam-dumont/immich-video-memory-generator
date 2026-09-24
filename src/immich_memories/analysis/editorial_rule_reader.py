@@ -23,7 +23,7 @@ from immich_memories.analysis.editorial_story_reading import (
 )
 from immich_memories.analysis.editorial_story_replies import (
     WEIGHT_ROLE,
-    close_family_on,
+    film_close_family,
     relations_on,
 )
 from immich_memories.analysis.editorial_story_weighing import (
@@ -267,7 +267,8 @@ class RuleStructureReader:
         (a race, a fair) has the pictures and not the people, and a quiet week with the family
         has the people and not the pictures. Density is the story's pictures per photographed
         day against the period's median photographed day; the share is how many of its
-        pictures name a partner, child or parent. Every story's two numbers are recorded.
+        pictures name a partner, child or parent: the owner's, and in a film about people, the
+        subject's own as well. Every story's two numbers are recorded.
         """
         policy = self.source.config.editorial.people
         moments_of = {e.key: e.moments for e in episodes}
@@ -287,12 +288,13 @@ class RuleStructureReader:
         }
         mass = Counter(day_of.values())
         typical = median(mass.values()) if mass else 0
+        close_family = film_close_family(self.source)
         rows = []
         for story in stories:
             members = members_of[story["key"]]
             days = {day_of[asset] for asset in members}
             family = sum(
-                bool(close_family_on(self.source.annotations.get(asset, ""))) for asset in members
+                bool(close_family(self.source.annotations.get(asset, ""))) for asset in members
             )
             density = len(members) / len(days) / typical if days and typical else 0.0
             share = family / len(members) if members else 0.0

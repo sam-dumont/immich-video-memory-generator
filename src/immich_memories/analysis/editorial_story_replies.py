@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.editorial_structure_json import (
     balance_json,
@@ -18,6 +18,9 @@ from immich_memories.analysis.editorial_structure_json import (
 )
 from immich_memories.analysis.strict_json import model_text_rows
 from immich_memories.people.relationships import is_close_family
+
+if TYPE_CHECKING:
+    from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 
 STORY_VERSION = "period-story-v4-episodes"
 ROLES = {"central", "supporting", "texture", "incidental"}
@@ -76,6 +79,32 @@ def close_family_on(line: str) -> dict[str, str]:
     return {
         name: relation for name, relation in people_on(line).items() if is_close_family(relation)
     }
+
+
+PERSON_FILMS = frozenset({"person_spotlight", "multi_person"})
+OF_THE_SUBJECT = " of the film's subject"
+
+
+def film_close_family(source: StructurePlanningInput) -> Callable[[str], Mapping[str, str]]:
+    """Who on a line counts as close family in this film.
+
+    The owner's partner, children and parents always do. A film about people adds each
+    subject's own partner, children and parents, as the people file links them: in a film of
+    the owner's partner, their parents are close family though the owner calls them in-laws.
+    Their relation reads "father of the film's subject", so no reader mistakes it for the owner's.
+    """
+    if source.case.product not in PERSON_FILMS or source.people is None or not source.case.people:
+        return close_family_on
+    theirs = source.people.close_family_of(source.case.people)
+
+    def close_family(line: str) -> Mapping[str, str]:
+        found = close_family_on(line)
+        for name in people_on(line):
+            if name in theirs:
+                found[name] = theirs[name] + OF_THE_SUBJECT
+        return found
+
+    return close_family
 
 
 def _text(value, name, *, empty=False):

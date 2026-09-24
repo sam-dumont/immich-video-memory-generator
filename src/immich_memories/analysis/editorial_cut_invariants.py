@@ -21,12 +21,9 @@ from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis.editorial_clip_frames import clips_miss_subject
-from immich_memories.analysis.editorial_family_seat import (
-    FamilySeatPolicy,
-    film_close_family,
-    film_refusal,
-)
+from immich_memories.analysis.editorial_family_seat import FamilySeatPolicy, film_refusal
 from immich_memories.analysis.editorial_rule_banked_facts import withheld_by_bank
+from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
 
 logger = logging.getLogger(__name__)

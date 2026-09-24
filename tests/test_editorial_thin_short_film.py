@@ -108,3 +108,34 @@ def test_a_film_that_is_not_short_reads_nothing_more(tmp_path):
 
     assert library.read == [] and newcomers == []
     assert payload["short"] == {}
+
+
+def test_a_person_film_reads_first_the_week_its_subjects_parents_are_in(tmp_path):
+    """Two unread weeks alike in all but who is in them: the later one shows the subject's
+    parents. A person film reads that week first; to a month film they are in-laws, so it reads
+    the earlier week first."""
+    from immich_memories.analysis.editorial_story_replies import film_close_family
+    from immich_memories.analysis.editorial_thin_short import episodes_to_read
+    from tests.editorial_subject_family import film_of, her_parents, subject_people
+
+    _people, relation = subject_people(tmp_path)
+    film = april_shaped()
+    for asset in film.pool["S002"]:
+        film.lines[asset["asset_id"]] += f" | {her_parents(relation)}"
+    library = Library(
+        {key: [row["asset_id"] for row in film.pool[key]] for key in ("S001", "S002")}, {}
+    )
+    first = {}
+    for product in ("person_spotlight", "monthly_highlights"):
+        episodes = episodes_to_read(
+            film.draft,
+            catalogue=film.catalogue(),
+            offers=lambda key: film.pool.get(key, []),
+            reads=library.port(),
+            line_of=film.lines.get,
+            limit=1,
+            close_family=film_close_family(film_of(tmp_path / product, product)),
+        )
+        first[product] = episodes[0][0].split("-")[0]
+
+    assert first == {"person_spotlight": "S002", "monthly_highlights": "S001"}
