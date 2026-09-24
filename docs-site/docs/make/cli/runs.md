@@ -5,9 +5,12 @@ title: runs
 
 # runs
 
-Every generate writes a run row: how long it took, how many clips it processed, the model's call
-count and cost, errors, system info. Render settings are not recorded. `runs` reads that history
-back, and `runs story` and `runs why` are how you find out what the editor actually did. Every flag
+Reader: power user.
+
+Every `generate`, from the CLI or the web UI, writes a run row: how long it took, how many clips it processed,
+where the title came from, the model's call count and cost when a model was used, errors, system info. Render
+settings are not recorded. `runs` reads that history back, and `runs story` and `runs why` are how you find out
+what the editor did and why. Every flag
 is in the [CLI reference](../../reference/cli-reference.md#runs).
 
 ## runs list
@@ -26,20 +29,26 @@ immich-memories runs list --person "Emma" --limit 5
 immich-memories runs show 20260105_1430
 ```
 
-Status, clip counts, output file size, the phase-by-phase timing, and the machine it ran on (CPU,
-GPU, RAM, FFmpeg version). A run whose cut was checked against its promises also prints
-`Cut checks: N broken promise(s)`; the rows are in the attempt's
-`derived-decisions/cut-invariants.private.json` (see [the pipeline](../../being-rewritten/pipeline.md#the-finished-cut-is-checked-against-its-promises)).
+Status, date range, clip counts, **Title From**, output file, duration and size, the phase-by-phase timing,
+and the machine it ran on (CPU, GPU, RAM, FFmpeg version).
+
+**Title From** is the source of the opening title: `override` (you typed it), `album`, `occasion`, `model`,
+`place` (a trip) or `fallback` (the template). The table is on
+[Titles](../titles-maps-music.md#where-the-title-came-from).
+
+A run whose cut was checked against its promises also prints `Cut checks: N broken promise(s)`; the rows are in
+the attempt's `derived-decisions/cut-invariants.private.json` (see
+[How it chooses](../../how-it-chooses/overview.md)).
 
 A partial run id matches if it is unambiguous among the 100 most recent runs. Older than that, a
 unique prefix still reports "Run not found": use the full id.
 
 ### Model spend
 
-Calls, judgment-cache hits, tokens, wall time, and any thinking calls truncated at the token
-budget. It is reported **per run, not per phase**: the run tracker only records clip extraction,
-assembly and music, which all happen after selection, and selection is most of the model budget. A
-per-phase total would understate the bill.
+The **Model** block: calls, judgment-cache hits, tokens, wall time, and any thinking calls truncated at the
+token budget. A run that made no model call (every NAS run) prints no such block. It is reported per run, not
+per phase: the tracked phases (clip extraction, assembly, music) all come after selection, and selection is
+most of the model budget, so a per-phase total would understate the bill.
 
 ## runs story
 
@@ -47,7 +56,11 @@ The cut of a run in the order it plays: one line per shot with its timecode, cap
 (photo or video), length, the story it was granted to and the reason the editor wrote. A month
 change prints as a chapter line. It is the same record the web UI's Storyboard tab draws.
 
-Timecodes and lengths are the film's, not the plan's: the renderer squeezes the selected seconds into the timeline's content budget and the opening title card plays before the first picture, and both are applied here. The header line gives the pictures and video, then about how long the whole film runs. That last number is an estimate while the file does not exist, because smart transitions decide fade or cut at each boundary and the overlap they take moves a second either way. `runs show` prints the duration measured from a finished render.
+Timecodes and lengths are the film's, not the plan's: the renderer fits the selected seconds into the
+timeline's content budget and the opening card plays before the first picture, and both are applied here. The
+header gives the pictures and videos, then about how long the film runs. That last number is an estimate until
+the file exists, because smart transitions decide fade or cut at each boundary. `runs show` prints the duration
+measured from the render.
 
 ```bash
 immich-memories runs story              # the most recent completed run
@@ -66,8 +79,8 @@ reason, and, when it made the cut, where it plays.
 immich-memories runs why 3f1c9a2e-... --run 20260913_08   # --run defaults to the latest completed run
 ```
 
-Every run writes its decision log (`selection-trace.private.json`) beside its plan, so this works
-without `--trace-selection`. Runs made before 0.78 answer "left no decision log".
+Every run writes its decision log (`selection-trace.private.json`) beside its plan, so this works without
+`--trace-selection`. A run with no log answers "left no decision log".
 
 A picture on the run's check-before-sharing list gets one more line, naming what the
 sensitive-content detector read for it and the hold it sits under:
