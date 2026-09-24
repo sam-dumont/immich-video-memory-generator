@@ -59,19 +59,19 @@ def exposure_members(evidence: Mapping[str, Any]) -> set[str]:
 ACTIVITY_CONTENT_PROMPT = """Read the image captions and classify the depicted content. Choose one finding from this closed vocabulary:
 
 - none: no matching content is described.
-- breastfeeding_or_expressing_milk: breastfeeding or expressing/pumping breast milk, including under a cover.
-- bathing: a person bathing or showering, even when water or clothing covers the body.
+- breastfeeding_or_expressing_milk: breastfeeding, nursing, latching, or expressing/pumping breast milk is described, including under a cover.
+- bathing: a person is described bathing or showering, even when water or clothing covers the body.
 - toileting_or_changing: using a toilet/potty, diaper changing, or changing a baby on a changing table.
 - intimate_hygiene: washing, wiping or other care of private body parts.
-- nudity_shirtless_or_underwear: a person nude, shirtless/bare-torsoed, or wearing only underwear.
+- nudity_shirtless_or_underwear: a person is described nude, shirtless/bare-torsoed, or wearing only underwear.
 - identifying_record: an identity card, personal contact details, patient identifiers on a document/wristband, or readable private administrative records.
 - graphic_medical_procedure: an invasive operation/surgery or delivery in progress, or visible open bloody wounds.
 - sexual_content: sexual activity, sexting, or explicitly sexual posing, including underwear presented sexually.
 - adult_changing: an adult undressing or changing clothes with their private body exposed. Ordinary shirtless adults, an adult helping a child dress, and changing a baby's diaper do not match this category.
 
-Classify the depicted content, not the importance or personal sensitivity of the life event. There is no category for a private health result or an intimate family moment. A pregnancy result or birth announcement alone is not an identifying record, and neither is legible text on its own: a logo, a race bib or shirt number, a sign, a label or a screen title does not identify anyone. Clothed hospital visits, treatment, recovery, and holding a newborn are not intimate hygiene. A medical venue, bedroom, parenthood, or close physical contact alone does not establish a listed activity. A cover does not cancel a described breastfeeding, bathing, toileting or hygiene activity. An empty bathroom/toilet, ordinary holding/play, haircuts and bottle feeding do not match these categories by themselves. Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby in the water and a baby's swimming lesson, does not match these categories.
+Classify the depicted content, not the importance or personal sensitivity of the life event. There is no category for a private health result or an intimate family moment. A pregnancy result or birth announcement alone is not an identifying record, and neither is legible text on its own: a logo, a race bib or shirt number, a sign, a label or a screen title does not identify anyone. Clothed hospital visits, treatment, recovery, and holding a newborn are not intimate hygiene. A medical venue, bedroom, parenthood, or close physical contact alone does not establish a listed activity. A cover does not cancel a described breastfeeding, bathing, toileting or hygiene activity. An empty bathroom/toilet, ordinary holding/play, haircuts and bottle feeding do not match these categories by themselves. Holding a baby, even close to the chest or under a blanket, is not breastfeeding unless feeding is described. A person at the beach whose clothing is not described is not nudity, and a statue or artwork is not a person's nudity. Swimming is not bathing: a pool, a lake or the sea, including a parent holding a baby in the water and a baby's swimming lesson, does not match these categories.
 
-Graphic medical content means the procedure or open wound itself is depicted. Ordinary clothed treatment, preparation for surgery, recovery afterward, a healed scar, or staff standing in an operating room do not establish a graphic medical procedure. Pregnancy results and birth announcements are not delivery in progress.
+Graphic medical content means the procedure or open wound itself is depicted. Ordinary clothed treatment, preparation for surgery, recovery afterward, a healed scar, or staff standing in an operating room do not establish a graphic medical procedure. Pregnancy results and birth announcements are not delivery in progress. Costume or fake blood and an animal eating are not a medical procedure.
 
 Any matching picture makes its finding apply to this group. If several match, choose the strongest supported category: sexual_content, adult_changing, graphic_medical_procedure, or identifying_record before any other category. Ordinary newborn care, breastfeeding, a baby's bath or diaper change, and a shirtless baby remain ordinary family content; they do not establish sexual content or adult changing. Use what the captions describe; do not invent a possible activity to explain the scene.
 
@@ -175,7 +175,11 @@ def parse_audience_verdict(
 # under it falls back to what the evidence does show: an unsupported record holds nothing, an
 # unsupported undressing is still an uncovered adult and stays in the family. Detector, body
 # and chain holds are applied after this and are untouched by it.
-_UNSUPPORTED_VERDICT = {"identifying_record": "share", "adult_changing": "family_only"}
+_UNSUPPORTED_VERDICT = {
+    "identifying_record": "share",
+    "adult_changing": "family_only",
+    "breastfeeding_or_expressing_milk": "share",
+}
 _NOT_A_RECORD_LABELS = frozenset({"photograph", "logo", "icon"})
 _RECORD_TEXT = re.compile(
     r"\b(?:id(?:entity)? cards?|passports?|driver'?s? licen[cs]es?|"
@@ -192,6 +196,13 @@ _UNDRESSING_TEXT = re.compile(
     r"(?:clothes|clothing|underwear|pants|trousers|bra|dress|swimsuit|swimwear))\b",
     re.IGNORECASE,
 )
+# The 30B read "a woman holding a baby close to her chest" as breastfeeding in both orders (09-24).
+# Holding is not feeding: the caption has to say the feeding, and a nsfw head still holds on its own.
+_FEEDING_TEXT = re.compile(
+    r"\b(?:breast\s*-?\s*fe\w*|breasts?|feed\w*|fed|nurs(?:e|es|ed|ing)|latch\w*|"
+    r"pump\w*|express\w* (?:\w+ )?milk|breast milk)\b",
+    re.IGNORECASE,
+)
 _NEGATION = re.compile(r"\b(?:no|not|none|without|nor|never)\b", re.IGNORECASE)
 
 
@@ -201,6 +212,8 @@ def _finding_supported(finding: str, evidence: Mapping[str, Any]) -> bool:
         return any(_document_label(member) or _states(_RECORD_TEXT, member) for member in members)
     if finding == "adult_changing":
         return any(_states(_UNDRESSING_TEXT, member) for member in members)
+    if finding == "breastfeeding_or_expressing_milk":
+        return any(_states(_FEEDING_TEXT, member) for member in members)
     return True
 
 

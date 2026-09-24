@@ -518,3 +518,15 @@ def test_real_gateway_cold_and_cached_failure_have_identical_audience_semantics(
     assert len(transport_budgets) == count_after_cold
     assert all(call["cache_hit"] is False for call in cold.calls)
     assert all(call["cache_hit"] is True for call in warm.calls)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Holding a baby, even close to the chest or under a blanket, is not breastfeeding",
+        "a statue or artwork is not a person's nudity",
+        "fake blood",
+    ],
+)
+def test_the_activity_prompt_names_the_ordinary_scenes_that_imply_no_category(rule):
+    assert rule in share.audience_check_prompt(evidence("A man on a beach."))

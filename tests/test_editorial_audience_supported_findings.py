@@ -1,5 +1,7 @@
 """A text reader's category holds a picture only when the evidence it read supports it (#1124)."""
 
+import pytest
+
 from immich_memories.analysis import editorial_shareability as share
 from tests.test_editorial_audience_evidence import Judge, activity, evidence, exposure
 
@@ -72,3 +74,33 @@ def test_a_striped_shirt_does_not_describe_undressing():
     judge = Judge(activity("adult_changing"))
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
     assert result["verdict"] == "family_only"
+
+
+def test_a_held_baby_read_as_breastfeeding_with_no_feeding_described_does_not_hold():
+    caption = "A woman holds a baby close to her chest on the sofa."
+    judge = Judge(activity("breastfeeding_or_expressing_milk"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "share"
+    assert result["activity"]["supported"] is False
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A mother nurses her baby under a blanket.",
+        "A baby latches on while the mother sits in bed.",
+        "A woman pumps breast milk in the kitchen.",
+        "A woman feeds her newborn at her bare breast.",
+    ],
+)
+def test_described_feeding_still_holds_as_breastfeeding(caption):
+    judge = Judge(activity("breastfeeding_or_expressing_milk"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "do_not_show"
+
+
+def test_a_breastfeeding_read_under_a_nsfw_hold_keeps_the_hold():
+    caption = "A woman holds a newborn baby wrapped in a blanket."
+    judge = Judge(activity("breastfeeding_or_expressing_milk"), exposure())
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="yes"), "test")
+    assert not share.allowed(result["verdict"], "sendable")
