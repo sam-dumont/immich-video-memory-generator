@@ -474,8 +474,14 @@ def build_editorial_planner(
     if dry_run:
         raise ValueError("Dry-run prepares a request without constructing a selector")
     reader_mode = config.editorial.resolve_reader(config.llm.model)
-    if reader_mode == "rules" and context.product == "custom":
-        raise ValueError("custom subjects require a model reader; rules use captured metadata only")
+    # A plain date range is cut from the same dates, places, favourites and people as a month.
+    # Only a written subject asks what the pictures are about, which no metadata can answer.
+    if reader_mode == "rules" and context.base_brief:
+        raise ValueError(
+            "a written subject needs a model reader: the rules reader cuts from dates, places, "
+            "favourites and people only. Drop the subject to cut the date range as it is, "
+            "or configure a model reader (llm.model) to cut it about the subject."
+        )
     store_path = config.editorial.resolve_annotation_database(config.cache.cache_path)
     ensure_annotation_store(store_path)
     runtime_ports = ports or EditorialRuntimePorts()

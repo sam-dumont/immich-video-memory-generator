@@ -514,7 +514,7 @@ configured. Rules cover the ten standard memory products, including albums and r
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
 Photos as stills, and write no semantic model banks. Saved plans identify the producer as
-`rules-v1`. A custom free-text subject ("pictures about perseverance") needs the model reader.
+`rules-v1`. A custom `--start`/`--end` range is cut the same way as a month or a year.
 
 ### The thin model layer
 

@@ -23,8 +23,8 @@ advanced:
       tier: metadata_only
 ```
 
-All ten memory types work, albums and person memories included; only custom free-text subjects
-need a model. The rules cut can skip an occasion or spend a slot on a mundane object, so look at it
+All ten memory types work, albums and person memories included, and so does a plain
+`--start`/`--end` range. The rules cut can skip an occasion or spend a slot on a mundane object, so look at it
 before you share it. Move to `no_captions` once `models fetch` has run (below): the detectors and
 the eight context heads then give the family-viewing gate real evidence.
 
