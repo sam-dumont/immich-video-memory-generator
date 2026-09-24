@@ -8,51 +8,33 @@
 [![License](https://img.shields.io/github/license/sam-dumont/immich-video-memory-generator)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
-> **Beta, under heavy rework, not stable.** The selection engine has just been replaced by a
-> story-driven editor, and `main` and the `latest` Docker tag move with the work that follows.
-> Expect runs that fail, photos that go missing, and options that move between releases. Try it
-> on one small album first, not your whole library, and file what breaks.
-
-**Your self-hosted [Immich](https://immich.app/) library, cut into films worth keeping: a year in review, a trip with its map, one person across the years.**
+**Your self-hosted [Immich](https://immich.app/) library, cut into films worth keeping: a month, a year in review, a trip with its map, one person across the years.**
 
 <p align="center">
-  <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/">
-    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Immich Memories demo: the brief, the cut and the story it produced" width="720">
+  <a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/trip-preview.mp4">
+    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/trip-map-flyover.jpg" alt="A finished trip film, opening on the satellite map of the route" width="720">
   </a>
   <br/>
-  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/">▶ Watch the 47-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/get-started/first-film">Make your first memory</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/">Full documentation</a></sub>
+  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/trip-preview.mp4">▶ Play a finished film (32 s)</a> · CC0 stock pictures, <a href="tests/e2e/fixtures/library/CREDITS.md">credited here</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/">Documentation</a></sub>
 </p>
 
-The editor reads the period as a story, keeps the pictures that carry it, and shows the storyboard before rendering: every shot in the order it was taken, each with the line that put it there. Nothing is scored. Untick what you disagree with and cut again; `immich-memories runs why` says which pass dropped a missing one.
+It reads a period of your library, picks the pictures and videos that tell it, keeps them in the order they were taken, and renders the film with titles, maps and music.
 
-## What leaves your machine
+**It runs on your NAS. No GPU, no AI service.** One container next to Immich, cutting from dates, places, favourites, the people Immich recognised and a few small classifiers on the CPU. That cut is the product. A GPU makes it faster, and a reader model can polish the draft; both are [optional](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/overview).
 
-Nothing, unless you point it somewhere. No telemetry, no cloud API: the app talks to your Immich server over your LAN. Two optional model endpoints can receive pictures, both `localhost` by default: a caption server gets a 400 px tile of every picture in the period, once, and a reader gets 800 px tiles of a few dozen candidates plus their annotation lines, which name people and places. Three outside hosts sit behind `network:` switches, all off in a fresh install: Nominatim for trip and place names, ArcGIS for the satellite map, jsDelivr for a font the app does not bundle. Every switch is on [Network & Privacy](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/privacy).
-
-## Three ways to run it
-
-The editor has two independent settings: who reads the period, and how much image analysis runs first.
-
-| Setup | What you need | What you get |
-|---|---|---|
-| **Rules only** (`reader: rules`, `tier: metadata_only`) | The app alone. A 4-core NAS is enough | All ten memory types from dates, places, favourites and people. No model, $0 in API fees. Measured on a Celeron NAS: 279 s for a month cold, 11 s warm. Simpler cuts: it can skip an occasion or spend time on a mundane object |
-| **Rules plus classifiers** (`tier: no_captions`) | Same box, plus the pinned models fetched with one command: an 88 MB encoder, a 22.5 MB detector export and a document classifier snapshot | The sensitive-content and document detectors, so the family-viewing gate has evidence. A year of 13,544 pictures prepared in 1 h 05 min on a cluster pod with the classifiers on a card; the same work on a Celeron NAS multiplies out to 5 h 34 min |
-| **Model reader** (`reader: model`) | A machine that holds a vision model with a 32k context. Graded on a 30B model at 4-bit, about 17 GB resident, on an Apple Silicon Mac with 32 GB | The full editor: it reads the period as a story, looks at the pictures it needs to, and argues for each one. Add the [caption server](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/captions) for a description under every picture. Reading that same month took 19 min on the graded local reader, 14 min and EUR 0.054 on the quickest hosted one |
-
-Title screens are GPU-rendered on Linux x86_64, Linux aarch64, macOS arm64 and Windows AMD64 (Python 3.11 to 3.13). On an Intel Mac or Python 3.14 there is no kernel wheel and titles fall back to the PIL renderer: same text and timing, static instead of animated. `immich-memories preflight` tells you which one you get.
-
-The reader and the caption server can live on another machine than the app, which needs 2 to 4 GB and renders on CPU. Measured timings, what each degraded mode loses, and what a hosted reader costs are on [Running modes](https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/running-modes).
+You see the storyboard before anything renders. Untick what you disagree with and cut again; `immich-memories runs why <asset-id>` says which rule kept a picture or left it out. [How it chooses](https://sam-dumont.github.io/immich-video-memory-generator/docs/how-it-chooses/overview) writes every rule down.
 
 ## Run it
 
 ```bash
+mkdir -p immich-memories/output && cd immich-memories
 curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
 export IMMICH_URL="http://your-immich-server:2283"
 export IMMICH_API_KEY="your-api-key"
 docker compose up -d
-docker compose exec immich-memories immich-memories models fetch   # skip on metadata_only
-docker compose exec immich-memories immich-memories preflight      # Immich, models, reader
-# then open http://localhost:8080
+docker compose exec immich-memories immich-memories models fetch   # the small CPU classifiers, once
+docker compose exec immich-memories immich-memories preflight      # checks Immich, models, output dir
+# then open http://localhost:8080 and cut one month
 ```
 
 The compose file publishes port 8080 on localhost only, and authentication is disabled by default. The UI is single-user, single-replica: run one instance. The app holds an API key to your whole library, so turn on [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/authentication) before you expose the port.
@@ -66,37 +48,19 @@ immich:
   api_version: auto  # auto | v2 | v3
 ```
 
-Leave this on `auto`. The app detects the server major version and uses the matching API
-contract; you do not choose a version for each run. The explicit `v2` and `v3` values are manual
-troubleshooting overrides: escape hatches for proxies or unusual deployments that hide or rewrite
-the version endpoint. They force that contract, so don't use them as upgrade flags.
+Leave this on `auto`. The app detects the server major version and uses the matching API contract; you do not choose a version for each run. The explicit `v2` and `v3` values are manual troubleshooting overrides: escape hatches for proxies or unusual deployments that hide or rewrite the version endpoint. They force that contract, so don't use them as upgrade flags.
 
-Without Docker, on Python 3.11 or later:
+### Next
 
-```bash
-uv tool install "immich-memories[editorial]"
-immich-memories models fetch
-immich-memories prepare --year 2024 --month 6      # prepare one month, print what each producer cost
-immich-memories generate --memory-type monthly_highlights --year 2024 --month 6
-immich-memories ui                                 # the web UI on :8080
-```
+The [Quick start](https://sam-dumont.github.io/immich-video-memory-generator/docs/get-started/quick-start) walks it step by step, and [Teach it your family](https://sam-dumont.github.io/immich-video-memory-generator/docs/get-started/who-is-who) covers the two settings that make a NAS cut good: where home is, and who is who. Without Docker: [pip / uv](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/uv-pip).
 
-Start with one month, not a year: preparation scales with the width of the date range and is paid once, so the second cut over the same period is mostly the render. The whole stand-up, in order, is the [self-hosting guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/self-hosting).
+## What leaves your network
 
-## What it does
+A default run talks to your Immich server and nothing else. No telemetry, no account. Immich stays read-only unless you ask for the film to be uploaded back. The two outside hosts, Nominatim for place names and ArcGIS for the satellite map, sit behind `network:` switches that are off in a fresh install, and a reader or caption server only receives pictures if you configure one. Everything is on [Privacy](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/privacy).
 
-- Ten memory types: year in review, monthly, person, multiple people (with `AND` / `OR` between names), season, on this day, album, trip with an animated map, holiday, and a day the library itself flagged. The web UI adds a custom date range.
-- Photos and videos in one pool, Live Photos included. Title screens, month dividers, map fly-overs.
-- Music: your own file, 28 bundled tracks, or a generated track through ACE-Step or MusicGen. Ducking under the clips' own audio.
-- A four-page web UI (Memory, Media pool, Generation Options, Preview & Export) behind basic auth, OIDC or a trusted-header proxy, or a headless CLI.
-- Daily automation: one scheduled `auto run` either retries a pending upload or generates one eligible memory, then notifies. In Docker set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true`.
-- Privacy mode blurs every frame and moves the map to a fake city, for showing the app over your own library.
+## Why it's being reworked so much
 
-How the editor decides is written up in [How a memory gets cut](https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/pipeline).
-
-## About the demo
-
-The hero, the demo and the docs screenshots all run over a CC0 fixture library: 136 stock pictures that tell one household's June. The hero is `make demo-hero`, a 15-second cut of the Remotion demo (`make demo-ui`) that recreates the UI in React; the terminal inside it is a VHS recording (`make demo-cli`); the screenshots come from a hermetic run (`make screenshots`).
+Stable: the install, the read-only use of Immich, and the render (titles, maps, music, HDR, encoding). Still moving: selection, which pictures make the cut. It improves most weeks, and every change is checked against films cut from real libraries before it merges. A release can pick a slightly different set for the same month; pin a version tag instead of `latest` if you want it to hold still, and watch a film before you share it.
 
 ## Development
 
