@@ -824,7 +824,12 @@ compose-check:  ## Fail when docker-compose.yml needs a file that a curl of it a
 			echo "docker-compose.yml stands alone until the captioner profile is asked for"; \
 			exit 1; \
 		}; \
-		echo "docker-compose.yml stands alone, all three profiles"; \
+		cp "$(CURDIR)/example.env" .env; \
+		env -u IMMICH_URL -u IMMICH_API_KEY docker compose config >/dev/null || { \
+			echo "docker-compose.yml does not parse with example.env copied beside it as .env"; \
+			exit 1; \
+		}; \
+		echo "docker-compose.yml stands alone, all three profiles, and takes example.env as .env"; \
 	fi
 
 # =============================================================================

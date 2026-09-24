@@ -1,8 +1,11 @@
-# Immich Memories — self-hoster quickstart
-# Usage: docker compose up -d
+# Immich Memories: self-hoster quickstart
+# Usage: cp example.env .env, fill in the two required values, then:
+#   mkdir -p output && docker compose up -d
+#   docker compose exec immich-memories immich-memories models fetch
 # Then open http://localhost:8080
+# The file also works alone: IMMICH_URL and IMMICH_API_KEY exported in the shell do the same job.
 # Authentication is disabled by default, so the UI is published on localhost only.
-# Reaching it from another machine is a deliberate two-step change — see the ports block.
+# Reaching it from another machine is a deliberate two-step change, see the ports block.
 # The stateful UI supports one user flow in one replica.
 #
 # Resource requirements for THIS container:
@@ -13,23 +16,20 @@
 # For GPU-accelerated title rendering or 4K output, increase limits.
 # For GPU acceleration, see the hardware docs.
 #
-# Which mode this file starts in: no LLM model is set below, so the app cuts with
-# its rules reader, and that one needs nothing outside this container. It gives
-# you the ten standard memory types, cut from dates, places, favourites and known
-# people. It is the degraded mode: it can skip an occasion or spend a slot on a
-# mundane object, so look before you share, and custom free-text subjects are
-# refused outright.
+# What this file runs: the no-model editor, the default. No LLM model is set
+# below, so the app cuts with its rules reader from dates, places, favourites,
+# known people and the facts its own heads and detectors write, and needs
+# nothing outside this container. All ten standard memory types work; a custom
+# free-text subject needs a model.
 #
-# The preparation tier below is pinned to no_captions, so this container is the
-# whole stack: run `models fetch` inside it once (about 500 MB of pinned ONNX)
-# and a cut finishes with no second service. Raise the tier to full for a caption
-# under every picture, which wants a caption server, or drop it to metadata_only,
-# which fetches nothing at all.
+# The preparation tier below is pinned to no_captions: run `models fetch` inside
+# the container once (about 130 MB of pinned ONNX) and a cut finishes with no
+# second service. Raise the tier to full for a caption under every picture,
+# which wants a caption server, or drop it to metadata_only, which fetches nothing.
 #
-# For the model editor, which reads the period as a story and puts a reason under
-# every picture, point LLM__BASE_URL and LLM__MODEL at a vision model you host:
-# about 17 GB resident at 4-bit, on a second machine. See the self-hosting guide:
-# https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/self-hosting
+# A model is optional: point LLM__BASE_URL and LLM__MODEL at a vision model you
+# host and it polishes the draft this container already makes. See
+# https://sam-dumont.github.io/immich-video-memory-generator/docs/better/overview
 services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -45,6 +45,14 @@ services:
     environment:
       IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      # Your home, so a trip reads as one story. Empty means none (0,0 is "unset").
+      IMMICH_MEMORIES_TRIPS__HOMEBASE_LATITUDE: "${IMMICH_MEMORIES_TRIPS__HOMEBASE_LATITUDE:-0}"
+      IMMICH_MEMORIES_TRIPS__HOMEBASE_LONGITUDE: "${IMMICH_MEMORIES_TRIPS__HOMEBASE_LONGITUDE:-0}"
+      # The zone the daily automation's clock (automation.daily_at) and the logs use.
+      TZ: "${TZ:-Etc/UTC}"
+      # Basic auth: set both in .env to turn it on. Empty values are ignored.
+      IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME:-}"
+      IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD:-}"
       # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
       # The model editor's vision reader. Left unset, as it ships, the rules
@@ -73,13 +81,9 @@ services:
       # Optional: run the heads and detectors in the inference service below
       # instead of in this container (start it with --profile inference).
       # IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL: "http://immich-memories-inference:8092"
-      # Optional: basic auth
-      # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
-      # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"
       # Optional: daily automation inside the container (no host cron needed)
       # IMMICH_MEMORIES_AUTOMATION__ENABLED: "true"
       # IMMICH_MEMORIES_AUTOMATION__DAILY_AT: "09:00"
-      # TZ: "Europe/Brussels"
     restart: unless-stopped
     # No CPU cap here on purpose. `cpus:` is a CFS quota, and a kernel built
     # without the CFS bandwidth controller refuses the container outright:
@@ -126,10 +130,10 @@ services:
     # and let the container write to disk.
 
   # ── Optional: the inference service ───────────────────────────────────
-  # The encoder, the six public heads and the two detectors behind one port,
+  # The encoder, the eight public heads and the two detectors behind one port,
   # with their own device variant — the shape immich-machine-learning has.
   # Behind a profile because the app runs those producers in process by default,
-  # so starting it unasked would download ~500 MB of models nothing wants yet:
+  # so starting it unasked would download ~130 MB of models nothing wants yet:
   #
   #   docker compose --profile inference up -d
   #   curl -s localhost:8092/health
