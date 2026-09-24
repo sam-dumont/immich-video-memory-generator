@@ -48,7 +48,7 @@ does, on every PR, for both majors:
 | people | hand-tagged faces scope the videos per person |
 | albums | story albums list and resolve by name with their counts |
 | upload | a re-rendered film lands in its album; v2 trashes the earlier copy, v3 keeps it (no device identity) |
-| generate | `generate --no-render` on the rules tier picks a cut from the fixture month |
+| generate | `generate --memory-type monthly_highlights --no-render` on the rules tier picks a cut from the fixture month |
 
 The gate is deliberately small and stable. Wider real-Immich coverage stays in the other
 integration folders. `IMMICH_GATE_KEEP=1` leaves the stack running after the tests; a failed run
