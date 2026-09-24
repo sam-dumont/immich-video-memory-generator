@@ -46,7 +46,7 @@ class CountingJudge:
         self.prompts.append((stage, prompt))
         if stage.startswith("standing-"):
             doubted = _labels(prompt, UNSTEADY)
-            if "-source" in stage:
+            if not stage.startswith("standing-check"):
                 doubted += _labels(prompt, ONE_ORDER)
             return json.dumps({"weak": dict.fromkeys(doubted, "nothing stands")})
         if stage.startswith("thesis-fit-"):

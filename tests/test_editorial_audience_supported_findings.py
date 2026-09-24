@@ -104,3 +104,86 @@ def test_a_breastfeeding_read_under_a_nsfw_hold_keeps_the_hold():
     judge = Judge(activity("breastfeeding_or_expressing_milk"), exposure())
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="yes"), "test")
     assert not share.allowed(result["verdict"], "sendable")
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A mother gorilla is nursing her young gorillas in the jungle.",
+        "A mother owl is nursing her owlets inside a nest.",
+    ],
+)
+def test_an_animal_nursing_is_not_breastfeeding(caption):
+    judge = Judge(activity("breastfeeding_or_expressing_milk"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "share"
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A bathroom with a blue shower curtain and toiletries on the shelves.",
+        "A man assists a baby sitting in a small inflatable pool filled with water.",
+        "A man holds a baby in a swimming pool while another man swims nearby.",
+        "A woman and her child are standing in a river.",
+        "A child is drinking from a stream of water.",
+        "A person is washing pumpkins in a blue bucket.",
+    ],
+)
+def test_bathing_needs_a_person_in_a_bath_or_shower(caption):
+    judge = Judge(activity("bathing"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "share"
+    assert result["activity"]["supported"] is False
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A young girl is sitting in a bathtub filled with water and soapy bubbles.",
+        "An adult washes a child's hair under running water in a shower.",
+        "A parent bathes a baby in a sink.",
+    ],
+)
+def test_a_person_in_a_bath_or_shower_still_holds_as_bathing(caption):
+    judge = Judge(activity("bathing"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "do_not_show"
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A young woman is standing outdoors, wearing a sleeveless top and holding a bag.",
+        "A young girl is sitting on the floor, wearing a white tank top and leggings.",
+        "A woman with dark hair and a white dress is seated on a chair.",
+        "A man in a vest carries a toddler on his shoulders.",
+        "A woman wears a sleeveless red dress and sandals, exposing her arms.",
+    ],
+)
+def test_nudity_needs_an_uncovered_body_described(caption):
+    judge = Judge(activity("nudity_shirtless_or_underwear"), exposure())
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "share"
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "A shirtless man wearing a pink towel around his waist stands outside.",
+        "A toddler in only a diaper plays on the floor.",
+        "A woman in a bikini lies on a towel.",
+        "A man in shorts plays with a baby, exposing his upper torso.",
+    ],
+)
+def test_a_described_uncovered_body_still_holds_as_nudity(caption):
+    judge = Judge(activity("nudity_shirtless_or_underwear"), exposure())
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "family_only"
+
+
+def test_bottle_feeding_is_not_breastfeeding():
+    caption = "A baby is being fed milk from a bottle held by an adult's hand."
+    judge = Judge(activity("breastfeeding_or_expressing_milk"))
+    result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
+    assert result["verdict"] == "share"

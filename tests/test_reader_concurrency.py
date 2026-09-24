@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from immich_memories.analysis.editorial_block_votes import judge_standing
+from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.analysis.editorial_structure_io import StructureTextJudge
 from immich_memories.config import Config
 from immich_memories.config_models_llm import LLMConfig
@@ -54,22 +54,20 @@ def test_standing_overlaps_blocks_but_keeps_order_and_reuses_the_same_bank(tmp_p
 
     with llm_metrics.collecting() as counters:
         first = read(cold)
-    assert counters.calls == 6
-    assert counters.prompt_tokens == 18
+    assert counters.calls == 3
+    assert counters.prompt_tokens == 9
     assert maximum == 2
     assert list(first) == pictures
     assert all(score == 2 for score, _why in first.values())
-    assert [c["stage"] for c in cold.calls] == [
-        f"standing-{block}-{order}" for block in range(1, 4) for order in ("source", "hashed")
-    ]
-    assert len(list((cold_out / "calls").glob("*.request.private.txt"))) == 6
+    assert [c["stage"] for c in cold.calls] == [f"standing-{block}-source" for block in range(1, 4)]
+    assert len(list((cold_out / "calls").glob("*.request.private.txt"))) == 3
     warm = StructureTextJudge(
         config.model_copy(update={"llm": config.llm.model_copy(update={"reader_concurrency": 1})}),
         warm_out,
         cache_path=tmp_path / "judgments.sqlite",
     )
     assert read(warm) == first
-    assert len(sent) == 6
+    assert len(sent) == 3
     assert all(c["cache_hit"] for c in warm.calls)
     assert [c["judgment_key"] for c in cold.calls] == [c["judgment_key"] for c in warm.calls]
 

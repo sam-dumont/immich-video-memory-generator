@@ -68,11 +68,12 @@ def test_complete_visual_no_answers_without_a_second_call_and_lifts_no_detector_
     ],
 )
 def test_visual_body_no_never_clears_an_independent_sensitive_activity(finding, verdict):
-    # These three categories need a stated fact under them (#1124); the others stand alone.
+    # These four categories need a stated fact under them (#1124, #1205); the others stand alone.
     caption = {
         "identifying_record": "A person in a top and shorts holds a passport open.",
         "adult_changing": "An adult undresses, private body parts exposed.",
         "breastfeeding_or_expressing_milk": "A person in a top and shorts nurses a baby.",
+        "bathing": "A person in a top and shorts sits in a bathtub.",
     }.get(finding, "A person wears a top and shorts.")
     judge = Judge(activity(finding))
     result = share.check_audience(judge, item(nsfw="yes", caption=caption), "test")
@@ -273,7 +274,7 @@ def test_missing_one_body_record_does_not_clear_an_incomplete_group():
 
 
 def test_legacy_captions_keep_the_original_activity_and_exposure_policy():
-    evidence = item(records={})
+    evidence = item(records={}, caption="A shirtless person wears shorts.")
     assert "body_observation" not in evidence["members"][0]
     judge = Judge(activity("nudity_shirtless_or_underwear"))
     result = share.check_audience(judge, evidence, "legacy")

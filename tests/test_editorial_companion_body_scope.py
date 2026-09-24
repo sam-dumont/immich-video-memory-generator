@@ -68,7 +68,7 @@ def test_valid_companion_no_resolves_only_its_warning_and_keeps_activity_authori
     assert shared["verdict"] == "family_only" and len(ordinary.calls) == 1
     assert shared["finding"] == "exposure_evidence"
     assert shared["companion_body_warnings"][0]["body_observation"]["record_identity"] == "1" * 64
-    private = Judge(activity("bathing"))
+    private = Judge(activity("toileting_or_changing"))
     held = share.check_audience(private, item, "audience")
     assert held["finding"] == "private_activity" and held["verdict"] == "do_not_show"
     assert not share.allowed(held["verdict"], "family")
