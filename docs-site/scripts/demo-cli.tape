@@ -18,4 +18,7 @@ Set TypingSpeed 40ms
 
 Type "uv run python scripts/demo-cli-hermetic.py"
 Enter
-Sleep 66s
+# The run's length depends on the machine, so wait for the shell prompt to come
+# back (VHS's default Wait pattern) rather than guess a Sleep.
+Wait@600s
+Sleep 1s

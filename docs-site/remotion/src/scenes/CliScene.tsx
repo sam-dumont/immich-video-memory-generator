@@ -12,13 +12,13 @@ import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 
 // The recording is the real CLI: about a minute from the prompt to `runs why`.
-// The scene shows its last 48 seconds at 8x: the counted stage with its
+// The scene shows its last 39 seconds at 10x: the counted stage with its
 // estimate, the render, the end-of-run block, then runs story and runs why.
 // START_FRAME is in the recording's own frames (VHS records at 25 fps).
 const RECORDING_FPS = 25;
-const START_SECONDS = 15;
+const START_SECONDS = 18.6;
 const START_FRAME = START_SECONDS * RECORDING_FPS;
-const PLAYBACK_RATE = 8;
+const PLAYBACK_RATE = 10;
 
 export const CliScene: React.FC = () => {
   const frame = useCurrentFrame();
