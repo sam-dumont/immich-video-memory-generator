@@ -330,11 +330,23 @@ class AlbumService:
         return None
 
     async def list_album_assets(self, album_id: str) -> list[dict]:
-        """Assets in an album, via search: /albums/{id} omits them on Immich 3.x."""
-        data = await self._request(
-            "POST", "/search/metadata", json={"albumIds": [album_id], "size": 1000}
-        )
-        return list(data.get("assets", {}).get("items", []))
+        """Every asset in an album, via search: /albums/{id} omits them on Immich 3.x.
+
+        Search answers at most 1000 per page, so the pages are followed until
+        Immich stops naming a next one.
+        """
+        assets: list[dict] = []
+        page: int | None = 1
+        while page:
+            data = await self._request(
+                "POST",
+                "/search/metadata",
+                json={"albumIds": [album_id], "size": 1000, "page": page},
+            )
+            found = (data or {}).get("assets", {})
+            assets.extend(found.get("items", []))
+            page = int(found["nextPage"]) if found.get("nextPage") else None
+        return assets
 
     async def trash_assets(self, asset_ids: list[str]) -> None:
         """Move assets to Immich's trash. Recoverable; never a hard delete."""
