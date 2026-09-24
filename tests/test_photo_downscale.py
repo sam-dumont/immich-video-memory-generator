@@ -14,8 +14,8 @@ import pytest
 from PIL import Image
 
 from immich_memories.photos.animator import prepare_photo_source
+from tests.conftest import HDR_SAMPLES, lfs_fixture
 
-FIXTURES = Path(__file__).parent / "fixtures" / "hdr_samples"
 CAP = (1024, 1024)
 
 
@@ -110,13 +110,11 @@ def test_renderer_pixels_follow_exif_before_the_cap(tmp_path, max_size, orientat
     assert source.read_bytes() == original
 
 
-@pytest.mark.skipif(
-    not (FIXTURES / "gain_mapped-photo-tokyo.jpg").exists(), reason="fixture not available"
-)
 def test_a_gain_mapped_photo_is_capped_and_still_hdr(tmp_path) -> None:
     """The cap is applied before the gain-map maths, which is per-pixel and so
     survives it. Losing HDR here would be worse than the OOM it prevents."""
-    result = prepare_photo_source(FIXTURES / "gain_mapped-photo-tokyo.jpg", tmp_path, max_size=CAP)
+    photo = lfs_fixture(HDR_SAMPLES / "gain_mapped-photo-tokyo.jpg")
+    result = prepare_photo_source(photo, tmp_path, max_size=CAP)
 
     assert max(_dimensions(result.path)) <= max(CAP)
     assert result.has_gain_map
