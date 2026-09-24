@@ -57,7 +57,12 @@ had been empty for every Live Photo. A flagged clip holds its still. The same sa
 go through the `frame_kind` head (`prepare_clip_frames` in `editorial_preparation_heads.py`), and
 `editorial_clip_frames.py` banks the clip's `clip_frames` fact: a clip that shows its moment in
 fewer than three frames of four reads `frames=subject_often_missing` on its line, which the rules
-reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model. No detector hold is ever lifted
+reader scores 0 (a favourite still wins) and `StandingGate` refuses without asking the model.
+The same frames give a video its measured motion: `editorial_video_motion.py` runs the Live Photo
+optical-flow residual (`flow_residual` in `editorial_motion_facts.py`) over them and banks it in
+`motion_residuals` under its own producer; `UnitBuilder._video_unit` carries it, and
+`measured_motion` holds a measured video to the 1.5 bar, so `BankedMotionLines` withholds a still
+clip's sentence (never a favourite's) and counts it `unsupported`. No detector hold is ever lifted
 by a later reading (`_head_hold` in `editorial_shareability.py`); only the owner's clearance does.
 `editorial_exposure_chains.py` then holds a whole five-minute capture run that is at least half
 flagged with at least three flagged captures in it, under the reason `exposure_chain`; a Live
@@ -96,6 +101,118 @@ answer, never clear it: the rules zero covers documents, screens, flags and empt
 eligibility. A library nothing has read answers None, False or () everywhere, and the draft is the
 one it always cut. Every rules run records what it found in `banked-facts.private.json`, so a draft
 that read nothing says so.
+
+## Editorial glossary
+
+The private words `analysis/` uses, in roughly the order a cut meets them. Each one is defined by
+the code named beside it; if the two disagree, the code wins and this entry is stale.
+
+**Units of a library**
+
+- **Moment**: pictures taken within 10 minutes of each other and close in place
+  (`MOMENT_WINDOW_MINUTES`, `moment_grouping.py`). One moment is what one shot of the film shows.
+- **Episode**: the block a moment sits in (an afternoon at a circuit, a party), cut at a
+  90-minute gap (`EPISODE_WINDOW_MINUTES`, `selection_source_groups.py`).
+- **Episode reading**: a model's answer about one episode: what happened, its representatives,
+  its cull decisions and its notable moments, banked by exact membership and producer
+  (`store/episode_readings.py`, `text_episode_reader.py`). The rules reader writes factual
+  episode cards instead and never banks them as answers (`editorial_rule_episodes.py`).
+- **Story**: day episodes grouped into one thing that happened, then weighed in words and turned
+  into picture slots (`editorial_story_grouping.py`, `editorial_story_weighing.py`,
+  `editorial_story_slots.py`). Trips and recurring threads fold into one story
+  (`editorial_story_trips.py`, `editorial_story_threads.py`).
+- **Capture run**: captures each taken within five minutes of the one before
+  (`MIN_GAP_IN_CAPTURE_GROUP_SECONDS`). It spaces shots, and it is the unit of an exposure chain.
+
+**The period**
+
+- **Account**: what the library says happened in a period, written once from banked episode
+  readings and read back by every later cut. One per month, one per year, and for a long window
+  one per calendar year it touches plus one over those years (`library_catalogue.py`,
+  `catalogue_runtime.py`, `prepare --overviews`). The rules reader writes none: an account is a
+  reading.
+- **Thesis**: the up-to-150-word statement of what a period was about. The story synthesis writes
+  it (`editorial_story_grouping.py`) and the account carries it to the thin layer
+  (`editorial_thin_catalogue.py`), where it sits above every block the model votes on.
+- **Notable record**: a picture an episode reading named as a moment worth a place of its own,
+  with the reason (`banked_notable_records` in `catalogue_runtime.py`). Only a story holding one
+  can earn an N seat.
+
+**Preparation**
+
+- **Producer**: anything that writes a fact about a picture: the caption server, the heads, the
+  detectors, the motion and pixel readers (`editorial_preparation*.py`). Preparation runs the
+  producers a film still owes before selection starts (`editorial_runtime_evidence.py`).
+- **Heads**: eight small linear classifiers over one pinned DINOv2 ONNX embedding: location,
+  people, children, activity, venue, frame_kind, screen, uncovered_person
+  (`triage/bundled_heads/public-8heads-v4.npz`, `editorial_preparation_heads.py`). Beside them sit
+  two detectors, `nsfw_marqo` (exposure) and `doc_docling` (documents)
+  (`editorial_preparation_detectors.py`).
+- **Tiers**: two separate knobs. `editorial.reader` is `rules` or `model` (`auto` means rules when
+  `llm.model` is blank); rules is the NAS path, a whole film from dates, places, people and
+  preparation facts with no model called. `editorial.preparation.tier` is `full` (captions, heads,
+  detectors), `no_captions` (heads and detectors, the default with no model configured) or
+  `metadata_only` (nothing looks at pixels, so every shot is held to the family)
+  (`config_models_editorial*.py`, `editorial_shareability_tiers.py`).
+- **Reach**: the pictures a film can actually select (for a person film, the ones that person is
+  in), plus their Live Photo siblings and capture runs. Only those get prepared; the rest of the
+  window is read as Immich metadata (`editorial_film_reach.py`).
+- **Fill on demand**: a film reads only the episodes its shots sit in, and banks them; reading a
+  whole scope ahead is optional (`prepare --overviews`). A model-tier film left short by S seconds
+  reads at most 2 * ceil(S / 3.5) more unread episodes (`episode_demand.py`,
+  `editorial_thin_short.py`).
+- **Bank / banked**: an answer stored under its exact inputs and producer identity, so the next
+  run asks nothing and a changed asset invalidates only its own rows. The main ones:
+  `annotations.sqlite` (`store/`), episode readings, accounts, cut measurements
+  (`store/cut_measurements.py`) and the `structure-banks/*.private.json` files (standing votes,
+  thesis-fit votes). No row means nobody asked, never "measured nothing".
+
+**Building the cut**
+
+- **Rules draft**: the film the no-model reader cuts (`editorial_rule_reader.py`,
+  `editorial_structure_planner.py`). It may read what a model already banked about the library,
+  which can only tighten it (`editorial_rule_banked_facts.py`).
+- **Carrier**: the picture admitted to carry one chosen moment of a funded story, if it is free,
+  in context and spaced from the shots already committed (`editorial_story_carriers.py`,
+  `editorial_carrier_eligibility.py`). A carrier is a shot before it is rendered.
+- **Standing**: does a picture stand by itself, and may it serve as context inside its story. The
+  rules reader answers from the facts on the line, a model votes (`editorial_story_standing.py`);
+  the answers are banked in `picture-stands.private.json`.
+- **Look-alike / scene print**: a story's next picture is kept only if it adds to the ones already
+  kept (`editorial_story_lookalike.py`). The final review drops repeats by perceptual hash and by
+  scene print, the pooled DINOv2 vector of a preview, which catches the same scene in another
+  framing (`editorial_final_hash_review.py`, `editorial_scene_prints.py`).
+- **Block vote**: the shape of every model yes/no. At most 12 rows, asked twice, in source order
+  and in a hashed order; picked both times is firm, once is a maybe (`editorial_block_votes.py`).
+- **Thin layer / thin polish**: model mode's editing when the period has an account and
+  `thin_model_layer` is on (the default). The model reads the finished rules draft once, names
+  the shots that add nothing, and the freed seats are refilled through the same gates. Budget: 4
+  calls per 12 draft shots plus 4 per seat (`editorial_thin_layer.py`, `editorial_thin_*.py`).
+- **Thesis-fit vote**: the thin layer's one question, "which of these shots adds nothing to this
+  film?", asked reject-only as a block vote under the period thesis. Named by both orders is bad,
+  by one is weak (`editorial_thin_vote.py`).
+- **Seat**: a slot the polish may fill (`editorial_thin_refill.py`). **N**: a story with a notable
+  record and no shot. **R**: replaces a shot the vote named bad. **T**: replaces a shot the gates
+  refused. **D**: a swap for a weak shot, which needs no room. The **family seat** is a separate
+  thing: one picture for a close family member the draft left out, on every tier
+  (`editorial_family_seat.py`).
+- **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
+  holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show`. The
+  strictest answer wins, the gate only ever tightens, and only the owner clears a hold
+  (`editorial_shareability*.py`).
+- **Exposure chain**: a capture run at least half flagged by the exposure head, with at least three
+  flagged captures, is held whole (`editorial_exposure_chains.py`).
+
+**Words from the post-card editor, still in the code**
+
+- **Workprint**: the evidence handed to the editor: every surviving moment in chronology with its
+  representative, plus the moment cards (`StructureWorkprint` in `selection_structure.py`,
+  `TextEditorialWorkprint` in `editorial_orchestration.py`).
+- **Moment wall**: the moment cards rendered as compact TSV rows, at most 256 characters each and
+  no ids, for the text-only editor (`editorial_moment_wall.py`, `editorial_wall_rows.py`).
+- **Post-card**: after the moment cards are built ("Building editorial cards -> Editing the
+  memory"). The original post-card moment editor is retired; its contracts live in
+  `editorial_case.py`.
 
 ## Two Trees
 
@@ -222,7 +339,7 @@ src/immich_memories/
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
 │   └── factory.py              # Registry + preset factories; Album is handled by cli/_album_generation.py
 │
-├── analysis/                   # Selection: the story-first editorial route
+├── analysis/                   # Selection: the story-first editorial route (words: see Editorial glossary)
 │   ├── smart_pipeline.py       # SmartPipeline: run_editorial_source() is the production entry
 │   ├── editorial_runtime.py    # RuntimeEditorialPlanner + build_smart_pipeline(); _ports.py, _backend.py beside it
 │   ├── editorial_runtime_evidence.py # The film-time preparation a cut waits on, and the annotation store it reads
@@ -232,6 +349,7 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context; StandingBankFile: the library's standing answers
+│   ├── editorial_standing_vote.py # The standing question: one yes/no per row in blocks of 12, the rows called weak asked again once; refused only when both agree
 │   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
@@ -298,7 +416,8 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, injected geocoder)
 │   ├── place_name_cache.py     # Localised names for the places one cut shows, one ask each
 │   ├── trip_discovery.py       # Shared UI/CLI all-asset discovery, including year-boundary trips
-│   ├── special_day.py          # Which days had something happen: active hours, not photo volume
+│   ├── special_day.py          # Every run of activity, and a found day named from its own lines
+│   ├── special_day_sequence.py # Days read a month at a time in order (close family by role on each line); 30 s film floor
 │   ├── prepared_captions.py    # Exact-producer caption reads for music and special-day text calls
 │   ├── special_day_title.py    # What a day may be called: the grounding guard, the re-ask, the fallback
 │   ├── album_source.py         # Album mode: the album is the candidate pool, nothing is searched for
@@ -559,6 +678,7 @@ src/immich_memories/
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
 │   ├── special_day_scan.py     # Scheduled scan for days worth resurfacing (skips holidays and trips)
+│   ├── special_day_facts.py    # No-model day scan: one loud fact per day, ranked, a few a year
 │   ├── variety.py              # Cadence and rotation rules for candidates
 │   ├── failure_backoff.py      # Keep a candidate that keeps failing out of the nightly slot
 │   ├── models.py               # Typed values returned/persisted by automation
@@ -734,6 +854,7 @@ orchestration and deployment belong to later slices of #931.
 - **Private helpers**: Prefixed with `_`, same package
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
+- **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`).
 - **Pre-commit**: Run `make ci` before committing
 
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.

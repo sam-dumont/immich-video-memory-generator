@@ -54,6 +54,15 @@ def measure_motion(payload: bytes) -> dict:
                     frames.append(cv2.cvtColor(cv2.resize(frame, (320, 240)), cv2.COLOR_BGR2GRAY))
         finally:
             capture.release()
+    return flow_residual(frames)
+
+
+def flow_residual(frames: list) -> dict:
+    """Mean optical flow between consecutive greyscale frames, and what is left of it once the
+    camera's own motion (the median flow vector) is taken away."""
+    import cv2
+    import numpy as np
+
     if len(frames) < 2:
         return {"unreadable": True, "frames": len(frames)}
     means, residuals = [], []

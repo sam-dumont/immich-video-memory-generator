@@ -69,30 +69,31 @@ def _printing(script: str) -> list[str]:
 
 def test_the_gate_prints_the_container_as_it_runs_and_times_its_phases(capsys) -> None:
     """A captured log is no log at all while the run is still going (v0.85.1)."""
+    # A clock that ticks once per reading: a wall-clock floor here failed under a
+    # loaded runner (0.357 s against 0.4 s) because the gate read the first line late.
+    ticks = iter(range(100))
     run = docker_smoke.stream_container(
         _printing(
             """
-            import time
             print("Downloading clips...")
-            time.sleep(0.4)
             print("Rendering memory")
             print("Video saved to: /app/output/smoke.mp4")
             """
         ),
         container="not-a-container",
         timeout=60,
+        clock=lambda: float(next(ticks)),
     )
 
     assert run.returncode == 0
     assert not run.timed_out
-    assert [name for name, _ in run.phases] == [
-        "Downloading clips",
-        "Rendering memory",
-        "Video saved to:",
-    ]
-    downloading, rendering = run.phases[0][1], run.phases[1][1]
-    assert rendering - downloading >= 0.4, "the phase offsets are not measured from the run"
-    assert "Rendering memory" in capsys.readouterr().out
+    assert run.phases == (
+        ("Downloading clips", 1.0),
+        ("Rendering memory", 2.0),
+        ("Video saved to:", 3.0),
+    ), "each phase is stamped with the clock as its line arrives, measured from the start"
+    assert run.elapsed == 4.0
+    assert "[    2.0s] Rendering memory" in capsys.readouterr().out
 
 
 def test_a_timeout_names_the_phase_the_container_reached_and_repeats_its_tail(capsys) -> None:

@@ -50,6 +50,7 @@ make critique          # AI smell audit
 |------|-------|---------|---------------|
 | **Unit tests** | CI + local | `make test` | Nothing external |
 | **Integration tests** | Local + CI (FFmpeg-only subset) + GPU runner | `make test-integration` | FFmpeg + Immich server |
+| **Real-Immich gate** | CI on every PR (required) + local | `make test-immich-gate IMMICH_GATE_VERSION=v2\|v3` | Docker + FFmpeg; it starts its own Immich |
 
 **Unit tests** cover pure logic: scoring math, config parsing, data models, helpers.
 They run in CI on every PR. No FFmpeg, no Immich, no network needed.
@@ -59,6 +60,11 @@ video output validation. Locally they need your Immich server and FFmpeg, and sk
 gracefully if either is missing. CI runs the FFmpeg-only subset that your diff touches
 (see [If diff-cover fails on your PR](#if-diff-cover-fails-on-your-pr)), and a
 self-hosted Linux GPU runner runs the full set.
+
+**The real-Immich gate** starts a pinned Immich v2 or v3 in Docker, seeds it with the
+CC0 fixture month, and runs `tests/integration/immich_gate/` against it. Every PR runs
+it for both versions, and an Immich that never comes up fails the check rather than
+skipping it. See the [testing guide](docs-site/docs/contribute/testing.md#the-real-immich-gate).
 
 **What integration tests cover that unit tests can't:**
 - FFmpeg filter graph construction and assembly

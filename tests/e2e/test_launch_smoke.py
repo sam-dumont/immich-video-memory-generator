@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import threading
 from dataclasses import asdict
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -347,3 +349,32 @@ def test_reload_during_generation_recovers_the_finished_video(
         status="completed", source="manual", order_by_completion=True
     )
     assert completed and Path(completed[0].output_path or "") == outputs.pop()
+
+
+def test_a_typed_url_never_receives_the_stored_key(page: Page, launch_app_url: str) -> None:
+    """#1212: the stored key only goes to the URL it was stored for."""
+    seen: list[str | None] = []
+
+    class Listener(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            seen.append(self.headers.get("x-api-key"))
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, _format: str, *args: object) -> None:
+            return
+
+    listener = HTTPServer(("127.0.0.1", 0), Listener)
+    threading.Thread(target=listener.serve_forever, daemon=True).start()
+    try:
+        page.goto(launch_app_url, wait_until="domcontentloaded", timeout=30_000)
+        expect(page.get_by_role("combobox", name="Memory type")).to_be_visible(timeout=30_000)
+        page.get_by_text("Advanced", exact=True).click()
+        page.get_by_text(re.compile(r"^Immich Connection")).click()
+        page.get_by_label("Immich Server URL").fill(f"http://127.0.0.1:{listener.server_port}")
+        page.get_by_role("button", name="Test Connection").click()
+
+        expect(page.get_by_text("enter the API key for the new server")).to_be_visible()
+        assert seen == []
+    finally:
+        listener.shutdown()

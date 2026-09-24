@@ -17,13 +17,17 @@ def carries_motion(unit: Mapping[str, Any]) -> bool:
 
 
 def measured_motion(unit: Mapping[str, Any]) -> bool:
-    """Is this unit's motion a measured fact rather than a hope? A true video plays by what it
-    is. A Live Photo counts only once its companion measured at or above the discriminant: a
-    Live Photo nobody measured yet plans as motion, but nothing says anything happens in it."""
+    """Is this unit's motion a measured fact rather than a hope?
+
+    A Live Photo counts only once its companion measured at or above the discriminant: a
+    Live Photo nobody measured yet plans as motion, but nothing says anything happens in it.
+    A true video is held to the same bar once its sampled frames were measured (#1166); one
+    nobody measured still counts by what it is, as every video did before it could be.
+    """
     kind = str(unit.get("kind") or "")
-    if kind == "video":
-        return True
     residual = exact_number(unit.get("residual"))
+    if kind == "video":
+        return residual is None or residual >= RESIDUAL_MIN
     return kind == "live-motion" and residual is not None and residual >= RESIDUAL_MIN
 
 

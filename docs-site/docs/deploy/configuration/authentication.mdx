@@ -15,7 +15,9 @@ config file does not count; the loader ignores it with a warning. In Docker the 
 `--host 0.0.0.0`, so the port mapping is the real boundary: the shipped compose file publishes
 `127.0.0.1:8080:8080`.
 
-Anyone who reaches the port can use the app and, through it, your Immich library. The UI is
+Anyone who reaches the port can use the app and, through it, your Immich library. They cannot read
+the saved API key, and they cannot point it at a server of their own: the UI only sends the key to
+the URL it was saved for, and a new URL needs its key typed in. The UI is
 single-user, single-replica because workflow state lives in the process; a shared secret or volume
 does not make replicas safe.
 

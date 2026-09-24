@@ -38,9 +38,11 @@ from immich_memories.analysis.editorial_preparation_captions import (
     CAPTION_KEY_HINT,
     REFUSED_CODES,
     bearer_headers,
+    open_caption_url,
 )
 from immich_memories.analysis.editorial_story_pick_contract import measured_motion
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
+from immich_memories.analysis.editorial_video_motion import VIDEO_RESIDUAL_PRODUCER
 from immich_memories.analysis.llm_preparation_usage import record_preparation_attempt
 from immich_memories.api.models import Asset
 from immich_memories.processing.playback_keyframes import SampledKeyframes, sample_keyframes
@@ -123,12 +125,23 @@ def banked_residuals(store_path: Path) -> Callable[[Asset], float | None]:
 
 
 def read_motion_residuals(store_path: Path, assets: Iterable[Asset]) -> dict[str, dict[str, Any]]:
-    """What a cut already measured about these pictures' motion, keyed by picture."""
-    digests = {asset.id: source_metadata_digest(asset) for asset in assets}
+    """What a cut already measured about these pictures' motion, keyed by picture.
+
+    A real video answers with the residual over its sampled frames, a Live still with its
+    companion's: two methods, two producers, never one standing in for the other.
+    """
+    pictures = list(assets)
+    digests = {asset.id: source_metadata_digest(asset) for asset in pictures}
     if not digests:
         return {}
+    videos = {asset.id: digests[asset.id] for asset in pictures if asset.is_video}
+    stills = {key: digest for key, digest in digests.items() if key not in videos}
     return reading_cut_measurements(
-        store_path, lambda c: banked_motion_residuals(c, digests, RESIDUAL_PRODUCER)
+        store_path,
+        lambda c: (
+            banked_motion_residuals(c, stills, RESIDUAL_PRODUCER)
+            | banked_motion_residuals(c, videos, VIDEO_RESIDUAL_PRODUCER)
+        ),
     )
 
 
@@ -206,7 +219,7 @@ def seat_asker(base_url: str, *, api_key: str, timeout: float) -> Callable[[byte
         body: object = None
         started = time.monotonic()
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            with open_caption_url(request, timeout=timeout) as response:
                 body = json.loads(response.read())
         except urllib.error.HTTPError as exc:
             if exc.code in REFUSED_CODES:
@@ -395,6 +408,12 @@ def plain_motion_facts(unit: Mapping[str, Any]) -> str:
     return "not described; " + ", ".join(parts)
 
 
+def _favourite_video(unit: Mapping[str, Any]) -> bool:
+    # Owner ruling: a favourite video is never removed on what its frames measure. Withholding
+    # its sentence would leave the standing gate a row nobody lives in, so it keeps it.
+    return unit.get("kind") == "video" and bool(unit.get("favourite"))
+
+
 class BankedMotionLines:
     """The pick's motion evidence: the banked line, else the plain facts. Never a model call."""
 
@@ -422,7 +441,7 @@ class BankedMotionLines:
         self._counts["requested"] += 1
         members = [unit["asset_id"], *unit.get("members", ())]
         line = self._banked([a for a in dict.fromkeys(members) if a in self._assets])
-        if line is not None and not measured_motion(unit):
+        if line is not None and not measured_motion(unit) and not _favourite_video(unit):
             self._counts["unsupported"] += 1
             line = None
         if line is None:

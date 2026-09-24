@@ -21,6 +21,11 @@ The brief appears once Immich has answered. With credentials in `config.yaml` or
 page connects on its own; otherwise only the connection panel shows until **Test Connection**
 succeeds.
 
+The API key field always loads empty: the saved key stays on the server. Leave it empty to keep the
+saved key. Change the server URL and you have to type the key again: the saved key only goes to the
+server it was saved for, so **Test Connection** and **Save Config** refuse a new URL with an empty
+key field.
+
 **Memory type** offers exactly what `generate --memory-type` accepts, in the same order, plus
 **Custom date range**, which the CLI spells as `--start`/`--end`. **Duration** is one line: with
 **Auto duration** on it shows the type's own answer ("Auto · 1m 00s" for a month) and where the

@@ -169,7 +169,8 @@ render:
 ```
 
 Pass the same worker token to both processes, then run `immich-memories preflight -v`.
-The NAS sends the selected cut and its scoped Immich key. The worker downloads
+The NAS sends the selected cut and its own Immich API key: the full key the app uses,
+not a narrower one, so run the worker somewhere you trust as much as the NAS. The worker downloads
 the originals directly, renders and returns the film with a SHA-256 of it; the NAS
 checks the result before music or upload. When the download matches that digest, the NAS
 keeps the worker's full decode instead of decoding the film itself, unless music was mixed in. Selection, speech-safe cuts and stitched Live durations

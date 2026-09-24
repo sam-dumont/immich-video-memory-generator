@@ -89,6 +89,9 @@ class LLMCounters:
     # existing reader of `calls` still sees every reply the run paid for; what
     # a batch changes is the price, not whether the question was asked.
     batch_calls: int = 0
+    # Batch lines whose provider reported no usage: the batch token totals
+    # below are a floor, not a bill, while this is non-zero.
+    batch_unmetered_calls: int = 0
     batch_prompt_tokens: int = 0
     batch_completion_tokens: int = 0
     batch_reasoning_tokens: int = 0
@@ -117,6 +120,7 @@ class LLMCounters:
                 "llm_truncated": self.truncated,
                 "llm_wall_seconds": round(self.wall_seconds, 3),
                 "llm_batch_calls": self.batch_calls,
+                "llm_batch_unmetered_calls": self.batch_unmetered_calls,
                 "llm_batch_prompt_tokens": self.batch_prompt_tokens,
                 "llm_batch_completion_tokens": self.batch_completion_tokens,
                 "llm_batch_reasoning_tokens": self.batch_reasoning_tokens,
@@ -138,6 +142,7 @@ class LLMCounters:
                 truncated=self.truncated - mark.truncated,
                 wall_seconds=self.wall_seconds - mark.wall_seconds,
                 batch_calls=self.batch_calls - mark.batch_calls,
+                batch_unmetered_calls=self.batch_unmetered_calls - mark.batch_unmetered_calls,
                 batch_prompt_tokens=self.batch_prompt_tokens - mark.batch_prompt_tokens,
                 batch_completion_tokens=(
                     self.batch_completion_tokens - mark.batch_completion_tokens
@@ -160,6 +165,7 @@ class LLMCounters:
                 truncated=self.truncated,
                 wall_seconds=self.wall_seconds,
                 batch_calls=self.batch_calls,
+                batch_unmetered_calls=self.batch_unmetered_calls,
                 batch_prompt_tokens=self.batch_prompt_tokens,
                 batch_completion_tokens=self.batch_completion_tokens,
                 batch_reasoning_tokens=self.batch_reasoning_tokens,
@@ -209,14 +215,22 @@ def token_counts_reported(*values: object) -> bool:
 
 
 def record_batch_reply(
-    *, prompt_tokens: int = 0, completion_tokens: int = 0, reasoning_tokens: int = 0
+    *,
+    prompt_tokens: int = 0,
+    cached_prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    reasoning_tokens: int = 0,
+    usage_known: bool = True,
 ) -> None:
-    """One reply arrived from a provider batch rather than a live call."""
+    """One completed line arrived from a provider batch, counted whether or not it parses."""
     for counters in _active.get():
         with counters._lock:
             counters.calls += 1
             counters.batch_calls += 1
+            counters.unmetered_calls += not usage_known
+            counters.batch_unmetered_calls += not usage_known
             counters.prompt_tokens += prompt_tokens
+            counters.cached_prompt_tokens += cached_prompt_tokens
             counters.batch_prompt_tokens += prompt_tokens
             counters.completion_tokens += completion_tokens
             counters.batch_completion_tokens += completion_tokens

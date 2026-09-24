@@ -509,7 +509,7 @@ it answered `yes` on 37 of 3,564 photographs and every one of them was a screen.
 only adds to a rule another producer already answered, and none of them can clear anything.
 
 `reader: auto` uses the model when `llm.model` is set and rules when it is blank. `reader: model`
-requires a model; `reader: rules` skips model editing and reranking even when a model is
+requires a model; `reader: rules` skips model editing even when a model is
 configured. Rules cover the ten standard memory products, including albums and recurring dates,
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
@@ -781,6 +781,7 @@ automation:
   detect_person_spotlight: true   # per-person highlight candidates
   detect_activity_burst: true     # unusually active months
   burst_threshold: 2.0            # multiplier above rolling average to trigger burst
+  special_days_per_year: 6        # days a year discover-days keeps without a model, strongest first
 ```
 
 ## Authentication

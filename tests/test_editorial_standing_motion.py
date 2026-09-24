@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.analysis.editorial_block_votes import (
+from immich_memories.analysis.editorial_standing_vote import (
     STANDING_PROMPT_VERSION,
     standing_pass_version,
 )
@@ -57,7 +57,7 @@ def test_a_video_row_carries_its_motion_sentence_and_its_source_length():
         ["clip", "still"]
     )
 
-    prompt = judge.calls[0]  # the block is asked in two orders
+    prompt = judge.calls[0]
     assert "A child runs across the grass and stops." in prompt
     assert "video 7 s source." in prompt
     # a still's row is its own line and nothing else
@@ -100,7 +100,7 @@ def test_measuring_speech_after_a_cut_reuses_its_standing_judgment(kind, fallbac
     bank, first = {}, VoteJudge()
     before = gate(first, bank=bank, clip=clip, motion_line=motion_line)
     before.ensure(["clip"])
-    assert len(first.calls) == 2
+    assert len(first.calls) == 1  # nothing doubted, so no check
 
     measured = clip | {"speech_regions": [[1.0, 2.0]]}
     repeated = VoteJudge()
@@ -123,7 +123,7 @@ def test_changed_source_duration_or_motion_evidence_still_needs_a_new_judgment(c
     changed = VoteJudge()
     gate(changed, bank=bank, clip=clip, motion_line=lambda _unit: description).ensure(["clip"])
 
-    assert len(changed.calls) == 2
+    assert len(changed.calls) == 1
 
 
 @pytest.mark.parametrize("kind", ["video", "live-motion"])
@@ -171,5 +171,5 @@ def test_approved_motion_can_stand_when_its_still_has_no_people(kind, pictures):
     admission.ensure(["clip"])
 
     assert admission.stands("clip", "major", "K01")
-    assert len(judge.calls) == 2
+    assert len(judge.calls) == 1
     assert all("A swimmer dives" in prompt for prompt in judge.calls)

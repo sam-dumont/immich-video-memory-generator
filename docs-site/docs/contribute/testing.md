@@ -12,14 +12,47 @@ services. `uv run pytest tests/ --collect-only -q` prints the current split.
 | Unit | `make test` | FFmpeg on the `PATH`: a handful of unit tests encode real media |
 | Extras | `make test-extras` | The torch-family extras (demucs/editorial). CI's extras job installs neither, so a green CI run does not prove the torch paths ran |
 | Integration | `make test-integration` | FFmpeg, an Immich server in `~/.immich-memories/config.yaml`, and at least two clips under 30s in that library |
+| Real-Immich gate | `make test-immich-gate IMMICH_GATE_VERSION=v2` (or `v3`) | Docker and FFmpeg. It starts its own Immich and fixture library, and fails when Immich does not come up |
 | E2E | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`; no Immich, it runs against a fake server |
 
 `make test` takes about 3 minutes on an M-series Mac; `make test-fast` skips the slow ones.
-Integration suites skip rather than fail when their services aren't there. `make help` lists every
+Integration suites skip rather than fail when their services aren't there, unless `REQUIRE_IMMICH=1` (the gate below sets it). `make help` lists every
 per-suite target with its runtime. Three suites are outside `make test-integration`: `cli`, which
 re-runs the pipeline `pipeline` already covers and is the slowest in the tree; `audio`, which wants
 the demucs and ACE-Step packages; and `automation`, which has no target at all (run
 `pytest tests/integration/automation`).
+
+## The real-Immich gate
+
+Unit tests talk to a patched HTTP client and the integration suites skip when no Immich is
+configured, so neither proves the product still speaks to a real server. The `Immich Gate` check
+does, on every PR, for both majors:
+
+1. `make immich-gate-up` starts Immich (v2.7.5 or v3.2.2), Postgres and Valkey from
+   `tests/integration/immich_gate/docker-compose.yml`. Every image is pinned by digest, there is no
+   machine-learning container, and Postgres and the uploads live on tmpfs, so `make immich-gate-down`
+   leaves no volume behind.
+2. `seed.py` signs up an admin, uploads the June 2024 CC0 fixture month (133 pictures, 13 of them
+   videos, with EXIF camera and capture time), places them, tags three made-up people by hand,
+   files the story albums, and adds 1,010 tiny pictures in one album so reads have to go past
+   Immich's 1,000-item search page. Then it writes a rules-tier config (no model, no network
+   beyond this Immich) under `.immich-gate/`.
+3. The tests in `tests/integration/immich_gate/` run with `REQUIRE_IMMICH=1`, which turns
+   `requires_immich` and `make_immich_client()` from a skip into a failure.
+
+| Test | What it proves on each major |
+|------|------------------------------|
+| connect | the key works and the client resolves the API version the server runs |
+| fixture month | every video and still of a date range comes back, stills with their camera, videos with their place |
+| paging | a year and an album of 1,010 pictures read whole |
+| people | hand-tagged faces scope the videos per person |
+| albums | story albums list and resolve by name with their counts |
+| upload | a re-rendered film lands in its album; v2 trashes the earlier copy, v3 keeps it (no device identity) |
+| generate | `generate --memory-type monthly_highlights --no-render` on the rules tier picks a cut from the fixture month |
+
+The gate is deliberately small and stable. Wider real-Immich coverage stays in the other
+integration folders. `IMMICH_GATE_KEEP=1` leaves the stack running after the tests; a failed run
+writes the server logs to `.immich-gate/immich-<version>.log` (CI uploads them as an artifact).
 
 ## Coverage and diff-cover
 
