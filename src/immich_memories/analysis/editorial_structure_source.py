@@ -135,6 +135,7 @@ def capture_structure_input(
             },
         ),
         config=config,
+        people=people,
         wall_bytes=wall.text.encode(),
         moment_asset_ids={
             alias: card.selectable_asset_ids

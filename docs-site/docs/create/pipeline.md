@@ -122,12 +122,20 @@ findings are not, at any audience, and a carrier that draws one is replaced rath
 breastfeeding or expressing milk, bathing, toileting or changing, intimate hygiene, graphic medical
 procedures, identifying records, sexual content, adult changing. The model is told that newborn care
 is ordinary family content, which keeps it from filing a bath as something worse, and the code holds
-all eight out of the cut regardless of what the model was told. Two of them need a fact under
-them, because the model's say-so has been wrong: an identifying record needs the document detector
-to call the picture a document, or the description to name one (an ID card, a passport, a patient
-wristband). Readable text alone, a race bib, a logo or a sign, holds nothing. Adult changing needs
-the description to say someone is undressing or exposed; without that, the picture stays
-family-only instead of being cut. The gate judges the finished cut
+all eight out of the cut regardless of what the model was told. Every one of them needs a fact
+under it in the description, because the model's say-so has been wrong: on 1,489 public captions it
+held a wedding kiss as sexual content, a woman feeding a child at a table as breastfeeding, hand
+washing as intimate hygiene, a coffin as a graphic medical procedure and an empty toilet as
+toileting. So each finding holds only when the description states the activity: a sexual act or
+exposed genitals; a breast, nursing, latching or pumping word; wiping, a nappy change or a private
+body part; an injury, a wound, surgery or blood on a person; a person on or using a toilet or potty;
+a person in a bath, tub, sink or shower, and never a pool, the sea, a lake or a river ("bathroom"
+alone is a room). Nudity needs an uncovered body described, and a sleeveless top is clothing. An
+identifying record needs the document detector to call the picture a document, or the description
+to name one (an ID card, a passport, a patient wristband): readable text alone, a race bib, a logo
+or a sign, holds nothing. Adult changing needs the description to say someone is undressing or
+exposed; without that, the picture stays family-only instead of being cut. These checks only stop
+the model's own claim from creating a hold: they never lift a detector's hold. The gate judges the finished cut
 rather than every picture the editor considered: one verdict per carrier, plus one for each
 replacement a refusal pulls in from the same moment.
 
@@ -228,7 +236,7 @@ typed rather than one the model read off a banner.
 card: it does not render. An empty special-days catalogue produces instructions for building one,
 not an invented occasion.
 
-**A film this app made is not footage of anything.** A finished memory uploaded back into Immich looks exactly like a source video: its duration sits under the source cap and its filename matches no pattern, so it was being filmed again. Two independent records now refuse it at source admission, beside the Live Photo component rule: the `immich-memories/generated` tag Immich holds, and this install's own upload receipts in `cache.db`. Neither is complete alone, the tag because an older upload never got one and the receipts because an upload from another machine is not in them, and a server that refuses the tag query leaves the receipts answering rather than failing the run. On one real library three of a month's four "videos" were the app's own output.
+**A film this app made is not footage of anything.** A finished memory uploaded back into Immich looks exactly like a source video: its duration sits under the source cap and its filename matches no pattern, so it was being filmed again. Two independent records now refuse it at source admission, beside the Live Photo component rule: the `immich-memories/generated` tag Immich holds (every upload-back applies it), and this install's own upload receipts in `cache.db`. Neither is complete alone, the tag because an older upload never got one and the receipts because an upload from another machine is not in them, and a server that refuses the tag query leaves the receipts answering rather than failing the run. On one real library three of a month's four "videos" were the app's own output.
 
 **A clip under two seconds is a stub, not a shot.** It is over before the eye settles and the film pays a transition for it either way, so no video shorter than that is admitted. At the other end, letting a carrier finish its sentence is a courtesy rather than a licence: the speech-safe end now stops at twice the six-second motion cap, because one utterance once carried a clip to the end of a seventeen-second source.
 
@@ -508,7 +516,10 @@ shot at all: on hundreds of a month's pictures, none starred, while every story 
 funded for one favourite. So once the draft is cut, and after the model's
 polish on a tier that has one, every close family member (partner, child or parent, as the people
 file names them) who is on at least 20 of the period's pictures, or 5 % of them, and in none of its
-shots gets one seat. It is their best frame by the rules' own standing answer that clears the
+shots gets one seat. Close family means yours, the owner's. A film about a person (a person
+spotlight or a multi-person film) also counts that person's own partner, children and parents, as
+the confirmed links in `people.yaml` connect them: in a film of your partner, their parents count,
+though to you they are in-laws. It is their best frame by the rules' own standing answer that clears the
 story's usual standing bar, in the story holding most of their pictures. The seat is appended when
 the film has a slot left and its timing budget allows one more carrier; otherwise it replaces that
 story's weakest shot that is neither a favourite nor another close family member's only shot. A

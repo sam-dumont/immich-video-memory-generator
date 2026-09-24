@@ -15,6 +15,7 @@ from immich_memories.analysis.editorial_case import Case
 from immich_memories.analysis.editorial_contracts import InsightEvidence
 from immich_memories.analysis.editorial_intent import EditorialIntent, build_editorial_intent
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
+from immich_memories.analysis.editorial_people import EditorialPeople
 from immich_memories.api.models import Asset
 from immich_memories.config_loader import Config
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
@@ -187,6 +188,9 @@ class StructurePlanningInput:
     # Owner ticks after a cut: admitted after the read, so no prompt or digest input changes.
     owner_required_asset_ids: tuple[str, ...] = ()
     render_timing: EditorialTimingPolicy | None = None
+    # The people file's facts and links, so a film about people can tell who is close to them
+    # rather than to the owner. None reads as it always did: every relation is the owner's.
+    people: EditorialPeople | None = None
 
     def __post_init__(self) -> None:
         _check_render_timing(self.render_timing, self.case)
