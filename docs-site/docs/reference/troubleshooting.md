@@ -87,8 +87,8 @@ failed stops with `No clips could be processed`.
 The first cut over a period prepares every eligible picture once (previews, pixel facts, heads,
 detectors, and on the `full` tier one caption each), then the reader reads the period. The levers,
 in order: put the caption server and the reader on the fastest box you have, prepare a month at a
-time with [`prepare`](../create/cli/prepare.md), pick a lower
-[tier](../deploy/running-modes.md), and keep the cache. Measured numbers per host are on Running
+time with [`prepare`](../make/cli/prepare.md), pick a lower
+[tier](../being-rewritten/running-modes.md), and keep the cache. Measured numbers per host are on Running
 modes.
 
 ## Out of memory
@@ -122,7 +122,7 @@ upload. The check is now split in two, and the slow half runs once:
    `Checking the finished film: 12:34 of 1:14:46 decoded` once a minute. The upload reuses that
    decode unless the file's size, modification time or inode changed since, and then decodes again.
 
-A film a [render worker](../deploy/running-modes.md#rendering-on-another-machine) made is decoded
+A film a [render worker](../being-rewritten/running-modes.md#rendering-on-another-machine) made is decoded
 on the worker. The app skips its own decode when the file it downloaded matches the worker's
 SHA-256, and gives the decode four times the film's duration when the worker sent no digest.
 

@@ -17,27 +17,40 @@ function HeroSection() {
               Your Immich library,<br />turned into video memories
             </Heading>
             <p className={styles.heroSubtitle}>
-              Point it at your Immich server. Pick a year, a person, or a trip.
-              An editor reads the period, weighs its stories and writes down why every
-              picture is in. Then it renders: animated maps, generated music, title
-              screens. Self-hosted. No subscription.
+              Pick a month, a year, a trip or a person. It finds the stories in that
+              period, keeps the pictures and videos that tell them in the order they were
+              taken, and renders the film with titles, maps and music.
+            </p>
+            <p className={styles.heroSubtitle}>
+              <strong>Runs on your NAS. No GPU, no AI service.</strong> A GPU or a model
+              makes it faster or polishes the draft, if you have one.
             </p>
             <div className={styles.heroCtas}>
-              <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
-                Get started
+              <Link className={styles.ctaPrimary} to="/docs/get-started/quick-start">
+                Quick start
               </Link>
               <Link className={styles.ctaSecondary} to="/docs/">
-                See what it does
+                What it does
               </Link>
             </div>
           </div>
           <div className={styles.heroVisual}>
-            <img
-              src={useBaseUrl('/img/screenshots/memory-story.png')}
-              alt="The story view: thesis, stories in weight order, and the pictures each was granted, with reasons"
+            <video
               className={styles.heroScreenshot}
-              loading="eager"
-            />
+              poster={useBaseUrl('/img/trip-map-flyover.jpg')}
+              controls
+              muted
+              playsInline
+              preload="metadata">
+              <source src={useBaseUrl('/demo/trip-preview.mp4')} type="video/mp4" />
+            </video>
+            <p className={styles.heroCredit}>
+              A finished trip film. CC0 stock pictures from StockSnap and Wikimedia Commons,{' '}
+              <a href="https://github.com/sam-dumont/immich-video-memory-generator/blob/main/tests/e2e/fixtures/library/CREDITS.md">
+                credited with their authors
+              </a>
+              .
+            </p>
           </div>
         </div>
       </div>
@@ -62,27 +75,26 @@ function QuickstartSection() {
                 <span className={styles.codeLabel}>terminal</span>
               </div>
               <pre className={styles.codeContent}>
-{`# 1. The app itself
-export IMMICH_URL=https://photos.example.com
+{`mkdir -p immich-memories/output && cd immich-memories
+curl -O https://raw.githubusercontent.com/sam-dumont/\\
+immich-video-memory-generator/main/docker-compose.yml
+export IMMICH_URL=http://your-immich-server:2283
 export IMMICH_API_KEY=your-key-here
 docker compose up -d
 
-# 2. The model files it checks at every run:
-#    a pinned ONNX encoder and two CPU detectors
-immich-memories models fetch
+# the small CPU classifiers, once
+docker compose exec immich-memories \\
+  immich-memories models fetch
 
-# 3. Two model servers on hardware you own:
-#    a vision reader (~17 GB resident at 4-bit) and a
-#    caption endpoint. Point config.yaml at both, then:
-immich-memories preflight`}
+# then open http://localhost:8080`}
               </pre>
             </div>
             <p className={styles.quickstartAlt}>
-              Step 3 is the real cost: the editor reads your pictures before it cuts them, and it
-              refuses to guess without them. The cheapest thing anyone has run end to end is one
-              32 GB Apple Silicon Mac. The{' '}
-              <Link to="/docs/deploy/self-hosting">self-hosting guide</Link> walks all of it in
-              order.
+              That is the whole stack: one container next to Immich, on the NAS you already
+              have. No model server, no API key. The{' '}
+              <Link to="/docs/get-started/quick-start">Quick start</Link> walks it step by step,
+              and <Link to="/docs/better/overview">Make it better</Link> covers the optional
+              GPU and model add-ons.
             </p>
           </div>
           <div className={styles.quickstartSteps}>
@@ -100,14 +112,14 @@ immich-memories preflight`}
               <span className={styles.stepNumber}>2</span>
               <div>
                 <strong>Cut</strong>
-                <p>The editor reads the period and weighs its stories</p>
+                <p>It finds the stories in the period and gives each its share</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>3</span>
               <div>
-                <strong>Story</strong>
-                <p>Read what it chose and why; trim or exclude if you like</p>
+                <strong>Storyboard</strong>
+                <p>See every shot before it renders; untick what you disagree with</p>
               </div>
             </div>
             <div className={styles.step}>
@@ -139,20 +151,20 @@ const showcaseItems: ShowcaseItem[] = [
     alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
-    title: 'A curator, not a filter',
-    description: 'A small vision model captions every picture once. A text model then reads the period as a story, weighs its stories in words and grants each the pictures it earns, with a written reason for every one, favourites as indicators, and strictly chronological order. The editor is the product.',
+    title: 'An editor, not a filter',
+    description: 'It groups the period into moments and stories, gives a trip or a birthday more room than an ordinary Tuesday, keeps your favourites, lets a video carry its moment, and plays everything in the order it happened. On the NAS, from your library alone. The rules are all written down.',
     image: '/img/screenshots/memory-story.png',
     alt: 'The story the cut produced, with a reason for every picture',
   },
   {
     title: 'Cinematic title screens',
-    description: 'Animated gradients, particle systems, satellite trip maps. Two renderers: GPU kernels if they find a Metal, CUDA or Vulkan backend, PIL everywhere else. The log says which one actually ran.',
+    description: 'Animated gradients, particle systems, satellite trip maps. The title kernels use a Metal, CUDA or Vulkan GPU when there is one and the CPU otherwise. The log says which one ran.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Generation options with title and music settings',
   },
   {
-    title: 'AI music generation',
-    description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. A sidechain compressor ducks the music under the clip\'s own audio.',
+    title: 'Music that ducks',
+    description: 'Your own file or one of 28 bundled tracks, picked by the mood of the cut. A sidechain compressor ducks the music under the clips\' own sound. With a music server, ACE-Step or MusicGen writes an original track instead.',
     image: '/img/screenshots/memory-options.png',
     alt: 'Music preview and generation options',
   },
@@ -198,7 +210,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Your data stays home</strong>
-            <p>No telemetry, no account. Runs on your hardware; the only outbound calls are the ones you configure (LLM, music server, notifications) plus map tiles and geocoding for trip maps. The Immich API key never leaves your network.</p>
+            <p>A default run talks to your Immich server and nothing else. No telemetry, no account. Map tiles and place names are two switches, off until you turn them on, and a model gets pictures only if you configure one.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -241,14 +253,14 @@ function CtaSection() {
           Your videos deserve better than a camera roll
         </Heading>
         <p className={styles.ctaDescription}>
-          Three services, all of them yours. The self-hosting guide is one page, in order.
+          One container on the NAS you already have. Cut your first month tonight.
         </p>
         <div className={styles.heroCtas}>
-          <Link className={styles.ctaPrimary} to="/docs/deploy/self-hosting">
-            Get started
+          <Link className={styles.ctaPrimary} to="/docs/get-started/quick-start">
+            Quick start
           </Link>
-          <Link className={styles.ctaSecondary} to="/docs/deploy/self-hosting">
-            Self-hosting guide
+          <Link className={styles.ctaSecondary} to="/docs/run/requirements">
+            Requirements
           </Link>
         </div>
       </div>
@@ -260,7 +272,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into video memories. An editor reads the period and writes down why every picture is in. Animated maps, generated music, title screens. Self-hosted, no cloud API.">
+      description="Turn your Immich library into memory films: a month, a year, a trip, one person. Runs on your NAS with no GPU and no AI service. Titles, maps and music, self-hosted.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

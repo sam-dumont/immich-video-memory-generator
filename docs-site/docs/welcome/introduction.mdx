@@ -1,0 +1,103 @@
+---
+sidebar_position: 1
+title: Introduction
+slug: /
+---
+
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+import Video from '@site/src/components/Video';
+
+# Immich Memories
+
+<Video
+  src="/demo/trip-preview.mp4"
+  poster="/img/trip-map-flyover.jpg"
+  controls
+  muted
+  playsInline
+  width="100%"
+  style={{borderRadius: '12px', marginBottom: '0.5rem'}}
+/>
+
+<small>
+
+A trip film as it comes out of the renderer: a week by a lake, opening on the satellite map of
+the route. The pictures are CC0 stock photographs from StockSnap and Wikimedia Commons, each one
+credited with its author in
+[`CREDITS.md`](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/tests/e2e/fixtures/library/CREDITS.md).
+No real library, nobody's family. The map needs `network.map_tiles`, which stays off until you
+turn it on.
+
+</small>
+
+Reader: newcomer.
+
+Immich Memories reads a period of your self-hosted [Immich](https://immich.app) library (a
+month, a year, a trip, one person across the years), picks the pictures and videos that tell it,
+keeps them in the order they were taken, and renders the film with titles, maps and music.
+
+## Runs on your NAS. No GPU, no AI service.
+
+The default install is one container on the box that already runs Immich. It cuts the film from
+what your library already knows: dates, places, favourites, the people Immich recognised, and
+what a few small pinned classifiers say about each picture (a screen, a document, sensitive
+content, who is in frame). Those run on the CPU and are fetched once with `models fetch`. No
+model server, no API key, no account.
+
+That cut is the product, not a fallback. It needs two things from you: where home is, so a week
+away counts as a trip, and who is who, so close family gets its place in the film.
+[Teach it your family](../get-started/who-is-who.md) covers both.
+
+Start with the [Quick start](../get-started/quick-start.md), then cut one month with
+[Your first film](../get-started/first-film.mdx). [Requirements](../run/requirements.md) says
+which box is enough.
+
+## What you get
+
+- Ten memory types: a year in review, a season, a month, one person, several people
+  (`"Riley" AND ("Casey" OR "Bob")`), on this day, an album, a trip with its map, a holiday
+  across years, and a day the library itself flagged. The web UI adds a custom date range.
+- Photos, videos and Live Photos in one cut, HDR kept end to end.
+- Title screens, month dividers, and for a trip an animated map from home to where you went.
+- Music: your own file or one of 28 bundled tracks, ducked under the clips' own sound.
+- A storyboard before anything renders: every shot in playing order, with its day and its
+  story. Untick what you disagree with and cut again; `immich-memories runs why <asset-id>`
+  says which step kept a picture or left it out.
+
+<ThemedScreenshot name="memory-story" alt="The storyboard: the cut in the order it plays, one shot per picture with its day and story" />
+
+How it decides is written down: [How it chooses](../how-it-chooses/overview.md) walks every
+rule with diagrams, and [Overrule it](../how-it-chooses/overrule-it.md) lists every lever you
+have.
+
+## Make it better (optional)
+
+None of these is needed for a good film. Each one plugs into the same install, and what it adds
+is banked next to what the NAS already worked out, so switching one off later costs nothing.
+
+| Add | What it buys | Where it runs |
+|---|---|---|
+| A GPU | the same film, sooner | encoding on the NAS's own iGPU ([Hardware encoding](../run/hardware.md)), preparation on a [GPU box](../better/inference.md) |
+| A reader model | it reads the finished draft, names the shots that add nothing and fills their seats with better ones. It does not re-plan the film | a [local or hosted model](../better/reader.md) |
+| Captions | a line of description under every picture, for the reader and the family-viewing check | a [caption server](../better/captions.md) |
+| Generated music | an original track for each film (ACE-Step or MusicGen) | a [music server](../better/music.md) |
+
+What each one costs in hardware, time and euros is on
+[What a model adds, what it costs](../better/overview.md).
+
+## What leaves your network
+
+A default run talks to your Immich server and nothing else. No telemetry, no cloud. Immich stays
+read-only: the film goes back into it only when you ask for the upload. Every outside host sits
+behind a switch that is off in a fresh install, and [Privacy](../run/privacy.md) lists them.
+
+## Why it is being reworked so much
+
+Some parts are done and stay put: the install (one compose file, one image), how it uses Immich
+(read-only unless you upload), and the render (titles, maps, music, HDR, encoding).
+
+The part that keeps moving is selection: which pictures make the cut. It changes most weeks, and
+every change is checked against films cut from real libraries before it merges. So a new release
+can pick a slightly different set for the same month than the last one did, and a config key that
+goes away is warned about and dropped, never a crash. To keep selection from shifting under you,
+pin a version tag of the image instead of `latest`. Either way, watch a film before you send it to the family.

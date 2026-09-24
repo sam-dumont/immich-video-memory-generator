@@ -254,10 +254,13 @@ tally = os.path.join(os.path.dirname(os.path.abspath(__file__)), "forwards")
 n = (int(open(tally).read()) if os.path.exists(tally) else 0) + 1
 open(tally, "w").write(str(n))
 local = int(sys.argv[-1].split(":")[0])
-if n <= {silent}:
+if n <= {exited}:
+    sys.stderr.write("error: unable to forward port because pod is not running\\n")
+    raise SystemExit(1)
+if n <= {exited} + {silent}:
     time.sleep(120)
     raise SystemExit(0)
-if n <= {silent} + {deaf}:
+if n <= {exited} + {silent} + {deaf}:
     listener = socket.socket()
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", local))
@@ -283,26 +286,33 @@ http.server.HTTPServer(("127.0.0.1", local), _Facts).serve_forever()
 """
 
 
-def _fake_forwarding_kubectl(tmp_path: Path, *, silent: int = 0, deaf: int = 0) -> None:
-    """A kubectl `port-forward` that is broken in each of the two ways a real one is.
+def _fake_forwarding_kubectl(
+    tmp_path: Path, *, exited: int = 0, silent: int = 0, deaf: int = 0
+) -> None:
+    """A kubectl `port-forward` that is broken in each of the ways a real one is.
 
-    Its first `silent` calls bind nothing, which is a forward to a Service with no
-    ready endpoint. The `deaf` calls after those bind the local port and close
+    Its first `exited` calls fail at once, which is kubectl refusing a Service
+    whose pod is not running yet. The `silent` calls after those bind nothing and
+    stay up, which is a forward to a Service with no ready endpoint. The `deaf` calls after those bind the local port and close
     every connection, which is a forward whose pod has gone. Any call after that
     is the service: it binds the port it was handed and answers the facts request.
     """
     script = tmp_path / "kubectl"
-    body = _FORWARD_SCRIPT.format(silent=silent, deaf=deaf)
+    body = _FORWARD_SCRIPT.format(exited=exited, silent=silent, deaf=deaf)
     script.write_text(f"#!{sys.executable}\n" + body)
     script.chmod(0o755)
 
 
 def test_a_forward_that_never_came_up_is_thrown_away_and_made_again(monkeypatch, tmp_path) -> None:
-    """The pod was still pulling its image, so the first forwards had nothing to reach."""
-    _fake_forwarding_kubectl(tmp_path, silent=2)
+    """The pod was still pulling its image, so the first forwards had nothing to reach.
+
+    Those forwards exit, which is what ends their wait; the one that works gets
+    the full listener timeout, so a slow machine cannot turn it into a third
+    failure.
+    """
+    _fake_forwarding_kubectl(tmp_path, exited=2)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr(setup_matrix_readiness, "WARMUP_FIRST_WAIT_S", 0.0)
-    monkeypatch.setattr(setup_matrix_readiness, "WARMUP_LISTENER_TIMEOUT_S", 1.0)
 
     seconds = setup_matrix_readiness.await_facts_via_forward(
         ("kubectl",), "inference", 8092, b"jpeg-bytes", ("heads",)

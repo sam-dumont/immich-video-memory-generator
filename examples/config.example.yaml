@@ -59,7 +59,7 @@ advanced:
   # The facts the editor reads: a compact caption, six public context heads,
   # two detectors and pixel facts per picture, produced once and kept in the
   # annotation store. Pinned versions, digests and the caption server contract:
-  # docs-site/docs/deploy/configuration/editorial-preparation.md
+  # docs-site/docs/being-rewritten/editorial-preparation.md
   editorial:
     annotation_database: ""        # blank = annotations.sqlite inside cache.directory
     preparation:
