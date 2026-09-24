@@ -213,12 +213,3 @@ def test_a_standing_example_never_names_a_label_its_block_did_not_offer():
     for _stage, prompt in judge.calls:
         offered, example = offered_and_example(prompt)
         assert example <= offered
-
-
-def test_the_standing_question_keeps_quiet_and_posed_people_and_needs_no_story():
-    from immich_memories.analysis.editorial_block_votes import standing_prompt
-
-    prompt = standing_prompt("P01: 2024-01-01 10:00 | a child plays on a blanket")
-    assert "quiet or posed" in prompt
-    assert "does not need action or a story" in prompt
-    assert "empty room or floor" in prompt

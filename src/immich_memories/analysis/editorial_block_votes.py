@@ -51,18 +51,17 @@ WORTH_SUBJECT_CRITERION = (
     "words what it shows of the subject.\nSubject: {subject}"
 )
 
-# v7: the 30B read "no clear action / no narrative" into quiet family pictures and marked a couple on
-# an ATV, a child on a blanket and a posed group weak (09-24 spot check). A film is about the family:
-# people in a moment stand however still they are; weak is a picture that carries nothing.
-STANDING_PROMPT_VERSION = "picture-stands-v7-people-stand"
+# v6: the question no longer names the film's contract or period, so a picture's answer is the
+# library's and every cut that reaches the picture reads it (#1151). Every v5 row expires once.
+STANDING_PROMPT_VERSION = "picture-stands-v6-scope-free"
 STANDING_CRITERION = (
-    "Name the pictures that do NOT stand by themselves: pictures that carry nothing worth showing. A lone "
-    "everyday object with nobody in it, an empty room or floor, a screen, a document, a test shot, an "
-    "accidental or unusably blurred frame, a close-up of a body part or an ailment. People in a real moment "
-    "stand, quiet or posed, whatever the setting: a picture does not need action or a story to stand. So does "
-    "a place worth seeing. A row that names a video, or a Live Photo whose motion plays, is footage: judge what "
-    "happens across it, told by the sentence after its length, not whether one still frame would make a good "
-    "photograph. Name only the weak ones; say for each in at most 12 words why."
+    "Name the pictures that do NOT stand by themselves: pictures nobody would show on their own because they show "
+    "nothing worth showing. A close-up of a body part or an ailment, a screen, a document, a lone everyday object "
+    "with nobody in it, an empty room, a test shot, an accidental or unflattering frame. Judge what a picture shows, "
+    "not whether its subject is comfortable: people in a real moment stand whatever the setting, and so does a "
+    "place worth seeing. A row that names a video, or a Live Photo whose motion plays, is footage: judge what happens "
+    "across it, told by the sentence after its length, not whether one still frame would make a good photograph. "
+    "Name only the weak ones; say for each in at most 12 words why."
 )
 
 
