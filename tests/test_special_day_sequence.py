@@ -153,32 +153,70 @@ def test_a_run_the_reader_invents_is_ignored(monkeypatch, reader):
     assert scan_year(assets, llm_config=None, home=None, captions=captions) == []
 
 
-def test_without_a_model_days_are_found_from_their_facts_alone(monkeypatch):
+@pytest.fixture
+def no_model(monkeypatch):
+    # WHY: the text model is the boundary; the no-model tier must never reach it.
+    def refuse(*_a, **_k):
+        pytest.fail("the no-model tier asked a model")
+
+    monkeypatch.setattr("immich_memories.analysis.special_day_sequence._read", refuse)
+    monkeypatch.setattr("immich_memories.automation.special_day_scan.ask_if_special", refuse)
+
+
+# The people file's close family, by Immich person id: roles only ever reach a line.
+FAMILY = {"p-owner": "owner", "p-partner": "partner", "p-son": "son"}
+
+
+def _with(pictures, *person_ids):
+    for picture in pictures:
+        picture.people = [SimpleNamespace(id=pid, name="A Person") for pid in person_ids]
+    return pictures
+
+
+def test_without_a_model_days_are_found_from_their_facts_alone(no_model):
     """The NAS tier (`editorial.reader: rules`, no model) discovers days with no text call.
 
-    A day loud on one fact is kept: the camp was spent 67 km from home, and the busy day at
-    home clears the measured active-hours bar. No reader tells the cat on the sofa apart from
-    an occasion; that is what the model tier adds.
+    The camp was spent 67 km from home: loud on its own, with nobody in the family on it. The
+    busy day at home clears the old active-hours bar with nobody in it, and the bar alone
+    no longer finds a day at home (#1220).
     """
     assets, captions = _library()
 
-    # WHY: the text model is the boundary; the no-model tier must never reach it.
-    def no_model(*_a, **_k):
-        pytest.fail("the no-model tier asked a model")
+    found = scan_year(
+        assets,
+        llm_config=None,
+        home=HOME_AT,
+        captions=captions,
+        reader="rules",
+        close_family=FAMILY,
+    )
 
-    monkeypatch.setattr("immich_memories.analysis.special_day_sequence._read", no_model)
-    monkeypatch.setattr("immich_memories.automation.special_day_scan.ask_if_special", no_model)
-
-    found = scan_year(assets, llm_config=None, home=HOME_AT, captions=captions, reader="rules")
-
-    assert {d.day: d.what for d in found} == {
-        HOME.date(): "a long day, 9 active hours",
-        CAMP.date(): "a day away from home",
+    assert {d.day: (d.what, d.title) for d in found} == {
+        CAMP.date(): ("a day away from home", "A day in Hastière"),
     }
-    assert {d.day: d.title for d in found} == {
-        HOME.date(): "A day in Someplace",
-        CAMP.date(): "A day in Hastière",
-    }
+
+
+def test_without_a_model_a_long_day_at_home_with_the_family_is_found(no_model):
+    party = _day(HOME, pictures=60, hours=9, city="Someplace", at=HOME_AT)
+    _with(party[:30], "p-partner", "p-son")
+    _with(party[30:40], "p-neighbour")
+
+    found = scan_year(party, llm_config=None, home=HOME_AT, reader="rules", close_family=FAMILY)
+
+    assert [d.what for d in found] == ["a long day with close family, 9 active hours"]
+
+
+def test_the_line_says_which_close_family_were_there_by_role_only(reader):
+    assets, captions = _library()
+    camp = [a for a in assets if a.file_created_at.date() == CAMP.date()]
+    _with(camp[:6], "p-son")
+    _with(camp[6:9], "p-owner", "p-partner")
+
+    scan_year(assets, llm_config=None, home=None, captions=captions, close_family=FAMILY)
+
+    (prompt,) = reader.prompts
+    assert "close family: owner, partner, son on 9 of 18 pictures" in prompt
+    assert "p-son" not in prompt
 
 
 @pytest.mark.parametrize(

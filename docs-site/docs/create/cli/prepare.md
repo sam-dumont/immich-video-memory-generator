@@ -201,7 +201,10 @@ cleared it, lost most of them, so both are gone.
 Every run of activity is read instead, a month at a time and in the order it happened. Each run is
 one line of what the library already records about it: when it ran, how many hours of the clock it
 was active, how many pictures, videos and favourites, where it was (or `place: not recorded`), who
-Immich recognised in it, and up to three of the captions written about its pictures. Nothing on the
+Immich recognised in it, which of your close family were there and on how many pictures (by role
+only, for example `close family: partner, son on 34 of 60 pictures`), and up to three of the captions
+written about its pictures. Close family is you and the partner, child and parent roles you confirmed
+in `people.yaml`, the same set the film's people rules use. Nothing on the
 line is a judgement, and nothing is looked at as pixels. A run with nothing recorded beyond the clock
 is not offered. The model reads the month's lines together, with the question after them, and names
 the occasions among them: the kind of day the people in it would tell other people about afterwards,
@@ -217,9 +220,11 @@ checked last, after the day was read, and the log says the day was dropped for w
 day that is kept is then named from its own pictures' lines, the way it always was.
 
 Without a model (`editorial.reader: rules`, or a blank `llm.model`) nothing is asked. A day is kept
-when one recorded fact is loud: at least 20 pictures across six active hours, most of its located
-pictures away from home (the `trips:` distance), at least three favourites, or at least three videos
-making half the day. It is titled after its place ("A day in ..."), and the same 30-second floor
+when one recorded fact is loud: most of its located pictures away from home (the `trips:` distance),
+at least three favourites, at least three videos making half the day, or a long day (at least 20
+pictures across six active hours) with your close family on at least 30 % of its pictures. A long
+day on its own is not enough: without the family share it found a busy ordinary day at home as
+readily as an occasion. Without a `people.yaml`, a long day at home is not found on this tier. It is titled after its place ("A day in ..."), and the same 30-second floor
 applies. The facts cannot tell a long ordinary day from an occasion; reading the day is what the
 model adds.
 

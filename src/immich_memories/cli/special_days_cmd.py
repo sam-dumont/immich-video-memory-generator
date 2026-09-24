@@ -225,6 +225,7 @@ def _scan_one_year(
         judgment_cache_path=verdicts_beside(config.cache.cache_path),
         still_seconds=config.photos.duration,
         reader=config.editorial.resolve_reader(config.llm.model),
+        close_family=_close_family(),
     ):
         found.append(record_for(day))
         if day.judged:
@@ -240,6 +241,14 @@ def _scan_one_year(
     # than standing as half an answer.
     found.append({"scanned": year})
     out.write_text(json.dumps(found, indent=1))
+
+
+def _close_family() -> dict[str, str]:
+    """The owner's close family by Immich person id, as the people file confirms it."""
+    from immich_memories.analysis.special_day_sequence import close_family_roles
+    from immich_memories.people.context import load_people_prompt_context
+
+    return close_family_roles(load_people_prompt_context())
 
 
 def _scan_library(
