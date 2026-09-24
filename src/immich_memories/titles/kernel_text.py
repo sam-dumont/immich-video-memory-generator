@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 # line height it was measured at; one or two steps close that.
 _OVERLAP_ATTEMPTS = 4
 
+# How much smaller a title and its subtitle draw than a title alone, so that two
+# blocks sit where one did. Applied to both sizes: the config's ratios carry the
+# design's title-to-subtitle proportion, and this must not change it.
+_PAIR_SCALE = 0.65
+
 
 def _single_line(_text: str, _font_size: int) -> int:
     """Line count on the SDF path, which scales a string to fit instead of wrapping it."""
@@ -218,9 +223,8 @@ class TitleTextRenderer:
         Same approach as map titles (rendering_service.py:180).
         """
         cfg = self.config
-        base = min(cfg.width, cfg.height)
-        ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
-        return int(base * ratio), int(base * cfg.subtitle_size_ratio)
+        base = min(cfg.width, cfg.height) * (_PAIR_SCALE if subtitle else 1.0)
+        return int(base * cfg.title_size_ratio), int(base * cfg.subtitle_size_ratio)
 
     def _stack(
         self,
