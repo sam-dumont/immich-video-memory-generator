@@ -33,7 +33,7 @@ turned on they leave your network only when you point them somewhere else.
 
 What that means per setup:
 
-- **No model (the default, NAS).** Your Immich server. That's the whole list.
+- **A plain NAS (the default).** Your Immich server. That's the whole list.
 - **A reader or caption server on your own box or LAN.** Still your network. The pictures it reads
   land on that box's disk and in its logs.
 - **A hosted reader.** 800 px tiles of the pictures it is asked about, and the names beside them,

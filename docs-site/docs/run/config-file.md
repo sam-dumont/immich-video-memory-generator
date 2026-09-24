@@ -16,7 +16,7 @@ Docker you can skip the file entirely and use [environment variables](./environm
 
 ## Quick start config
 
-This is a full NAS setup: no model, every default kept except the two values that make a cut good
+This is a full plain-NAS setup, every default kept except the two values that make a cut good
 (where home is, and where films go).
 
 ```yaml
@@ -45,8 +45,8 @@ Trip detection needs both home coordinates. Preflight warns when either is missi
 
 ### Make it better (optional)
 
-A reader is one block. Leave it out and the app edits without a model, which is the default and
-the tier most installs run. What a model adds and costs is on [the overview](../better/overview.md).
+A reader is one block. Leave it out and the app edits on a plain NAS, which is the default and the
+tier most installs run; a model makes the cut better. What a model adds and costs is on [the overview](../better/overview.md).
 
 ```yaml
 llm:

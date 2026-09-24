@@ -7,8 +7,8 @@ title: Hardware encoding
 
 Reader: power user.
 
-You don't need a GPU. Preparation, selection, assembly and encoding all run on a CPU, a four-core
-Celeron NAS included. A card buys two things: a faster encode, and the effects in the animated
+It works on a plain NAS: preparation, selection, assembly and encoding all run on a CPU, a four-core
+Celeron included. A GPU makes it better in two ways: a faster encode, and the effects in the animated
 title screens. It does not run the models: NVENC, Quick Sync and VAAPI decode, scale and encode,
 nothing else. Putting the heads and detectors on a card is the
 [inference service](../better/inference.md), a separate add-on.
