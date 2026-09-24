@@ -15,6 +15,7 @@ Supported fonts:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Literal
@@ -40,7 +41,10 @@ def font_downloads_allowed() -> bool:
 
 
 # Font metadata with Fontsource CDN download URLs
-# URL pattern: https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.ttf
+# URL pattern: https://cdn.jsdelivr.net/fontsource/fonts/{slug}@{version}/latin-{weight}-normal.ttf
+# WHY pinned (#1212): a download is only written when it is byte-for-byte the file
+# hashed here. Bumping FONTSOURCE_VERSION means re-hashing every weight below.
+FONTSOURCE_VERSION = "5.3.0"
 FONT_DEFINITIONS: dict[str, dict] = {
     "Outfit": {
         "family": "Outfit",
@@ -50,6 +54,12 @@ FONT_DEFINITIONS: dict[str, dict] = {
             "Regular": 400,
             "Medium": 500,
             "SemiBold": 600,
+        },
+        "sha256": {
+            300: "7cef2b493a1ffac30d953d4033c0b8425974793aac64618d8b9fa6b0007110d0",
+            400: "5a3544ab64f4141df71b00c1b419a8db7875b3fdbecac0ac6719ee6b22492b63",
+            500: "b3f3cf7e4a76854ae40c1fe52a5c78731d4ec334bb8cd88fb64e182b3e78a4cb",
+            600: "8c2e78057d3cf15dd306d13de33b96222a6165dc1f1d6a911b268c5d9afa7161",
         },
         "license": "OFL",
     },
@@ -62,6 +72,12 @@ FONT_DEFINITIONS: dict[str, dict] = {
             "Medium": 500,
             "SemiBold": 600,
         },
+        "sha256": {
+            300: "798ef5f6181523db2229c110f65801685dd37ba049c856e5209d6b65f3962cfd",
+            400: "d06bc6dfc4fa496a2708997f437869758d9eaa602a0d587199c189f89d343997",
+            500: "43fe1f5bf092ed966393fbd7a75a950d959b3e5aa13a870c915f8fbd522e453c",
+            600: "1c30e97f84294c253c76bfdc419998ddddddcf72808b0fb47663da75f0aa59cf",
+        },
         "license": "OFL",
     },
     "JosefinSans": {
@@ -71,6 +87,11 @@ FONT_DEFINITIONS: dict[str, dict] = {
             "Light": 300,
             "Regular": 400,
             "SemiBold": 600,
+        },
+        "sha256": {
+            300: "538a04b04499568422f3431fe877f4e760c0d4209c11b2658e46d115e2c2293e",
+            400: "980cd9c089b2af273a7d4ad09a27f58cbc8bde569469a6812f251fead1734ed0",
+            600: "f8f9aefb0d5a873c13a5647e73a0b5a1c7b58732e5fbbc705963f61f0342714a",
         },
         "license": "OFL",
     },
@@ -83,6 +104,12 @@ FONT_DEFINITIONS: dict[str, dict] = {
             "Medium": 500,
             "SemiBold": 600,
         },
+        "sha256": {
+            300: "f2df2ed710e0df7483d24a39479008fd5c0cd3930cff56e9eba2b45033419487",
+            400: "11b15e5b98bdf122a1ad97b9eae88c22d8ebe12aa3e53b4fa93811e7b7b6e159",
+            500: "f50040b2984d42ae6c0f1ca63fe7b90f3decac9d12fcb3a1a3dd02f3ca50c67c",
+            600: "eb226417c527b39bff615c16fd123d84f46532a4311b878c49a585ef6c89ec2b",
+        },
         "license": "OFL",
     },
     "Montserrat": {
@@ -93,6 +120,12 @@ FONT_DEFINITIONS: dict[str, dict] = {
             "Medium": 500,
             "SemiBold": 600,
             "Bold": 700,
+        },
+        "sha256": {
+            400: "ee184384f5cfb207380099f29b6d018deb381ee952c977fa79b4f7cd8858a4c0",
+            500: "ceefe8658a7b86fd27f23ff1571da1a5ff15b4c502ba3c0f9130f5bb9fed9cc7",
+            600: "9d6d7ddc09b5f0f2eb570d8622cf8f8c9742fdcb7c1801cb76b37fa45866accf",
+            700: "1f155ae658c6f1ba0ea4ee53726c496f774a1ab8462b46a03812377e157166ca",
         },
         "license": "OFL",
     },
@@ -233,23 +266,15 @@ def ensure_font_available(
     return download_font(font_family, fonts_dir)
 
 
-# WHY the magic check: the CDN URL is @latest (unpinned) — an sfnt magic plus a
-# sane size is the minimum bar before writing executable-adjacent content into
-# the font cache.
-_SFNT_MAGIC = (
-    b"\x00\x01\x00\x00",  # TrueType
-    b"OTTO",  # CFF OpenType
-    b"true",  # legacy Apple TrueType
-)
-
-
-def _fetch_font_file(client: httpx.Client, slug: str, weight_value: int) -> bytes | None:
-    """One Fontsource TTF, or None when what came back is not a font."""
+def _fetch_font_file(client: httpx.Client, font_def: dict, weight_value: int) -> bytes | None:
+    """One pinned Fontsource TTF, or None when what came back is not the pinned file."""
+    slug = font_def["fontsource_slug"]
     response = client.get(
-        f"https://{_CDN_HOST}/fontsource/fonts/{slug}@latest/latin-{weight_value}-normal.ttf"
+        f"https://{_CDN_HOST}/fontsource/fonts/{slug}@{FONTSOURCE_VERSION}"
+        f"/latin-{weight_value}-normal.ttf"
     )
     response.raise_for_status()
-    if len(response.content) < 100 or response.content[:4] not in _SFNT_MAGIC:
+    if hashlib.sha256(response.content).hexdigest() != font_def["sha256"].get(weight_value):
         return None
     return response.content
 
@@ -292,7 +317,6 @@ def download_font(
         return False
 
     font_def = FONT_DEFINITIONS[dir_name]
-    fontsource_slug = font_def["fontsource_slug"]
     weights = font_def["weights"]
 
     # Create font directory
@@ -306,10 +330,11 @@ def download_font(
 
         with httpx.Client(follow_redirects=True, timeout=30.0) as client:
             for weight_name, weight_value in weights.items():
-                content = _fetch_font_file(client, fontsource_slug, weight_value)
+                content = _fetch_font_file(client, font_def, weight_value)
                 if content is None:
                     logger.warning(
-                        f"Downloaded file for {font_family} {weight_name} is not a font; skipping"
+                        f"Downloaded file for {font_family} {weight_name} does not match "
+                        "its pinned hash; skipping"
                     )
                     continue
                 # Save with our naming convention: FontFamily-Weight.ttf

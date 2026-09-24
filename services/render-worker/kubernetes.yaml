@@ -17,14 +17,23 @@ spec:
       automountServiceAccountToken: false
       runtimeClassName: nvidia
       securityContext:
+        runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: worker
           # Pin to the same versioned image as the submitting app before applying.
           image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
           command: [python, -m, immich_memories_render_worker]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 8093
@@ -61,13 +70,31 @@ spec:
           readinessProbe:
             tcpSocket:
               port: http
+          # The root filesystem is read-only; these are the only places the worker
+          # writes: job scratch, FFmpeg intermediates, the app's state directory
+          # (fonts, config) and ~/.cache (the title kernels' compile cache).
           volumeMounts:
             - name: scratch
               mountPath: /app/output
+            - name: tmp
+              mountPath: /tmp
+            - name: state
+              mountPath: /home/immich/.immich-memories
+            - name: cache
+              mountPath: /home/immich/.cache
       volumes:
         - name: scratch
           emptyDir:
             sizeLimit: 20Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: state
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: cache
+          emptyDir:
+            sizeLimit: 1Gi
 ---
 apiVersion: v1
 kind: Service

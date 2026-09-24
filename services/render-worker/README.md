@@ -57,7 +57,8 @@ render:
 
 Pass the shared token to the app process as `RENDER_WORKER_TOKEN`. Generation
 then follows the normal CLI or UI flow. The worker receives the selected cut
-and scoped Immich key, downloads its sources and returns the base film. The app
+and the app's own Immich API key (`immich.api_key`, not a narrower one), downloads
+its sources and returns the base film. The app
 checks the received bytes, canvas, cut duration and audio windows before music
 and upload. A worker failure fails the run unless `fallback_to_local` is enabled.
 That option renders the same selection locally and reports the fallback.
@@ -86,6 +87,16 @@ variables differ by one underscore while meaning opposite things.
 | `RETENTION_SECONDS` | `3600` | Terminal job lifetime; 60 to 86400 seconds |
 | `JOB_TIMEOUT_SECONDS` | `3600` | A render past this is abandoned and its scratch released |
 
+### What the worker holds
+
+Every job carries the app's full Immich API key: the same key the app uses, with the
+same permissions. There is no separate, narrower key yet. The worker uses it only to
+download the selected originals from the one Immich URL it was started with, keeps it
+in memory for the job and redacts it from messages, but anyone who controls the worker
+process can read it. So run the worker where you would run the app. If the app does not
+upload back to Immich, give it an Immich key with read and download permissions only;
+that is then all the worker holds too.
+
 Use a trusted network or a TLS reverse proxy. Every operation below requires
 `Authorization: Bearer <worker token>`. The per-job Immich key belongs in the
 request body, never a URL. Access logs are disabled by the entry point.
@@ -103,7 +114,7 @@ misconfigured `NVIDIA_DRIVER_CAPABILITIES`.
 {
   "version": 1,
   "memory_key": "example-cut",
-  "immich": {"url": "https://photos.example.com", "api_key": "<scoped key>"},
+  "immich": {"url": "https://photos.example.com", "api_key": "<the app's Immich key>"},
   "plan": {
     "clips": [{
       "asset_id": "00000000-0000-4000-8000-000000000002",
@@ -154,7 +165,7 @@ a fresh `render_attempt` UUID for each deliberate render, so changing output
 settings or rendering again after a download works. Repeating the same request
 keeps its job id and does not render twice. Without `render_attempt`, identity
 uses the memory key and timing digest alone. Re-submitting a cut whose job failed
-starts a fresh render. Changed content, including a changed scoped key, while
+starts a fresh render. Changed content, including a changed Immich key, while
 that job is live returns 409. Full capacity returns 429. A mismatched Immich URL
 returns 422.
 
@@ -163,7 +174,7 @@ returns 422.
 `submitted_at`, `started_at`, `finished_at`, and once a film exists `encoder`,
 `encoding_plan`, `probe`, `render_metrics`, `clips`, `music_mute_windows` and
 `degradations`. States are `queued`, `running`, `ready`, `failed` and
-`consumed`. Messages and failures redact the scoped key. Feed `encoding_plan`
+`consumed`. Messages and failures redact the Immich key. Feed `encoding_plan`
 back into `publish_validated_output` to re-run the same three gates on the bytes
 you received.
 

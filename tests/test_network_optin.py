@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -293,11 +294,47 @@ class TestTheSwitchIsReadFromTheConfig:
                 return _Response(content if "700" in url else b"<html>not a font")
 
         monkeypatch.setattr("immich_memories.titles.fonts.httpx.Client", lambda **_k: _Client())
-        from immich_memories.titles.fonts import download_font
+        from immich_memories.titles.fonts import FONT_DEFINITIONS, download_font
+
+        pins = FONT_DEFINITIONS["Montserrat"]["sha256"]
+        monkeypatch.setitem(pins, 700, hashlib.sha256(content).hexdigest())
 
         assert download_font("Montserrat", tmp_path, allowed=True) is True
         assert (tmp_path / "Montserrat" / "Montserrat-Bold.ttf").read_bytes() == content
         assert not (tmp_path / "Montserrat" / "Montserrat-Regular.ttf").exists()
+
+    def test_a_font_that_is_not_the_pinned_file_is_not_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#1212: a real TTF that is not the pinned one (a swapped CDN file) is refused."""
+        seen_urls: list[str] = []
+        other_font = b"\x00\x01\x00\x00" + b"g" * 200
+
+        class _Response:
+            content = other_font
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                return None
+
+            def get(self, url: str) -> _Response:
+                seen_urls.append(url)
+                return _Response()
+
+        # WHY: httpx is the transport to cdn.jsdelivr.net; the test stays offline.
+        monkeypatch.setattr("immich_memories.titles.fonts.httpx.Client", lambda **_k: _Client())
+        from immich_memories.titles.fonts import download_font
+
+        assert download_font("Montserrat", tmp_path, allowed=True) is False
+        assert not list((tmp_path / "Montserrat").glob("*.ttf"))
+        assert seen_urls
+        assert all("@latest" not in url and "montserrat@5." in url for url in seen_urls)
 
     def test_the_titles_command_asks_for_the_download_itself(
         self, monkeypatch: pytest.MonkeyPatch
