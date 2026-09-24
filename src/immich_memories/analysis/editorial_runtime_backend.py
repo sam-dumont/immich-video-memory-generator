@@ -301,11 +301,13 @@ class ProductionPostCardBackend:
         config = self._config
         if not period or config.editorial.resolve_reader(config.llm.model) == "rules":
             return {}
+        from immich_memories.analysis.editorial_laya_reader import laya_reader_for
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 
         rules = RuleStructureReader(source)
         return {
             "rules": rules,
+            "laya": laya_reader_for(config.editorial),
             "thin": ThinPolish(
                 bank_dir=source.bank_dir,
                 read_period=lambda asset_ids_of: self._read_period(source, period, asset_ids_of),
