@@ -71,6 +71,12 @@ classifier's snapshot, goes there because the compose file sets
 write your own service block: without it the snapshot sits in the container's writable layer, which
 a `pull && up -d` throws away.
 
+Preflight's `Title rendering` row names what draws the titles. With no GPU passed into the
+container it reads `Kernels on the CPU (quadrants): no GPU backend started`: the animated title
+kernels run on the processor, which is expected and slower. A row that says `PIL renderer` means an
+old image. `docker compose up` does not re-pull a `latest` that is already on the machine, so run
+`docker compose pull` first if you tried the app before.
+
 The compose file pins `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"`, the richest
 tier the app serves on its own, and that tier is why `models fetch` is part of the first run.
 `metadata_only` needs no fetch at all; `full` needs a [caption server](./caption-server.md) and
