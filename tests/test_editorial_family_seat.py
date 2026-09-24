@@ -281,3 +281,15 @@ def test_a_person_film_seats_its_subjects_parents_though_the_owner_calls_them_in
 
 def test_a_month_film_keeps_close_family_relative_to_the_owner(tmp_path):
     assert _planned_person_film(tmp_path / "month", product="monthly_highlights") == []
+
+
+def test_the_owner_whose_note_nests_a_parenthesis_is_read_as_a_person():
+    from immich_memories.analysis.editorial_story_replies import people_on
+
+    line = (
+        "2030-02-03 | with Owner (library owner (inferred); aged 38; inner circle); "
+        "Person B (son; 3 months old)"
+    )
+
+    assert people_on(line) == {"Owner": "library owner (inferred)", "Person B": "son"}
+    assert close_family_on(line) == {"Person B": "son"}

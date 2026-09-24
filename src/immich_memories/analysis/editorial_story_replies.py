@@ -53,7 +53,8 @@ def relations_on(line: str) -> list[str]:
 
 
 _WITH_PEOPLE = re.compile(r"\| with ([^|]+)")
-_PERSON_NOTE = re.compile(r"([^;()]+?)\s*\(([^()]*)\)")
+# A note may nest one parenthesis: the owner renders as "library owner (inferred)".
+_PERSON_NOTE = re.compile(r"([^;()]+?)\s*\(((?:[^()]|\([^()]*\))*)\)")
 
 
 def people_on(line: str) -> dict[str, str]:
