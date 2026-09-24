@@ -519,6 +519,18 @@ or their stories hold nothing but favourites and the film is full, nobody is sea
 on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
 
+### Filler nothing vouches for
+
+The draft sizes a film from its material, so a quiet month can have more slots than pictures anyone
+can vouch for, and the leftover slots go to whatever stands. When no model polishes the draft, the
+settled cut gets one last pass: a shot with no indicator of its own (not starred, not a video or a
+Live Photo whose motion plays, nobody Immich knows in it, no banked standing answer for it, not
+ticked on the pool page) that the `frame_kind` head reads as showing nothing (a lone everyday
+object, an empty room, a body-part close-up, a screen or a document) leaves the film. Nothing takes
+its place: the film goes short rather than keep a guess. A shot with any indicator, or one the head
+never read, is left alone. `derived-decisions/unvouched-filler.private.json` lists what left, by id
+and head label.
+
 ### Reading what a model already answered
 
 On a fresh install the draft has nothing to read and cuts exactly the film it cut before. On an
