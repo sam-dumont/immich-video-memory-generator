@@ -20,7 +20,7 @@
 
 It reads a period of your library, picks the pictures and videos that tell it, keeps them in the order they were taken, and renders the film with titles, maps and music.
 
-**It runs on your NAS. No GPU, no AI service.** One container next to Immich, cutting from dates, places, favourites, the people Immich recognised and a few small classifiers on the CPU. That cut is the product. A GPU makes it faster, and a reader model can polish the draft; both are [optional](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/overview).
+**Works on a plain NAS. A GPU or a model makes it better.** The base install is one container next to Immich, cutting from dates, places, favourites, the people Immich recognised and a few small classifiers on the CPU, and that already gives you a film worth sharing. A GPU makes it faster, and a reader model polishes the cut: [what each one adds](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/overview).
 
 You see the storyboard before anything renders. Untick what you disagree with and cut again; `immich-memories runs why <asset-id>` says which rule kept a picture or left it out. [How it chooses](https://sam-dumont.github.io/immich-video-memory-generator/docs/how-it-chooses/overview) writes every rule down.
 
