@@ -19,9 +19,7 @@ from immich_memories.analysis.editorial_completion import (
     ACCEPTED_SHORTFALL_FRACTION,
     RetainedMotion,
 )
-from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
 from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
-from immich_memories.analysis.editorial_picture_evidence import PictureEvidenceOverlay
 from immich_memories.analysis.editorial_source_route import retire_unprojectable
 from immich_memories.analysis.editorial_story_planner import alternatives_pool
 from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
@@ -29,7 +27,6 @@ from immich_memories.analysis.editorial_structure_audience import (
     AudienceGate,
     close_share_log,
     open_share_log,
-    tighten_with_attached_samples,
 )
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
 from immich_memories.analysis.editorial_structure_contract import (
@@ -61,7 +58,6 @@ class PlanRun:
     render_timeline: Any = None
     final_content_cap: float = 0.0
     motion_metrics: dict = field(default_factory=dict)
-    attached_audience: dict = field(default_factory=dict)
     final_duplicates: dict = field(
         default_factory=lambda: {
             "status": "unavailable",
@@ -107,35 +103,6 @@ def resolve_motion_and_timing(
     run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
     if sum(c["seconds"] for c in run.carriers) > run.final_content_cap:
         raise ValueError("Editorial minimum content cannot fit the production title budget")
-
-
-def observe_attached(
-    run: PlanRun,
-    ports: StructurePlannerPorts,
-    gate: AudienceGate,
-    picture_evidence: PictureEvidenceOverlay,
-    share_log: dict,
-) -> tuple[AttachedMaterialEvidence, bool]:
-    attached = AttachedMaterialEvidence()
-    if ports.observe_attached_material is None or not any(
-        carrier["kind"] == "live-motion" for carrier in run.carriers
-    ):
-        return attached, False
-    # Samples and the strict renderer must agree on the final selected interval.
-    if run.render_timeline is None:
-        run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
-    attached = ports.observe_attached_material(run.carriers)
-    if set(attached.records) & picture_evidence.records.keys():
-        raise ValueError("attached sample identity collides with primary picture evidence")
-    run.carriers = tighten_with_attached_samples(
-        run.carriers,
-        gate=gate,
-        attached_evidence=attached,
-        attached_audience=run.attached_audience,
-        share_log=share_log,
-        cut_carriers=run.cut_carriers,
-    )
-    return attached, True
 
 
 def replacement_offers(pool_for: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]]]):
@@ -277,21 +244,6 @@ def seat_again_after_review(
     )
     run.carriers = sorted(seated, key=lambda c: str(c.get("taken", "")))
     _settle_replacements(run, ports, [c["asset_id"] for c in seated if c["asset_id"] not in known])
-
-
-def check_empty_attached(ports: StructurePlannerPorts, observed: bool) -> None:
-    if ports.observe_attached_material is None or observed:
-        return
-    empty_attached = ports.observe_attached_material([])
-    if any(
-        (
-            empty_attached.records,
-            empty_attached.displayed_members,
-            empty_attached.observed_members,
-            empty_attached.gaps,
-        )
-    ):
-        raise ValueError("empty attached material produced nonempty evidence")
 
 
 def trim_to_timing(

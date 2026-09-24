@@ -133,7 +133,9 @@ def _release_exists(tag: str, repo: str) -> bool:
     try:
         result = subprocess.run(command, capture_output=True, text=True)
     except FileNotFoundError as error:
-        raise RuntimeError("the gh CLI is required to tell a published release from a tag") from error
+        raise RuntimeError(
+            "the gh CLI is required to tell a published release from a tag"
+        ) from error
     return result.returncode == 0
 
 
@@ -168,9 +170,7 @@ def main() -> int:
         # A fresh or remote-less checkout still has its local tags to reason about.
         pass
     tags = [
-        tag
-        for tag in _git("tag", "--list", "v*", "--sort=-version:refname").splitlines()
-        if tag
+        tag for tag in _git("tag", "--list", "v*", "--sort=-version:refname").splitlines() if tag
     ]
     baseline = published_baseline(tags, lambda tag: _release_exists(tag, repo))
 

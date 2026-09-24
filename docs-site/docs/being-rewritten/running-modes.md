@@ -39,8 +39,8 @@ would have cost 2.6 hours of facts before anything was selected. Match it to the
 | `reader` | Needs | What you get | What you lose |
 |---|---|---|---|
 | `rules` | Nothing beyond the app | The ten standard memory types and a custom date range, cut from dates, places, favourites, known people and whatever image facts the tier produced. Repeatable: 72 runs across 12 cases, stable across hash seeds, zero reader requests. On a library a model has read before, the draft also reads what it answered: a picture an earlier cut of any scope refused for the same audience, or a banked episode reading culled, is not offered, and a picture that reading named leads its episode. Still zero reader requests | No story thesis. It can drop an occasion, over-select repeated portraits on a trip, or let a mundane object take a slot in a month or year recap |
-| `model`, local | A vision model with a 32k context on a machine you own. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader on 15 September, and 29 min on 17 September on a machine other work was sharing |
-| `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text and 800 px picture tiles leave your network. Only monthly memories were priced; years and trips were not |
+| `model`, local | A model with a 32k context on a machine you own; it reads text only, so it needs no vision. Graded on a 30B model at 4-bit, about 17 GB resident, oMLX on an Apple Silicon Mac with 32 GB | The full editor: the period read as a story, pictures weighed in words, a reason under every picture | Time and a second machine. Reading a real month took 19 min on the graded reader on 15 September, and 29 min on 17 September on a machine other work was sharing |
+| `model`, hosted | An OpenAI-compatible or Anthropic-compatible endpoint and a key | The same editor, sometimes faster: the same month took 14 min on the quickest hosted reader, EUR 0.054 of tokens at list. The dearest one that finished cost EUR 0.585 and took two hours | Your annotation text leaves your network. No picture does: a model looks at each picture once, at ingest. Only monthly memories were priced; years and trips were not |
 
 What each model did on one real month, and what stopped three of them:
 [Readers](../better/reader.md). Rules and the local model reader cost nothing in API fees. Electricity and
@@ -397,8 +397,8 @@ are `network:` switches, both off, and a render never downloads a font, and
 | rules + `metadata_only` | nothing | one question from the music stage after the render, if an `llm` endpoint is configured at all | Immich reads only. Nominatim and map tiles are `network:` switches, both off |
 | rules + `no_captions` | nothing | nothing | same, plus: with `advanced.inference.facts_base_url` set, a preview of every picture in the period goes to that service. It is off by default |
 | any reader + `full` | a 400 px JPEG of every picture in the period, once | (see next rows) | same |
-| `model`, local | as above on `full` | 800 px tiles of a few dozen candidates, plus their annotation lines with people and place names, to a box you own | same |
-| `model`, hosted | as above on `full` | the same tiles and lines to the provider | same |
+| `model`, local | as above on `full` | the candidates' annotation lines, with people and place names, to a box you own. No picture | same |
+| `model`, hosted | as above on `full` | the same lines to the provider. No picture | same |
 
 The caption and reader endpoints default to `localhost`. Pointing either at another host is the
 consent step; nothing asks twice. The complete list, with the switch for each destination, is on
@@ -446,7 +446,7 @@ flowchart LR
         h1["the app, the same Job"] ~~~ h2["no captions: the no_captions tier"]
         h2 ~~~ h3["encode: CPU.<br/>Title kernels: GPU"]
         h3 ~~~ h4[["facts on the same inference service"]]
-        h1 -.->|"800 px tiles leave<br/>your network"| h5(["reader: a provider URL and a key"])
+        h1 -.->|"annotation text leaves<br/>your network"| h5(["reader: a provider URL and a key"])
     end
 
     mac ~~~ rules ~~~ hosted

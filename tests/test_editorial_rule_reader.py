@@ -130,7 +130,7 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
         plan["story"]["calls"][key] == 0 for key in ("story_pages", "pick_calls", "standing_rounds")
     )
     assert all(row["kind"] != "live-motion" for row in plan["carriers"])
-    assert not plan["picture_facts"]
+    assert "picture_facts" not in plan
     # The cut ends with a duplicate review of its own rather than reporting it unavailable.
     assert plan["final_duplicate_review"]["status"] in {"complete", "incomplete"}
     assert plan["final_duplicate_review"]["policy"] == FINAL_HASH_REVIEW_POLICY

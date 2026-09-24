@@ -17,19 +17,6 @@ def source_metadata_digest(asset: Asset) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def attached_link_digest(parents: tuple[Asset, ...], video_id: str) -> str:
-    """Bind each real still's complete source metadata and declared attachment."""
-    if not parents or any(
-        parent.is_video or parent.live_photo_video_id != video_id for parent in parents
-    ):
-        raise ValueError("attached evidence needs the admitted still's declared video link")
-    if len({parent.id for parent in parents}) != len(parents):
-        raise ValueError("attached parent lineage repeats a still")
-    material = [(parent.id, source_metadata_digest(parent)) for parent in parents]
-    encoded = json.dumps(material, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode()).hexdigest()
-
-
 @dataclass(frozen=True, slots=True)
 class BoundVideoSample:
     """Describe an actual frame of admitted attached material, without granting admission.

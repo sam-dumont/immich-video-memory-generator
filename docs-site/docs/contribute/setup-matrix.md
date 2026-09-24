@@ -78,10 +78,9 @@ hosted models ship weights anybody can download and serve (`gemma-4-31b` and `mu
 Apache 2.0), so putting either on the local server and naming it here prices the hosted convenience
 against the electricity.
 
-The reader needs a vision-capable model with a 32k context. Most of what it is handed is annotation
-lines, and then the structure pass demands 800 px tiles for the few dozen pictures a month it cannot
-settle on paper: 36 tiles on the demo month, 40 on February 2024. So the context
-window is what decides whether a model can do this job at all, and the vision head is used sparingly.
+The reader needs a 32k context and no vision. What it is handed is annotation lines: a model looks
+at each picture once, at ingest, and the reader is never sent a picture. So the context window is
+what decides whether a model can do this job at all.
 
 ## Four rules that make the numbers mean anything
 
@@ -133,8 +132,7 @@ Use the selection and render columns for elapsed time. Stored `llm_wall_seconds`
 `hosted_usage.wall_seconds` keep this same cumulative meaning. The CLI also shows how many
 completion tokens were reasoning; they are already included in the completion total.
 
-Before a reader cell runs, its probe sends one real fixture tile through the picture-facts
-contract, then an episode read, period read and story pick. A failed shape stops the cell.
+Before a reader cell runs, its probe sends an episode read and a story pick, text only. A failed shape stops the cell.
 The manifest's `libraries.<name>.reader_budget` projects each shape over a conservative call
 count. Only stages marked `parallel` divide elapsed time by the reader's configured concurrency;
 every call still counts toward cost, including reasoning tokens already billed in the completion.

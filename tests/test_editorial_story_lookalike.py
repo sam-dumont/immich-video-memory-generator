@@ -44,18 +44,9 @@ class TwinOf:
         return _apart(self.first if asset_id == self.repeat else asset_id)
 
 
-def _run(source, thumbnail_hash, *, model=True):
+def _run(source, thumbnail_hash):
     return plan_structure(
-        source,
-        StructurePlannerPorts(
-            judge=FilmJudge(),
-            thumbnail_hash=thumbnail_hash,
-            observe_picture=(
-                (lambda asset_id: {"status": "available", "description": asset_id})
-                if model
-                else None
-            ),
-        ),
+        source, StructurePlannerPorts(judge=FilmJudge(), thumbnail_hash=thumbnail_hash)
     ).plan
 
 
@@ -98,16 +89,6 @@ def test_the_check_alone_never_leaves_the_film_short(tmp_path):
     record = _lookalike_record(source)
     assert record["refused"], "every further trip frame looked alike"
     assert {r["asset_id"] for r in record["readmitted"]} <= set(carried)
-
-
-def test_a_film_with_a_model_answers_the_look_the_same_way_a_film_without_one_does(tmp_path):
-    with_model = _film(tmp_path / "model")
-    without = _film(tmp_path / "rules")
-    _run(with_model, _alike)
-    _run(without, _alike, model=False)
-
-    assert _lookalike_record(with_model)["status"] == "asked"
-    assert _lookalike_record(with_model)["refused"] == _lookalike_record(without)["refused"]
 
 
 def _afternoon(tmp_path):

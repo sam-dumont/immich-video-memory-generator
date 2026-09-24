@@ -130,8 +130,8 @@ def test_actual_runtime_filters_demand_but_keeps_full_canonical_context(
         "EditorialRunContext",
         lambda *args, **kwargs: real_context(*args, **kwargs, person_expression=EXPRESSION),
     )
-    sources, _config, build, calls, captures, readers, _images, _warm = (
-        source_fixture.setup_runtime(tmp_path, monkeypatch)
+    sources, _config, build, calls, captures, _images, _warm = source_fixture.setup_runtime(
+        tmp_path, monkeypatch
     )
     child = _person("child", "Child")
     sources[0].people = [_person("a-old", "Adult A"), child] if matching else []
@@ -140,24 +140,20 @@ def test_actual_runtime_filters_demand_but_keeps_full_canonical_context(
     sources[3].people = [_person("a-alone", "Adult A")]
     sources[4].people = [child]
     source_bytes = [a.model_dump(mode="json") for a in sources]
-    try:
-        result = build().plan_source(sources, trace=Trace(), include_live_photos=False)
-        expected = {a.id for a in sources[:3]} if matching else set()
-        assert {row.clip.asset.id for row in result.candidates} == expected
-        assert set(result.plan.selected_asset_ids).issubset(expected)
-        assert len(calls["acquire"]) == 1
-        assert not calls["acquire"][0].asset_ids
-        if matching:
-            assert captures
-            assert set(captures[0].assets) == {a.id for a in sources}
-            assert {key for ids in captures[0].moment_asset_ids.values() for key in ids} == expected
-            assert captures[0].case.person_expression == EXPRESSION
-        else:
-            assert not result.plan.selections
-        assert [a.model_dump(mode="json") for a in sources] == source_bytes
-    finally:
-        for reader in readers:
-            reader.close()
+    result = build().plan_source(sources, trace=Trace(), include_live_photos=False)
+    expected = {a.id for a in sources[:3]} if matching else set()
+    assert {row.clip.asset.id for row in result.candidates} == expected
+    assert set(result.plan.selected_asset_ids).issubset(expected)
+    assert len(calls["acquire"]) == 1
+    assert not calls["acquire"][0].asset_ids
+    if matching:
+        assert captures
+        assert set(captures[0].assets) == {a.id for a in sources}
+        assert {key for ids in captures[0].moment_asset_ids.values() for key in ids} == expected
+        assert captures[0].case.person_expression == EXPRESSION
+    else:
+        assert not result.plan.selections
+    assert [a.model_dump(mode="json") for a in sources] == source_bytes
 
 
 def test_structure_input_rejects_unmatching_selected_asset_but_allows_context(tmp_path):

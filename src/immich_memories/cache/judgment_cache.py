@@ -21,7 +21,6 @@ import hashlib
 import json
 import logging
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 
 from immich_memories.cache.sqlite_conn import ThreadOwnedConnections
@@ -33,7 +32,6 @@ logger = logging.getLogger(__name__)
 _ANSWER_VERSION = "judge1"
 # Bump when the shared visual gateway changes what identity material the
 # provider actually sees. visual1 keyed annotations without sending them.
-_VISUAL_ANSWER_VERSION = "visual2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS judgments (
@@ -50,71 +48,6 @@ CREATE TABLE IF NOT EXISTS text_completion_failures (
     recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
 )
 """
-
-_VISUAL_SCHEMA = """
-CREATE TABLE IF NOT EXISTS visual_judgments (
-    key TEXT PRIMARY KEY,
-    answer TEXT NOT NULL,
-    original_provenance TEXT NOT NULL,
-    answered_at TEXT NOT NULL DEFAULT (datetime('now'))
-)
-"""
-
-_VISUAL_FAILURE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS visual_completion_failures (
-    key TEXT PRIMARY KEY,
-    record TEXT NOT NULL,
-    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
-)
-"""
-
-
-@dataclass(frozen=True)
-class VisualJudgmentIdentity:
-    """All evidence and request settings that could change a visual answer."""
-
-    page_bytes: tuple[bytes, ...]
-    ordered_input_ids: tuple[str, ...]
-    ordered_group_ids: tuple[str, ...]
-    annotations: tuple[str, ...]
-    model: str | None
-    thinking: bool
-    image_detail: str
-    pass_name: str
-    pass_version: str
-    prompt_version: str
-    schema_version: str
-    render_version: str
-    layout_versions: tuple[str, ...]
-    upstream_material: tuple[str, ...]
-    request_limits: tuple[str, ...]
-    continuation_identity: tuple[int, int]
-    endpoint: str = ""
-
-    def key(self) -> str:
-        """Return the deterministic key without including credentials or paths."""
-        material = {
-            "version": _VISUAL_ANSWER_VERSION,
-            "page_hashes": [hashlib.sha256(page).hexdigest() for page in self.page_bytes],
-            "ordered_input_ids": self.ordered_input_ids,
-            "ordered_group_ids": self.ordered_group_ids,
-            "annotations": self.annotations,
-            "model": self.model or "",
-            "thinking": self.thinking,
-            "image_detail": self.image_detail,
-            "pass_name": self.pass_name,
-            "pass_version": self.pass_version,
-            "prompt_version": self.prompt_version,
-            "schema_version": self.schema_version,
-            "render_version": self.render_version,
-            "layout_versions": self.layout_versions,
-            "upstream_material": self.upstream_material,
-            "request_limits": self.request_limits,
-            "continuation_identity": self.continuation_identity,
-            "endpoint": self.endpoint,
-        }
-        encoded = json.dumps(material, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
 
 
 def judgment_key(
@@ -214,67 +147,3 @@ class JudgmentCache:
                 conn.commit()
         except (OSError, sqlite3.Error) as exc:
             logger.debug("Completion failure was not kept (%s)", exc)
-
-
-class VisualJudgmentCache:
-    """A visual-answer cache independent of the legacy prompt-only table."""
-
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = Path(db_path)
-        self._connections = ThreadOwnedConnections(self.db_path, _VISUAL_SCHEMA)
-        self._failure_connections = ThreadOwnedConnections(self.db_path, _VISUAL_FAILURE_SCHEMA)
-
-    def answer_for(self, key: str) -> tuple[str, str] | None:
-        """Return a banked answer and its original provenance, if available."""
-        try:
-            with self._connections.connection() as conn:
-                row = conn.execute(
-                    "SELECT answer, original_provenance FROM visual_judgments WHERE key = ?",
-                    (key,),
-                ).fetchone()
-        except (OSError, sqlite3.Error) as exc:
-            logger.debug("Visual judgment cache unreadable (%s): asking again", exc)
-            return None
-        return (str(row[0]), str(row[1])) if row else None
-
-    def remember(self, key: str, answer: str, original_provenance: str) -> None:
-        """Bank a complete visual answer with the decision that first produced it."""
-        if not answer.strip():
-            return
-        try:
-            with self._connections.connection() as conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO visual_judgments (key, answer, original_provenance) "
-                    "VALUES (?, ?, ?)",
-                    (key, answer, original_provenance),
-                )
-                conn.commit()
-        except (OSError, sqlite3.Error) as exc:
-            logger.debug("Visual judgment cache unwritable (%s): answer not kept", exc)
-
-    def close(self) -> None:
-        """Release the connections; a later question quietly reopens."""
-        self._connections.close()
-        self._failure_connections.close()
-
-    def completion_failure_for(self, key: str) -> dict | None:
-        """Replay a typed bounded failure separately from complete visual answers."""
-        with self._failure_connections.connection() as connection:
-            row = connection.execute(
-                "SELECT record FROM visual_completion_failures WHERE key = ?", (key,)
-            ).fetchone()
-        if row is None:
-            return None
-        record = json.loads(row[0])
-        if not isinstance(record, dict):
-            raise ValueError("visual completion failure record is not an object")
-        return record
-
-    def remember_completion_failure(self, key: str, record: dict) -> None:
-        """Keep the caller's typed failure without treating it as usable visual evidence."""
-        with self._failure_connections.connection() as connection:
-            connection.execute(
-                "INSERT OR REPLACE INTO visual_completion_failures (key, record) VALUES (?, ?)",
-                (key, json.dumps(record)),
-            )
-            connection.commit()

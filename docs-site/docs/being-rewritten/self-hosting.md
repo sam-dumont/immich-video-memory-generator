@@ -26,16 +26,15 @@ loses is on [Running modes](./running-modes.md).
 | Piece | What it does | Listens on | Resident |
 |---|---|---|---|
 | The app | Talks to Immich, prepares facts, renders, serves the web UI | `8080` | 2 to 4 GB |
-| The reader (skip with `reader: rules`) | Reads the period as a story, weighs it, and is sent an 800 px tile of the few dozen candidates whose facts the edit asks about | wherever you serve it; oMLX defaults to `8000` | about 17 GB at 4-bit |
+| The reader (skip with `reader: rules`) | Reads the period as a story and weighs it, from text only: it is never sent a picture | wherever you serve it; oMLX defaults to `8000` | about 17 GB at 4-bit |
 | The caption server (`full` tier only) | One 140-token description per picture, once, then banked | `8092` by default | 1 to 2 GB |
 
 On the app's disk: the pinned 88 MB DINOv2-small ONNX encoder behind the eight context heads, and
 two CPU detectors (about 400 MB). One command fetches all of it.
 
-The reader must take images. Point a text-only model at it and you do not get a loud failure:
-every picture request comes back empty, is banked as a failure, and the edit carries on with
-`picture observations unavailable`. A finished video made without the evidence it asked for is
-worse than a stop.
+The reader reads text only, so a text-only model is enough. A model looks at each picture once,
+at ingest (the caption server and the heads above), and never again: the reader edits the film from
+what ingest banked.
 
 ## Before you start
 

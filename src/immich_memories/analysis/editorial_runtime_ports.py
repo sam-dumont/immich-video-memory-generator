@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
-from itertools import chain
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.catalogue_runtime import catalogue_requester
-from immich_memories.analysis.editorial_attached_outcomes import AttachedAttemptOutcomes
-from immich_memories.analysis.editorial_attached_samples import AttachedVideoSamples
-from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
-from immich_memories.analysis.editorial_final_attached import FinalAttachedPictures
 from immich_memories.analysis.editorial_preparation_motion import BankedMotionLines
 from immich_memories.analysis.editorial_source import (
     FullEditorialSource,
@@ -85,56 +78,6 @@ class EditorialRuntimePorts:
     ] = plan_structure
     structure_ports_factory: Callable[[StructurePlanningInput], StructurePlannerPorts] | None = None
     prepare_annotations: Callable[..., Any] | None = None
-
-
-def production_attached_pictures(source, *, cache_path, pictures, resources):
-    """Shared product/matrix composition; no client opens until selected material needs it."""
-    client = None
-
-    def fetch(video_id):
-        nonlocal client
-        if client is None:
-            from immich_memories.api.sync_client import SyncImmichClient
-
-            config = source.config.immich
-            client = SyncImmichClient(
-                base_url=config.url, api_key=config.api_key, api_version=config.api_version
-            )
-            resources.callback(client.close)
-        return client.get_video_playback(video_id)
-
-    scope = {
-        "case": asdict(source.case),
-        "intent": source.intent.prompt_block(),
-        "wall_sha256": hashlib.sha256(source.wall_bytes).hexdigest(),
-        "moments": list(source.moment_asset_ids.items()),
-        "primaries": [
-            (key, source_metadata_digest(asset)) for key, asset in sorted(source.assets.items())
-        ],
-        "companions": [
-            (key, source_metadata_digest(asset))
-            for key, asset in sorted(source.companion_assets.items())
-        ],
-        "allow_live_motion": source.allow_live_motion,
-        "audience": source.audience,
-    }
-    scope_key = hashlib.sha256(
-        json.dumps(scope, sort_keys=True, separators=(",", ":"), default=str).encode()
-    ).hexdigest()
-    outcomes = AttachedAttemptOutcomes(
-        output=source.artifact_dir,
-        scope={"input_key": scope_key},
-        replay=source.attached_outcome_replay,
-    )
-    samples = AttachedVideoSamples(
-        assets=source.assets,
-        allowed_ids=set(chain.from_iterable(source.moment_asset_ids.values())),
-        companion_assets=source.companion_assets,
-        cache_dir=cache_path.parent / "attached-material",
-        fetch_playback=fetch,
-        outcomes=outcomes,
-    )
-    return FinalAttachedPictures(samples, pictures), samples
 
 
 def production_story_motion(source, *, cache_path):

@@ -71,11 +71,9 @@ from immich_memories.analysis.editorial_structure_finishing import (
     PlanRun,
     announce_count,
     apply_audience_gate,
-    check_empty_attached,
     drop_filler_nothing_vouches_for,
     final_duplicate_review,
     held_by_gate,
-    observe_attached,
     replacement_offers,
     resolve_motion_and_timing,
     seat_again_after_review,
@@ -362,7 +360,7 @@ def _select(
     gate = AudienceGate(
         ports.judge,
         audience=source.audience,
-        picture_evidence=material.picture_evidence,
+        annotations=source.audience_annotations,
         flag_rows=source.shareability_flags,
         lines=source.annotations,
         bank_path=audit_dir / "shareability.private.json",
@@ -469,7 +467,6 @@ def _select(
             {"removed": sorted(required - {c["asset_id"] for c in run.carriers})},
         )
     resolve_motion_and_timing(run, source, ports)
-    attached, observed = observe_attached(run, ports, gate, material.picture_evidence, share_log)
     # The review protects the same people the seat counts: in a person film, the subject's own.
     close_of = film_close_family(source)
     final_duplicate_review(
@@ -500,7 +497,6 @@ def _select(
             held=held_by_gate(gate, unit_of),
         ),
     )
-    check_empty_attached(ports, observed)
     check_finished_cut(source, selection, material, run, gate, banked, share_log, record_story)
     return PlanOutcome(
         contract=contract,
@@ -517,9 +513,6 @@ def _select(
         motion_metrics=run.motion_metrics,
         selection_stages=run.selection_stages,
         evidence_partitions=evidence_partitions,
-        attached_evidence=attached,
-        attached_audience=run.attached_audience,
-        picture_facts=material.picture_evidence.records,
         calls=ports.judge.calls,
         ladder_reads=0,
         carriers_at_selection=carriers_at_selection,

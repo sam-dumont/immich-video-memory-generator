@@ -6,20 +6,15 @@ sidebar_label: "The reader: config and measurements"
 
 # The reader
 
-The reader is the model the editor hands a period to. It reads the annotation lines, writes the
-story, and asks for 800 px tiles of the pictures it cannot settle on paper. Any OpenAI-compatible or
-Anthropic-compatible endpoint goes in `llm`.
+The reader is the model the editor hands a period to. It reads the annotation lines and writes the
+story. It never sees a picture: a model looks at each picture once, at ingest (the caption model and
+the heads), and the reader edits from the text that ingest banked. Any OpenAI-compatible or
+Anthropic-compatible endpoint goes in `llm`, and a text-only model is enough.
 
 The three keys that have to be right: `base_url` (it defaults to `http://localhost:8080/v1`, which
 is the app's own port, so set it), `model` (the exact string the server reports at `GET /v1/models`)
 and `provider`. Every `llm:` key is in the
 [config reference](../reference/config-reference.md#llm-vision-model).
-
-:::warning The reader needs eyes
-The picture-facts stage posts 800 px JPEG tiles at quality 90. A text-only model will not do that
-pass, and the run does not degrade politely into one that can: each request comes back empty, is
-banked as a failure, and the edit finishes carrying `picture observations unavailable`.
-:::
 
 ## Providers and dialects
 
@@ -35,8 +30,7 @@ path, because z.ai serves both dialects on one host: `.../api/anthropic` gets `/
 the field at its default. `openai-compatible` fills in nothing. An explicit `base_url` always wins.
 
 The Messages API path is `POST {base_url}/v1/messages` with `x-api-key` and
-`anthropic-version: 2023-06-01`, the prompt and then the reader's tiles as base64 `image` blocks in
-one user message. Nothing about the app is Claude-specific: point `base_url` at whoever serves the
+`anthropic-version: 2023-06-01` and the prompt as one user message. Nothing about the app is Claude-specific: point `base_url` at whoever serves the
 dialect. Answers come back as a JSON envelope the app validates itself, and no provider-side JSON
 mode is used, so a host without one loses nothing.
 
@@ -279,8 +273,8 @@ the per-call record, and the summary rounds them at or above 1,000.
 `reasoning_effort` normally and returned HTTP 400 for every image it was sent
 (`code invalid_request_error, message 'The request was rejected as malformed.'`). 46 of those in one
 run, all inside the picture-facts loop, with the text calls around them returning 200. On the cluster,
-at `no_captions`, the same model did produce a cut, with no picture observations in it. A probe that
-sends only text does not reach this at all.
+at `no_captions`, the same model did produce a cut, with no picture observations in it. The reader
+is no longer sent a picture at all, so this refusal can no longer stop a run.
 
 **Prefill memory exhausted partway through.** A dense 31B on a local oMLX server stopped at call 91
 of its story-pick stage, 90 answers in, with

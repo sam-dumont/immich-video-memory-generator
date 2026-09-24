@@ -22,14 +22,6 @@ T = TypeVar("T")
 
 
 @dataclass(frozen=True)
-class TileRef:
-    """The stable entity represented by one global tile number."""
-
-    number: int
-    entity_id: str
-
-
-@dataclass(frozen=True)
 class ContactSheetPage:
     """The exact JPEG evidence that is both stored and attached to a request."""
 
@@ -37,7 +29,6 @@ class ContactSheetPage:
     path: Path
     jpeg_bytes: bytes
     sha256: str
-    tile_refs: tuple[TileRef, ...]
     layout_version: str
 
 
@@ -143,7 +134,6 @@ def build_contact_sheets(
                 path=path,
                 jpeg_bytes=jpeg_bytes,
                 sha256=sha256(jpeg_bytes).hexdigest(),
-                tile_refs=tuple(TileRef(number, tile.entity_id) for number, tile in numbered),
                 layout_version=LAYOUT_VERSION,
             )
         )

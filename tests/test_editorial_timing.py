@@ -1,6 +1,5 @@
 """A production title reserve must be fixed before Live intervals are inspected."""
 
-from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.config_loader import Config
@@ -24,7 +22,6 @@ from immich_memories.processing.editorial_timing import (
 from tests.conftest import make_asset, make_clip
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
-from tests.test_editorial_visual_body_audience import picture_record
 
 
 @pytest.fixture(autouse=True)
@@ -221,16 +218,8 @@ def test_existing_saved_timeline_cannot_mask_changed_configuration():
         prepare_certified_timeline(params)
 
 
-def _ports(inspect=None):
-    return StructurePlannerPorts(
-        judge=ControlledStoryJudge(),
-        thumbnail_hash=lambda _: None,
-        observe_picture=lambda _: {
-            **picture_record(),
-            "description": "A clothed person moves furniture.",
-        },
-        observe_attached_material=inspect,
-    )
+def _ports():
+    return StructurePlannerPorts(judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None)
 
 
 @pytest.mark.parametrize("titles", [False, True])
@@ -253,56 +242,7 @@ def test_actual_photo_planner_allocates_and_binds_finished_film_budget(tmp_path,
     assert sum(c["seconds"] for c in plan["carriers"]) == (49 if titles else 60)
 
 
-def test_actual_live_planner_freezes_timing_before_inspection_and_survives_cuts(tmp_path):
-    captured = replace(source(tmp_path, seconds=60, pictures=20), audience="sendable")
-    first_time = next(iter(captured.assets.values())).file_created_at
-    assets = {
-        key: asset.model_copy(
-            update={
-                "live_photo_video_id": f"video-{index}",
-                "file_created_at": first_time
-                + timedelta(seconds=(index // 2) * 600 + (index % 2) * 2),
-            }
-        )
-        for index, (key, asset) in enumerate(captured.assets.items())
-    }
-    policy = build_editorial_timing_policy(
-        config=captured.config, target_seconds=60, memory_type=captured.case.product
-    )
-    captured = replace(
-        captured,
-        assets=assets,
-        render_timing=policy,
-        companion_assets={
-            asset.live_photo_video_id: make_asset(asset.live_photo_video_id, duration=3.0)
-            for asset in assets.values()
-        },
-        motion_residuals={key: {"residual": 2.0} for key in assets},
-    )
-    observed = []
-
-    def inspect(carriers):
-        assert (
-            sum(row["seconds"] for row in carriers)
-            <= policy.resolve(carriers, assets).content_budget
-        )
-        observed.extend(deepcopy(carriers))
-        first = carriers[0]["asset_id"]
-        members = {first: ("bound-hold",)}
-        records = {"bound-hold": {**picture_record("yes"), "description": "An uncovered person."}}
-        return AttachedMaterialEvidence(members, members, records)
-
-    plan = plan_structure(captured, _ports(inspect)).plan
-    assert observed and all(row in observed for row in plan["carriers"])
-    assert len(plan["carriers"]) < len(observed)
-    assert plan["content_cap_seconds"] == policy.resolve(observed, assets).content_budget
-    timeline = read_editorial_timeline(plan["render_timing"])
-    assert timeline.content_budget == plan["content_cap_seconds"]
-    assert plan["render_timing"]["source_ids"] == [row["asset_id"] for row in plan["carriers"]]
-    assert plan["target_seconds"] == 60
-
-
-def test_impossible_render_budget_fails_before_attached_calls(tmp_path, monkeypatch):
+def test_an_impossible_render_budget_fails_before_the_cut_is_settled(tmp_path, monkeypatch):
     captured = source(tmp_path, seconds=60, pictures=6)
     first_time = next(iter(captured.assets.values())).file_created_at
     assets = {
@@ -335,7 +275,7 @@ def test_impossible_render_budget_fails_before_attached_calls(tmp_path, monkeypa
         motion_residuals={key: {"residual": 2.0} for key in assets},
     )
     with pytest.raises(ValueError, match="minimum content cannot fit"):
-        plan_structure(captured, _ports(lambda *_a: pytest.fail("sampled before fitting")))
+        plan_structure(captured, _ports())
 
 
 def test_a_carrier_the_timing_trim_cuts_says_why_on_the_selection_sheet(tmp_path):

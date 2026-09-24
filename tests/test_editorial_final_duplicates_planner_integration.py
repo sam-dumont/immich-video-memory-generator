@@ -12,7 +12,6 @@ from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.operations.cut_progress import announcing_stages
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
-from tests.test_editorial_visual_body_audience import picture_record
 
 # Cached previews no two of which are within the review's 6 bits.
 DISTINCT_PREVIEWS = (
@@ -27,7 +26,7 @@ def _distinct_preview(asset_id: str) -> str:
     return DISTINCT_PREVIEWS[int(asset_id.rsplit("-", 1)[1])]
 
 
-def test_a_film_with_a_model_loses_its_hash_twin_without_a_pair_read(tmp_path):
+def test_a_film_loses_its_hash_twin_without_a_pair_read(tmp_path):
     captured = source(tmp_path, seconds=24, pictures=4)
     previews = {
         "picture-000": "0000000000000000",
@@ -42,7 +41,6 @@ def test_a_film_with_a_model_loses_its_hash_twin_without_a_pair_read(tmp_path):
             StructurePlannerPorts(
                 judge=ControlledStoryJudge(),
                 thumbnail_hash=previews.get,
-                observe_picture=lambda _asset_id: picture_record(),
             ),
         ).plan
 
@@ -74,7 +72,6 @@ def test_two_pictures_that_hash_as_strangers_both_stay_when_nothing_else_says_on
         StructurePlannerPorts(
             judge=ControlledStoryJudge(),
             thumbnail_hash=far.get,
-            observe_picture=lambda _asset_id: picture_record(),
         ),
     ).plan
 

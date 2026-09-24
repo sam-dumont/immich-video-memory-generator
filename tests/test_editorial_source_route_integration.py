@@ -19,9 +19,33 @@ from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipelin
 from immich_memories.config_loader import Config
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import semantic_plan
-from tests.test_editorial_picture_facts import FACTS, fake_transport, preview, provider
 from tests.test_editorial_runtime import _create_annotation_store, _window
 from tests.test_editorial_source_route import photo
+
+
+def refuse_pictures(monkeypatch) -> list[int]:
+    """Every model request the run makes passes this one dispatch; a picture in one fails.
+
+    Pictures are read once, at ingest. A film-time request carrying one is a defect whatever
+    stage sent it, so the guard sits where every stage's request meets the wire. The list
+    holds how many pictures each request carried.
+    """
+    from immich_memories.analysis import llm_query
+
+    sent: list[int] = []
+    real = llm_query._dispatch
+
+    async def dispatch(prompt, llm_config, temperature, max_tokens, timeout, thinking, images, *a):
+        sent.append(len(images))
+        if images:
+            pytest.fail(f"a film-time request sent {len(images)} picture(s) to the reader")
+        return await real(
+            prompt, llm_config, temperature, max_tokens, timeout, thinking, images, *a
+        )
+
+    # WHY: the provider wire; this sees what would leave the machine and refuses pictures.
+    monkeypatch.setattr(llm_query, "_dispatch", dispatch)
+    return sent
 
 
 def setup_runtime(
@@ -44,10 +68,8 @@ def setup_runtime(
         if missing_store
         else {a.id: "A clothed person carries furniture during a move." for a in sources},
     )
-    from tests.test_editorial_picture_facts import config as observation_config
-
     config = Config(
-        llm=observation_config() if default_structure else {"model": "text-model"},
+        llm={"model": "text-model", "base_url": "http://localhost:9999/v1"},
         editorial={
             "enabled": True,
             "annotation_database": str(store),
@@ -61,17 +83,7 @@ def setup_runtime(
     calls = {"episode": [], "period": [], "acquire": []}
     judgments = {}
     captures = []
-    pictures = []
-    image_calls = fake_transport(
-        monkeypatch,
-        raw=json.dumps(
-            FACTS
-            | {
-                "subject_action": "A clothed person carries furniture.",
-                "clothing_exposure": "A shirt and trousers cover the person.",
-            }
-        ),
-    )
+    image_calls = refuse_pictures(monkeypatch)
     warm = [False]
 
     def episode(prompt):
@@ -97,18 +109,9 @@ def setup_runtime(
 
     def effects(source):
         captures.append(source)
-        reader = provider(
-            tmp_path,
-            read=lambda key: preview(
-                "#" + __import__("hashlib").sha256(key.encode()).hexdigest()[:6]
-            ),
-        )
-        pictures.append(reader)
         return StructurePlannerPorts(
             judge=ControlledStoryJudge(judgments, require_hits=warm[0]),
             thumbnail_hash=lambda _: None,
-            observe_picture=reader.observe,
-            picture_facts_metrics=reader.metrics,
         )
 
     def build():
@@ -133,13 +136,13 @@ def setup_runtime(
             ),
         )
 
-    return sources, config, build, calls, captures, pictures, image_calls, warm
+    return sources, config, build, calls, captures, image_calls, warm
 
 
 def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
     tmp_path, monkeypatch, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
 ):
-    sources, config, build, calls, captures, pictures, image_calls, warm = setup_runtime(
+    sources, config, build, calls, captures, image_calls, warm = setup_runtime(
         tmp_path, monkeypatch
     )
     native_plans = []
@@ -172,38 +175,23 @@ def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
     )
     assert attempt_status["duration_realization"] == native_plans[0]["duration_realization"]
     assert attempt_status["calls_by_stage"] == native_plans[0]["calls_by_stage"]
-    assert len(image_calls) >= len(cold.selected_clips)
-    assert set(native_plans[0]["picture_facts"]).issuperset(
-        clip.asset.id for clip in cold.selected_clips
-    )
-    assert all(row["status"] == "available" for row in native_plans[0]["picture_facts"].values())
-    for reader in pictures:
-        reader.close()
-    before = len(image_calls)
+    assert not any(image_calls), "no film-time request carries a picture"
+    assert "picture_facts" not in native_plans[0]
     warm[0] = True
-
-    def forbidden_transport(*_args, **_kwargs):
-        pytest.fail("warm picture observation escaped its exact bank")
-
-    monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", forbidden_transport)
     _, replay = run()
     assert semantic_plan(native_plans[1]) == semantic_plan(native_plans[0])
     assert replay.editorial_selections == cold.editorial_selections
     assert replay.clip_segments == cold.clip_segments
-    assert len(image_calls) == before
+    assert not any(image_calls)
     assert len(calls["episode"]) == 1
     assert not calls["period"]
     assert all(source.allow_live_motion for source in captures)
-    for reader in pictures:
-        reader.close()
 
 
 def test_requested_subset_uses_full_canonical_context_without_widening_selection(
     tmp_path, monkeypatch
 ):
-    sources, _config, build, calls, captures, pictures, _images, _warm = setup_runtime(
-        tmp_path, monkeypatch
-    )
+    sources, _config, build, calls, captures, _images, _warm = setup_runtime(tmp_path, monkeypatch)
     requested = sources[::2]
     result = build().plan_source(requested, trace=Trace(), include_live_photos=False)
     assert {row.clip.asset.id for row in result.candidates} == {a.id for a in requested}
@@ -215,8 +203,6 @@ def test_requested_subset_uses_full_canonical_context_without_widening_selection
     assert not captures[0].allow_live_motion
     assert captures[0].lineage["render_policy"] == {"allow_live_motion": False}
     assert len(calls["acquire"]) == 1
-    for reader in pictures:
-        reader.close()
 
 
 def test_empty_native_cut_does_not_claim_the_library_was_exhausted(tmp_path, monkeypatch):
@@ -252,9 +238,7 @@ def test_empty_native_cut_does_not_claim_the_library_was_exhausted(tmp_path, mon
 
 
 def test_unavailable_canonical_evidence_does_not_trigger_legacy_selection(tmp_path, monkeypatch):
-    sources, _config, build, calls, _captures, pictures, _images, _warm = setup_runtime(
-        tmp_path, monkeypatch
-    )
+    sources, _config, build, calls, _captures, _images, _warm = setup_runtime(tmp_path, monkeypatch)
     planner = build()
     # A missing required table is a real unavailable native fact snapshot.
     import sqlite3
@@ -267,4 +251,18 @@ def test_unavailable_canonical_evidence_does_not_trigger_legacy_selection(tmp_pa
         planner.plan_source(sources, trace=Trace())
     assert planner._backend.last_structure_result is None
     assert not calls["episode"] and not calls["period"]
-    assert not pictures
+
+
+def test_the_picture_guard_refuses_a_request_that_carries_one(monkeypatch):
+    """The guard the film tests stand on trips on a picture, so their silence means something."""
+    import asyncio
+
+    from immich_memories.analysis.llm_query import query_llm
+    from immich_memories.config_models_llm import LLMConfig
+
+    sent = refuse_pictures(monkeypatch)
+    config = LLMConfig(model="reader", base_url="http://127.0.0.1:9/v1")
+
+    with pytest.raises(pytest.fail.Exception, match="sent 1 picture"):
+        asyncio.run(query_llm("Describe this.", config, images=(b"\xff\xd8\xff",)))
+    assert sent == [1]

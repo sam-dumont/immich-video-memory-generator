@@ -1,11 +1,9 @@
-"""What the audience reader is shown, and what a direct body observation stops."""
+"""What the audience reader is shown: the caption, the heads and the flags ingest banked."""
 
 from __future__ import annotations
 
-import pytest
-
 from immich_memories.analysis import editorial_shareability as share
-from tests.test_editorial_audience_check import Annotation, evidence_of, observed
+from tests.test_editorial_audience_check import Annotation, Judge, evidence_of, finding
 
 
 def test_every_rendered_member_becomes_its_own_numbered_evidence_row():
@@ -64,33 +62,6 @@ def test_an_owner_clearance_on_the_companion_itself_removes_its_warning():
     assert "companion_body_warnings" not in evidence
 
 
-def test_a_bound_positive_observation_stops_acquisition_without_clearing_the_rest():
-    unit = {"asset_id": "first", "members": ["first", "second"], "kind": "live_photo"}
-    records = {"first": observed("yes")}
-
-    hold = share.terminal_body_hold(unit, records, "first")
-
-    assert hold["verdict"] == "family_only"
-    assert hold["finding"] == "nudity_shirtless_or_underwear"
-    assert hold["acquisition_stop"]["witness_member"] == "p1"
-    assert hold["acquisition_stop"]["unobserved_members"] == ["p2"]
-    assert "no clearance of other members" in hold["acquisition_stop"]["evidence_scope"]
-
-
-@pytest.mark.parametrize(
-    "witness,records",
-    [
-        ("outsider", {"outsider": observed("yes")}),
-        ("first", {"first": observed("no")}),
-        ("first", {}),
-    ],
-)
-def test_nothing_but_a_bound_positive_stops_acquisition(witness, records):
-    unit = {"asset_id": "first", "members": ["first", "second"]}
-
-    assert share.terminal_body_hold(unit, records, witness) is None
-
-
 def test_the_request_identity_follows_the_evidence_and_the_policy_it_was_asked_under(monkeypatch):
     evidence = evidence_of(
         {"asset_id": "solo", "members": ["solo"]}, {"solo": Annotation("A person walking.")}
@@ -104,3 +75,28 @@ def test_the_request_identity_follows_the_evidence_and_the_policy_it_was_asked_u
 
     monkeypatch.setattr(share, "AUDIENCE_PROMPT_VERSION", "future-audience-policy")
     assert share.audience_check_key(evidence) != original
+
+
+def test_no_member_carries_a_picture_observation_only_ingest_facts():
+    unit = {"asset_id": "still", "members": ["still"], "video_ids": ["motion"]}
+    evidence = evidence_of(
+        unit,
+        {"still": Annotation("A person at the seaside.", (("uncovered_person", "no"),))},
+    )
+
+    assert set(evidence["members"][0]) == {"member", "caption", "detectors", "flags"}
+
+
+def test_a_clip_the_exposure_head_flagged_holds_its_still_whatever_the_reader_says():
+    unit = {"asset_id": "still", "members": ["still"], "video_ids": ["motion"]}
+    evidence = share.evidence_for_unit(
+        unit,
+        {"still": Annotation("A fully clothed family waves.")},
+        {},
+        {},
+        companion_heads={"motion": {"nsfw_marqo": "yes"}},
+    )
+
+    result = share.check_audience(Judge([finding("none")]), evidence, "unit-1")
+
+    assert result["verdict"] == "family_only"

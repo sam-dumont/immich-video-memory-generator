@@ -1,18 +1,29 @@
-"""The real runtime preview/hash/facts path fetches only actual native demands."""
+"""The runtime fetches only the previews a cut demands, and never sends one to a model."""
+
+import dataclasses
+import io
 
 import pytest
+from PIL import Image
 
 from immich_memories.analysis.editorial_demanded_previews import DemandedPreviewReader
-from immich_memories.analysis.editorial_structure_contract import StructurePlanningResult
+from immich_memories.analysis.editorial_structure_contract import (
+    StructurePlannerPorts,
+    StructurePlanningResult,
+)
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.cache.thumbnail_cache import ThumbnailCache
-from tests.test_editorial_picture_facts import preview
 from tests.test_editorial_source_route_integration import setup_runtime
 
 
-def test_default_runtime_shares_hash_and_picture_preview_then_replays_without_http(
-    tmp_path, monkeypatch
-):
+def preview(color="blue"):
+    image = Image.new("RGB", (920, 630), color)
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def test_default_runtime_hashes_demanded_previews_then_replays_without_http(tmp_path, monkeypatch):
     cache = ThumbnailCache(tmp_path / "previews")
     fetched, returned = [], []
     payload = preview("blue")
@@ -22,23 +33,11 @@ def test_default_runtime_shares_hash_and_picture_preview_then_replays_without_ht
         return payload
 
     def native(source, effects):
-        # Native hash and factual acquisition are independent demands. Both
-        # reach the actual production callbacks; no effects factory override.
         ids = sorted({key for values in source.moment_asset_ids.values() for key in values})
         measured = effects.thumbnail_hash(ids[0])
         assert measured is not None
-        facts = effects.observe_picture(ids[0])
-        other = effects.observe_picture(ids[1])
         assert effects.thumbnail_hash(ids[1]) == measured
-        assert effects.observe_picture(ids[0]) == facts
-        returned.append(
-            {
-                "hash": measured,
-                "facts": facts,
-                "other": other,
-                "metrics": effects.picture_facts_metrics(),
-            }
-        )
+        returned.append({"hash": measured, "metrics": effects.thumbnail_metrics()})
         return StructurePlanningResult(
             {
                 "carriers": [
@@ -55,34 +54,25 @@ def test_default_runtime_shares_hash_and_picture_preview_then_replays_without_ht
             {},
         )
 
-    sources, _, build, _, _, _, image_calls, warm = setup_runtime(
+    sources, _, build, _, _, image_calls, warm = setup_runtime(
         tmp_path, monkeypatch, default_structure=native, thumbnail_cache=cache, fetch_preview=fetch
     )
     first = build().plan_source(sources, trace=Trace())
     assert fetched == ["p-00", "p-01"]
-    assert len(image_calls) == 2  # Native per-source observation identities remain separate.
-    assert returned[0]["facts"]["status"] == returned[0]["other"]["status"] == "available"
     metrics = returned[0]["metrics"]["preview_acquisition"]
     assert metrics["fetch_attempts"] == 2 and metrics["download_bytes"] == 2 * len(payload)
     assert metrics["fetch_seconds"] >= 0 and metrics["unavailable"] == 0
     assert cache.get("p-02", "preview") is None
     warm[0] = True
 
-    def forbidden(*_args, **_kwargs):
-        pytest.fail("warm acquisition reached external transport")
-
-    monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", forbidden)
-    # A new runtime uses persistent positive preview and exact producer banks.
     second = build().plan_source(sources, trace=Trace())
     assert fetched == ["p-00", "p-01"]
     assert second.plan == first.plan
-    assert {key: returned[0][key] for key in ("hash", "facts", "other")} == {
-        key: returned[1][key] for key in ("hash", "facts", "other")
-    }
+    assert returned[1]["hash"] == returned[0]["hash"]
     metrics = returned[1]["metrics"]["preview_acquisition"]
     assert metrics["fetch_attempts"] == metrics["download_bytes"] == 0
     assert metrics["cache_hits"] == 2
-    assert returned[1]["metrics"]["http_attempts"] == 0
+    assert not any(image_calls)
 
 
 @pytest.mark.parametrize("failure", [None, b"not an image", OSError("offline")])
@@ -101,26 +91,22 @@ def test_default_runtime_missing_preview_is_unavailable_and_retries_only_in_fres
     def native(source, effects):
         key = next(iter(source.moment_asset_ids.values()))[0]
         assert effects.thumbnail_hash(key) is None
-        facts = effects.observe_picture(key)
-        assert facts["status"] == "unavailable"
-        assert effects.observe_picture(key) == facts
         assert effects.thumbnail_hash(key) is None
-        seen.append(effects.picture_facts_metrics())
+        seen.append(effects.thumbnail_metrics())
         return StructurePlanningResult(
             {"carriers": [], "status": "insufficient_material"}, "", "", {}
         )
 
-    sources, _, build, _, _, _, image_calls, _ = setup_runtime(
+    sources, _, build, _, _, image_calls, _ = setup_runtime(
         tmp_path, monkeypatch, default_structure=native, thumbnail_cache=cache, fetch_preview=fetch
     )
     result = build().plan_source(sources, trace=Trace())
     assert not result.plan.selections
-    assert len(fetched) == 1 and not image_calls
+    assert len(fetched) == 1 and not any(image_calls)
     assert seen[0]["preview_acquisition"]["unavailable"] == 1
     assert cache.get(fetched[0], "preview") is None
     build().plan_source(sources, trace=Trace())
     assert len(fetched) == 2  # No permanent negative media fact is fabricated.
-    assert not image_calls
 
 
 def test_reader_rejects_uncaptured_source_before_fetch(tmp_path):
@@ -135,13 +121,19 @@ def test_reader_rejects_uncaptured_source_before_fetch(tmp_path):
     assert not fetched
 
 
-def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
-    tmp_path, monkeypatch
-):
-    import io
-    import random
+def test_no_planner_port_can_carry_a_picture_to_a_model():
+    """The ports a film is planned through hold hashes, prints and text readers, nothing that
+    observes a picture: pictures are read once, at ingest."""
+    names = {field.name for field in dataclasses.fields(StructurePlannerPorts)}
 
-    from PIL import Image
+    assert not {name for name in names if "observe_picture" in name or "attached" in name}
+    assert not {name for name in names if "picture_facts" in name or "pairs" in name}
+
+
+def test_a_model_film_sends_no_picture_to_any_model_cold_or_warm(tmp_path, monkeypatch):
+    """The production model-tier route, end to end over real previews: every request that
+    reaches the wire is checked, and none carries a picture."""
+    import random
 
     from immich_memories.analysis.editorial_structure_planner import plan_structure
     from tests.editorial_story_fixtures import ControlledStoryJudge
@@ -162,6 +154,7 @@ def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
         image.save(output, "JPEG")
         return output.getvalue()
 
+    # WHY: the text reader's provider; it answers from a script and is text by construction.
     monkeypatch.setattr(
         "immich_memories.analysis.editorial_runtime_backend.StructureTextJudge",
         lambda *_args, **_kwargs: ControlledStoryJudge(judgments, require_hits=replay[0]),
@@ -172,7 +165,7 @@ def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
         native.append(result.plan)
         return result
 
-    sources, _, build, _, _, _, images, warm = setup_runtime(
+    sources, _, build, _, _, images, warm = setup_runtime(
         tmp_path,
         monkeypatch,
         default_structure=run_native,
@@ -182,18 +175,12 @@ def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
     cold = build().plan_source(sources, trace=Trace())
     assert cold.plan.selected_asset_ids
     assert len(fetched) == len(set(fetched)) == len(sources)
-    assert len(images) >= len(cold.plan.selected_asset_ids)
-    before = len(images)
+    assert not any(images)
+    assert "picture_facts" not in native[0]
     warm[0] = replay[0] = True
 
-    def forbidden(*_args, **_kwargs):
-        pytest.fail("exact native warm reached picture transport")
-
-    monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", forbidden)
     repeated = build().plan_source(sources, trace=Trace())
     assert repeated.plan == cold.plan
-    # Cache transport counters differ; the decisions must not.
     assert semantic_plan(native[1]) == semantic_plan(native[0])
-    assert native[1]["picture_facts_metrics"]["inference_calls"] == 0
-    assert len(images) == before
+    assert not any(images)
     assert len(fetched) == len(sources)

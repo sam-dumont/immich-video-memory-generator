@@ -336,8 +336,7 @@ def main() -> int:
         if undecodable is not None:
             vid, error = undecodable
             lines.append(
-                f"| {slug} ({city}) | {len(burst)} | decode failed for {vid[:8]}: {error} "
-                f"| | | | |"
+                f"| {slug} ({city}) | {len(burst)} | decode failed for {vid[:8]}: {error} | | | | |"
             )
             continue
         durations = [len(frames[a["livePhotoVideoId"]]) / PROBE_FPS for a in burst]

@@ -1,13 +1,13 @@
-"""Probe a reader's image and text contracts, cost and latency before a full cell.
+"""Probe a reader's text contracts, cost and latency before a full cell.
 
-A reader can return HTTP 200 and no usable answer, reject its first image, or
-answer correctly at an unacceptable cost. Send a real picture first, followed
-by an episode read and story pick using the production contracts.
-Then project the library's call envelope against its time and cost ceilings.
+A reader can return HTTP 200 and no usable answer, or answer correctly at an
+unacceptable cost. Send an episode read and a story pick using the production
+contracts, then project the library's call envelope against its time and cost
+ceilings. The reader is never sent a picture: pictures are read once, at ingest.
 
 One call per shape, deliberately. The stages wrap `query_llm` in a retry that
 doubles the budget or repairs the JSON; a probe wants the first answer, not the
-recovered one. Stop on the first failed shape, with at most three shapes per cell.
+recovered one. Stop on the first failed shape.
 
     uv run python scripts/setup_matrix_probe_readers.py --cell mac-hosted-openai-luna
     uv run python scripts/setup_matrix.py --probe-readers-only --lane mac
@@ -40,7 +40,6 @@ from setup_matrix_plan import (  # noqa: E402
     reads_with_a_model,
 )
 
-from immich_memories.analysis import editorial_picture_facts as picture_facts  # noqa: E402
 from immich_memories.analysis.editorial_json_completion import complete_final_json  # noqa: E402
 from immich_memories.analysis.editorial_story_pick_contract import _read_pick  # noqa: E402
 from immich_memories.analysis.llm_providers import (  # noqa: E402
@@ -61,7 +60,6 @@ from immich_memories.config_loader import Config  # noqa: E402
 from immich_memories.store.episode_readings import EpisodeReadingIdentity  # noqa: E402
 
 PROMPTS = Path(__file__).resolve().parent / "reader_probe_prompts"
-PROBE_PICTURE = PROMPTS.parent.parent / "tests/e2e/fixtures/library/home-football-lawn-01.jpg"
 # The moment grant the recorded story pick was asked under; the contract reads
 # `unused_slots` against it, so a different number would reject a valid answer.
 STORY_PICK_SLOTS = 8
@@ -159,17 +157,7 @@ def _story_pick_verdict(raw: str, prompt: str) -> str:
     return f"ok ({len(kept)} kept, {unused} unused)"
 
 
-def _picture_verdict(raw: str, _prompt: str) -> str:
-    record = picture_facts._read_facts(raw)
-    return (
-        "ok (picture facts read)"
-        if record["status"] == "available"
-        else "parser: invalid picture facts"
-    )
-
-
 SHAPES = (
-    ("picture-facts", None, picture_facts.MAX_OUTPUT_TOKENS, True, _picture_verdict),
     ("episodes", "episodes.txt", TEXT_EPISODE_MAX_OUTPUT_TOKENS, True, _episode_verdict),
     ("story-pick", "story-pick.txt", STORY_PICK_MAX_TOKENS, False, _story_pick_verdict),
 )
@@ -202,9 +190,7 @@ class _Billing:
         self._watch(attempt)
 
 
-def _ask(
-    prompt: str, config, *, max_tokens: int, require_complete: bool, billing, images=()
-) -> str:
+def _ask(prompt: str, config, *, max_tokens: int, require_complete: bool, billing) -> str:
     return asyncio.run(
         query_llm(
             prompt,
@@ -216,16 +202,13 @@ def _ask(
             cache_path=None,
             transport_observer=billing,
             require_complete=require_complete,
-            images=images,
-            image_detail="high",
         )
     )
 
 
 def probe_shape(shape, config, *, reader: str, pricing: dict) -> ShapeResult:
     name, filename, max_tokens, require_complete, verdict_of = shape
-    prompt = (PROMPTS / filename).read_text() if filename else picture_facts.PROMPT
-    images = () if filename else (picture_facts.picture_tile(PROBE_PICTURE.read_bytes()),)
+    prompt = (PROMPTS / filename).read_text()
     billing = _Billing(config)
     started = time.monotonic()
     failure = ""
@@ -237,7 +220,6 @@ def probe_shape(shape, config, *, reader: str, pricing: dict) -> ShapeResult:
             max_tokens=max_tokens,
             require_complete=require_complete,
             billing=billing,
-            images=images,
         )
     except Exception as exc:  # The probe reports every refusal rather than raising one.
         failure = f"transport: {type(exc).__name__}: {str(exc).strip()[:200]}"

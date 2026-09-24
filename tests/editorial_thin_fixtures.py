@@ -76,23 +76,6 @@ def _finding(text: str) -> dict[str, str]:
     return {"finding": "bathing" if PRIVATE in text else "none", "why": "what the caption says"}
 
 
-class PictureEvidence:
-    """# WHY: the production overlay reads preview observations from Immich; captions here are
-    the evidence, exactly as a picture with no observation yet is judged."""
-
-    records: dict = {}
-    annotations: dict = {}
-
-    def __init__(self, lines) -> None:
-        self._lines = lines
-
-    def enrich(self, _unit, stop_on_body_yes=False):
-        return None
-
-    def line(self, unit):
-        return self._lines[unit["asset_id"]]
-
-
 class Film:
     """A draft of shots, each in a story, with the pictures each story could offer a seat."""
 
@@ -168,7 +151,7 @@ def polish(tmp_path, film: Film, *, audience_batch: int = 12, short=None, room: 
     audience = AudienceGate(
         judge,
         audience="family",
-        picture_evidence=PictureEvidence(film.lines),
+        annotations={},
         flag_rows={},
         lines=film.lines,
         bank_path=tmp_path / "shareability.private.json",

@@ -8,7 +8,7 @@ import re
 import pytest
 
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
-from tests.editorial_thin_fixtures import PRIVATE, CountingJudge, PictureEvidence
+from tests.editorial_thin_fixtures import PRIVATE, CountingJudge
 
 
 def carriers(count: int, private=()):
@@ -27,7 +27,7 @@ def gate(tmp_path, judge, lines, library=None):
     return AudienceGate(
         judge,
         audience="family",
-        picture_evidence=PictureEvidence(lines),
+        annotations={},
         flag_rows={},
         lines=lines,
         bank_path=tmp_path / "shareability.private.json",

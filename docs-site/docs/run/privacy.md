@@ -21,10 +21,10 @@ you find a call that is not here,
 | `server.arcgisonline.com` (World Imagery) | only with `network.map_tiles: true`: the trip fly-over, the static trip map, the background of location cards | tile requests covering the trip area and your home base | off by default |
 | `raw.githubusercontent.com` (Noto fonts) | only when you run `titles fonts --install`, and while the Docker image is built; never during a render | nothing about your library: 42 font files, 43 MB, each checked against a pinned SHA-256 | don't run it: titles then draw what the wheel carries |
 | `editorial.preparation.caption_base_url` | the first cut over a period, `full` tier | a 400 px JPEG of every eligible picture, once; a strip of three keyframes of every video, and of every Live Photo whose motion plays, once; a `/models` probe; and `caption_api_key` as a bearer token when one is set | `tier: no_captions`, or a server on your own network (default `localhost:8092`) |
-| `llm.base_url` | the reader | 800 px tiles of a few dozen candidates and their annotation lines, which carry people and place names, plus the names of the Immich albums holding each episode's pictures | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
+| `llm.base_url` | the reader | text only: the annotation lines of the candidates, which carry people and place names, plus the names of the Immich albums holding each episode's pictures. Never a picture | `reader: rules`, or a local model (default `localhost:8080`, the app's own port, so set it) |
 | `llm.base_url` | the opening title of a people or occasion memory, by default whenever a reader is configured (both the wizard and the CLI); trips only with `--llm-title` | text, no images: first names, birth dates and ages, the relationships your people file records between the people in the film, the people condition, the span, place names, the catalogue's words, the name of the Immich album most of the cut sits in (never a catch-all out of proportion to the film), and the clip descriptions on the trip path | `--no-llm-title`, `--title` of your own, or no reader configured |
-| `api.anthropic.com` | the reader, with `provider: anthropic` and no `base_url` of your own | the same tiles and lines, to Anthropic | name a host of your own in `llm.base_url` |
-| `api.z.ai` | the reader, with `provider: zai` and no `base_url` of your own | the same tiles and lines, to z.ai | name a host of your own in `llm.base_url` |
+| `api.anthropic.com` | the reader, with `provider: anthropic` and no `base_url` of your own | the same lines, to Anthropic | name a host of your own in `llm.base_url` |
+| `api.z.ai` | the reader, with `provider: zai` and no `base_url` of your own | the same lines, to z.ai | name a host of your own in `llm.base_url` |
 | `advanced.inference.facts_base_url` | preparation, when set | each picture's preview, for the heads and detectors | leave it unset: the app runs them itself |
 | `ace_step.api_url`, `musicgen.base_url` | AI music through a remote API | mood, tempo, genre text; MusicGen also uploads the generated track for stem separation | `ace_step.mode: lib`, your own file with `--music`, or `--no-music` |
 | `llm.base_url` | automatic music selection and music preview, when cut text and a model are available | the saved cut's thesis, ordered story labels and prepared captions for kept pictures; no images | your own track, `--no-music`, or a local text model |
@@ -38,14 +38,17 @@ Three provider names fill in a vendor URL when `llm.base_url` is left at its def
 provider is named. `preflight` asks that URL for its model list, and sends one small test call when
 the host does not publish one.
 
-## The two picture seats
+## The one picture seat
 
 | Seat | Setting | What it is shown |
 |---|---|---|
-| reader | `llm.base_url` | 800 px tiles of stills, the annotation lines beside them with the names of people and places, and the album names your library gives those pictures. No video frames: what a video shows reaches it as the captioner's banked sentence |
 | captioner | `editorial.preparation.caption_base_url` | 400 px tiles, a 960 × 320 strip of three keyframes per video, no metadata, and `caption_api_key` if set |
 
-Both default to this machine. Pointing either at another host (a box on your LAN, a container, a
+A model looks at a picture once, at ingest: the captioner above, plus the heads and detectors,
+which run in the app or on `advanced.inference.facts_base_url`. After that, no model looks at a
+picture again. The reader edits the film from the text that ingest banked, on every tier.
+
+It defaults to this machine. Pointing it at another host (a box on your LAN, a container, a
 hosted endpoint) is the consent step: those bytes go onto its disk and into its logs, and nothing
 asks a second time.
 

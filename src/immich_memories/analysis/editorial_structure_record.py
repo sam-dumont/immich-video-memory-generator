@@ -148,9 +148,6 @@ class PlanOutcome:
     motion_metrics: dict
     selection_stages: dict
     evidence_partitions: set[str]
-    attached_evidence: Any
-    attached_audience: dict
-    picture_facts: Mapping[str, Any]
     calls: list
     ladder_reads: int
     carriers_at_selection: int
@@ -293,13 +290,6 @@ def _plan_dict(source, ports, facts: PlanFacts, outcome: PlanOutcome, judged) ->
             for f in facts.fam_ids
             if facts.period_people[f]
         },
-        "picture_facts": outcome.picture_facts,
-        "attached_picture_facts": dict(outcome.attached_evidence.records),
-        "attached_sample_members": dict(outcome.attached_evidence.observed_members),
-        "attached_sample_gaps": dict(outcome.attached_evidence.gaps),
-        "attached_sample_audience": outcome.attached_audience,
-        "attached_material_metrics": _optional_metrics(ports.attached_material_metrics),
-        "picture_facts_metrics": _optional_metrics(ports.picture_facts_metrics),
         "story_motion_facts": _optional_metrics(ports.story_motion_metrics),
         "shareability": outcome.share_log,
         "carrier_source_exclusions": {
