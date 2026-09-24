@@ -143,8 +143,11 @@ English. Country names are translated offline (CLDR, through babel) wherever a v
 the trip title, the clip overlays, the map pin labels and the location cards. A French film says
 `DEUX SEMAINES À ESPAGNE`, not `À SPAIN`.
 
-City names have no offline table. They stay as Immich stored them unless `network.geocoding: true`
-lets Nominatim answer in the film's language, one request per distinct place on the cut. See
+The islands and regions a trip is named after have a short offline table too (`Crète`,
+`Pouilles`, `Majorque`, `Saxe`), and two regions are joined in the film's language
+(`Utah et Nevada`). City names have no offline table. They stay as Immich stored them unless
+`network.geocoding: true` lets Nominatim answer in the film's language, one request per distinct
+place on the cut. See
 [Network & Privacy](../deploy/configuration/network-and-privacy.md#geocoding-and-maps).
 
 ### Trip titles and classification

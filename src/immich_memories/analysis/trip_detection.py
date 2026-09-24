@@ -14,12 +14,17 @@ from datetime import date
 from geopy.exc import GeopyError
 from geopy.geocoders import Nominatim
 
+from immich_memories.analysis.trip_place import trip_place
 from immich_memories.api.models import Asset
+from immich_memories.place_names import short_place_name
 
 logger = logging.getLogger(__name__)
 
 # (latitude, longitude, spread_km) -> a place name, or None when it has none.
 Geocoder = Callable[..., "str | None"]
+
+# The scales a single reverse-geocoded point can name.
+_GEOCODER_SCALES = frozenset({"city", "region"})
 
 
 @dataclass
@@ -165,10 +170,25 @@ def geocoder_for(*, enabled: bool, language: str = "en") -> Geocoder | None:
     return functools.partial(reverse_geocode, language=language)
 
 
+# Below this spread a trip fits one town, and the geocoder names the town.
+_CITY_SPREAD_KM = 25.0
+_CITY_KEYS = ("city", "town", "village")
+# Never "county": in some countries it is a regional unit with no name in the
+# film's language ("Περιφερειακή Ενότητα Ρεθύμνης" for a Crete trip).
+_REGION_KEYS = ("island", "state", "state_district", "province")
+
+
+def _place_at_scale(address: dict, spread_km: float | None) -> str | None:
+    keys: tuple[str, ...] = _REGION_KEYS
+    if spread_km is not None and spread_km < _CITY_SPREAD_KM:
+        keys = _CITY_KEYS + _REGION_KEYS
+    return next((name for key in keys if (name := short_place_name(address.get(key)))), None)
+
+
 def reverse_geocode(
     lat: float, lon: float, spread_km: float | None = None, *, language: str = "en"
 ) -> str | None:
-    """Reverse geocode to most specific name. spread_km kept for API compat."""
+    """The trip's place at its scale: the town under `_CITY_SPREAD_KM`, else the region."""
     try:
         geolocator = Nominatim(user_agent="immich-memories")
         location = geolocator.reverse(f"{lat}, {lon}", zoom=10, language=language)
@@ -176,17 +196,11 @@ def reverse_geocode(
             return None
         addr = location.raw.get("address", {})
         country = addr.get("country")
-        region = (
-            addr.get("island")
-            or addr.get("county")
-            or addr.get("province")
-            or addr.get("state_district")
-            or addr.get("state")
-        )
-        if region and country:
-            if region == country:  # Avoid "Cyprus, Cyprus"
+        place = _place_at_scale(addr, spread_km)
+        if place and country:
+            if place == country:  # Avoid "Cyprus, Cyprus"
                 return country
-            return f"{region}, {country}"
+            return f"{place}, {country}"
         return None
     except (GeopyError, OSError, ValueError) as e:
         # GeopyError as well as OSError: only GeocoderTimedOut and
@@ -195,30 +209,6 @@ def reverse_geocode(
         # declines — which used to travel out of a twenty-year scan.
         logger.debug("Reverse geocoding failed for (%s, %s): %s", lat, lon, e)
     return None
-
-
-def _extract_unique_countries(assets: list[Asset]) -> list[str]:
-    """Extract unique country names from EXIF, ordered by first appearance."""
-    seen: set[str] = set()
-    result: list[str] = []
-    for a in assets:
-        c = a.exif_info.country if a.exif_info else None
-        if c and c not in seen:
-            seen.add(c)
-            result.append(c)
-    return result
-
-
-def _get_dominant_country(assets: list[Asset], threshold: float = 0.9) -> str | None:
-    """Return the country name if it accounts for >= threshold of tagged assets."""
-    counts: Counter[str] = Counter(
-        a.exif_info.country for a in assets if a.exif_info and a.exif_info.country
-    )
-    total = sum(counts.values())
-    if total == 0:
-        return None
-    top, cnt = counts.most_common(1)[0]
-    return top if cnt / total >= threshold else None
 
 
 def _compute_spread_km(assets: list[Asset]) -> float:
@@ -251,36 +241,24 @@ def _derive_location_name(
     centroid_lon: float | None = None,
     geocoder: Geocoder | None = None,
 ) -> str:
-    """Derive a human-readable location name, preferring an allowed geocoder."""
-    spread_km = _compute_spread_km(assets)
+    """The trip's name at the scale its pictures cover (see `trip_place`).
 
-    if spread_km > 300:
-        countries = _extract_unique_countries(assets)
-        if len(countries) > 1:
-            dominant = _get_dominant_country(assets, threshold=0.9)
-            if dominant:
-                return dominant
-            return " → ".join(countries)
-
-    if geocoder is not None and centroid_lat is not None and centroid_lon is not None:
-        geocoded = geocoder(centroid_lat, centroid_lon, spread_km=spread_km)
+    An allowed geocoder only speaks where one point can: a trip that fits a
+    city or a region. It knows the film's language, which is what it buys;
+    an island, two regions or a country come from the pictures themselves.
+    """
+    place = trip_place(assets)
+    geocodable = place is None or place.scale in _GEOCODER_SCALES
+    if (
+        geocodable
+        and geocoder is not None
+        and centroid_lat is not None
+        and centroid_lon is not None
+    ):
+        geocoded = geocoder(centroid_lat, centroid_lon, spread_km=_compute_spread_km(assets))
         if geocoded:
             return geocoded
-
-    pairs: list[tuple[str | None, str | None]] = [
-        (a.exif_info.city, a.exif_info.country) for a in assets if a.exif_info
-    ]
-
-    if not pairs:
-        return "Unknown Location"
-
-    counter: Counter[tuple[str | None, str | None]] = Counter(pairs)
-    city, country = counter.most_common(1)[0][0]
-
-    if city and country:
-        return f"{city}, {country}"
-    if country:
-        return country
-    if city:
-        return city
-    return "Unknown Location"
+    if place is not None:
+        return place.name
+    cities = Counter(a.exif_info.city for a in assets if a.exif_info and a.exif_info.city)
+    return cities.most_common(1)[0][0] if cities else "Unknown Location"

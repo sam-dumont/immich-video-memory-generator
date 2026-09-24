@@ -77,11 +77,12 @@ on the locale as well as the coordinate. Only clips that already show a place ar
 home and the neighbourhoods you see every week are never sent. The library is never geocoded: a cut
 is tens of clips.
 
-It buys two things. Trip names that read like places rather than like EXIF tags, and city names in
-the film's language. Country names are translated offline whatever this switch says, so a French
-film already says "Chypre" instead of "Cyprus"; what the switch adds is "Nicosie" instead of
-"Nicosia". With it off, names come from the city and country Immich already stored, which are
-always English.
+It buys one thing: city and region names in the film's language. Trips are named at the right
+scale either way, from the city, region and country Immich already stored (see
+[trip naming](../../create/memory-types.mdx#trip)), and country names plus the islands and regions
+in the offline table are translated whatever this switch says, so a French film already says
+"Chypre" and "Crète". What the switch adds is "Nicosie" instead of "Nicosia". With it off, city
+names stay as Immich stored them, which is English.
 
 The automation trip detector is a trigger too: a nightly `auto run` that finds trips geocodes them
 the same way a `--memory-type trip` run does.
