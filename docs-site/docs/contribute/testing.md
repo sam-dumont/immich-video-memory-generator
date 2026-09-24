@@ -47,7 +47,7 @@ does, on every PR, for both majors:
 | paging | a year and an album of 1,010 pictures read whole |
 | people | hand-tagged faces scope the videos per person |
 | albums | story albums list and resolve by name with their counts |
-| upload | a re-rendered film lands in its album; v2 trashes the earlier copy, v3 keeps it (no device identity) |
+| upload | a re-rendered film lands in its album and trashes the earlier copy (v2 by device identity, v3 by the provenance tag) |
 | generate | `generate --memory-type monthly_highlights --no-render` on the rules tier picks a cut from the fixture month |
 
 The gate is deliberately small and stable. Wider real-Immich coverage stays in the other
