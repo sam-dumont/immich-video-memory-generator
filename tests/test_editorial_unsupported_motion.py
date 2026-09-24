@@ -7,7 +7,6 @@ bright figure crossing it. The residual is the production optical-flow measureme
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 
 import pytest
@@ -20,9 +19,8 @@ from immich_memories.analysis.editorial_preparation_motion import (
     missing_motion,
     motion_sources,
 )
-from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_budget import RESIDUAL_MIN
-from immich_memories.analysis.editorial_structure_lines import LIVING, UnitLines
+from immich_memories.analysis.editorial_structure_lines import UnitLines
 from immich_memories.store.editorial_preparation import initialize, private_database_path
 from immich_memories.store.motion_lines import (
     DESCRIBED,
@@ -55,18 +53,6 @@ def companion(tmp_path, *, figure: bool) -> bytes:
     return path.read_bytes()
 
 
-class PersuadedJudge:
-    # WHY: the text model is the standing gate's only external boundary. This one believes
-    # whatever a row says: it names as weak every row that shows nobody.
-    def __init__(self):
-        self.calls = []
-
-    def ask(self, _stage, prompt, **_kwargs):
-        self.calls.append(prompt)
-        rows = re.findall(r"^(P\d+): (.*)$", prompt, re.MULTILINE)
-        return json.dumps({"weak": {k: "nothing happens" for k, r in rows if not LIVING.search(r)}})
-
-
 @pytest.fixture
 def store(tmp_path):
     path = private_database_path(tmp_path / "annotations.sqlite")
@@ -75,22 +61,7 @@ def store(tmp_path):
     return path
 
 
-def admission(unit, text: UnitLines, lines: BankedMotionLines, *, pictures: int) -> StandingGate:
-    asset = unit["asset_id"]
-    return StandingGate(
-        PersuadedJudge(),
-        line_of=lambda _asset: text.line(unit),
-        life=lambda _asset: text.shows_life(unit),
-        unit_by_asset={asset: ("E1", unit)},
-        pictures_of={"K01": pictures},
-        bank=None,
-        save=None,
-        calls={"standing_rounds": 0},
-        motion_line=lines.observe,
-    )
-
-
-def test_a_caption_claiming_action_in_an_empty_room_cannot_admit_it(tmp_path, store):
+def test_a_caption_claiming_action_in_an_empty_room_is_not_evidence_of_it(tmp_path, store):
     residual = measure_motion(companion(tmp_path, figure=False))["residual"]
     assert residual < RESIDUAL_MIN
     room = picture("room", live="room-companion")
@@ -114,10 +85,6 @@ def test_a_caption_claiming_action_in_an_empty_room_cannot_admit_it(tmp_path, st
     for unit in (unmeasured, measured):
         assert "dances" not in lines.observe(unit)
         assert not text.shows_life(unit)
-        gate = admission(unit, text, lines, pictures=5)
-        gate.ensure(["room"])
-        assert not gate.stands("room", "minor", "K01")
-        assert not gate.stands("room", "major", "K01")
 
 
 def test_a_live_photo_whose_measured_action_differs_from_its_still_stays_usable(tmp_path, store):
@@ -140,10 +107,6 @@ def test_a_live_photo_whose_measured_action_differs_from_its_still_stays_usable(
 
     assert lines.observe(unit).startswith("A child runs in and jumps onto the swing.")
     assert text.shows_life(unit)
-    # A story of one picture: the clip has to stand entirely alone, and does.
-    gate = admission(unit, text, lines, pictures=1)
-    gate.ensure(["swing"])
-    assert gate.stands("swing", "major", "K01")
 
 
 def test_a_prepared_line_records_the_evidence_that_admitted_it(store):

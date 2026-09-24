@@ -96,15 +96,11 @@ def _admission(*, standing, excluded=()):
         "purpose": "",
     }
     gate = StandingGate(
-        None,
+        standing.__getitem__,
         line_of=lambda a: f"line for {a}",
         life=lambda _a: False,
         unit_by_asset=unit_by_asset,
         pictures_of={"S001": 6},
-        bank=None,
-        save=None,
-        calls={"standing_rounds": 0},
-        score_of=standing.__getitem__,
     )
     choice = DepictedChoice(
         key="M01:cg",
@@ -130,7 +126,7 @@ def _admission(*, standing, excluded=()):
         contract="",
         record=lambda _name, _value: None,
         slots=4,
-        calls={"pick_calls": 0, "standing_rounds": 0},
+        calls={"pick_calls": 0},
         mechanical_picks=True,
     )
 
