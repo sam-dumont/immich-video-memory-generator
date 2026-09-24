@@ -5,23 +5,19 @@ title: generate
 
 # generate
 
-`immich-memories generate` pulls pictures and video from your Immich library, reads the period as a
-story, keeps the pictures that carry it, and renders a cut. It prepares missing facts for the whole
-period first, so the first run over a period is the slow one: the second is mostly the render. The
-audience is always "family", which is part of the request rather than a setting.
+Reader: power user. The newcomer's version is [Your first film](../../get-started/first-film.mdx).
 
-The CLI and web UI pass the same timed source clips to the editor, including
-short videos and those with unknown duration. The editor checks whether they can
-be used. The selection count includes photos when photos are enabled.
+`immich-memories generate` reads a period of your Immich library, drafts a film from it and renders the cut.
+It works on a plain NAS with nothing leaving the box; a GPU or a model makes it better. It prepares only the pictures
+the film can reach (the ones selection can pick, their Live Photo clips and the bursts around them), never the
+whole library, and banks what it measured, so a second cut over the same period is mostly the render. For a
+whole period ahead of time, use [`prepare`](./prepare.md). The audience is always "family": it is part of the
+request, not a setting.
 
-Without `--duration` the length comes from the material the period holds, and the run prints what
-decided it: see [how long a film runs](../memory-types.mdx#how-long-a-film-runs).
-
-`--duration` budgets the finished film: selection reserves the opening, ending and
-dividers, and credits expected crossfade overlap. Smart transitions use stable source
-IDs, so rerendering the same cut keeps the same transition choices. A selection with
-too little useful material can finish early. Older saved timing plans need replanning
-to use the new budget.
+Without `--duration` the length comes from the material the period holds, and the run prints what decided it:
+see [how long a film runs](../memory-types.mdx#how-long-a-film-runs). With `--duration`, selection budgets the
+finished film: it reserves the opening, the ending and the dividers, and credits the crossfade overlap. A
+period with too little material finishes shorter rather than padding.
 
 ```bash
 immich-memories generate [OPTIONS]
@@ -39,11 +35,10 @@ mapped onto each hardware encoder's own scale.
 Use `landscape`, `portrait` or `square` to set the canvas yourself. Orientation changes rendering
 only; it does not change which pictures or video intervals are selected.
 
-Opening titles name the people or the occasion, never the query that produced them. A people or
-occasion memory is named by the model as soon as a reader is configured, from the family record and
-the facts the run already holds; `--llm-title` extends that to trips, and `--no-llm-title` pins the
-template, which is what a comparison run across months wants. `--title` and `--subtitle` override
-all of it. See [titles](../titles-maps-music.md).
+Opening titles name the people or the occasion, never the query that produced them. With a reader
+configured, a people or occasion film is named by the model; `--llm-title` extends that to trips,
+`--no-llm-title` pins the template, and `--title` and `--subtitle` override all of it. `runs show` says which
+source the title came from. See [titles](../titles-maps-music.md#where-the-title-came-from).
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile on every knob you did not set.
@@ -84,7 +79,7 @@ immich-memories generate --memory-type special_day --day 2021-04-04
 immich-memories generate --year 2025 --month 8 --short-form 30
 ```
 
-Three things the examples hide:
+Four things the examples hide:
 
 - `--people-expression` takes exact library names, binds `AND` tighter than `OR`, and works on
   date-range memories (months, years, seasons). Trips, albums and single-person presets refuse it.
@@ -124,8 +119,8 @@ gets a bar with an estimate for that stage, not for the whole cut:
   ⏱ 0:41 elapsed
 ```
 
-A reader that stops answering is named on the line rather than going quiet. Three drops, two then
-four seconds apart, and the run fails naming the endpoint.
+With a reader configured, a reader that stops answering is named on the line rather than going quiet. Three
+drops, two then four seconds apart, and the run fails naming the endpoint.
 
 ## What a run leaves behind
 
