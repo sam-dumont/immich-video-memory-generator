@@ -1,0 +1,109 @@
+# Italian film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "season.spring"
+msgstr "Primavera"
+
+msgid "season.summer"
+msgstr "Estate"
+
+msgid "season.autumn"
+msgstr "Autunno"
+
+msgid "season.winter"
+msgstr "Inverno"
+
+msgid "ordinal"
+msgstr "{n}°"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal} anno"
+
+msgid "title.month_year"
+msgstr "{month} {year}"
+
+msgid "title.month_range_same_year"
+msgstr "Da {start_month_lc} a {end_month_lc} {year}"
+
+msgid "title.month_range_different_year"
+msgstr "Da {start_month_lc} {start_year} a {end_month_lc} {end_year}"
+
+msgid "title.season_year"
+msgstr "{season} {year}"
+
+msgid "title.season_year_span"
+msgstr "{season} {start_year}-{end_year}"
+
+msgid "title.on_this_day"
+msgstr "{day} {month_lc}"
+
+msgid "title.on_this_day_subtitle"
+msgstr "Attraverso gli anni"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "Il tuo anno con {person}"
+
+msgid "trip.day"
+msgstr "Un giorno"
+
+msgid "trip.weekend"
+msgstr "Un weekend"
+
+msgid "trip.week"
+msgstr "Una settimana"
+
+msgid "trip.two_weeks"
+msgstr "Due settimane"
+
+msgid "trip.three_weeks"
+msgstr "Tre settimane"
+
+msgid "trip.month"
+msgstr "Un mese"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n} giorno"
+msgstr[1] "{n} giorni"
+
+msgid "holiday.new_year"
+msgstr "Capodanno"
+
+msgid "holiday.valentines"
+msgstr "San Valentino"
+
+msgid "holiday.easter"
+msgstr "Pasqua"
+
+msgid "holiday.mothers_day"
+msgstr "Festa della mamma"
+
+msgid "holiday.fathers_day"
+msgstr "Festa del papà"
+
+msgid "holiday.halloween"
+msgstr "Halloween"
+
+msgid "holiday.thanksgiving"
+msgstr "Festa del Ringraziamento"
+
+msgid "holiday.christmas_eve"
+msgstr "Vigilia di Natale"
+
+msgid "holiday.christmas"
+msgstr "Natale"
+
+msgid "holiday.new_years_eve"
+msgstr "San Silvestro"

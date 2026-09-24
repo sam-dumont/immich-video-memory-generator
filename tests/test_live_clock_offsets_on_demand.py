@@ -124,14 +124,47 @@ def test_a_kept_burst_gets_the_trims_measuring_everything_first_gave_it(tmp_path
         assert [list(pair) for pair in trims] == carrier["trim_points"]
 
 
-def test_a_kept_burst_the_measurement_refuses_ships_as_its_photograph(tmp_path):
+def refusing(video_ids):
+    return [None] * (len(video_ids) - 1)
+
+
+def test_a_kept_burst_the_measurement_refuses_never_ships_a_stitch(tmp_path):
     captured = bursts(tmp_path, 3)
 
-    plan = plan_structure(captured, ports(lambda video_ids: [None] * (len(video_ids) - 1))).plan
+    plan = plan_structure(captured, ports(refusing)).plan
 
     assert plan["carriers"], "a refused stitch still leaves a film"
-    assert live_carriers(plan) == []
-    assert all(c["video_ids"] == [] and c["trim_points"] == [] for c in plan["carriers"])
+    assert all(len(c["video_ids"]) <= 1 for c in plan["carriers"])
+    assert all(c["members"] == [c["asset_id"]] for c in plan["carriers"])
+
+
+def test_a_refused_burst_plays_its_own_clip_when_that_clip_moves(tmp_path):
+    """The joins could not be measured, so nothing is stitched; the kept picture's own clip
+    needs no join, and plays when it moves."""
+    moving = bursts(tmp_path / "moving", 3)
+    dull = bursts(tmp_path / "dull", 3)
+    dull = replace(dull, motion_residuals={key: {"residual": 0.4} for key in dull.assets})
+
+    played = plan_structure(moving, ports(refusing)).plan
+    stayed = plan_structure(dull, ports(refusing)).plan
+
+    assert live_carriers(played)
+    assert all(c["kind"] == "live-motion" for c in live_carriers(played))
+    assert all(len(c["video_ids"]) == 1 for c in live_carriers(played))
+    assert all(c["kind"] == "live-still" for c in live_carriers(stayed))
+
+    _, candidates = demand(list(moving.assets.values()))
+    projected = project_source_rendering(
+        played["carriers"],
+        candidates,
+        config=moving.config,
+        include_live_photos=True,
+        companion_assets=moving.companion_assets,
+        clock_offsets=refusing,
+    )
+    shipped = {row.clip.asset.id: row.clip for row in projected.candidates}
+    for carrier in live_carriers(played):
+        assert shipped[carrier["asset_id"]].live_burst_video_ids == carrier["video_ids"]
 
 
 def moving_frames(offset):

@@ -9,7 +9,7 @@ replacement path as any refusal. Attached sampled material can only tighten a ve
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,7 @@ from immich_memories.analysis.editorial_audience_batch import ask_activity_batch
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_final_attached import sample_audience_evidence
+from immich_memories.locked_file import file_lock
 from immich_memories.security import write_secret_file
 
 AUDIENCE_BANK_NAME = "audience-verdicts.private.json"
@@ -46,10 +47,13 @@ class AudienceBank:
 
     def __init__(self, path: Path | None, *, answerer: str) -> None:
         self._path = path
-        stored = _read_bank(path)
+        self._answerer = answerer
+        self._load(_read_bank(path))
+
+    def _load(self, stored: dict[str, Any]) -> None:
         answers = _section(stored, "answers")
         self._stored = {"answers": answers, "holds": _section(stored, "holds")}
-        self._answers = answers[answerer] = _section(answers, answerer)
+        self._answers = answers[self._answerer] = _section(answers, self._answerer)
         self._holds = self._stored["holds"]
 
     def answer(self, key: str) -> dict[str, Any] | None:
@@ -58,14 +62,20 @@ class AudienceBank:
 
     def keep(self, key: str, record: dict[str, Any]) -> None:
         if record.get("parsed") is True:
-            self._answers[key] = record
-            self._save()
+            self._update(lambda: self._answer(key, record))
+
+    def _answer(self, key: str, record: dict[str, Any]) -> bool:
+        self._answers[key] = record
+        return True
 
     def held(self, asset_id: str) -> dict[str, Any] | None:
         return standing_hold(self._holds.get(asset_id))
 
     def hold(self, asset_id: str, record: dict[str, Any]) -> None:
         """Keep a refusal that something seen caused, in its source's slot; stricter wins."""
+        self._update(lambda: self._hold(asset_id, record))
+
+    def _hold(self, asset_id: str, record: dict[str, Any]) -> bool:
         slots = dict(self._holds.get(asset_id) or {})
         changed = _stale(slots.get("text")) and _answers_current_prompt(record)
         if changed:
@@ -88,11 +98,17 @@ class AudienceBank:
                 changed = True
         if changed:
             self._holds[asset_id] = slots
-            self._save()
+        return changed
 
-    def _save(self) -> None:
-        if self._path is not None:
-            write_secret_file(self._path, json.dumps(self._stored, indent=1))
+    def _update(self, change: Callable[[], bool]) -> None:
+        """Apply one change to the bank as it stands on disk now, so another run's rows stay."""
+        if self._path is None:
+            change()
+            return
+        with file_lock(self._path):
+            self._load(_read_bank(self._path))
+            if change():
+                write_secret_file(self._path, json.dumps(self._stored, indent=1))
 
 
 _TEXT_FINDING = "private_activity"

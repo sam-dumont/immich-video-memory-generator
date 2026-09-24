@@ -22,12 +22,14 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
-from immich_memories.analysis.editorial_story_replies import close_family_on
+from immich_memories.analysis.editorial_story_replies import close_family_on, people_on
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_budget import MIN_CARRIER_SECONDS
+from immich_memories.analysis.editorial_structure_contract import StructurePlanningInput
 from immich_memories.speech.cuts import minimum_duration
 
 FAMILY_SEAT_VERSION = "family-seat-v1"
+PERSON_FILMS = frozenset({"person_spotlight", "multi_person"})
 
 
 @dataclass(frozen=True)
@@ -41,12 +43,18 @@ class FamilySeatPolicy:
         return pictures >= self.min_pictures or (scope > 0 and pictures / scope >= self.min_share)
 
 
+def _never(_asset_id: str) -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class FamilySeatInputs:
     """What the seat reads. `candidates_of(story_key)` is every picture of a story as a carrier
     row; `stands(asset, story)` is the story's standing bar, `score_of` the rule standing that
-    ranks a person's frames, `refused` every hold that applies to this film, and `has_room`
-    whether the film can take one more carrier without dropping one."""
+    ranks a person's frames, `refused` every hold that applies to this film, `has_room`
+    whether the film can take one more carrier without dropping one, and `close_family` who on
+    a line counts as close family in this film. `held` is a costlier check (the audience
+    gate's own verdict), asked only of the frames about to be seated."""
 
     stories: Sequence[Mapping[str, Any]]
     candidates_of: Callable[[str], list[dict]]
@@ -57,6 +65,8 @@ class FamilySeatInputs:
     refused: Callable[[str], bool]
     has_room: Callable[[list[dict]], bool]
     policy: FamilySeatPolicy = FamilySeatPolicy()
+    close_family: Callable[[str], Mapping[str, str]] = close_family_on
+    held: Callable[[str], bool] = _never
 
 
 def seat_close_family(
@@ -65,20 +75,29 @@ def seat_close_family(
     """The film with one seat for every close family member it owes one, and the record of why.
 
     A seat is appended when the film has room; otherwise it replaces the weakest non-favourite
-    of its own story. A favourite is never displaced, nor the only shot of another close family
-    member. A person with no frame that clears the story's bar, or no seat to take, stays out,
-    and the record says so.
+    of its own story, and when that story holds no shot to give up, the weakest non-favourite of
+    a story that keeps another shot. A favourite is never displaced, nor the only shot of another
+    close family member. Only pictures the film could show count toward what someone is owed: a
+    person whose every picture is refused as a carrier is owed nothing, and the record says so,
+    as it does for a person with no frame that clears the story's bar, or no seat to take.
     """
-    on = {asset: close_family_on(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)}
+    everyone = {
+        asset: inputs.close_family(inputs.line_of(asset)) for asset in dict.fromkeys(inputs.scope)
+    }
+    on = {asset: people for asset, people in everyone.items() if not inputs.refused(asset)}
     counts = Counter(chain.from_iterable(on.values()))
-    relation = {name: rel for people in on.values() for name, rel in people.items()}
+    relation = {name: rel for people in everyone.values() for name, rel in people.items()}
     film = carriers.copy()
     seats: list[dict[str, Any]] = []
-    for name, pictures in counts.most_common():
-        if not inputs.policy.owed(pictures, len(on)) or _shots_of(name, film, inputs.line_of):
+    for name, pictures in Counter(chain.from_iterable(everyone.values())).most_common():
+        if not inputs.policy.owed(pictures, len(everyone)) or _shots_of(name, film, inputs):
+            continue
+        if not inputs.policy.owed(counts[name], len(on)):
+            seats.append(_refused_record(relation[name], pictures, counts[name]))
             continue
         seats.append(
-            {"relation": relation[name], "pictures": pictures} | _seat_one(name, film, on, inputs)
+            {"relation": relation[name], "pictures": counts[name]}
+            | _seat_one(name, film, on, inputs)
         )
     return film, {
         "version": FAMILY_SEAT_VERSION,
@@ -89,8 +108,20 @@ def seat_close_family(
     }
 
 
-def _shots_of(name: str, film: Sequence[dict], line_of: Callable[[str], str]) -> int:
-    return sum(name in close_family_on(line_of(c["asset_id"])) for c in film)
+def _refused_record(relation: str, pictures: int, showable: int) -> dict[str, Any]:
+    return {
+        "relation": relation,
+        "pictures": pictures,
+        "showable": showable,
+        "placed": None,
+        "reason": "every picture of them in this film is refused as a carrier"
+        if not showable
+        else "too few of their pictures in this film can be shown",
+    }
+
+
+def _shots_of(name: str, film: Sequence[dict], inputs: FamilySeatInputs) -> int:
+    return sum(name in inputs.close_family(inputs.line_of(c["asset_id"])) for c in film)
 
 
 def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str, Any]:
@@ -112,14 +143,15 @@ def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str,
             and not inputs.refused(row["asset_id"])
             and inputs.stands(row["asset_id"], story)
         ]
-        if not frames:
+        ranked = sorted(frames, key=lambda row: -inputs.score_of(row["asset_id"]))
+        best = next((row for row in ranked if not inputs.held(row["asset_id"])), None)
+        if best is None:
             continue
-        best = max(frames, key=lambda row: inputs.score_of(row["asset_id"]))
         seat = best | {"family_seat": True}
         if inputs.has_room([*film, seat]):
             film.append(seat)
             return {"story": key, "asset_id": best["asset_id"], "placed": "appended"}
-        victim = _weakest_replaceable(key, film, inputs)
+        victim = _weakest_replaceable(key, film, inputs) or _weakest_anywhere(film, inputs)
         if victim is not None:
             film[film.index(victim)] = seat
             return {
@@ -131,22 +163,55 @@ def _seat_one(name, film: list[dict], on, inputs: FamilySeatInputs) -> dict[str,
     return {"placed": None, "reason": "no frame clears a story's bar with a seat to take"}
 
 
-def _weakest_replaceable(key: str, film: list[dict], inputs: FamilySeatInputs) -> dict | None:
-    """The story's weakest carrier that is neither a favourite nor someone's only shot."""
+def _weakest_anywhere(film: list[dict], inputs: FamilySeatInputs) -> dict | None:
+    """The film's weakest replaceable carrier among the stories that keep another shot."""
+    shots = Counter(c.get("story_episode") for c in film)
+    return _weakest_replaceable(
+        None, [c for c in film if shots[c.get("story_episode")] > 1], inputs, whole=film
+    )
+
+
+def _weakest_replaceable(
+    key: str | None, film: list[dict], inputs: FamilySeatInputs, whole: list[dict] | None = None
+) -> dict | None:
+    """The story's weakest carrier (any story's when `key` is None) that is neither a
+    favourite nor someone's only shot in the `whole` film."""
+    whole = film if whole is None else whole
     victims = [
         c
         for c in film
-        if c.get("story_episode") == key
+        if (key is None or c.get("story_episode") == key)
         and not c.get("favourite")
         and not c.get("family_seat")
         and not any(
-            _shots_of(other, film, inputs.line_of) == 1
-            for other in close_family_on(inputs.line_of(c["asset_id"]))
+            _shots_of(other, whole, inputs) == 1
+            for other in inputs.close_family(inputs.line_of(c["asset_id"]))
         )
     ]
     if not victims:
         return None
     return min(victims, key=lambda c: (inputs.score_of(c["asset_id"]), c.get("taken") or ""))
+
+
+def film_close_family(source: StructurePlanningInput) -> Callable[[str], Mapping[str, str]]:
+    """Who on a line counts as close family in this film.
+
+    The owner's partner, children and parents always do. A film about people adds each
+    subject's own partner, children and parents, as the people file links them: in a film of
+    the owner's partner, their parents are close family though the owner calls them in-laws.
+    """
+    if source.case.product not in PERSON_FILMS or source.people is None or not source.case.people:
+        return close_family_on
+    theirs = source.people.close_family_of(source.case.people)
+
+    def close_family(line: str) -> Mapping[str, str]:
+        found = close_family_on(line)
+        for name in people_on(line):
+            if name in theirs:
+                found[name] = f"{theirs[name]} of the film's subject"
+        return found
+
+    return close_family
 
 
 @dataclass(frozen=True)
@@ -169,8 +234,12 @@ def seat_in_film(
     life: Callable[[str], bool],
     excluded: Mapping[str, str],
     record: Callable[[str, Mapping[str, Any]], None],
+    held: Callable[[str], bool] = _never,
 ) -> list[dict]:
-    """Run the seat over a planned cut with the rules' own standing: no model is asked."""
+    """Run the seat over a planned cut with the rules' own standing: no model is asked.
+
+    `held` refuses a frame the seat is about to take, for a film whose audience gate has
+    already run and will not see the seat."""
     source, selection = film.source, film.selection
     unit_by_asset = {u["asset_id"]: (f, u) for f, rows in film.units.items() for u in rows}
 
@@ -225,6 +294,8 @@ def seat_in_film(
             refused=refused,
             has_room=has_room,
             policy=FamilySeatPolicy(policy.seat_min_pictures, policy.seat_min_share),
+            close_family=film_close_family(source),
+            held=held,
         ),
     )
     record("family-seat", audit)

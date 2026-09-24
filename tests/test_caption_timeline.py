@@ -243,3 +243,30 @@ class TestDissolveWindows:
             ClipCaption(date="Saturday 2"), 1920, 1080, frame_window=windows[1]
         )
         assert "enable=" not in drawn
+
+
+class TestCaptionsOutsideTheCaptionFont:
+    """A caption the caption font cannot draw is laid over as an image (#1101)."""
+
+    def _filters(self, caption):
+        from immich_memories.processing.clip_caption import caption_filters, caption_font_path
+
+        return caption_filters(caption, 1920, 1080, font_path=caption_font_path())
+
+    def test_a_greek_place_becomes_an_overlay(self):
+        from immich_memories.processing.clip_caption import ClipCaption
+
+        (place,) = self._filters(ClipCaption(place="Ηράκλειο, Ελλάδα"))
+
+        assert place.startswith("null[place_frame];movie='")
+        assert "overlay=x=" in place
+
+    def test_a_hebrew_date_becomes_an_overlay_but_a_latin_one_does_not(self):
+        from immich_memories.processing.clip_caption import ClipCaption
+
+        latin, hebrew = (
+            self._filters(ClipCaption(date=date_text))[0] for date_text in ("5 JAN", "ה׳ 5")
+        )
+
+        assert latin.startswith("drawtext=")
+        assert hebrew.startswith("null[date_frame]")

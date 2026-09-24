@@ -275,6 +275,7 @@ def handle_trip_generation(
 
         trip_preset = {
             "location_name": trip.location_name,
+            "location_kind": trip.location_kind,
             "trip_start": trip.start_date,
             "trip_end": trip.end_date,
             "home_lat": config.trips.homebase_latitude,

@@ -84,6 +84,18 @@ class _Grants:
             while self.take(s, wanted):
                 pass
 
+    def take_one_per_era(self, era_of: Mapping[str, str]) -> None:
+        """One picture per era, from the era's first story that can still take one."""
+        voiced = {
+            era_of.get(s["key"])
+            for s in self.stories
+            if self.granted[s["key"]] + self.already.get(s["key"], 0)
+        }
+        for s in self.stories:
+            era = era_of.get(s["key"])
+            if era is not None and era not in voiced and s["weight"] != "none" and self.take(s, 1):
+                voiced.add(era)
+
     def take_one_per_day(self, weight: str, cap: int = 1) -> None:
         """Texture is a glance at a day, not a series; a day's second one waits its turn."""
         days: set[str] = set()
@@ -137,15 +149,19 @@ def allocate_slots(
     already: Mapping[str, int] | None = None,
     *,
     reserve_slot: Callable[[Mapping[str, Any]], bool] | None = None,
+    era_of: Mapping[str, str] | None = None,
 ) -> dict[str, int]:
     """Slots per story from its weight, capped by the moments it holds. Stories come in weight
-    order. A dominant or major story with a `reserve` (a trip) takes that many where the others
+    order. With `era_of` (a story's era, for the stories that lie inside one), every era first
+    gets one picture, from its first story in that order, before any story takes a second. A dominant or major story with a `reserve` (a trip) takes that many where the others
     take their first picture. Leftover slots deepen dominant, then major, then minor stories one
     moment at a time while they have moments; a glimpse stays one picture and "none" is never
     funded."""
     counted = dict(already or {})
     plan = _Grants(stories, slots, capacity, counted, reserve_slot)
     caps = weight_caps(slots + sum(counted.values()))
+    if era_of:
+        plan.take_one_per_era(era_of)
     plan.take_each("dominant", 1)
     plan.take_each("major", 1)
     plan.fill("dominant", caps["dominant"])
@@ -206,10 +222,26 @@ class PartitionedSlots:
         *,
         partition_of: Callable[[str], str | None] | None = None,
         limit: int | None = None,
+        voiced: bool = False,
     ) -> None:
         self._unit_by_asset = unit_by_asset
         self._partition_of = partition_of
         self.limit = limit
+        self._voiced = voiced
+
+    def _eras(self, choices: Mapping[str, Sequence[DepictedChoice]]) -> dict[str, str] | None:
+        """The partition each story lies inside, for a product that gives every one a voice.
+
+        A story spanning two partitions is left out: its one picture could land in either.
+        """
+        if not self._voiced or self._partition_of is None:
+            return None
+        eras: dict[str, str] = {}
+        for key, story_choices in choices.items():
+            parts = {self._partition_of(c.taken) for c in story_choices}
+            if len(parts) == 1 and (part := parts.pop()) is not None:
+                eras[key] = part
+        return eras
 
     def of_asset(self, asset: str) -> str | None:
         if self.limit is None or self._partition_of is None:
@@ -255,7 +287,11 @@ class PartitionedSlots:
         }
         if self.limit is None:
             counts = allocate_slots(
-                stories, budget, {k: len(v) for k, v in capacity_choices.items()}, already=already
+                stories,
+                budget,
+                {k: len(v) for k, v in capacity_choices.items()},
+                already=already,
+                era_of=self._eras(capacity_choices),
             )
             return counts, {key: {None: count} for key, count in counts.items()}
         used: dict[str | None, int] = {}

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from immich_memories.i18n import film_text, month_name_forms
 from immich_memories.i18n import get_month_name as _i18n_get_month_name
 from immich_memories.i18n import get_ordinal as _i18n_get_ordinal
 
@@ -44,49 +45,24 @@ class TitleInfo:
     selection_type: SelectionType = SelectionType.CALENDAR_YEAR
 
 
-# Season names by locale
-SEASON_NAMES: dict[str, dict[str, str]] = {
-    "en": {
-        "spring": "Spring",
-        "summer": "Summer",
-        "fall": "Fall",
-        "autumn": "Fall",
-        "winter": "Winter",
-    },
-    "fr": {
-        "spring": "Printemps",
-        "summer": "Été",
-        "fall": "Automne",
-        "autumn": "Automne",
-        "winter": "Hiver",
-    },
+_SEASON_KEYS = {
+    "spring": "spring",
+    "summer": "summer",
+    "fall": "autumn",
+    "autumn": "autumn",
+    "winter": "winter",
 }
 
-# Title patterns by locale
-TITLE_PATTERNS: dict[str, dict[str, str]] = {
-    "en": {
-        "year_ordinal": "{ordinal} Year",
-        "month_year": "{month} {year}",
-        "month_range_same_year": "{start_month} to {end_month} {year}",
-        "month_range_different_year": "{start_month} {start_year} to {end_month} {end_year}",
-        "season_year": "{season} {year}",
-        "season_year_span": "{season} {start_year}-{end_year}",
-        "on_this_day": "{month} {day}",
-        "on_this_day_subtitle": "Through the Years",
-        "person_spotlight_subtitle": "Your Year with {person}",
-    },
-    "fr": {
-        "year_ordinal": "{ordinal} Année",
-        "month_year": "{month} {year}",
-        "month_range_same_year": "{start_month} à {end_month} {year}",
-        "month_range_different_year": "{start_month} {start_year} à {end_month} {end_year}",
-        "season_year": "{season} {year}",
-        "season_year_span": "{season} {start_year}-{end_year}",
-        "on_this_day": "{month} {day}",
-        "on_this_day_subtitle": "À travers les années",
-        "person_spotlight_subtitle": "Votre année avec {person}",
-    },
-}
+
+def title_pattern(key: str, locale: str, **values: object) -> str:
+    """A title template from the film-text catalogue, filled in."""
+    return film_text(f"title.{key}", locale, **values)
+
+
+def _month_range_values(start_month: int, end_month: int, locale: str) -> dict[str, str]:
+    start = month_name_forms(start_month, locale)
+    end = month_name_forms(end_month, locale)
+    return {f"start_{k}": v for k, v in start.items()} | {f"end_{k}": v for k, v in end.items()}
 
 
 def get_month_name(month: int, locale: str = "en") -> str:
@@ -107,13 +83,12 @@ def get_season_name(season: str, locale: str = "en") -> str:
     Raises:
         ValueError: If season name is not recognized.
     """
-    names = SEASON_NAMES.get(locale, SEASON_NAMES["en"])
-    season_lower = season.lower()
-    if season_lower not in names:
+    key = _SEASON_KEYS.get(season.lower())
+    if key is None:
         raise ValueError(
             f"Unknown season: '{season}'. Expected: spring, summer, fall, autumn, winter"
         )
-    return names[season_lower]
+    return film_text(f"season.{key}", locale)
 
 
 def get_ordinal(n: int, locale: str = "en") -> str:
@@ -134,10 +109,10 @@ def _title_calendar_year(**kwargs) -> TitleInfo:
 def _title_birthday_year(**kwargs) -> TitleInfo:
     if kwargs["birthday_age"] is None:
         raise ValueError("Birthday age required for birthday year selection")
-    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
-    ordinal = get_ordinal(kwargs["birthday_age"], kwargs["locale"])
+    age = kwargs["birthday_age"]
+    ordinal = get_ordinal(age, kwargs["locale"])
     return TitleInfo(
-        main_title=patterns["year_ordinal"].format(ordinal=ordinal),
+        main_title=title_pattern("year_ordinal", kwargs["locale"], ordinal=ordinal, n=age),
         subtitle=kwargs["person_name"],
         selection_type=SelectionType.BIRTHDAY_YEAR,
     )
@@ -146,10 +121,9 @@ def _title_birthday_year(**kwargs) -> TitleInfo:
 def _title_single_month(**kwargs) -> TitleInfo:
     if kwargs["month"] is None or kwargs["year"] is None:
         raise ValueError("Month and year required for single month selection")
-    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
-    month_name = get_month_name(kwargs["month"], kwargs["locale"])
+    forms = month_name_forms(kwargs["month"], kwargs["locale"])
     return TitleInfo(
-        main_title=patterns["month_year"].format(month=month_name, year=kwargs["year"]),
+        main_title=title_pattern("month_year", kwargs["locale"], year=kwargs["year"], **forms),
         subtitle=kwargs["person_name"],
         selection_type=SelectionType.SINGLE_MONTH,
     )
@@ -158,23 +132,20 @@ def _title_single_month(**kwargs) -> TitleInfo:
 def _title_month_range(**kwargs) -> TitleInfo:
     if kwargs["start_month"] is None or kwargs["end_month"] is None:
         raise ValueError("Start and end month required for month range")
-    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
-    start_month_name = get_month_name(kwargs["start_month"], kwargs["locale"])
-    end_month_name = get_month_name(kwargs["end_month"], kwargs["locale"])
+    months = _month_range_values(kwargs["start_month"], kwargs["end_month"], kwargs["locale"])
     s_year = kwargs["start_year"] or kwargs["year"]
     e_year = kwargs["end_year"] or kwargs["year"]
     if s_year is None or e_year is None:
         raise ValueError("Year(s) required for month range selection")
     if s_year == e_year:
-        main_title = patterns["month_range_same_year"].format(
-            start_month=start_month_name, end_month=end_month_name, year=s_year
-        )
+        main_title = title_pattern("month_range_same_year", kwargs["locale"], year=s_year, **months)
     else:
-        main_title = patterns["month_range_different_year"].format(
-            start_month=start_month_name,
+        main_title = title_pattern(
+            "month_range_different_year",
+            kwargs["locale"],
             start_year=s_year,
-            end_month=end_month_name,
             end_year=e_year,
+            **months,
         )
     return TitleInfo(
         main_title=main_title,
@@ -299,8 +270,6 @@ def _generate_date_range_title(
     - Multiple months in same year → "Month to Month Year"
     - Spanning years → "Month Year to Month Year"
     """
-    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
-
     # Check if it's a full calendar year
     if (
         start_date.month == start_date.day == 1
@@ -316,10 +285,8 @@ def _generate_date_range_title(
 
     # Check if it's a single month (entirely within one month)
     if start_date.year == end_date.year and start_date.month == end_date.month:
-        month_name = get_month_name(start_date.month, locale)
-        main_title = patterns["month_year"].format(
-            month=month_name,
-            year=start_date.year,
+        main_title = title_pattern(
+            "month_year", locale, year=start_date.year, **month_name_forms(start_date.month, locale)
         )
         return TitleInfo(
             main_title=main_title,
@@ -328,23 +295,16 @@ def _generate_date_range_title(
         )
 
     # Multiple months
-    start_month_name = get_month_name(start_date.month, locale)
-    end_month_name = get_month_name(end_date.month, locale)
-
+    months = _month_range_values(start_date.month, end_date.month, locale)
     if start_date.year == end_date.year:
-        # Same year
-        main_title = patterns["month_range_same_year"].format(
-            start_month=start_month_name,
-            end_month=end_month_name,
-            year=start_date.year,
-        )
+        main_title = title_pattern("month_range_same_year", locale, year=start_date.year, **months)
     else:
-        # Different years
-        main_title = patterns["month_range_different_year"].format(
-            start_month=start_month_name,
+        main_title = title_pattern(
+            "month_range_different_year",
+            locale,
             start_year=start_date.year,
-            end_month=end_month_name,
             end_year=end_date.year,
+            **months,
         )
 
     return TitleInfo(
@@ -365,13 +325,10 @@ def generate_month_divider_text(month: int, year: int | None = None, locale: str
     Returns:
         Month divider text (e.g., "January" or "January 2024").
     """
-    month_name = get_month_name(month, locale)
-
+    forms = month_name_forms(month, locale)
     if year is not None:
-        patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
-        return patterns["month_year"].format(month=month_name, year=year)
-
-    return month_name
+        return title_pattern("month_year", locale, year=year, **forms)
+    return forms["month"]
 
 
 def infer_selection_type(

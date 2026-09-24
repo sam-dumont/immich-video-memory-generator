@@ -217,9 +217,11 @@ def render_title_section() -> None:
             locale_default = (
                 config.title_screens.locale if config and config.title_screens else "en"
             )
+            from immich_memories.i18n import SUPPORTED_LOCALES
+
             locale_select = ui.select(
                 label="Language",
-                options=["auto", "en", "fr", "de", "es", "it", "nl", "pt", "ja", "ko"],
+                options=["auto", *SUPPORTED_LOCALES],
                 value=locale_default,
             ).classes("w-32")
 

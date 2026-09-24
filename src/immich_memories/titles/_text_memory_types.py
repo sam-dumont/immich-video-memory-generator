@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 
+from immich_memories.i18n import month_name_forms
 from immich_memories.titles.text_builder import (
-    TITLE_PATTERNS,
     SelectionType,
     TitleInfo,
     _generate_date_range_title,
-    get_month_name,
     get_season_name,
+    title_pattern,
 )
 
 
@@ -24,14 +24,13 @@ def generate_season_title(
     """Generate title for a season memory."""
     if season is None or year is None:
         raise ValueError("Season and year required for season selection")
-    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
     season_name = get_season_name(season, locale)
     if end_year and end_year != year:
-        main_title = patterns["season_year_span"].format(
-            season=season_name, start_year=year, end_year=end_year
+        main_title = title_pattern(
+            "season_year_span", locale, season=season_name, start_year=year, end_year=end_year
         )
     else:
-        main_title = patterns["season_year"].format(season=season_name, year=year)
+        main_title = title_pattern("season_year", locale, season=season_name, year=year)
     return TitleInfo(
         main_title=main_title,
         subtitle=person_name,
@@ -61,10 +60,9 @@ def generate_person_spotlight_title(
         )
     if year is None:
         raise ValueError("Year required for person spotlight selection")
-    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
     subtitle = None
     if person_name:
-        subtitle = patterns["person_spotlight_subtitle"].format(person=person_name)
+        subtitle = title_pattern("person_spotlight_subtitle", locale, person=person_name)
     return TitleInfo(
         main_title=str(year),
         subtitle=subtitle,
@@ -102,10 +100,9 @@ def generate_on_this_day_title(
     """Generate title for an On This Day memory."""
     if start_date is None:
         raise ValueError("Start date required for On This Day selection")
-    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
-    month_name = get_month_name(start_date.month, locale)
-    main_title = patterns["on_this_day"].format(month=month_name, day=start_date.day)
-    subtitle = patterns["on_this_day_subtitle"]
+    forms = month_name_forms(start_date.month, locale)
+    main_title = title_pattern("on_this_day", locale, day=start_date.day, **forms)
+    subtitle = title_pattern("on_this_day_subtitle", locale)
     return TitleInfo(
         main_title=main_title,
         subtitle=subtitle,

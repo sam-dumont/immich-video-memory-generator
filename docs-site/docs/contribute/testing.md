@@ -54,6 +54,12 @@ The gate is deliberately small and stable. Wider real-Immich coverage stays in t
 integration folders. `IMMICH_GATE_KEEP=1` leaves the stack running after the tests; a failed run
 writes the server logs to `.immich-gate/immich-<version>.log` (CI uploads them as an artifact).
 
+In CI the pinned images come from the Actions cache, not the registries: one `docker save` tarball per
+major, keyed on the exact refs. `make immich-gate-fetch` loads it, and pulls whatever it lacks with
+three attempts of three minutes each; `make immich-gate-save` writes it back after a cold run. A
+registry that stalls then costs one attempt instead of the whole job, and an image that never
+arrives still fails the gate.
+
 ## Coverage and diff-cover
 
 CI uploads unit coverage to Codecov under the `unittests` flag and the self-hosted GPU runner

@@ -430,3 +430,9 @@ def _direction_for(run: TextRun, shaped: bool) -> tuple[str | None, str]:
 def title_font(path: str | Path, size: float, *, bold: bool = False) -> ChainFont:
     """The face at `path`, backed by Noto for every letter it cannot draw itself."""
     return ChainFont(str(path), size, bold=bold)
+
+
+def face_covers(path: str | Path, text: str) -> bool:
+    """Whether the face at `path` alone has a glyph for every letter of `text`."""
+    own = _codepoints(str(path))
+    return all(c.isspace() or ord(c) in own for c in text)

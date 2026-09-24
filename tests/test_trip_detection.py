@@ -515,7 +515,7 @@ class TestReverseGeocode:
             assets, 45.955, -1.145, lambda *_a, **_k: "Île d'Oléron, France"
         )
 
-        assert result == "Île d'Oléron, France"
+        assert result.name == "Île d'Oléron, France"
 
     def test_naming_falls_back_to_exif_when_geocode_fails(self):
         """When geocode returns None, fall back to EXIF city/country."""
@@ -529,7 +529,7 @@ class TestReverseGeocode:
 
         result = _derive_location_name(assets, 41.39, 2.17, lambda *_a, **_k: None)
 
-        assert result == "Barcelona, Spain"
+        assert result.name == "Barcelona, Spain"
 
 
 class TestReverseGeocodeGranularity:
@@ -673,7 +673,7 @@ class TestReverseGeocodeGranularity:
         with patch("immich_memories.analysis.trip_detection.reverse_geocode"):
             result = _derive_location_name(assets, centroid_lat=47.0, centroid_lon=3.0)
 
-        assert result == "Belgium → France → Spain"
+        assert result.name == "Belgium → France → Spain"
 
     def test_dominant_country_ignores_layovers(self):
         """If 90%+ assets are in one country, use that country (ignore layovers)."""
@@ -696,8 +696,7 @@ class TestReverseGeocodeGranularity:
         ):
             result = _derive_location_name(assets, centroid_lat=34.90, centroid_lon=33.00)
 
-        assert result == "Cyprus"
-        assert "Greece" not in result
+        assert result.name == "Cyprus"
 
     def test_falls_back_to_state_when_no_finer_detail(self):
         """When no island/county/state_district, fall back to state."""

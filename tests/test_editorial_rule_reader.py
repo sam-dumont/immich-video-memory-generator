@@ -246,3 +246,61 @@ def test_occasion_threshold_and_away_flag(last_day_mass, near_home, expected):
     )
     tiers, _ = RuleStructureReader(source).worthiness(wall, lambda _: near_home)
     assert tiers["9"] == expected
+
+
+def test_a_rules_film_may_play_a_live_photo_and_can_measure_one(tmp_path):
+    """Motion is first class on every tier: the rules reader plans with the run's Live Photo
+    policy and the same measuring port a model film has, so a clip with real motion and its
+    subject in frame plays, and a dull one stays its still."""
+    from datetime import timedelta
+
+    from immich_memories.analysis.editorial_runtime import (
+        EditorialRunContext,
+        build_editorial_planner,
+    )
+    from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
+    from immich_memories.analysis.editorial_structure_planner import plan_structure
+    from immich_memories.analysis.smart_pipeline import SmartPipeline
+    from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.config_loader import Config
+    from immich_memories.timeperiod import DateRange
+    from tests.test_editorial_runtime import _window
+    from tests.test_editorial_source_route import photo
+
+    first = _window(2024, 2, 1)
+    window = DateRange(first.start, first.end + timedelta(days=27))
+    sources = [photo(f"p-{n:02}", at=window.start + timedelta(days=n, hours=9)) for n in range(8)]
+    for asset in sources[:3]:
+        asset.is_favorite = True
+    config = Config(
+        cache={"directory": str(tmp_path / "cache")},
+        editorial={"reader": "rules", "preparation": {"tier": "metadata_only"}},
+        analysis={"min_source_short_side": 0},
+    )
+    seen = []
+
+    def planner_seeing(source, ports):
+        seen.append((source, ports))
+        return plan_structure(source, ports)
+
+    planner = build_editorial_planner(
+        client=object(),
+        config=config,
+        thumbnail_cache=ThumbnailCache(tmp_path / "thumbnails"),
+        context=EditorialRunContext(
+            "rules", "February", "monthly_highlights", (window,), 60, tmp_path / "artifacts"
+        ),
+        ports=EditorialRuntimePorts(
+            load_people=lambda: {},
+            fetch_full_source=lambda *_: sources,
+            fetch_preview=lambda _client, key: _distinct_preview(key),
+            structure_planner=planner_seeing,
+        ),
+    )
+    SmartPipeline(planner=planner).run_editorial_source(sources, include_live_photos=True)
+
+    ((source, ports),) = seen
+    assert source.allow_live_motion
+    assert source.lineage["render_policy"] == {"allow_live_motion": True}
+    assert ports.resolve_motion is not None
+    assert ports.clock_offsets is not None

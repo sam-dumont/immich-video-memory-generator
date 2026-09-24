@@ -170,7 +170,10 @@ depend on which film asked. A favourite video is the exception on both: a favour
 wall means something happened there, so the fact still shows on its line but never removes it. A
 Live Photo is never refused for its clip either, since its favourite is on the still: a clip that
 misses its subject plays as its still, and a Live Photo plays as motion only when its clip moves
-(residual at or above 1.5) and shows its subject. Measured on 33 real clips: the two a reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
+(residual at or above 1.5) and shows its subject. That holds on every tier: the no-model cut
+used to render every Live Photo as its still whatever its clip showed, so a NAS film had no Live
+motion at all. It now keeps the run's Live Photo setting and measures a kept clip nobody measured
+yet, exactly like a model film. Measured on 33 real clips: the two a reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
 or more. The frames are sampled once for this and the exposure head together; a clip already
 prepared is sampled again once. A clip whose frames cannot be read, or an install without the
 encoder, keeps its preview's reading and is named in `preparation.private.json`; it never blocks a
@@ -516,7 +519,10 @@ shot at all: on hundreds of a month's pictures, none starred, while every story 
 funded for one favourite. So once the draft is cut, and after the model's
 polish on a tier that has one, every close family member (partner, child or parent, as the people
 file names them) who is on at least 20 of the period's pictures, or 5 % of them, and in none of its
-shots gets one seat. It is their best frame by the rules' own standing answer that clears the
+shots gets one seat. Close family means yours, the owner's. A film about a person (a person
+spotlight or a multi-person film) also counts that person's own partner, children and parents, as
+the confirmed links in `people.yaml` connect them: in a film of your partner, their parents count,
+though to you they are in-laws. It is their best frame by the rules' own standing answer that clears the
 story's usual standing bar, in the story holding most of their pictures. The seat is appended when
 the film has a slot left and its timing budget allows one more carrier; otherwise it replaces that
 story's weakest shot that is neither a favourite nor another close family member's only shot. A
@@ -524,15 +530,33 @@ favourite is never displaced. A frame any hold refuses (an earlier `do_not_show`
 refusal, a source rule, or an exposure hold on a film for outside the family) is never the seat,
 and the family-viewing gate still judges the cut afterwards. When no frame of theirs clears the bar,
 or their stories hold nothing but favourites and the film is full, nobody is seated and
-`derived-decisions/family-seat.private.json` says so, by relation only. Nothing is asked of a model
-on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
+`derived-decisions/family-seat.private.json` says so, by relation only. Only pictures the film could
+show count toward the 20: a person whose every picture in the film is refused as a carrier (every
+one a hospital scene the medical-care rule holds back, for instance) is owed nothing, and the
+record says that rather than "no frame clears a story's bar". When the story holding most of their
+pictures has no shot to give up (it got no slot, or holds only favourites) and the film is full, the
+seat replaces the film's weakest non-favourite in a story that keeps another shot. Nothing is asked
+of a model on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
+
+The passes after the draft cannot quietly undo a seat. The duplicate review never removes a close
+family member's only shot: of two look-alikes where one is somebody's only appearance, the other
+one leaves; a slot it refills must still show them; and when neither works both frames stay (the
+record names them under `kept_only_shots`). The model's sampled review treats such a frame as
+protected. After every review and the filler pass below have run, the finished film is checked
+once more, and anyone who lost their only shot anyway (to the family-viewing gate or the timing
+trim) is seated again, through the same rules plus the family-viewing gate's own verdict on the
+frame. That second pass is recorded in
+`derived-decisions/family-seat-after-review.private.json`. Measured on a real February: the draft
+had the partner in one still, the scene review swapped it for a frame of the same moment that did
+not show her, and the film shipped without her. It now swaps it for a frame of that moment that
+does.
 
 ### Filler nothing vouches for
 
 The draft sizes a film from its material, so a quiet month can have more slots than pictures anyone
 can vouch for, and the leftover slots go to whatever stands. When no model polishes the draft, the
-settled cut gets one last pass: a shot with no indicator of its own (not starred, not a video or a
+settled cut gets one last removal pass: a shot with no indicator of its own (not starred, not a video or a
 Live Photo whose motion plays, nobody Immich knows in it, no banked standing answer for it, not
 ticked on the pool page) that the `frame_kind` head reads as showing nothing (a lone everyday
 object, an empty room, a body-part close-up, a screen or a document) leaves the film. Nothing takes

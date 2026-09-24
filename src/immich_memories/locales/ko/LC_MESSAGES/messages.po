@@ -1,0 +1,108 @@
+# Korean film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "season.spring"
+msgstr "봄"
+
+msgid "season.summer"
+msgstr "여름"
+
+msgid "season.autumn"
+msgstr "가을"
+
+msgid "season.winter"
+msgstr "겨울"
+
+msgid "ordinal"
+msgstr "{n}번째"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal} 해"
+
+msgid "title.month_year"
+msgstr "{year}년 {month_num}월"
+
+msgid "title.month_range_same_year"
+msgstr "{year}년 {start_month_num}월~{end_month_num}월"
+
+msgid "title.month_range_different_year"
+msgstr "{start_year}년 {start_month_num}월~{end_year}년 {end_month_num}월"
+
+msgid "title.season_year"
+msgstr "{year}년 {season}"
+
+msgid "title.season_year_span"
+msgstr "{start_year}~{end_year}년 {season}"
+
+msgid "title.on_this_day"
+msgstr "{month_num}월 {day}일"
+
+msgid "title.on_this_day_subtitle"
+msgstr "그해 오늘"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "{person}, 우리의 한 해"
+
+msgid "trip.day"
+msgstr "하루"
+
+msgid "trip.weekend"
+msgstr "주말"
+
+msgid "trip.week"
+msgstr "일주일"
+
+msgid "trip.two_weeks"
+msgstr "2주"
+
+msgid "trip.three_weeks"
+msgstr "3주"
+
+msgid "trip.month"
+msgstr "한 달"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n}일"
+
+msgid "holiday.new_year"
+msgstr "새해 첫날"
+
+msgid "holiday.valentines"
+msgstr "밸런타인데이"
+
+msgid "holiday.easter"
+msgstr "부활절"
+
+msgid "holiday.mothers_day"
+msgstr "어머니날"
+
+msgid "holiday.fathers_day"
+msgstr "아버지날"
+
+msgid "holiday.halloween"
+msgstr "핼러윈"
+
+msgid "holiday.thanksgiving"
+msgstr "추수감사절"
+
+msgid "holiday.christmas_eve"
+msgstr "크리스마스이브"
+
+msgid "holiday.christmas"
+msgstr "크리스마스"
+
+msgid "holiday.new_years_eve"
+msgstr "새해 전날"

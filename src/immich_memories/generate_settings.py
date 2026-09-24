@@ -224,11 +224,11 @@ def build_title_settings(
     holiday = params.memory_preset_params.get("holiday")
     if params.memory_type == "holiday" and params.date_end and holiday:
         from immich_memories.memory_types.factory import holiday_label
-        from immich_memories.titles.text_builder import TITLE_PATTERNS
+        from immich_memories.titles.text_builder import title_pattern
 
         locale = resolve_caption_locale(settings.locale)
         settings.title_override = holiday_label(holiday, params.date_end.year, locale)
-        settings.subtitle_override = TITLE_PATTERNS[locale]["on_this_day_subtitle"]
+        settings.subtitle_override = title_pattern("on_this_day_subtitle", locale)
         settings.title_source = TitleSource.OCCASION
 
     # Apply LLM-generated title overrides

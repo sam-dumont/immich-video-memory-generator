@@ -45,7 +45,7 @@ def _codes_by_english_name() -> dict[str, str]:
 @lru_cache(maxsize=32)
 def _territories(locale: str) -> dict[str, str]:
     try:
-        return dict(Locale.parse(locale).territories)
+        return dict(Locale.parse(locale.replace("-", "_")).territories)
     except (UnknownLocaleError, ValueError, TypeError):
         return {}
 
@@ -107,3 +107,8 @@ def place_label(city: str | None, country: str | None, locale: str) -> str | Non
     if city and localised:
         return f"{city}, {localised}"
     return localised or city or None
+
+
+def is_country(english_name: str) -> bool:
+    """Whether CLDR knows this English name as a country."""
+    return english_name.strip().casefold() in _codes_by_english_name()

@@ -335,7 +335,8 @@ class UnitBuilder:
         downloaded for a burst the film never keeps. A kept burst is measured here, with
         the probe the render projection re-derives it with, so the film ships exactly the
         trims measuring every burst up front gave it. A burst the measurement refuses
-        ships as its photograph, as it always has.
+        is never stitched: the kept picture plays its own clip when that moves, and is its
+        photograph otherwise.
         """
         rendering = self._renderings.get(carrier["asset_id"])
         if (
@@ -357,11 +358,25 @@ class UnitBuilder:
     def _measured_unit(
         self, measured: MotionRendering | None, asset_id: str, members: list[str]
     ) -> dict:
-        if measured is None or set(measured.still_ids) != set(members):
-            unit = self._still_unit(asset_id, {})
-        else:
+        if measured is not None and set(measured.still_ids) == set(members):
             unit = self._live_unit(measured, asset_id, {}, members)
+        elif (own := self._own_clip(asset_id, members)) is not None:
+            unit = self._live_unit(own, asset_id, {}, [asset_id])
+        else:
+            unit = self._still_unit(asset_id, {})
         return {k: v for k, v in self._with_banked_speech(unit).items() if k in _RENDERED_FIELDS}
+
+    def _own_clip(self, asset_id: str, members: list[str]) -> MotionRendering | None:
+        """The kept picture's own clip, when the burst it belongs to cannot be stitched.
+
+        A refused join is refused because its offset could not be measured; one picture's own
+        recording has no join to measure, so it can still play (the residual decides whether it
+        does) instead of the whole burst falling back to a photograph.
+        """
+        if len(members) < 2 or self._measure is None:
+            return None
+        own = self._measure([asset_id]).get(asset_id)
+        return own if own is not None and set(own.still_ids) == {asset_id} else None
 
     def _with_banked_speech(self, unit: dict) -> dict:
         """A unit whose speech a cut has already measured knows where its sentences end."""

@@ -165,7 +165,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   run asks nothing and a changed asset invalidates only its own rows. The main ones:
   `annotations.sqlite` (`store/`), episode readings, accounts, cut measurements
   (`store/cut_measurements.py`) and the `structure-banks/*.private.json` files (standing votes,
-  thesis-fit votes). No row means nobody asked, never "measured nothing".
+  thesis-fit votes). No row means nobody asked, never "measured nothing". Two runs write them at
+  once (the pipeline lock covers assembly only): SQLite banks write row by row, and every JSON
+  bank merges what is on disk under `locked_file.file_lock` before its atomic replace.
 
 **Building the cut**
 
@@ -738,9 +740,11 @@ src/immich_memories/
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization, secret files, credential fingerprints
+├── locked_file.py              # file_lock(): one writer at a time on a bank file several runs rewrite
 ├── i18n.py                     # Internationalization
 ├── i18n_places.py              # Country names in the film's language (CLDR, offline)
 ├── place_names.py              # Offline island boxes and short island/region names (en, fr)
+├── place_phrases/              # Per-language trip-title place phrases (en, fr); none = no preposition
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check
@@ -861,7 +865,7 @@ orchestration and deployment belong to later slices of #931.
 - **Private helpers**: Prefixed with `_`, same package
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
-- **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`).
+- **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`); the pinned images ride in the Actions cache per version (`scripts/immich_gate_images.sh`, `make immich-gate-fetch`/`immich-gate-save`).
 - **Pre-commit**: Run `make ci` before committing
 
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.

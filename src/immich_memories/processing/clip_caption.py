@@ -17,6 +17,13 @@ from immich_memories.i18n import (
     get_month_name,
     get_weekday_name,
 )
+from immich_memories.processing.caption_image import (
+    CaptionStyle,
+    needs_image,
+    render_caption,
+    text_width,
+)
+from immich_memories.titles.letter_case import display_upper
 
 
 def resolve_caption_locale(value: str | None) -> str:
@@ -40,6 +47,8 @@ _MARGIN_RATIO = 0.055
 # diffuse white; this lands at 721.
 _HDR_COLOUR = "0xBFBFBF"
 _SDR_COLOUR = "white"
+_HDR_RGB = (0xBF, 0xBF, 0xBF)
+_SDR_RGB = (0xFF, 0xFF, 0xFF)
 
 # Middle dot rather than a comma: place names already contain commas.
 _SEPARATOR = " \u00b7 "
@@ -146,6 +155,25 @@ def _escape(text: str) -> str:
     return stripped
 
 
+def _overlay(label: str, text: str, style: CaptionStyle, x: int, y: int, window: str) -> str:
+    """An `overlay` of the caption's image, as a piece of the decoder's filter chain.
+
+    The chain is joined with commas, so this closes it into a labelled pad,
+    opens the image as a second input, and hands the overlaid result on to
+    whatever filter comes next.
+
+    The image is converted to limited range before it meets the frame. Left
+    to itself, FFmpeg 8.1 negotiates the overlay in full range (the PNG's)
+    and stretches the whole untagged frame to match, which the rawvideo pipe
+    then reads as limited: the video under the caption brightens.
+    """
+    path, dx, dy = render_caption(text, style)
+    return (
+        f"null[{label}_frame];movie='{path}',scale=out_range=tv,setparams=range=tv[{label}_text];"
+        f"[{label}_frame][{label}_text]overlay=x={x + dx}:y={y + dy}{window}"
+    )
+
+
 def caption_filters(
     caption: ClipCaption,
     width: int,
@@ -172,21 +200,34 @@ def caption_filters(
         ":shadowcolor=black@0.35"
         f":shadowx={max(1, font_size // 32)}:shadowy={max(1, font_size // 32)}"
     )
-    if font_path:
-        common = f":fontfile='{font_path}'" + common
+    window = ""
     if frame_window is not None:
         start, end = frame_window
-        common += f":enable='gte(n,{start})*lt(n,{end})'"
+        window = f":enable='gte(n,{start})*lt(n,{end})'"
+    drawn = common + window
+    if font_path:
+        drawn = f":fontfile='{font_path}'" + drawn
+    style = None
+    if font_path:
+        style = CaptionStyle(
+            font_path,
+            font_size,
+            _HDR_RGB if is_hdr else _SDR_RGB,
+            max(1, font_size // 24),
+            max(1, font_size // 32),
+        )
     filters = []
-    if caption.place:
-        filters.append(
-            f"drawtext=text='{_escape(caption.place.upper())}'{common}:x={inset}:y={inset}"
-        )
-    if caption.date:
-        filters.append(
-            f"drawtext=text='{_escape(caption.date.upper())}'{common}"
-            f":x=w-tw-{inset}:y=h-{inset}-{line}"
-        )
+    place = display_upper(caption.place)
+    if style and needs_image(place, font_path):
+        filters.append(_overlay("place", place, style, inset, inset, window))
+    elif place:
+        filters.append(f"drawtext=text='{_escape(place)}'{drawn}:x={inset}:y={inset}")
+    day = display_upper(caption.date)
+    if style and needs_image(day, font_path):
+        x = width - text_width(day, style) - inset
+        filters.append(_overlay("date", day, style, x, height - inset - line, window))
+    elif day:
+        filters.append(f"drawtext=text='{_escape(day)}'{drawn}:x=w-tw-{inset}:y=h-{inset}-{line}")
     return filters
 
 

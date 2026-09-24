@@ -14,7 +14,7 @@ so no asset can be lost between two pools: there is only one.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 from typing import Any, cast
 
@@ -97,7 +97,81 @@ def motion_renderings(
     `clock_offsets` measures how each burst's companions relate in time. When
     every join is measured, its windows are placed on the measured source clocks
     (#1012). An unmeasurable join leaves the burst's stills as photographs.
+
+    Two files of one Live Photo (a shared album's downscaled copy, same instant, same
+    video) are one picture: the burst is planned without the copy, and the copy joins the
+    rendering as an empty-slice alias, so whichever file the cut keeps plays the video.
     """
+    live = [
+        a
+        for a in assets
+        if getattr(a, "live_photo_video_id", None) and not getattr(a, "is_video", False)
+    ]
+    copies = _fold_copies(live)
+    folded = {copy.id for group in copies.values() for copy in group}
+    found = _renderings(
+        [a for a in assets if a.id not in folded],
+        config,
+        companion_assets=companion_assets,
+        clock_offsets=clock_offsets,
+    )
+    return _with_copies(found, copies) if copies else found
+
+
+def _fold_copies(live: list[Any]) -> dict[str, list[Any]]:
+    """The copies of each Live still: same companion, same instant."""
+    first: dict[tuple, Any] = {}
+    copies: dict[str, list[Any]] = {}
+    for asset in sorted(live, key=lambda a: (a.file_created_at, a.id)):
+        key = (asset.live_photo_video_id, asset.file_created_at)
+        if key in first:
+            copies.setdefault(first[key].id, []).append(asset)
+        else:
+            first[key] = asset
+    return copies
+
+
+def _with_copies(
+    found: dict[str, MotionRendering], copies: Mapping[str, list[Any]]
+) -> dict[str, MotionRendering]:
+    """Each rendering with its stills' copies added as aliases that show no footage."""
+    rebuilt: dict[int, MotionRendering] = {}
+    out: dict[str, MotionRendering] = {}
+    for still_id, rendering in found.items():
+        if id(rendering) not in rebuilt:
+            rebuilt[id(rendering)] = _aliased(rendering, copies)
+        out[still_id] = rebuilt[id(rendering)]
+    for rendering in rebuilt.values():
+        for still_id in rendering.still_ids:
+            out[still_id] = rendering
+    return out
+
+
+def _aliased(rendering: MotionRendering, copies: Mapping[str, list[Any]]) -> MotionRendering:
+    material = rendering.material
+    if material is None or not any(s in copies for s in rendering.still_ids):
+        return rendering
+    entries = list(material.source_entries)
+    for entry in material.source_entries:
+        entries.extend(
+            LiveSourceEntry(
+                copy.id, entry.video_id, entry.shutter_timestamp, entry.start, entry.start
+            )
+            for copy in copies.get(entry.still_id, ())
+        )
+    aliased = LiveRenderMaterial(
+        tuple(sorted(entries, key=lambda e: (e.shutter_timestamp, e.still_id)))
+    )
+    return replace(rendering, still_ids=aliased.still_ids, material=aliased)
+
+
+def _renderings(
+    assets: list[Any],
+    config: Any,
+    *,
+    companion_assets: Mapping[str, Asset] | None = None,
+    clock_offsets: ClockOffsetProbe | None = None,
+) -> dict[str, MotionRendering]:
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
     # A motion rendering belongs to a photograph. A video-typed asset with a (borrowed or
@@ -129,7 +203,7 @@ def motion_renderings(
             # Removed aliases must neither trim nor connect the surviving footage.
             # Re-cluster with the same measurements so projection reproduces the cuts.
             found.update(
-                motion_renderings(
+                _renderings(
                     members,
                     config,
                     companion_assets=companion_assets,
