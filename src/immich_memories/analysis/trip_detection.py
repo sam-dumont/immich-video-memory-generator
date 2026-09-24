@@ -14,7 +14,7 @@ from datetime import date
 from geopy.exc import GeopyError
 from geopy.geocoders import Nominatim
 
-from immich_memories.analysis.trip_place import trip_place
+from immich_memories.analysis.trip_place import TripPlace, trip_place
 from immich_memories.api.models import Asset
 from immich_memories.place_names import short_place_name
 
@@ -38,6 +38,8 @@ class DetectedTrip:
     centroid_lat: float
     centroid_lon: float
     asset_ids: list[str] = field(default_factory=list)
+    # The scale the name was chosen at: see TripPlace.scale.
+    location_kind: str = ""
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -104,12 +106,12 @@ def _build_trip_from_group(
     lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
     c_lat = sum(lats) / len(lats) if lats else 0.0
     c_lon = sum(lons) / len(lons) if lons else 0.0
+    place = _derive_location_name(group, c_lat, c_lon, geocoder) if name_locations else None
     return DetectedTrip(
         start_date=group[0].file_created_at.date(),
         end_date=group[-1].file_created_at.date(),
-        location_name=(
-            _derive_location_name(group, c_lat, c_lon, geocoder) if name_locations else ""
-        ),
+        location_name=place.name if place else "",
+        location_kind=place.scale if place else "",
         asset_count=len(group),
         centroid_lat=c_lat,
         centroid_lon=c_lon,
@@ -240,7 +242,7 @@ def _derive_location_name(
     centroid_lat: float | None = None,
     centroid_lon: float | None = None,
     geocoder: Geocoder | None = None,
-) -> str:
+) -> TripPlace:
     """The trip's name at the scale its pictures cover (see `trip_place`).
 
     An allowed geocoder only speaks where one point can: a trip that fits a
@@ -255,10 +257,10 @@ def _derive_location_name(
         and centroid_lat is not None
         and centroid_lon is not None
     ):
-        geocoded = geocoder(centroid_lat, centroid_lon, spread_km=_compute_spread_km(assets))
-        if geocoded:
-            return geocoded
+        spread_km = _compute_spread_km(assets)
+        if geocoded := geocoder(centroid_lat, centroid_lon, spread_km=spread_km):
+            return TripPlace(geocoded, "city" if spread_km < _CITY_SPREAD_KM else "region")
     if place is not None:
-        return place.name
+        return place
     cities = Counter(a.exif_info.city for a in assets if a.exif_info and a.exif_info.city)
-    return cities.most_common(1)[0][0] if cities else "Unknown Location"
+    return TripPlace(cities.most_common(1)[0][0] if cities else "Unknown Location", "city")
