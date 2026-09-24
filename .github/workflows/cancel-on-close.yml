@@ -20,6 +20,7 @@ concurrency:
 jobs:
   cancel:
     name: Cancel this branch's leftover runs
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -1,7 +1,7 @@
 """Real Immich integration tests for photos/photo_pipeline.py rendering.
 
 Downloads real photos from Immich, scores them, renders animated clips,
-verifies the output. Tests the full _render_single_photo and score_photos
+verifies the output. Tests the full render_single_photo and score_photos
 flows with actual image data.
 """
 
@@ -14,7 +14,7 @@ import pytest
 
 from immich_memories.config_loader import Config
 from immich_memories.config_models_render import PhotoConfig
-from immich_memories.photos.photo_pipeline import _render_single_photo
+from immich_memories.photos.photo_pipeline import render_single_photo
 from immich_memories.timeperiod import DateRange
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
@@ -78,7 +78,7 @@ class TestRenderSinglePhotoRealImmich:
         photo_config.duration = 3.0
 
         clips = [
-            _render_single_photo(
+            render_single_photo(
                 asset=photo,
                 config=photo_config,
                 target_w=1280,

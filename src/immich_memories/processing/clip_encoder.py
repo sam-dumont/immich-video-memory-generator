@@ -30,8 +30,8 @@ from immich_memories.processing.hardware_encode import (
 )
 from immich_memories.processing.hdr_utilities import (
     _detect_hdr_type,
-    _get_colorspace_filter,
-    _get_hdr_conversion_filter,
+    get_colorspace_filter,
+    get_hdr_conversion_filter,
 )
 from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.scaling_utilities import _get_smart_crop_filter
@@ -137,13 +137,13 @@ class ClipEncoder:
         )
         if plan.hdr:
             target_hdr = plan.target_transfer.value
-            conversion = _get_hdr_conversion_filter(source_hdr, target_hdr, required=True)
-            return target_hdr, conversion + _get_colorspace_filter(target_hdr)
+            conversion = get_hdr_conversion_filter(source_hdr, target_hdr, required=True)
+            return target_hdr, conversion + get_colorspace_filter(target_hdr)
         if source_hdr:
-            return "sdr", _get_hdr_conversion_filter(
+            return "sdr", get_hdr_conversion_filter(
                 source_hdr, "sdr", required=True
-            ) + _get_colorspace_filter("sdr")
-        return "sdr", _get_colorspace_filter("sdr")
+            ) + get_colorspace_filter("sdr")
+        return "sdr", get_colorspace_filter("sdr")
 
     def encode_single_clip(
         self,

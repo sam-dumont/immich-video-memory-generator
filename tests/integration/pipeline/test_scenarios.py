@@ -347,7 +347,7 @@ class TestErrorWrapping:
         # WHY: force an error inside assembly to test the wrapping logic
         with (
             patch(
-                "immich_memories.generate_render._create_assembler",
+                "immich_memories.generate_render.create_assembler",
                 side_effect=RuntimeError("Simulated assembly crash"),
             ),
             pytest.raises(GenerationError, match="Generation failed"),
@@ -366,10 +366,8 @@ class TestTripTitleSettings:
         from datetime import date
 
         from immich_memories.config_loader import Config
-        from immich_memories.generate import (
-            GenerationParams,
-            _build_title_settings,
-        )
+        from immich_memories.generate import GenerationParams
+        from immich_memories.generate_settings import build_title_settings
         from immich_memories.processing.assembly_config import AssemblyClip
 
         clip = _make_test_clip(short_clip)
@@ -403,7 +401,7 @@ class TestTripTitleSettings:
             ),
         ]
 
-        title_settings = _build_title_settings(params, config, assembly_clips)
+        title_settings = build_title_settings(params, config, assembly_clips)
         assert title_settings.trip_locations is not None
         assert len(title_settings.trip_locations) > 0
         assert title_settings.trip_title_text is not None

@@ -29,14 +29,14 @@
 # For the model editor, which reads the period as a story and puts a reason under
 # every picture, point LLM__BASE_URL and LLM__MODEL at a vision model you host:
 # about 17 GB resident at 4-bit, on a second machine. See the self-hosting guide:
-# https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/self-hosting
+# https://sam-dumont.github.io/immich-video-memory-generator/docs/being-rewritten/self-hosting
 services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
     container_name: immich-memories
     # Localhost only. This container holds an Immich API key to your whole library.
     # To reach it from other machines: turn on auth first, then use "8080:8080".
-    # https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication
+    # https://sam-dumont.github.io/immich-video-memory-generator/docs/run/authentication
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -189,7 +189,7 @@ services:
   # `smolvlm2-500m-base-public` at /models. Nothing else in this file provides
   # one, so here it is: llama.cpp serving the pinned SmolVLM2-500M GGUF under
   # that alias. Recipes for Apple Silicon and Kubernetes, and the whole
-  # contract, are on docs/deploy/installation/caption-server.md.
+  # contract, are on docs-site/docs/better/captions.md.
   #
   #   docker compose --profile captioner up -d
   #   curl -s localhost:8094/v1/models

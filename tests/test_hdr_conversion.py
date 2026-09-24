@@ -187,13 +187,13 @@ class TestHdrConversionFilter:
         target_transfer: str,
     ) -> None:
         """An exact transfer path must not require or even probe zscale."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             side_effect=AssertionError("exact transfer must not probe zscale"),
         ):
-            result = _get_hdr_conversion_filter(
+            result = get_hdr_conversion_filter(
                 source_transfer,
                 target_transfer,
                 required=True,
@@ -216,25 +216,25 @@ class TestHdrConversionFilter:
         self, source_type: str | None, target_type: str
     ) -> None:
         """Missing zscale must abort instead of attaching false target metadata."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         with (
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=False,
             ),
             pytest.raises(RuntimeError, match="zscale"),
         ):
-            _get_hdr_conversion_filter(source_type, target_type)
+            get_hdr_conversion_filter(source_type, target_type)
 
     def test_sdr_to_hlg_default_bt709_primaries(self):
         """Default SDR→HLG conversion should use bt709 primaries."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         # WHY: mock subprocess.run — filter builder checks zscale availability via ffmpeg
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "zscale"
-            result = _get_hdr_conversion_filter(None, "hlg")
+            result = get_hdr_conversion_filter(None, "hlg")
 
         assert "pin=bt709" in result
         assert "t=arib-std-b67" in result
@@ -243,22 +243,22 @@ class TestHdrConversionFilter:
 
     def test_sdr_to_hlg_with_p3_primaries(self):
         """SDR→HLG with Display P3 source should use smpte432 primariesin."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "zscale"
-            result = _get_hdr_conversion_filter(None, "hlg", source_primaries="smpte432")
+            result = get_hdr_conversion_filter(None, "hlg", source_primaries="smpte432")
 
         assert "pin=smpte432" in result
         assert "pin=bt709" not in result
 
     def test_sdr_to_pq_with_p3_primaries(self):
         """SDR→PQ with Display P3 source should use smpte432 primariesin."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "zscale"
-            result = _get_hdr_conversion_filter(None, "pq", source_primaries="smpte432")
+            result = get_hdr_conversion_filter(None, "pq", source_primaries="smpte432")
 
         assert "pin=smpte432" in result
         assert "t=smpte2084" in result
@@ -266,11 +266,11 @@ class TestHdrConversionFilter:
 
     def test_hlg_to_pq_uses_bt2020_primaries(self):
         """HDR→HDR conversion already uses bt2020, source_primaries not needed."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "zscale"
-            result = _get_hdr_conversion_filter("hlg", "pq", source_primaries="smpte432")
+            result = get_hdr_conversion_filter("hlg", "pq", source_primaries="smpte432")
 
         assert "pin=bt2020" in result
         assert "npl=203" in result
@@ -304,7 +304,7 @@ class TestHdrConversionFilter:
                 return_value="bt2020",
             ),
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=True,
             ),
         ):
@@ -348,7 +348,7 @@ class TestHdrConversionFilter:
                 return_value=["hlg", None],
             ) as detect_transfers,
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=True,
             ),
         ):
@@ -396,7 +396,7 @@ class TestHdrConversionFilter:
 
         with (
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=False,
             ),
             pytest.raises(RequiredColorConversionUnavailable),
@@ -418,7 +418,7 @@ class TestHdrConversionFilter:
 
         with (
             patch(
-                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
                 return_value=False,
             ),
             pytest.raises(RequiredColorConversionUnavailable),

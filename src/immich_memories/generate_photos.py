@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
+def detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
     """Return the same memoized canvas used by final assembly."""
     from immich_memories.processing.output_canvas import resolve_generation_canvas
 
@@ -25,7 +25,7 @@ def _detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
     return canvas.width, canvas.height
 
 
-def _render_photo_as_clip(
+def render_photo_as_clip(
     clip: VideoClipInfo,
     params: GenerationParams,
     output_dir: Path,
@@ -35,11 +35,11 @@ def _render_photo_as_clip(
 ) -> AssemblyClip | None:
     """Download and render a photo as an animated video clip for assembly.
 
-    Uses the same rendering pipeline as photo_pipeline._render_single_photo:
+    Uses the same rendering pipeline as photo_pipeline.render_single_photo:
     downloads from Immich, prepares the source (HEIC decode, gain map),
     then streams Ken Burns frames to FFmpeg.
     """
-    from immich_memories.photos.photo_pipeline import _render_single_photo
+    from immich_memories.photos.photo_pipeline import render_single_photo
 
     if not params.client and source_path is None:
         logger.warning("No Immich client — cannot render photo clip")
@@ -48,12 +48,12 @@ def _render_photo_as_clip(
     photo_dir = output_dir / "photos"
     photo_dir.mkdir(exist_ok=True)
 
-    target_w, target_h = _detect_photo_resolution(params)
+    target_w, target_h = detect_photo_resolution(params)
     photo_config = params.config.photos
     if duration_seconds is not None:
         photo_config = photo_config.model_copy(update={"duration": duration_seconds})
 
-    result = _render_single_photo(
+    result = render_single_photo(
         asset=clip.asset,
         config=photo_config,
         target_w=target_w,
@@ -80,7 +80,7 @@ def _render_video_frame_as_clip(
 
     photo_dir = output_dir / "photos"
     photo_dir.mkdir(exist_ok=True)
-    target_w, _target_h = _detect_photo_resolution(params)
+    target_w, _target_h = detect_photo_resolution(params)
     frame_path = extract_frame_at(
         video_path,
         timestamp=frame_seconds,
@@ -92,7 +92,7 @@ def _render_video_frame_as_clip(
         return None
     segment = params.clip_segments.get(clip.asset.id)
     duration_seconds = None if segment is None else segment[1] - segment[0]
-    return _render_photo_as_clip(
+    return render_photo_as_clip(
         clip,
         params,
         output_dir,

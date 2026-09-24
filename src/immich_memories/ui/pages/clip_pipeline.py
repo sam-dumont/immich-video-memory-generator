@@ -187,7 +187,7 @@ def _configure_timeline_for_selection(
 ) -> TimelinePlan:
     """Persist one preliminary timeline and apply its content budget."""
     from immich_memories.generate import GenerationParams
-    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.processing.timeline_budget import plan_timeline
 
     config = state.config
@@ -207,7 +207,7 @@ def _configure_timeline_for_selection(
         date_end=date_range.end if date_range else None,
         memory_preset_params=state.memory_preset_params,
     )
-    title_settings = _build_title_settings(planning_params, config, [])
+    title_settings = build_title_settings(planning_params, config, [])
     plan = plan_timeline(
         [*clips, *photos],
         title_settings,
@@ -464,15 +464,20 @@ def _run_pipeline_blocking(
     if tc is None:
         raise RuntimeError("Thumbnail cache not initialized")
     try:
+        from immich_memories.config import get_config
+        from immich_memories.preflight_run import run_blockers
+
+        app_config = get_config()
+        blockers = run_blockers(app_config, output_directory=app_config.output.output_path)
+        if blockers:
+            raise RuntimeError("; ".join(f"{b.message}: {b.details}" for b in blockers))
         with SyncImmichClient(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
             api_version=state.immich_api_version,
         ) as client:
             from immich_memories.analysis.editorial_runtime import build_smart_pipeline
-            from immich_memories.config import get_config
 
-            app_config = get_config()
             pipeline = build_smart_pipeline(
                 client=client,
                 thumbnail_cache=tc,

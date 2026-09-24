@@ -28,6 +28,15 @@ PUBLIC_HEAD_VERSIONS = {
 }
 
 
+def missing_encoder_message(encoder_path: Path) -> str:
+    """The one sentence a missing encoder is reported with, in preflight and mid-run alike."""
+    return (
+        f"public heads need the pinned DINOv2 ONNX export at {encoder_path}. "
+        "Run `immich-memories models fetch` to download it, or point "
+        "advanced.triage.encoder at your copy of the export."
+    )
+
+
 def prepare_heads(
     *,
     asset_ids: Sequence[str],
@@ -49,9 +58,7 @@ def prepare_heads(
         )
     # Refuse silent optional-triage fallback: preparation requires these facts.
     if not encoder_path.is_file():
-        raise FileNotFoundError(
-            f"public heads need the pinned DINOv2 ONNX export at {encoder_path}; set triage.encoder"
-        )
+        raise FileNotFoundError(missing_encoder_message(encoder_path))
     check_cancelled()
     encoder = DinoEncoder.open(encoder_path, provider=provider)
     store = HeadFactStore(store_path)

@@ -28,7 +28,7 @@ from immich_memories.processing.encoding_plan import (
 )
 from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
 from immich_memories.processing.hardware_encode import apply_hardware_encode
-from immich_memories.processing.hdr_utilities import _get_colorspace_filter
+from immich_memories.processing.hdr_utilities import get_colorspace_filter
 from immich_memories.processing.streaming_audio import (
     _probe_duration,
     extract_and_mix_audio,
@@ -107,7 +107,7 @@ class StreamingEncoder:
         target_type = (
             self._target_transfer.value if self._target_transfer is not HdrTransfer.NONE else "sdr"
         )
-        vf_args = ["-vf", _get_colorspace_filter(target_type).removeprefix(",")]
+        vf_args = ["-vf", get_colorspace_filter(target_type).removeprefix(",")]
         input_color_args: list[str] = []
         if self._target_transfer is HdrTransfer.HLG:
             input_color_args = [

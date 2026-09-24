@@ -21,7 +21,7 @@ from immich_memories.processing.editorial_timing import (
     read_editorial_timeline,
     timing_policy_for_params,
 )
-from tests.conftest import make_asset
+from tests.conftest import make_asset, make_clip
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.test_editorial_duration_planner_integration import source
 from tests.test_editorial_visual_body_audience import picture_record
@@ -124,10 +124,10 @@ def test_effective_product_policy_matches_actual_generation_builder(product):
 
 
 def test_actual_generation_rejects_changed_timing_before_run_or_media(tmp_path):
-    from immich_memories.generate import _generate_memory_inner
+    from immich_memories.generate import generate_memory
 
     params = GenerationParams(
-        clips=[],
+        clips=[make_clip("clip-1", duration=5.0)],
         output_path=tmp_path / "not-created" / "memory.mp4",
         config=Config(),
         target_duration_seconds=60,
@@ -136,7 +136,7 @@ def test_actual_generation_rejects_changed_timing_before_run_or_media(tmp_path):
     params.editorial_render_timing = bind_editorial_timeline(policy, policy.resolve([], {}), [])
     params.transition_duration += 0.1
     with pytest.raises(ValueError, match="timing settings changed"):
-        _generate_memory_inner(params)
+        generate_memory(params)
     assert not params.output_path.parent.exists()
 
 

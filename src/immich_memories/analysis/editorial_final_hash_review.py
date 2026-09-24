@@ -221,12 +221,14 @@ def _refill(
     taken: set[str],
     repeats: _Repeats,
     thumbnail_hash: Callable[[str], str | None],
+    admits: Admits,
 ) -> tuple[str | None, dict[str, Any] | None]:
     """The first offered picture that the film can show instead, and the rung it came from.
 
     A candidate the film already holds, one whose preview was never cached, and one that
     repeats a frame already kept are all passed over: refilling a repeat with a repeat would
-    only move the problem to the next pass.
+    only move the problem to the next pass. A candidate the audience gate refuses is passed
+    over too, and it is asked last, since asking it can cost a model call.
     """
     for rung, unit in offers:
         asset_id = str(unit.get("asset_id") or "")
@@ -238,25 +240,37 @@ def _refill(
         repeats.hashes[asset_id] = digest
         candidate = _replacement_row(carrier, unit)
         repeated, _similarity = repeats.of(candidate, kept)
-        if repeated is None:
+        if repeated is None and admits(candidate):
             return rung, candidate
     return None, None
 
 
 FamilyOf = Callable[[str], Collection[str]]
+Admits = Callable[[Mapping[str, Any]], bool]
 
 
 def _no_family(_asset_id: str) -> Collection[str]:
     return ()
 
 
+def _admit_all(_row: Mapping[str, Any]) -> bool:
+    return True
+
+
 class _Cut:
     """The film as the review settles it, one carrier at a time in keeping order."""
 
     def __init__(
-        self, carriers, repeats: _Repeats, thumbnail_hash, content_floor: float, family_of: FamilyOf
+        self,
+        carriers,
+        repeats: _Repeats,
+        thumbnail_hash,
+        content_floor: float,
+        family_of: FamilyOf,
+        admits: Admits = _admit_all,
     ) -> None:
         self.family_of = family_of
+        self.admits = admits
         self.shots = Counter(p for c in carriers for p in set(family_of(c["asset_id"])))
         self.kept_only_shots: list[str] = []
         self.repeats = repeats
@@ -287,6 +301,7 @@ class _Cut:
             taken=self.taken,
             repeats=self.repeats,
             thumbnail_hash=self.thumbnail_hash,
+            admits=self.admits,
         )
         if replacement is not None and rung is not None:
             removal["replacement"] = replacement["asset_id"]
@@ -319,6 +334,7 @@ def review_cut_by_cached_hashes(
     scene_print: ScenePrint | None = None,
     content_floor: float = math.inf,
     close_family_of: FamilyOf = _no_family,
+    admits: Admits = _admit_all,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Drop the frames of a finished cut that repeat one it already holds, and refill the slot.
 
@@ -335,11 +351,14 @@ def review_cut_by_cached_hashes(
     ``close_family_of`` names the close family members a frame shows. A frame that is one of
     them's only shot is kept ahead of its look-alike, is refilled only by a picture that still
     shows them, and otherwise stays (named under ``kept_only_shots``).
+
+    ``admits`` is the audience gate's say on a refill: a slot takes no picture it refuses, and
+    when every offer is refused the slot stays empty.
     """
     protected = frozenset(protected_asset_ids)
     hashes, unavailable = _cached_hashes(carriers, thumbnail_hash)
     repeats = _Repeats(hashes, distance, scene_print)
-    cut = _Cut(carriers, repeats, thumbnail_hash, content_floor, close_family_of)
+    cut = _Cut(carriers, repeats, thumbnail_hash, content_floor, close_family_of, admits)
     only_shots = frozenset(
         c["asset_id"]
         for c in carriers

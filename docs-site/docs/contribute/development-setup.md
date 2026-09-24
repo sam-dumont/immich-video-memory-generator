@@ -38,7 +38,7 @@ match what CI runs, so local results are consistent. Use
 [conventional commit](https://www.conventionalcommits.org/) messages.
 
 The test tiers, what each needs, and what to do when diff-cover fails on your PR are in the
-[Testing guide](testing.md).
+[Testing guide](./testing.md).
 
 ## Merging and releasing
 

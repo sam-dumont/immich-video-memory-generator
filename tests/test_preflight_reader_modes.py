@@ -6,10 +6,9 @@ from immich_memories.config_loader import Config
 from immich_memories.preflight import (
     CheckStatus,
     check_caption_endpoint,
-    check_detector_export,
-    check_encoder,
     check_llm,
 )
+from immich_memories.preflight_run import check_detector_export, check_encoder
 
 
 @pytest.mark.parametrize("reader,model", [("auto", ""), ("rules", "unused-model")])

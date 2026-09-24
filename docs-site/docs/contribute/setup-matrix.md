@@ -10,8 +10,8 @@ same month of the same library. It answers "how do the same pictures come out un
 what does each mode tax", and the answer is a table of preparation, selection and render seconds,
 peak memory, the pictures each setup chose, the overlap against the reference cut, and the film.
 
-The results it produced are published on [Running modes](../deploy/running-modes.md) and
-[The reader](../deploy/readers.md). This page is how to run it again.
+The results it produced are published on [Running modes](../being-rewritten/running-modes.md) and
+[The reader](../better/reader.md). This page is how to run it again.
 
 `scripts/setup_matrix.yaml` holds the cells, `scripts/setup_matrix.py` runs them.
 

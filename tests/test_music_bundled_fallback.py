@@ -107,7 +107,7 @@ def test_a_bundled_substitution_still_warns_the_finished_run(
 ) -> None:
     """Applied music with a warning, not silent success: the artifact carries it."""
     from immich_memories.generate_music import MusicSelection
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
 
     base_video = tmp_path / "memory.mp4"
     base_video.write_bytes(b"validated-base")
@@ -123,7 +123,7 @@ def test_a_bundled_substitution_still_warns_the_finished_run(
     # WHY: replaces the FFmpeg mix and republication of the base artifact.
     monkeypatch.setattr("immich_memories.generate_music.apply_music_file", MagicMock())
 
-    result = _run_music_phase(
+    result = run_music_phase(
         GenerationParams(clips=[], output_path=base_video, config=generator_enabled),
         [],
         base_video,
