@@ -8,8 +8,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 Reader: newcomer.
 
-One month of your Immich library, cut into a film, on the box that already runs Immich. No model,
-no GPU, no second service: this is the default install, and it makes the whole film.
+One month of your Immich library, cut into a film, on the box that already runs Immich. It works
+on a plain NAS, and this page sets up exactly that; a GPU or a model makes it better later.
 
 **You need:** Docker with Compose v2, Immich v2 or v3, and for this container 4 GB of RAM, two
 cores and 25 GB of disk ([Requirements](../run/requirements.md)).

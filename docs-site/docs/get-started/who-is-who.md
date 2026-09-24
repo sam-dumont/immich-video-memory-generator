@@ -6,10 +6,10 @@ title: Teach it your family
 
 Reader: newcomer.
 
-Two steps, about ten minutes, once. The no-model editor cuts from dates, places, favourites and
+Two steps, about ten minutes, once. On a plain NAS the editor cuts from dates, places, favourites and
 people. It can read the dates and the favourites off Immich. It can't guess where home is, or which
 of the forty named faces in your library are your partner and your kids. These two steps tell it,
-and they make the biggest difference to a no-model cut.
+and they make the biggest difference to a cut on a plain NAS.
 
 ## 1. Where home is
 
