@@ -41,6 +41,7 @@ from immich_memories.ui.pages.step2_helpers import get_thumbnail
 from immich_memories.ui.pages.step2_loading import ensure_caches, load_pool
 
 if TYPE_CHECKING:
+    from immich_memories.config_loader import Config
     from immich_memories.ui.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -310,6 +311,30 @@ class _LoaderSurface:
         self._phase = phase
 
 
+def install_refusal(app_config: Config) -> str | None:
+    """Why this host cannot finish a cut (models, output directory), or None when it can.
+
+    The web run asks this before the pool loads, so a first launch that skipped
+    `immich-memories models fetch` is told so without a single Immich call.
+    """
+    from immich_memories.preflight_run import run_blockers
+
+    blockers = run_blockers(app_config, output_directory=app_config.output.output_path)
+    return "; ".join(f"{b.message}: {b.details}" for b in blockers) or None
+
+
+async def _refused_by_host(state: AppState) -> bool:
+    from immich_memories.config import get_config
+
+    refusal = await run.io_bound(install_refusal, get_config())
+    if refusal is None:
+        return False
+    state.pipeline_running = False
+    state.cut_failure = f"The last cut failed: {sanitize_error_message(refusal)}"
+    ui.navigate.to("/")
+    return True
+
+
 def _launch(state: AppState, progress_state: dict[str, Any]) -> None:
     """Size the timeline from the pool, name the cut, and start the worker once."""
     clips, photos = _eligible_pipeline_media(state, state.clips)
@@ -357,6 +382,16 @@ async def _load_pool_for_cut(state: AppState, rows: _PhaseRows) -> bool:
     return True
 
 
+async def _ready_to_cut(state: AppState, rows: _PhaseRows) -> bool:
+    """Refuse on this host, then load the pool; False when the cut cannot go on."""
+    # A reload that joins a running cut has already passed the check.
+    if state.active_cut_key is None and await _refused_by_host(state):
+        return False
+    if state.clips or state.photo_assets:
+        return True
+    return await _load_pool_for_cut(state, rows)
+
+
 def render_cutting(state: AppState) -> None:
     """The cut in progress: phase rows, elapsed time, Cancel; a reload joins the same run."""
     ensure_caches(state)
@@ -397,8 +432,7 @@ def render_cutting(state: AppState) -> None:
     timer = ui.timer(1.0, poll, active=False)
 
     async def begin() -> None:
-        pool_loaded = bool(state.clips or state.photo_assets)
-        if not pool_loaded and not await _load_pool_for_cut(state, rows):
+        if not await _ready_to_cut(state, rows):
             return
         if state.active_cut_key is None:
             _launch(state, progress_state)
