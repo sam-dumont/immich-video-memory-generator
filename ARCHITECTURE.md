@@ -357,6 +357,7 @@ src/immich_memories/
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
 │   ├── editorial_unvouched_filler.py # No-model cut's last pass: filler with no indicator that shows nothing leaves, unreplaced
+│   ├── editorial_cut_invariants.py # One check of the finished cut against every pass's promise (seat, favourite, eras, Live motion, holds, order); changes nothing
 │   ├── editorial_story_candidates.py # Every picture of a story as a carrier row, for a stage that adds a shot
 │   ├── editorial_thin_layer.py     # ThinPolish: the model reads a rules cut once instead of planning the film;
 │   │                               # held to 4 calls per 12 draft shots + 4 per seat (thin_budget)

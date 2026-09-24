@@ -357,6 +357,28 @@ def _open_the_throttle_gate():
 
 
 @pytest.fixture(autouse=True)
+def _finished_cuts_keep_their_promises(monkeypatch):
+    """Fail any planner test whose finished cut breaks a promise one of its passes made.
+
+    In a run a broken promise is logged and recorded, and the cut ships. In a test it is a
+    failure, so a change that lets a later pass undo an earlier one is caught by whichever
+    planner fixture shows it.
+    """
+    from immich_memories.analysis import editorial_cut_invariants
+
+    report = editorial_cut_invariants.report_violations
+
+    def strict(violations, record):
+        report(violations, record)
+        assert not violations, "the finished cut breaks its promises:\n" + "\n".join(
+            f"  {v.invariant}: {v.subject}: {v.detail} (last pass: {v.last_pass})"
+            for v in violations
+        )
+
+    monkeypatch.setattr(editorial_cut_invariants, "report_violations", strict)
+
+
+@pytest.fixture(autouse=True)
 def _no_leaked_drain_threads():
     """Fail any test that leaves a stderr drain thread spinning.
 
