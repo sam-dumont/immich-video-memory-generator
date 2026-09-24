@@ -6,9 +6,8 @@ title: Requirements and tiers
 
 Reader: newcomer and power user.
 
-The default install is one container on the box that already runs Immich, with no model anywhere.
-It makes the whole film on its own. A GPU box or a model make it faster or better, and both are
-optional.
+The default install is one container on the box that already runs Immich. It works on a plain
+NAS and makes the whole film there; a GPU or a model makes it better, and both are optional.
 
 ## Hardware
 
@@ -43,7 +42,7 @@ Kubernetes cluster. Timings per host are on [Measured](../better/measured.md).
 
 | Setup | What you run | What it adds |
 |---|---|---|
-| **NAS, no model** (the default) | This container and one `models fetch` | The film: the rules editor, eight context heads and two detectors on every picture the film can reach, the family-viewing gate, titles, maps, music |
+| **A plain NAS** (the default) | This container and one `models fetch` | The film: the rules editor, eight context heads and two detectors on every picture the film can reach, the family-viewing gate, titles, maps, music |
 | **+ a GPU box** (optional) | The [inference service](../better/inference.md) or the [render worker](../better/gpu-render.md) on an NVIDIA box | The same facts, faster, or the encode off the NAS. Nothing already banked is read again |
 | **+ a model** (optional) | A vision model with a 32k context: about 17 GB resident for the 30B one at 4-bit, on a 32 GB Mac or a 24 GB card, or a hosted API key | A reader that polishes the draft the rules editor makes, free-text subjects, and captions if you also raise the tier. [What a model adds](../better/overview.md) |
 

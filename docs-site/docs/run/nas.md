@@ -6,7 +6,7 @@ title: On a NAS
 
 Reader: newcomer.
 
-The NAS that runs Immich runs this too, with no model and no second box. The install is the
+The NAS that runs Immich runs this too, on its own; a GPU or a model makes it better later. The install is the
 [Docker Compose](./docker.md) one; this page is what is different on a Synology, QNAP, TrueNAS or
 Unraid box. Tested on a Synology DS423+ (Celeron J4125, four cores).
 

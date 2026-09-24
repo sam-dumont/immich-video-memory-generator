@@ -76,7 +76,7 @@ whether the shipped compose file already passes it.
 | Variable | Config key | Default | Tier | Compose | What it does |
 |---|---|---|---|---|---|
 | `IMMICH_MEMORIES_LLM__BASE_URL` | `llm.base_url` | `http://localhost:8080/v1` | advanced | commented | The reader's endpoint. The default is the app's own port: set it |
-| `IMMICH_MEMORIES_LLM__MODEL` | `llm.model` | empty | advanced | commented | The reader. Empty means the no-model editor. Must match `GET /v1/models` and take images |
+| `IMMICH_MEMORIES_LLM__MODEL` | `llm.model` | empty | advanced | commented | The reader. Empty means the rules editor works alone. Must match `GET /v1/models` and take images |
 | `IMMICH_MEMORIES_LLM__API_KEY` | `llm.api_key` | empty | advanced | no | The reader's token, for a server that answers `401` |
 | `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` | `inference.facts_base_url` | empty | advanced | commented | Send the heads and detectors to the [inference service](../better/inference.md) |
 

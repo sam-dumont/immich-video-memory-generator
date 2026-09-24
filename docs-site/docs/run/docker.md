@@ -7,8 +7,8 @@ title: Docker Compose
 
 Reader: newcomer and power user.
 
-The reference install: two files from the repo, two values to fill in, one container. It makes
-films with no model and no second service. The shortest path through it is the
+The reference install: two files from the repo, two values to fill in, one container. It works
+on a plain NAS; a GPU or a model makes it better. The shortest path through it is the
 [Quick start](../get-started/quick-start.md); this page is every step with the reasons.
 
 ## Install
