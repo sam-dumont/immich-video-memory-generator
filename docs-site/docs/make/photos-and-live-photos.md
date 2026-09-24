@@ -3,6 +3,8 @@ sidebar_position: 6
 title: Photos, Live Photos and HDR
 ---
 
+import Video from '@site/src/components/Video';
+
 # Photos, Live Photos and HDR
 
 Reader: power user. How a still becomes a shot, when a Live Photo plays as motion, and how HDR
@@ -31,6 +33,24 @@ with a warning.
 
 An iPhone records about 3 seconds of video with every photo. Most libraries hold thousands of them,
 and a rapid burst of them is several seconds of continuous footage nobody meant to shoot.
+
+Three photos of an Italian hilltop, fired off in a row, each about 3 seconds and overlapping:
+
+<div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+  <Video src="/demos/live-photos/italian_hilltop/source_1.mp4" width={240} controls muted />
+  <Video src="/demos/live-photos/italian_hilltop/source_2.mp4" width={240} controls muted />
+  <Video src="/demos/live-photos/italian_hilltop/source_3.mp4" width={240} controls muted />
+</div>
+
+Merged, 4.5 seconds of continuous footage:
+
+<Video src="/demos/live-photos/italian_hilltop/merged.mp4" width={720} controls />
+
+A bike race, 6 Live Photos merged into 8.2 seconds:
+
+<Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
+
+These clips are the project author's own footage, published with permission.
 
 **A Live Photo is a photograph.** Its still competes with the photographs and wins or loses as one.
 Whether it plays as motion is a rendering question, asked afterwards, about a picture that has
