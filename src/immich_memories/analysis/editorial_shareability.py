@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from immich_memories.analysis.annotation_line_fields import content_of
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_shareability_audience import (
     _clean,
@@ -136,25 +137,16 @@ def unit_members(unit: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(i) for i in ids if i))
 
 
-_LINE_METADATA_PREFIXES = (
-    "LIVE PHOTO",
-    "VIDEO ",
-    "at ",
-    "with ",
-    "setting:",
-    "exposure:",
-    "resolution:",
-    "duration:",
-    "FLAGGED ",
-    "STARRED ",
-    "SOFT ",
-    "BLOWN OUT",
-)
+_HEAD_BITS = re.compile(r"^[a-z_]+=")
 _HEAD_ALIASES = {"nsfw": "nsfw_marqo", "document": "doc_docling"}
 
 
 def _is_line_metadata(part: str) -> bool:
-    return bool(re.match(r"^\d{4}-\d\d-\d\d", part)) or part.startswith(_LINE_METADATA_PREFIXES)
+    """A tag the pipeline wrote other than the detector heads, which are read next, or a
+    caption field that is not the caption itself (#1256)."""
+    if _HEAD_BITS.match(part):
+        return False
+    return not content_of(part) or part.startswith(("setting:", "exposure:"))
 
 
 def _audience_head_labels(labels: Sequence[tuple[str, str]]) -> dict[str, str]:

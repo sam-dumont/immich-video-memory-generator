@@ -12,14 +12,12 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from immich_memories.analysis.annotation_line_fields import content_of
 from immich_memories.analysis.editorial_story_pick_contract import measured_motion
 
 LIVING = re.compile(
     r"\b(man|woman|person|people|child|children|kid|girl|boy|baby|couple|family|friend|friends|group|crowd|cyclist|cyclists|rider|runner|hiker|hikers|walker|player|someone|he|she|they|cat|dog|kitten|kittens|puppy|horse|bird|animal|selfie|portrait|face)\b",
     re.IGNORECASE,
-)
-_FACT_PREFIX = re.compile(
-    r"^(20\d\d|LIVE|VIDEO|with |at |activity=|setting|resolution|exposure|duration|location=|children=|STARRED|SOFT|DARK)"
 )
 
 
@@ -70,9 +68,9 @@ class UnitLines:
         return self._lines.get(u["asset_id"], "")
 
     def description(self, u) -> str:
-        """The scene prose alone, without the date, media, setting and flag fields."""
-        parts = [q.strip() for q in self.line(u).split("|")]
-        described = [q for q in parts if not _FACT_PREFIX.match(q)]
+        """The scene prose alone: no tag the pipeline wrote, and no setting or exposure field."""
+        parts = content_of(self.line(u)).split(" | ")
+        described = [q for q in parts if q and not q.startswith(("setting:", "exposure:"))]
         return described[0] if described else ""
 
     def shows_life(self, u) -> bool:
