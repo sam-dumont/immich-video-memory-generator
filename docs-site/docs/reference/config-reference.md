@@ -779,6 +779,7 @@ automation:
   detect_person_spotlight: true   # per-person highlight candidates
   detect_activity_burst: true     # unusually active months
   burst_threshold: 2.0            # multiplier above rolling average to trigger burst
+  special_days_per_year: 6        # days a year discover-days keeps without a model, strongest first
 ```
 
 ## Authentication

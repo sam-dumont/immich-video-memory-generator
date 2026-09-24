@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from immich_memories.analysis.special_day import SpecialDay, ask_if_special
 
 # The entry #714 was reported for, at the width the catalogue stored it.
@@ -159,3 +161,7 @@ def test_a_day_nothing_can_name_is_not_written_down() -> None:
         found = scan_year(day, llm_config=None, home=None)
 
     assert found == [], "a day with no title it can keep is not a find"
+
+
+# Which runs the sequence reader names is not these tests' subject (#1093).
+pytestmark = pytest.mark.usefixtures("every_run_an_occasion")

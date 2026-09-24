@@ -365,3 +365,27 @@ def pytest_collection_modifyitems(items) -> None:
     for item in items:
         if "tests/integration" in item.path.as_posix():
             item.add_marker("integration")
+
+
+@pytest.fixture()
+def every_run_an_occasion(monkeypatch):
+    """A day-sequence reader that names every run it is offered as an occasion.
+
+    For the special-day tests whose subject is what happens to a day after it is found:
+    which runs the reader picks is `test_special_day_sequence.py`'s subject, not theirs.
+    """
+    import json
+    import re
+
+    # WHY: the sequence reader is a text-model call; these tests are about what follows it.
+    monkeypatch.setattr(
+        "immich_memories.analysis.special_day_sequence._read",
+        lambda prompt, *_a, **_k: json.dumps(
+            {
+                "occasions": [
+                    {"run": run, "what": "an occasion"}
+                    for run in re.findall(r"^(R\d+) \|", prompt, re.MULTILINE)
+                ]
+            }
+        ),
+    )
