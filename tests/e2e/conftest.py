@@ -57,7 +57,10 @@ def launch_workspace(
     fake_immich_server: FakeImmichServer,
 ) -> LaunchWorkspace:
     """Create one config whose mutable paths stay under a pytest temp root."""
-    root = tmp_path_factory.mktemp("launch-smoke")
+    return _launch_workspace(tmp_path_factory.mktemp("launch-smoke"), fake_immich_server)
+
+
+def _launch_workspace(root: Path, fake_immich_server: FakeImmichServer) -> LaunchWorkspace:
     database_path = root / "cache" / "launch.db"
     cache_dir = root / "cache"
     output_dir = root / "output"
@@ -131,7 +134,7 @@ from tests.e2e.fake_editorial import install_fake_editorial_route
 
 # WHY 1.5 s per stage: a browser reload takes a second or two, and the reload
 # test has to land while the six stages are still running.
-install_fake_editorial_route(stage_seconds=1.5)
+install_fake_editorial_route(stage_seconds=1.5, models_fetched=sys.argv[4] == "fetched")
 
 from tests.e2e.fake_automation import install_fake_automation
 install_fake_automation(config_path, state_dir)
@@ -188,20 +191,37 @@ def launch_app_url(
     unused_tcp_port_factory,
 ) -> Generator[str, None, None]:
     """Run the app against only the fake service and disposable local state."""
-    port = unused_tcp_port_factory()
+    yield from _serve_launch(launch_workspace, unused_tcp_port_factory(), models_fetched=True)
+
+
+@pytest.fixture(scope="session")
+def first_launch_app_url(
+    tmp_path_factory: pytest.TempPathFactory,
+    fake_immich_server: FakeImmichServer,
+    unused_tcp_port_factory,
+) -> Generator[str, None, None]:
+    """The same launch on a host where nobody has run `immich-memories models fetch`."""
+    workspace = _launch_workspace(tmp_path_factory.mktemp("first-launch"), fake_immich_server)
+    yield from _serve_launch(workspace, unused_tcp_port_factory(), models_fetched=False)
+
+
+def _serve_launch(
+    workspace: LaunchWorkspace, port: int, *, models_fetched: bool
+) -> Generator[str, None, None]:
     url = f"http://127.0.0.1:{port}"
-    env = _build_launch_environment(launch_workspace.root)
+    env = _build_launch_environment(workspace.root)
 
     venv_python = _REPO_ROOT / ".venv" / "bin" / "python"
-    with launch_workspace.log_path.open("w") as log_file:
+    with workspace.log_path.open("w") as log_file:
         proc = subprocess.Popen(
             [
                 str(venv_python),
                 "-c",
                 _LAUNCH_BOOTSTRAP,
-                str(launch_workspace.config_path),
-                str(launch_workspace.root / "state"),
+                str(workspace.config_path),
+                str(workspace.root / "state"),
                 str(port),
+                "fetched" if models_fetched else "never-fetched",
             ],
             stdout=log_file,
             stderr=log_file,
@@ -212,7 +232,7 @@ def launch_app_url(
             _wait_for_server(
                 proc,
                 base_url=url,
-                log_path=launch_workspace.log_path,
+                log_path=workspace.log_path,
             )
             yield url
         finally:

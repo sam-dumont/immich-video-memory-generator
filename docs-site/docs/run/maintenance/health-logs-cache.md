@@ -75,11 +75,11 @@ cache:
 ### What a second cut asks again
 
 Nothing in `annotations.sqlite` is keyed to a run, so a second cut over the same pictures reuses
-every fact the first one banked. With a model, the period reading is banked one calendar month at a
-time and standing votes per picture, so a monthly cut after a yearly one asks nothing again for
-that month. A warm cut spends its time on video work. When a release changes a prompt, the answers
-that prompt produced are asked again once; captions, head answers and detector verdicts are keyed
-by their own producers and stay warm.
+every fact the first one banked. Standing is read from each picture's facts and asks nothing at all.
+With a model, the period reading is banked one calendar month at a time, so a monthly cut after a
+yearly one asks nothing again for that month. A warm cut spends its time on video work. When a
+release changes a prompt, the answers that prompt produced are asked again once; captions, head
+answers and detector verdicts are keyed by their own producers and stay warm.
 
 ### The facts a cut measures
 

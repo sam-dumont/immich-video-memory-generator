@@ -126,9 +126,7 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
         expected = "minor" if product == "album" else "major"
         assert expected in {e["weight"] for e in plan["story"]["episodes"]}
         assert {e["weight"] for e in plan["story"]["episodes"]} <= {expected, "none"}
-    assert all(
-        plan["story"]["calls"][key] == 0 for key in ("story_pages", "pick_calls", "standing_rounds")
-    )
+    assert all(plan["story"]["calls"][key] == 0 for key in ("story_pages", "pick_calls"))
     assert all(row["kind"] != "live-motion" for row in plan["carriers"])
     assert not plan["picture_facts"]
     # The cut ends with a duplicate review of its own rather than reporting it unavailable.

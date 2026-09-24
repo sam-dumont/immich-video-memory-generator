@@ -91,12 +91,13 @@ def await_listener(port: int, timeout_s: float = 15.0) -> None:
         raise SystemExit(f"nothing answered on port {port} within {timeout_s:.0f}s")
 
 
-def _listening(port: int, timeout_s: float) -> bool:
+def _listening(port: int, timeout_s: float, alive: Callable[[], bool] = lambda: True) -> bool:
+    """Wait for a listener on the port, giving up early once the process meant to open it is gone."""
     deadline = time.monotonic() + timeout_s
     while True:
         if _connects(port):
             return True
-        if time.monotonic() >= deadline:
+        if not alive() or time.monotonic() >= deadline:
             return False
         time.sleep(0.2)
 
@@ -454,7 +455,10 @@ class _Forward:
             stdout=subprocess.DEVNULL,
             stderr=self._stderr,
         )
-        if _listening(self._local, WARMUP_LISTENER_TIMEOUT_S):
+        process = self._process
+        # WHY: a kubectl that has already exited will never listen; waiting out
+        # the timeout for it only spends the warm-up budget.
+        if _listening(self._local, WARMUP_LISTENER_TIMEOUT_S, lambda: process.poll() is None):
             self._listener_failures = 0
             return f"http://127.0.0.1:{self._local}"
         self.stop()

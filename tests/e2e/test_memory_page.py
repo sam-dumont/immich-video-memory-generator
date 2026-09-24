@@ -226,6 +226,24 @@ def test_the_trip_picker_offers_a_year_with_only_photos(
     page.keyboard.press("Escape")
 
 
+def test_a_first_cut_before_models_fetch_says_to_run_it_and_the_message_stays(
+    page: Page, first_launch_app_url: str
+) -> None:
+    _brief_for_june(page, first_launch_app_url)
+
+    page.get_by_role("button", name="Cut", exact=True).click()
+
+    refusal = page.get_by_text(
+        re.compile(r"The last cut failed: .*Run `immich-memories models fetch`")
+    )
+    expect(refusal).to_be_visible(timeout=60_000)
+    expect(page.get_by_role("combobox", name="Memory type")).to_be_visible()
+    # The command is what the reader has to copy into a terminal, so the
+    # message waits for them instead of fading with a toast.
+    page.reload()
+    expect(refusal).to_be_visible(timeout=30_000)
+
+
 def test_a_cut_from_the_brief_shows_the_story_and_offers_export(
     page: Page, launch_app_url: str, launch_workspace
 ) -> None:

@@ -172,8 +172,7 @@ is handed one picture per source and cannot be handed eight.
 its frames that show a people moment, a place, a record or a screen. A clip that shows its moment
 in fewer than three frames of four, like a clip that is mostly wall with the subject at the edge,
 reads `frames=subject_often_missing` on its line and does not stand on its own: the no-model cut
-scores it 0, and a model cut refuses it on standing whatever the text vote says, where it used to
-depend on which film asked. A favourite video is the exception on both: a favourite showing a
+scores it 0, and so does every other cut, where it used to depend on which film asked. A favourite video is the exception on both: a favourite showing a
 wall means something happened there, so the fact still shows on its line but never removes it. A
 Live Photo is never refused for its clip either, since its favourite is on the still: a clip that
 misses its subject plays as its still, and a Live Photo plays as motion only when its clip moves
@@ -313,49 +312,53 @@ naming none of them reads like a picture naming nobody. A memory with no one in 
 reads any named face, as before. The boxes are read once per picture and banked; boxes banked
 before they carried an id are read again on the next preparation.
 
-**The standing gate reads a video as a video.** The gate asks, of each candidate picture, whether it
-would stand on its own. A video used to arrive on that list looking like a still, described by
-whatever its one line said, and a real share of the videos that got that far were named weak: 9 of
-them in a 600-second year, 12 in a film spanning two and a half years. A moving row now says what it
-is, how long the source runs, and what happens across it, taken from
-the one motion sentence preparation banked. The criterion tells the reader to judge that, not
-whether one frame would make a good photograph. Standing votes are banked per picture, so the bank
-key carries the caption seat that wrote those sentences: a different seat writes different rows and
-its predecessor's verdicts are not replayed against them.
+**Standing is read from facts; no model is asked.** Whether a picture stands on its own follows one
+plain rule: objects and useless stuff out, people and animals in, a leg or a shoe on its own out.
+Standing refuses only a picture whose subject is not alive: an object or a product, a screen or a
+device, a document or a sign, an empty room, a plate of food, a dark or accidental frame, a body part
+with no one to go with it. A caption that names a person of any age or an animal is never refused; a
+toy or a statue of one, or a thing made for one ("baby clothes", "a dog bowl"), counts as an object.
+A favourite always stands.
 
-**Every picture gets its own yes or no.** The gate used to ask the reader to name the weak pictures
-in a block of twelve. The local 30B named a few in every block, whatever the question said: a baby
-on a blanket, a family posing, a man and a boy by a wall all came out weak in both orders, and
-rewording the question moved 31 of 100 such rows to 30. Now each row gets its own answer: weak
-means a lone object, an empty room or floor, a screen, a document, a test shot, an unusable blur
-or a body-part close-up, and people in a real moment stand, quiet or posed. Only the rows the first
-answer calls weak are asked again, in a block of their own, and a picture leaves only when both
-answers agree. A picture the frame head calls a people moment, sharp and not a body part, stands
-without being asked. On the same 100 rows, weak in both orders went from 31 to 12, and the plates,
-tiles and bottles stayed weak.
+Two points tables decide it, on every tier. With no caption (a no-model install), the frame-kind,
+document, screen and people heads and the SOFT and BLOWN OUT warnings on the line add points, and
+three points refuse: a lone object with nobody around it refuses, children or a group around it pull
+it back, and a pixel warning alone never refuses a people moment. With the ingest caption, the
+caption's words join the heads: whether it names anyone alive, and which of eight kinds of thing it
+names (a placed object, a screen or device, a body part, food, furniture or a room, a plant, text or a
+sign, a colour or material). Those kinds and their words come from the public CC BY corpus, the
+caption tokens most tied to a refusal, never from anyone's library. The points are fitted on that
+corpus against a hosted reader's two-order answers (glm-5.3-flash) and rounded to half points.
+
+It used to be a question to the model: each candidate got a yes or no from the local 30B, asked in
+two orders. Graded by glm-5.3-flash on a private library of 1,441 rows, the 30B agreed with it on
+93.5 % of rows and caught 36 % of its refusals, less often than refusing nothing at all (93.8 %). The
+30B also disagreed with itself: two orders of the same rows refused mostly different pictures. The
+facts table with captions agrees on 96.6 % and catches 67 %; on held-out public rows it reaches a
+kappa of 0.66 against glm. A cold year no longer spends any reader time on standing.
 
 Speech boundaries measured after a cut guide playback timing. Finding those boundaries does not
 reopen a settled standing judgment: speech presence alone says nothing about what was said.
 
-A video or moving Live Photo needs at least one standing approval. Two weak votes exclude the
-clip even from an important story or an occasion fallback. Approved scenery and action remain
-eligible; a clip does not need to show people to earn its place.
+A video or moving Live Photo its facts refuse is excluded even from an important story or an
+occasion fallback. Scenery and action remain eligible; a clip does not need to show people to earn
+its place.
 
 A motion sentence counts only where the motion is measured. A 500M captioner reading three small
 keyframes can describe somebody dancing in an empty room. A Live Photo's sentence therefore reaches
-the gate and the pick only once its companion measured at least 1.5. Until then the Live Photo is
+the pick only once its companion measured at least 1.5. Until then the Live Photo is
 judged as the photograph it is: its media kind is not evidence that anyone is in it. A Live Photo
 whose action differs from its still keeps its sentence once the measurement backs it. A true video
 always plays, and is held to the same bar: preparation measures the same residual over the frames
 the exposure head already samples across it (no extra download, about 35 ms a clip on a laptop),
 banked as `motion-residual-v1@median-flow-v1-detector-frames-320x240`. A video whose frames measure
 under 1.5 is judged by those frames: its sentence is withheld and counted as `unsupported`, so a
-still clip of an empty room captioned with an action does not stand on the caption. A favourite
+still clip of an empty room captioned with an action is not picked on the caption. A favourite
 video keeps its sentence, because the owner's star is never removed by a measurement. A video
 nobody has measured yet (a tier that samples no frames, or a failed read) keeps its sentence as
 before.
 
-Importance and standing votes must name the exact offered identifiers. An unreadable reply or an
+Importance votes must name the exact offered identifiers. An unreadable reply or an
 unknown identifier gets a bounded retry, then stops selection if it remains invalid. It cannot be
 cached as an empty vote. A valid empty mapping still means the reader chose none of the offered items.
 
@@ -520,7 +523,7 @@ records, same storyboard. It costs nothing in API fees and runs on a 4-core NAS.
 | Who may see it? | Any flag from the detectors keeps a picture at family-only viewing, and the distilled `uncovered_person` head is a second opinion that can add one. A picture in a five-minute capture run that is at least half flagged, with at least three flagged captures in it, is held with the run (`exposure_chain`), and a Live Photo whose attached clip the detector flags is held with its clip (`clip_exposure`). A `no` from any of it lifts nothing: nothing clears a flag except you, on the pool page |
 | How long is a picture held? | A still the owner starred, or one with somebody Immich knows in it, keeps the nominal four seconds; an empty scene gives half a second back. Every hold stays inside the production 3.5 s to 5.0 s band. A clip keeps the length its own material gave it. The ends are not the rules reader's: on every tier the film's first and last shot are held half a second longer once the cut is settled, and the shave that follows can take it back when the target leaves no room |
 
-| Has anything already been answered about this picture? | On a library a model has read before, yes, and the draft reads it. A picture an earlier cut of any scope refused for this same audience is not offered, unless the refusal was a caption reading under an older audience prompt; a picture a banked episode reading culled is not offered; a picture a model gave no standing to does not carry its moment while anything else in its group could; a picture a banked reading named for its episode leads that episode's order. Nothing is asked to find this out, and nothing is written |
+| Has anything already been answered about this picture? | On a library a model has read before, yes, and the draft reads it. A picture an earlier cut of any scope refused for this same audience is not offered, unless the refusal was a caption reading under an older audience prompt; a picture a banked episode reading culled is not offered; a picture a banked reading named for its episode leads that episode's order. Nothing is asked to find this out, and nothing is written |
 
 Every answer stays inside the vocabulary the model path uses, so the planners downstream do not know
 which reader spoke.
@@ -570,8 +573,7 @@ does.
 The draft sizes a film from its material, so a quiet month can have more slots than pictures anyone
 can vouch for, and the leftover slots go to whatever stands. When no model polishes the draft, the
 settled cut gets one last removal pass: a shot with no indicator of its own (not starred, not a video or a
-Live Photo whose motion plays, nobody Immich knows in it, no banked standing answer for it, not
-ticked on the pool page) that the `frame_kind` head reads as showing nothing (a lone everyday
+Live Photo whose motion plays, nobody Immich knows in it, not ticked on the pool page) that the `frame_kind` head reads as showing nothing (a lone everyday
 object, an empty room, a body-part close-up, a screen or a document) leaves the film. Nothing takes
 its place: the film goes short rather than keep a guess. A shot with any indicator, or one the head
 never read, is left alone. `derived-decisions/unvouched-filler.private.json` lists what left, by id
@@ -606,12 +608,11 @@ out short of its target. The draft now opens those banks read only. It still ask
 
 Three rules bound it. A picture you starred is never withheld by a banked answer: your choice
 outranks it, exactly as it outranks the rules reader's own verdict. Only refusals carry over, never
-clearances: one cut's `share` never stands in for a check this cut did not make, and a banked
-standing vote can only lower the rules reader's own answer, because its zero covers a document, a
-photographed screen, a flag and an empty frame, which are eligibility rather than an opinion. And an answer is
+clearances: one cut's `share` never stands in for a check this cut did not make. And an answer is
 read only under the name the asking side wrote it under: the criterion, the picture and the line it
-was asked about, and for a standing vote the model that replied, so a bank written by another reader
-is not mistaken for one written by yours. Episode readings are the exception, on purpose: they are matched on the
+was asked about. Standing votes a model banked before standing moved to the facts are not read at
+all: the facts answer standing on every tier, and those votes agreed with a stronger reader less
+often than the facts do. Episode readings are the exception, on purpose: they are matched on the
 episode and on the exact pictures that were read, whoever read them, because a cull is a refusal and
 a representative is a nomination the rules order still has to rank. Neither can let in a picture the
 rules would refuse.
@@ -660,18 +661,16 @@ newborn is not read as "unrelated to the main subject". In a film about a person
 own partner, children and parents count here too, and their shots say so: in a film of your
 partner, their father's only shot is held though to you he is an in-law.
 
-Before the vote, every shot of the draft faces the gates a model install can ask: the standing
-gate, the family-viewing gate, the five-minute capture spacing and the cached-hash duplicate
-review. Standing asks nothing about a picture no answer can move, such as a still with somebody in
-it inside a dominant or major story, and asks its second order only where the rule needs both
-approvals or the first order named the picture. A refusal is a seat, not a hole. Seats are filled
+Before the vote, every shot of the draft faces the gates: the standing gate, the family-viewing
+gate, the five-minute capture spacing and the cached-hash duplicate review. Standing is read from
+the shot's facts, the same points table the draft used, so it costs no question. A refusal is a seat, not a hole. Seats are filled
 in one order (a story the library records something about that the cut never gave a voice, then a
 replacement for a shot the vote named, then one for a shot a gate took) and only as many as the
 film has room for at the minimum length a shot may run. A seat's page is its story's own pictures
 in the film's order of preference: the refused shot's moment, then the moments the cut lacks, what
 the library records first, the moment that moves next, and inside a moment the frame you starred.
-The picker reads the first twelve rows of it, in one order. Only the rows it chose are then asked
-whether they stand, all together, and a seat whose pick fails picks once more from the same page.
+The picker reads the first twelve rows of it, in one order. The facts then say whether the rows it
+chose stand, and a seat whose pick fails picks once more from the same page.
 Every replacement goes through the same gates and is voted on again in the company of the block it
 joined, not the whole film; one the vote refuses is revoked, and the shot it would have replaced
 comes back.
@@ -688,11 +687,11 @@ moment may then take a seat, at most ⌈S / 3.5⌉ of them, through the same pic
 story whose reading records nothing gets no seat, and the film stays short. The budget grows by
 one call per three episodes read and four per seat. The no-model tier never reads here.
 
-The polish is held to a budget: four questions per twelve draft shots (standing and fit once, the
-audience question in its two orders) and four per seat it opens, plus what a short film reads. `thin-polish.private.json` records what it asked against that budget,
+The polish is held to a budget: four questions per twelve draft shots (the fit vote and the
+audience question, each in its two orders) and four per seat it opens, plus what a short film reads. `thin-polish.private.json` records what it asked against that budget,
 and the run warns when it goes over. The cold 2024 year used to spend 466 calls on the polish for 10
 new shots, most of them putting every picture of the seats' stories, up to a thousand at a time, to
-the standing gate before any seat had picked. The audience question stays on every shot that enters
+the standing gate before any seat had picked. Standing no longer asks the model at all. The audience question stays on every shot that enters
 the cut: on that year it held back 19 private-activity shots the detectors missed.
 `advanced.editorial.thin_batched_audience` asks it of twelve shots per request, each with its own
 answer, twice: once with the rows as they come and once shuffled. A shot either order holds is
@@ -775,8 +774,7 @@ hardware encoder, a lower resolution and fewer clips.
 
 Reading is mostly a queue of one, and every pick below reads the stages above. These stages hold
 independent questions: the period account is read one calendar month per page and no month sees
-another, and the standing gate asks in blocks of twelve that do not see each other. Custom-subject and trip admission use
-the same block pattern. Those are what
+another. Custom-subject and trip admission ask in blocks of twelve that do not see each other. Those are what
 `advanced.llm.reader_concurrency` overlaps, and nothing else in the reading can be made to overlap
 by raising it.
 
@@ -789,12 +787,7 @@ flowchart TB
     pages --> synthesis["The synthesis: one thesis over every episode"]
     synthesis --> weigh["Story weighing"]
     weigh --> candidates["Shortlisted candidates from prepared captions:<br/>local, no model calls"]
-    candidates --> standing
-    subgraph standing["Standing gate: a yes or no per picture in blocks of 12, doubts asked once more"]
-        direction LR
-        s1["block 1"] ~~~ sn["block n"]
-    end
-
+    candidates --> standing["Standing from each picture's facts:<br/>local, no model calls"]
     standing --> picks["Picture picks, audience checks, duration"]
 ```
 
@@ -858,7 +851,7 @@ timing trim included, and the selection sheet prints it.
 | Cache | Location | Holds |
 |---|---|---|
 | Annotation store | `~/.immich-memories/cache/annotations.sqlite` | every fact per picture and producer, the motion residuals and speech regions a cut measured included; the episode, cull and judgment banks |
-| Structure banks | `~/.immich-memories/cache/structure-banks/` | custom-subject and trip admission votes, standing votes, audience verdicts, thumbnail hashes |
+| Structure banks | `~/.immich-memories/cache/structure-banks/` | custom-subject and trip admission votes, audience verdicts, thumbnail hashes |
 | Attempts | `~/.immich-memories/cache/editorial-runs/` | one directory per cut |
 | Downloaded videos | `~/.immich-memories/cache/video-cache` | 10 GB, 7 days |
 | Immich previews | `~/.immich-memories/cache/thumbnails` | 10 GB |
@@ -882,19 +875,12 @@ receipt is a receipt in every cut that could reach it, so the verdict is remembe
 rather than per cut. It holds what the reading kept as well as what it rejected, and it is keyed by
 that reading, so a release that changes the episode prompt retires the old verdicts instead of
 piling them on the new ones. A picture the reading never looked at, because its episode failed to
-read, is remembered as neither. When a standing verdict removes a picture the current reading would
-have kept, the trace says so by name, and the newer answer replaces the old one for the next cut.
+read, is remembered as neither.
 A star still outranks anything in the bank, and [`runs why`](../make/cli/runs.md) prints the reason.
 
-Standing votes follow a picture across every cut of the library, in
-`structure-banks/picture-stands.private.json`. The question "does this picture stand by itself" names
-no period and no film, so a year cut reads the answers a month cut of the same pictures already paid
-for and asks nothing about them. A memory bound to a subject (a custom topic, a person) asks with that
-subject in the question, so its answers are kept apart. The vote is named by the picture, its line,
-the reader that answered and the seat that wrote a moving picture's motion sentence: a new caption, a
-new reader or a new motion seat asks again. Releases up to 0.103.0 kept these votes per film under
-`structure-banks/<film>/picture-stands.private.json` and asked them with the film's brief and period;
-those answers are not read any more, and each picture is asked once more under the new question.
+Standing is not banked: it is read from each picture's facts every time, for nothing. The
+`structure-banks/picture-stands.private.json` a release before standing moved to the facts wrote
+is no longer read, and can be deleted.
 
 Audience verdicts follow a picture across every cut of the library too, in
 `structure-banks/audience-verdicts.private.json`. A model's answer is kept under the reader that gave
