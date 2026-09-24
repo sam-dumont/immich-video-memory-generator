@@ -7,6 +7,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Authentication
 
+Reader: power user.
+
 Authentication is disabled by default, and because of that the web UI binds to `127.0.0.1` unless
 you decide otherwise. To listen beyond localhost, either enable authentication, name the address
 yourself (`--host`, `IMMICH_MEMORIES_SERVER__HOST`, or a `server.host` that is not the `0.0.0.0`
@@ -18,7 +20,7 @@ config file does not count; the loader ignores it with a warning. In Docker the 
 Anyone who reaches the port can use the app and, through it, your Immich library. They cannot read
 the saved API key, and they cannot point it at a server of their own: the UI only sends the key to
 the URL it was saved for, and a new URL needs its key typed in. The UI is
-single-user, single-replica because workflow state lives in the process; a shared secret or volume
+single-user, single-replica: workflow state lives in the process, so a shared secret or volume
 does not make replicas safe.
 
 <ThemedScreenshot name="login" alt="Login page" />

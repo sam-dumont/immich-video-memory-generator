@@ -338,10 +338,11 @@ plugins = ["pydantic.mypy"]
 # needed depends on whether MLX, ACE-Step, torchcodec and demucs happen to be
 # installed. Measured both ways: two ignores are unused with them present and
 # required without, one is the other way round. warn_unused_ignores cannot be
-# correct in both environments at once, so it is off for these two files.
+# correct in both environments at once, so it is off for these files.
 module = [
     "immich_memories.audio.generators.ace_step_runtime",
     "immich_memories.audio.generators.demucs_local",
+    "immich_memories.analysis.editorial_laya_reader",
 ]
 warn_unused_ignores = false
 
@@ -551,6 +552,7 @@ DEP001 = [
     # any more, now that both detector seats are ONNX graphs.
     "torch", "torchaudio", "demucs", "torchcodec", "loguru",
     "mlx",                                              # Optional: Apple Silicon ACE-Step path
+    "laya_mlx",                                         # Optional: Laya audience pre-screen, out of band
     "transformers", "huggingface_hub",                  # Optional: smart-turn, off by default
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette

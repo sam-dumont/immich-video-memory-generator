@@ -16,7 +16,6 @@ from immich_memories.analysis.editorial_attached_samples import AttachedVideoSam
 from immich_memories.analysis.editorial_bound_sample import source_metadata_digest
 from immich_memories.analysis.editorial_final_attached import FinalAttachedPictures
 from immich_memories.analysis.editorial_preparation_motion import BankedMotionLines
-from immich_memories.analysis.editorial_sampled_pair_confirmation import CachedSampledPairConfirmer
 from immich_memories.analysis.editorial_source import (
     FullEditorialSource,
     fetch_full_window_source,
@@ -30,7 +29,6 @@ from immich_memories.analysis.editorial_structure_planner import plan_structure
 from immich_memories.analysis.editorial_text_gateway import SyncTextPromptRequester
 from immich_memories.analysis.llm_batch import BatchCoordinator, BatchPolicy
 from immich_memories.analysis.selection_source import SourceScope
-from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.subject_framing import FaceBox, face_boxes_of
 from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -89,22 +87,7 @@ class EditorialRuntimePorts:
     prepare_annotations: Callable[..., Any] | None = None
 
 
-def production_sampled_pair_confirmer(
-    source: StructurePlanningInput, *, cache_path: Path, trace: Trace
-) -> CachedSampledPairConfirmer:
-    """Share the exact sampled-picture composition with the sealed matrix adapter."""
-    return CachedSampledPairConfirmer(
-        assets=source.assets,
-        allowed_ids=set(chain.from_iterable(source.moment_asset_ids.values())),
-        llm_config=source.config.llm,
-        cache_path=cache_path,
-        image_dir=cache_path.parent / "picture-facts-images",
-        trace=trace,
-        sheet_dir=source.artifact_dir / "sampled-pair-sheets",
-    )
-
-
-def production_attached_pictures(source, *, cache_path, pictures, pairs, resources):
+def production_attached_pictures(source, *, cache_path, pictures, resources):
     """Shared product/matrix composition; no client opens until selected material needs it."""
     client = None
 
@@ -151,7 +134,7 @@ def production_attached_pictures(source, *, cache_path, pictures, pairs, resourc
         fetch_playback=fetch,
         outcomes=outcomes,
     )
-    return FinalAttachedPictures(samples, pictures, pairs), samples
+    return FinalAttachedPictures(samples, pictures), samples
 
 
 def production_story_motion(source, *, cache_path):

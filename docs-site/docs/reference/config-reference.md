@@ -431,7 +431,7 @@ CoreML: measured on the pinned export, CoreML claims 274 of the 513 nodes and sp
 memory. Set `provider: coreml` to re-measure it. The choice is operational: it does not enter the
 encoder key, so changing it re-derives nothing.
 
-Editorial preparation uses `triage.encoder` with the public six-head bundle from
+Editorial preparation uses `triage.encoder` with the public eight-head bundle from
 `editorial.preparation.head_bundle`, and checks its digest on load. Missing required head facts
 stop selection; `triage.enabled: false` does not bypass preparation.
 
@@ -446,6 +446,10 @@ editorial:
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
   thin_batched_audience: false   # ask the thin layer's audience question of 12 carriers per request
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
+  laya_audience: false           # answer the audience activity question with the local Laya model
+  laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
+  laya_checkpoint_url: "https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v2/laya-audience-a79ad9fa.tar"
+  laya_audience_threshold: 0.186 # Laya's hold probability at or above which a carrier is held
   description_model: "smolvlm2-500m-base-public@envelope-v3-compact"
   pixel_producer_key: "pixel-facts-v1"  # exact producer of pixel facts and thresholds  # gitleaks:allow
   head_versions:                 # exact producer version selected for each annotation head
@@ -467,7 +471,7 @@ editorial:
     caption_timeout_seconds: 90
     caption_concurrency: 1                # raise it for a captioner on a GPU
     batch_size: 32
-    head_bundle: ""              # packaged public six-head bundle
+    head_bundle: ""              # packaged public eight-head bundle
     detector_python: ""          # current Python interpreter
     detector_cache_dir: ""       # normal Hugging Face Hub cache
     marqo_onnx: ~/.immich-memories/models/detectors/nsfw-marqo-384.onnx  # digest-pinned sensitive-content export
@@ -535,6 +539,11 @@ the whole film even when an account exists.
 activity?) of twelve shots per request instead of one, in two row orders. Each shot still gets its
 own answer, a shot either order holds is held, and a shot the replies skip is asked alone. It is off until a probe against
 the local reader shows the batched question keeps every hold the single one finds.
+
+`laya_audience` answers the audience check's activity question with a local Laya model instead of
+the text model: Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
+first. It reads the compact caption and adds holds; detector, body and rule holds still apply and
+are never lifted. See [Running modes](../being-rewritten/running-modes.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

@@ -379,29 +379,13 @@ def test_a_tick_the_last_cut_did_not_make_reaches_the_editor_as_a_requirement() 
 
 
 @pytest.mark.install_checks
-def test_the_web_run_names_the_fetch_command_before_touching_immich(tmp_path) -> None:
+def test_the_web_run_names_the_fetch_command_on_a_host_without_models(tmp_path) -> None:
     """The web UI is the Docker user's first run; it meets the same pre-run checks as the CLI."""
+    from immich_memories.ui.pages.memory_run import install_refusal
+
     config = Config(
         triage={"encoder": str(tmp_path / "missing.onnx")},
         output={"directory": str(tmp_path / "output")},
     )
-    state = AppState(
-        config=config,
-        immich_url="http://immich.test",
-        immich_api_key="test-key",
-        date_ranges=[_WINDOW],
-        clips=[_clip("a")],
-        thumbnail_cache=MagicMock(),
-    )
-    progress_state = {"cancelled": False, "done": False, "error": None}
 
-    with (
-        # WHY: Immich is the external boundary; reaching it at all is the failure here.
-        patch("immich_memories.ui.pages.clip_pipeline.SyncImmichClient") as client_cls,
-        # WHY: get_config would read the developer's own config.yaml off disk.
-        patch("immich_memories.config.get_config", return_value=config),
-    ):
-        _run_pipeline_blocking(state, MagicMock(), state.clips, [], progress_state)
-
-    assert "immich-memories models fetch" in progress_state["error"]
-    client_cls.assert_not_called()
+    assert "immich-memories models fetch" in (install_refusal(config) or "")

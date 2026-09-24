@@ -34,9 +34,9 @@ and folds every trip's day episodes into one story; the trip reserves
 `round(slots / 2 * sqrt(trip days / film days))` pictures at its turn in the presence pass. After
 the weighing, `editorial_story_threads.py` asks the reader whether stories of one place and era
 that its own words link are one recurring activity, and folds each confirmed group. At
-carrier admission, `editorial_story_lookalike.py` asks the final review's repetition question
-(through `confirm_episode_pairs`, or `confirm_story_pairs` for pairs days apart) before a story takes
-a further picture, bounded at twice the slots; a refusal frees the slot for another moment.
+carrier admission, `editorial_story_lookalike.py` answers the repetition question from the cached
+preview hashes (`hash_pair_relation`, on every tier; no pair's pixels go to a model) before a story
+takes a further picture, bounded at twice the slots; a refusal frees the slot for another moment.
 `editorial_story_places.py` covers the case next to the thread question, one place inside one day
 or one stay: per scope (a journey film, or one story) it gives each place the pictures
 `trip_allowance` would give a trip of the same share of that scope, and a picture over the bound

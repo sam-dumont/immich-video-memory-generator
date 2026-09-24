@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from immich_memories.analysis.annotation_lines import AssetAnnotationLine
-from immich_memories.analysis.editorial_final_attached import AttachedMaterialEvidence
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
 from immich_memories.analysis.editorial_structure_finishing import PlanRun, final_duplicate_review
 from tests.editorial_thin_fixtures import CountingJudge, PictureEvidence
@@ -58,19 +57,12 @@ def _review(tmp_path, offers: list[dict], *, exposed: set[str]) -> PlanRun:
         scene_print=None,
         rules=object(),
         resolve_motion=None,
-        sampled_preview_hashes=None,
     )
     final_duplicate_review(
         run,
         ports,
-        source_relation=None,
-        episode_relation=None,
-        picture_records={},
-        attached=AttachedMaterialEvidence(),
         prior=None,
         prior_assets=set(),
-        quality=lambda _a: 0.0,
-        pixel_facts={},
         replacements_for=lambda _c: [("moment", o) for o in offers],
         gate=_gate(tmp_path, exposed=exposed),
     )

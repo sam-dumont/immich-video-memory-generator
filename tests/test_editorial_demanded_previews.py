@@ -192,11 +192,8 @@ def test_actual_native_planner_empty_thumbnail_cache_then_exact_positive_warm(
     monkeypatch.setattr("immich_memories.analysis.editorial_gateway.query_llm", forbidden)
     repeated = build().plan_source(sources, trace=Trace())
     assert repeated.plan == cold.plan
-    # Cache transport counters differ; sampled duplicate decisions must not.
-    cold_semantics = semantic_plan(native[0])
-    warm_semantics = semantic_plan(native[1])
-    assert warm_semantics.pop("sampled_pair_metrics")["actual_http_attempts"] == 0
-    assert cold_semantics.pop("sampled_pair_metrics")["actual_http_attempts"] > 0
-    assert warm_semantics == cold_semantics
+    # Cache transport counters differ; the decisions must not.
+    assert semantic_plan(native[1]) == semantic_plan(native[0])
+    assert native[1]["picture_facts_metrics"]["inference_calls"] == 0
     assert len(images) == before
     assert len(fetched) == len(sources)

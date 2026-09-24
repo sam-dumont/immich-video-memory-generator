@@ -342,7 +342,6 @@ class VideoClipInfo(BaseModel):
     llm_description: str | None = None  # Brief description of what's happening
     llm_category: str | None = None  # people | animal | landscape | object
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)
-    llm_subjects: list[str] | None = None  # Who/what is in the video
     llm_quality: float | None = None  # Score 0-1 for visual quality
 
     @property

@@ -1,10 +1,9 @@
 """The final look-alike review every film runs, on previews it already hashed.
 
-The sampled review nominates a pair from what its pictures were described as holding and
-confirms it against conserved pixels, which needs a model. This one needs nothing, so it runs
-first on every tier and a film with a model pays its sampled review only over the survivors.
-The perceptual hashes the burst pass already caches answer the same question over the frames a
-cut actually holds, keeping the picture the product would keep.
+Pictures are read once, at ingest, so this is the only duplicate review a film gets, on every
+tier: no pair's pixels go to a model. The perceptual hashes the burst pass already caches answer
+the repetition question over the frames a cut actually holds, keeping the picture the product
+would keep.
 
 Unlike the selection-time check, this reads every frame of one story or one day against every
 other, not a picture's neighbours: by the time the film is settled, two frames of the same

@@ -195,14 +195,23 @@ def launch_app_url(
 
 
 @pytest.fixture(scope="session")
-def first_launch_app_url(
+def first_launch_workspace(
     tmp_path_factory: pytest.TempPathFactory,
     fake_immich_server: FakeImmichServer,
+) -> LaunchWorkspace:
+    """Disposable state for a host where nobody has run `immich-memories models fetch`."""
+    return _launch_workspace(tmp_path_factory.mktemp("first-launch"), fake_immich_server)
+
+
+@pytest.fixture(scope="session")
+def first_launch_app_url(
+    first_launch_workspace: LaunchWorkspace,
     unused_tcp_port_factory,
 ) -> Generator[str, None, None]:
-    """The same launch on a host where nobody has run `immich-memories models fetch`."""
-    workspace = _launch_workspace(tmp_path_factory.mktemp("first-launch"), fake_immich_server)
-    yield from _serve_launch(workspace, unused_tcp_port_factory(), models_fetched=False)
+    """The same launch as `launch_app_url`, on that host."""
+    yield from _serve_launch(
+        first_launch_workspace, unused_tcp_port_factory(), models_fetched=False
+    )
 
 
 def _serve_launch(

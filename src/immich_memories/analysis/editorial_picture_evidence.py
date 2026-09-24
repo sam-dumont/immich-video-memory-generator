@@ -125,6 +125,17 @@ class PictureEvidenceOverlay:
             "evidence_scope": "cached preview only; no unsampled motion claims",
         }
 
+    def compact_captions(self, unit: Mapping[str, Any]) -> list[str]:
+        """The preparation seat's caption of each member, as it was before any observation."""
+        captions = []
+        for asset_id in self.material_members(unit):
+            if asset_id in self.records:
+                captions.append(str(self.records[asset_id].get("original_caption") or ""))
+            else:
+                annotation = self.annotations.get(asset_id)
+                captions.append(annotation.description or "" if annotation is not None else "")
+        return captions
+
     def line(self, unit: Mapping[str, Any]) -> str:
         if self._observe is None:
             return self._lines.get(str(unit["asset_id"]), "")

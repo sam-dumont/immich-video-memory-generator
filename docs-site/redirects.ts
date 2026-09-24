@@ -30,7 +30,7 @@ export const redirects: {from: string; to: string}[] = [
   {from: '/docs/deploy/installation/caption-server', to: '/docs/better/captions'},
   {from: '/docs/deploy/installation/inference-service', to: '/docs/better/inference'},
   {from: '/docs/reference/architecture', to: '/docs/contribute/architecture'},
-  {from: '/docs/welcome/built-with-ai', to: '/docs/being-rewritten/built-with-ai'},
+  {from: '/docs/welcome/built-with-ai', to: '/docs/welcome/about'},
   {from: '/docs/create/cli/auto', to: '/docs/being-rewritten/auto'},
   {from: '/docs/create/cli/scheduler', to: '/docs/being-rewritten/scheduler'},
   {from: '/docs/create/pipeline', to: '/docs/being-rewritten/pipeline'},

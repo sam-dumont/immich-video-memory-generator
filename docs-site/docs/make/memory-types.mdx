@@ -7,81 +7,82 @@ import Video from '@site/src/components/Video';
 
 # Memory types
 
-Ten types. Most of them are a date range with a filter on it; four are not, and those are the ones
-worth reading about. Each type has its own normal target below. A thin period can produce a shorter
-film. `--duration` on the CLI overrides the target, and so does **Auto duration** off on the
-[Memory page](./web-ui.mdx).
+Reader: newcomer. What each kind of film covers, how long it runs, and what your library has to
+hold for it to work.
 
-| Type | Covers | Normal target |
-|---|---|---|
-| `year_in_review` | one calendar year | 10 min |
-| `monthly_highlights` | one month | 60 s |
-| `season` | one season of one year | 2 min 15 s |
-| `person_spotlight` | a range, one person | 60 s a month, capped at 10 min |
-| `multi_person` | a range, several people | 60 s a month, capped at 10 min |
-| `on_this_day` | today's date in every previous year | 45 s |
-| `holiday` | one recurring date across several years | 60 s |
-| `trip` | one GPS-detected trip | 30 s + 10 s an active day |
-| `album` | one Immich album | 4 s an item in the UI |
-| `special_day` | one day a scan flagged | 30 s + 6 s an active hour |
+Ten types. Most are a date range with a filter on it. Trip, album, holiday and special day are not,
+and those are the ones worth reading about. Every type works on a plain NAS: the default
+install cuts each of them from what Immich already knows (dates, places, faces, favourites).
+
+| Type | Covers | Target | Needs |
+|---|---|---|---|
+| `year_in_review` | one calendar year | 10 min | nothing extra |
+| `monthly_highlights` | one month | 60 s | nothing extra |
+| `season` | one season of one year | 2 min 15 s in the web UI, about 3 min 15 s on the CLI | nothing extra |
+| `person_spotlight` | a range, one person | 60 s a month, capped at 10 min | a named face in Immich |
+| `multi_person` | a range, several people | 60 s a month, capped at 10 min | named faces in Immich |
+| `on_this_day` | today's date in every earlier year | 45 s | a few years of library |
+| `holiday` | one recurring date across several years | 60 s | a few years of library |
+| `trip` | one trip found from GPS | 30 s + 10 s an active day | GPS on your pictures, and a home base |
+| `album` | one Immich album | 30 s + 10 s an active day | an album |
+| `special_day` | one day the library says something happened on | 30 s + 6 s an active hour | nothing, or the `discover-days` catalogue |
+
+Two setup steps make every type better, not only trips: a home base, so the editor can tell a week
+away from a week at home, and who's who, so it knows your family from the neighbours. Both take five
+minutes: [Teach it your family](../get-started/who-is-who.md).
 
 ## How long a film runs
 
-Calendar memories keep their normal targets: one minute for a month and ten minutes for a year.
-More photos give the editor more choices without increasing the target. Discovery can shorten a
-film when there is not enough usable material. The run log and record say what set its length:
+The target is where the length starts, not a promise. A film never runs longer than the varied
+footage its days can fill, counted a day at a time and capped at 30 s a day, so a month with three
+photographed days gets about 20 s, not a minute. It goes short rather than padding. The run record
+says what set the length:
 
 | What set it | When |
 |---|---|
-| `--duration` | you passed a number |
+| `--duration` | you passed a number (or turned **Auto duration** off on the [Memory page](./web-ui.mdx)) |
 | `--short-form` | you picked a short-form preset and passed no `--duration` |
 | the material | neither flag, and the period holds pictures |
 | the preset floor | neither flag, and the period holds nothing to measure |
 
-A trip and an album count active days: 30 s plus 10 s an active day, held between 60 s and 5 min. An
-occasion counts active hours: 30 s plus 6 s an active hour, held between 60 s and 3 min. Other types
-use their preset target. Twelve one-minute monthly memories do not make a twelve-minute yearly
-memory: the year has its own ten-minute target.
+A trip and an album count active days: 30 s plus 10 s a day, held between 60 s and 5 min. A special
+day counts active hours: 30 s plus 6 s an hour, held between 60 s and 3 min. Twelve one-minute months
+do not make a twelve-minute year: the year has its own ten-minute target. How the editor spends
+those seconds is in [Length, quiet weeks and filler](../how-it-chooses/length-and-filler.md).
 
-Whatever the curve asks for, a film never runs longer than the varied excerpts its period can fill,
-counted a day at a time and capped at 30 s a day. That is the same bound that stops a trip from
-promising five minutes it cannot deliver.
+## Filtering by people
 
-Repeating `--person` on any of these means pictures holding **every** name. `--person-match or`
-makes it a union, and the web UI's **Together / Any of these people** toggle is the same switch.
-When the condition is neither, `--people-expression` takes it directly:
+Repeating `--person` means pictures holding **every** name. `--person-match or` makes it a union;
+the web UI's **Together / Any of these people** toggle is the same switch. For anything else,
+`--people-expression` takes the condition directly:
 
 ```bash
 immich-memories generate --memory-type multi_person --year 2025 \
   --people-expression '"Riley" AND ("Casey" OR "Bob")'
 ```
 
-`AND` binds tighter than `OR`, and `AND` means the same asset, not the same afternoon. The
-expression names its own people, so it replaces `--person` and `--person-match` rather than refining
-them. The web UI has the same field under **Advanced people condition**. Trips, albums and a
-single-person birthday refuse it.
+`AND` binds tighter than `OR`, and `AND` means the same picture, not the same afternoon. The
+expression replaces `--person` and `--person-match`. The web UI has it under **Advanced people
+condition**. Trips, albums and a single-person birthday refuse it.
 
 ## Year in review
 
-A whole calendar year, chronological, with a title card wherever the month changes.
+A whole calendar year, in capture order, with a title card wherever the month changes.
 
 ```bash
 immich-memories generate --memory-type year_in_review --year 2025
 ```
 
-The editor prepares a description and facts for every eligible picture in the year, weighs the
-year's stories against each other in words, and grants each one the pictures its weight earns. A
-thin year will not reach 10 minutes: the cut reports how far short it landed rather than padding.
+The editor groups the year into stories (a trip, a birthday, a run of ordinary weeks), weighs them
+against each other and gives each the shots its weight earns. [From library to film](../how-it-chooses/overview.md)
+has the rules. A thin year will not reach 10 minutes and the cut says how far short it landed.
 
-The year is partitioned by month and the plan is checked against those partitions afterwards. A
-month with worthy material that ends up silent raises an uncovered-partition violation and the run's
-verdict becomes `coverage_incomplete`. Nothing reserves a slot per month up front. That check is
-also the tell that you picked the wrong type: if everything you have is one summer trip, a season or
-trip memory fits the material and the complaining stops.
+Each month is checked afterwards: a month with worthy material that ends up silent makes the run's
+verdict `coverage_incomplete`. Nothing reserves a slot per month up front. If everything you have is
+one summer trip, a season or trip memory fits the material better.
 
-Month dividers appear only when the range spans four or more months, so a February-to-March video
-has none. `--no-photos` takes stills out of the pool; they are in it by default. `--birthday` does
-not apply here, only to `person_spotlight`.
+Month dividers appear only when the range spans four months or more. `--no-photos` takes stills out
+of the pool; they are in it by default.
 
 ## Monthly, season, person, multi-person
 
@@ -94,14 +95,14 @@ immich-memories generate --memory-type person_spotlight --person "Riley" --year 
 immich-memories generate --memory-type multi_person --person "Riley" --person "Bob" --year 2025
 ```
 
-Monthly shows the month and year on the title screen and has no dividers, because there is only one
-month. Season takes `--hemisphere south` to map summer onto December through February. Person
-spotlight needs Immich face recognition set up and the person tagged; what makes it a spotlight is
-the filter, not a different editor ([the curator](../being-rewritten/pipeline.md) edits all of them the same way).
+Season is the one type whose two surfaces start from different lengths on purpose: the web UI's
+card asks for 2 min 15 s, the CLI fits a curve through the date range (about 3 min 15 s for three
+months). Both are editable defaults. `--hemisphere south` maps summer onto December to February.
 
-Multi-person defaults to AND, so two people who were never in the same frame produce an empty
-memory rather than two solo reels. Title screens and default filenames say whether the people are
-joined by AND or OR, so two runs cannot overwrite one another.
+Person spotlight needs the person named in Immich's face recognition. What makes it a spotlight is
+the filter: the editor is the same one. Multi-person defaults to AND, so two people never in the
+same frame give an empty memory rather than two solo reels. Titles and default filenames say AND or
+OR, so two runs never overwrite each other.
 
 ### A people memory with no dates
 
@@ -113,103 +114,66 @@ immich-memories generate --memory-type multi_person \
   --people-expression '("Riley" OR "Bob") AND "Sam"'
 ```
 
-The start comes from the birth dates Immich holds for the people you named, and from the
-`birth_date` field in `people.yaml` where Immich has none. An AND waits for the youngest of the
-people it needs; an OR opens with the oldest of the people it accepts, and claims nothing at all
-when one of them has no birth date on record. A name nobody has a birth date for bounds nothing.
+The start comes from the birth dates Immich holds, and from `birth_date` in `people.yaml` where
+Immich has none. An AND waits for the youngest person it needs; an OR opens with the oldest it
+accepts, and bounds nothing when one of them has no birth date. Two grandparents AND a child born
+in 2024 covers 2024 onward, because no older picture can hold the child. `runs why` on an earlier
+picture says where the window came from. Dates you do give are never moved.
 
-So two grandparents AND a child born in 2024 prepares 2024 onward instead of the whole library,
-which is not a filter: no picture older than the child can hold the child. `runs why` on a picture
-from before that day says the window was never typed and where it came from.
-
-Dates you do give are never moved. If nobody named has a birth date anywhere, the ask is refused
-the way it always was, and the message says why.
-
-A person spotlight over several years is told as the person, not as a year: with no model, the
-title screen is the person's name alone, and the film is read in the years that hold a picture of
-them, so the empty years since a birth date take no part. On a model install it reads one account
-per year, never one per month.
-
-Every one of those years gets a shot before any story gets a second one, from the year's heaviest
-story, as long as the year holds a picture that clears the usual bar. Without that, grants followed
-the weight of each story alone, and the dense recent years took the film: a real 20-year person film
-gave 44 of its 146 shots to one year and none to 2007, 2012 or 2014, which all hold pictures of her.
-The same holds for a custom memory over several date ranges, which already promised every year of
-its span a voice. A year whose only pictures fail the bar (a single scanned photo with nothing the
-rules can read in it, say) still gets nothing, rather than a slot it cannot fill.
+A spotlight over more than about 18 months is told as the person, one era per calendar year. Every
+year that holds a usable picture of them gets one moment before any story gets a second, so the dense
+recent years cannot take the whole film. Years with no picture of them take no part.
 
 ### Birthday compilations
 
-`--birthday` turns a person spotlight into a different memory: the year of someone's life that
-**ends** on the birthday you are celebrating, plus that birthday in earlier years. For a 21 July
-birthday and `--year 2025` it runs 22 July 2024 through 21 July 2025, so the party itself is in the
-video and last year's party belongs to last year's video. `--year` names the birthday being
-celebrated, not a calendar year to run forward from.
+`--birthday` turns a person spotlight into the year of someone's life that **ends** on the birthday,
+plus that birthday in earlier years. For a 21 July birthday and `--year 2025` it runs 22 July 2024 to
+21 July 2025, so this year's party is in this year's film. Target: 10 minutes.
 
 ```bash
-immich-memories generate --person "Emma" --year 2025 --birthday --duration 600
+immich-memories generate --person "Emma" --year 2025 --birthday
 ```
 
-The birth date lives in Immich: open **People**, pick the person, edit, fill it in. Every birthday
-memory then anchors on it, on the CLI, the Memory page and the nightly automation alike. Without one,
-a birthday memory refuses rather than guessing a date and quietly rendering the wrong twelve months.
-`--birthday 07-21` overrides it for one run; give it month first, matching every other date in the
-project, because slashed forms are rejected rather than guessed.
+The birth date lives in Immich (**People**, pick the person, edit). Without one a birthday memory
+refuses rather than guessing. `--birthday 07-21` overrides it for one run, month first; slashed forms
+are rejected.
 
-Five earlier birthdays are reached by default, each ±1 day, for the "look how small you were"
-cutaways. Most of those single days hold nothing and that is expected: the run prints one summary
-line (`history: 2 of 5 earlier windows hold material`) rather than a warning per year. An empty
-**rolling year** does still warn, because that one means something is wrong. 29 February is
-celebrated on the 28th in a year that has no 29th, and the cutaways still reach the 29th in the years
-that do.
+Five earlier birthdays are reached, each ±1 day, for the "look how small you were" cutaways. Most of
+those days hold nothing and the run prints one line (`history: 2 of 5 earlier windows hold material`)
+rather than a warning per year. 29 February is celebrated on the 28th in other years.
 
-There is no Birthday type in the web UI. Pick **Person Spotlight** and tick **Birthday to birthday**,
-which turns itself on when Immich has a birth date for that person and stays greyed out when it does
-not. **Custom date range** to **Year** to **From Birthday** gives you the rolling year only, with no
-cutaways.
-
-Cut it the night before: a year of one person's life is a cold run, and every eligible picture gets
-its description and facts prepared once. And check the face before you cut, because if two people in
-your library share a name the filter is only as good as Immich's tagging, and you find out at the
-party.
+In the web UI: **Person Spotlight**, then tick **Birthday to birthday** (greyed out when Immich has
+no birth date). **Custom date range**, **Year**, **From Birthday** gives the rolling year without
+cutaways. Cut it the night before: a year of one person is a cold run the first time.
 
 ## On this day
 
-Every previous year, ±1 day around today's date, in one 45-second cut. No `--year`: it looks back
-from today over every year that has data, up to 30. It wants three or more years of library behind
-it, and it is the obvious one to put on a schedule.
+Every earlier year, ±1 day around today, in one 45-second cut. It wants three or more years of
+library, and it is the obvious one to schedule.
 
 ```bash
 immich-memories generate --memory-type on_this_day --years-back 3
-```
-
-Left alone it asks a different question every day, which is useless for anything you want to run
-twice. `--day` names the anniversary to look back from, so the run can be repeated, compared against
-an earlier one, or handed to someone else:
-
-```bash
 immich-memories generate --memory-type on_this_day --day 2026-08-31 --years-back 20
 ```
 
+`--day` names the anniversary to look back from, so a run can be repeated or compared.
+
 ## Holiday
 
-A **recurrence**, not a period. It builds a separate window per year and queries every one of them,
-so five Christmases ask Immich for five windows around Christmas and never for the five years
-between. Each year contributes the holiday ± 2 days, so a celebration running from Christmas Eve
-into Boxing Day is one memory rather than three.
+A recurrence, not a period: one window per year, the holiday ±2 days, so five Christmases ask Immich
+for five windows and never for the years between.
 
 ```bash
 immich-memories generate --memory-type holiday --holiday christmas --years-back 5
 ```
 
-`--holiday` is required. `--years-back` defaults to 5, and `0` is read as unset rather than as an
-error. Ten names resolve for any year:
+`--holiday` is required, `--years-back` defaults to 5. Ten names resolve for any year:
 
 | Name | Falls on |
 |------|----------|
 | `new_year` | 1 January |
 | `valentines` | 14 February |
-| `easter` | computed: Western Easter Sunday |
+| `easter` | Western Easter Sunday, computed |
 | `mothers_day` | second Sunday of May |
 | `fathers_day` | third Sunday of June |
 | `halloween` | 31 October |
@@ -218,22 +182,15 @@ error. Ten names resolve for any year:
 | `christmas` | 25 December |
 | `new_years_eve` | 31 December |
 
-The moving ones are calculated rather than tabulated, so they stay correct in years nobody has
-thought about yet. Anything else is read as `MM-DD`, which is how a household's own occasion works
-(`--holiday 09-14`, the day you moved in). A name that is neither fails immediately with the list.
-
-Without `--year`, the starting year steps back when the occasion has not happened yet, so asking for
-Christmas in August does not spend one of your years on an empty window. An explicit `--year` is
-treated as deliberate and left alone.
-
-The title is the occasion ("Christmas") subtitled "Through the Years", because the span describes
-nothing. A custom `MM-DD` holiday is titled by its date. That pair is produced by the web UI only;
-on the CLI a holiday memory still falls through to the generic span title.
+Anything else is read as `MM-DD`, for a household's own occasion (`--holiday 09-14`, the day you
+moved in). Without `--year`, the starting year steps back when this year's occasion has not happened
+yet. The title is the occasion's name, subtitled "Through the Years" in the film's language, on both
+the CLI and the web UI.
 
 ## Trip
 
-Nothing declares a trip. The GPS on your own pictures decides where one starts and ends, and each
-trip gets its own video opening on a satellite map of the route.
+Nothing declares a trip. The GPS on your pictures decides where one starts and ends, and each trip
+gets its own film.
 
 <Video
   src="/demo/trip-preview.mp4"
@@ -246,52 +203,18 @@ trip gets its own video opening on a satellite map of the route.
   style={{borderRadius: '12px', marginBottom: '1.5rem'}}
 />
 
-That film came out of the real renderer over the CC0 test library in `tests/e2e/fixtures/library`: a
-week camped by a lake in Upper Savoy, 590 km from the test home. The view starts wide over home,
-travels to where you went, and drops a labelled pin on every distinct GPS cluster in the cut. The
-tiles are ArcGIS World Imagery, fetched while the title renders, which makes the opening the one
-part of the pipeline that wants the network even when the rest runs on your own machine. That is
-why it is off until you set `network.map_tiles: true`. With no tiles there is no fly-over, only the
-title on a flat panel.
+That film is the real renderer over the CC0 fixture library (`tests/e2e/fixtures/library`, credits
+in its `CREDITS.md`): a week by a lake 590 km from the test home. The satellite fly-over needs
+`network.map_tiles: true`, which is off by default because the tiles come from ArcGIS. With it off,
+the title sits on a flat panel. What that switch sends is on [Privacy](../run/privacy.md).
 
-Detection is three stages, no clustering:
+Detection is three steps:
 
-1. **Keep what is away from home**: an asset survives if it has GPS coordinates and they are at
-   least `min_distance_km` from home (default 50 km). No GPS, dropped here.
-2. **Split on gaps**: survivors are sorted by capture time and a new trip starts wherever more than
-   `max_gap_days` (default 2) passes between one asset and the next, measured asset to asset in
-   fractional days, so a rest day does not split a trip.
-3. **Discard the short ones**: a group survives if the nights it spans reach `min_duration_days`
-   (default 2, so three calendar days). `1` catches a weekend away and is the floor.
-
-The name is the smallest place that holds at least 85% of the trip's located pictures, counted per
-picture. It walks up from the city, to an island, to the region, to two regions, to the country,
-and reads the city, region and country Immich stored on every picture from its own offline
-GeoNames data. No outside call.
-
-| The trip | Its name |
-|---|---|
-| A long weekend, nearly every picture in Las Vegas | `Las Vegas, United States` |
-| A hike through five towns of Saxon Switzerland | `Saxony, Germany` |
-| Two weeks across Heraklion, Rethymno and Chania | `Crete, Greece` (French film: `Crète, Grèce`) |
-| A week in Paphos, Limassol and Larnaca | `Cyprus` (`Chypre`) |
-| Bari, Polignano, Ostuni and Lecce | `Apulia, Italy` (`Pouilles, Italie`) |
-| A road trip, mostly Utah and Nevada, a day in Arizona | `Utah and Nevada, United States` |
-| Four states, none of them most of it | `United States` |
-
-An island wins over the administrative units it is filed under: Palma and Pollença make
-`Mallorca, Spain`, not `Balearic Islands`. The app carries a short offline list of islands for
-that (the Greek, Balearic and Canary islands, Madeira, Bali, the main Hawaiian islands and a few
-more); islands that are their own region or country (Crete, Sicily, Sardinia, Corsica, Cyprus) are
-named that way already. Administrative wording is dropped (`Limassol District` becomes `Limassol`),
-local spellings become the common name (`Puglia` becomes `Apulia`), and a region label in a script
-the title language does not use names the trip one scale up instead.
-
-Set `network.geocoding: true` and a trip that fits one city or one region is named by Nominatim
-instead, in the film's language: the town when the pictures sit within 25 km of each other, else
-the island or the state. Never the county, which in some countries is a regional unit with a long
-local-script name. Islands, two-region trips and countries always come from the pictures. The
-nightly `auto run` trip detector names trips the same way.
+1. **Away from home**: a picture counts if its GPS is at least `min_distance_km` (50) from home. No
+   GPS, no trip.
+2. **Split on gaps**: a new trip starts wherever more than `max_gap_days` (2) pass between two
+   pictures, so a rest day does not split a trip.
+3. **Drop the short ones**: a trip must span `min_duration_days` (2) nights. `1` catches a weekend.
 
 ```yaml
 trips:
@@ -302,9 +225,8 @@ trips:
   max_gap_days: 2
 ```
 
-Homebase is required: without it nothing counts as away, and getting it wrong either collects your
-own neighbourhood or loses real trips. Drop `min_distance_km` to about 20 km if weekend drives
-should register.
+Home base is required. Get it wrong and your own neighbourhood becomes a trip, or real trips
+disappear. Drop `min_distance_km` to about 20 if weekend drives should count.
 
 ```bash
 immich-memories generate --memory-type trip --year 2025                     # list what it found
@@ -313,149 +235,91 @@ immich-memories generate --memory-type trip --year 2025 --all-trips
 immich-memories generate --memory-type trip --year 2025 --near-date 2025-07-15
 ```
 
-`--person` narrows trip **detection**, not the finished video: it looks for trips among the assets
-that person appears in, which helps when one phone is the one carrying GPS. The video is still built
-from everything shot in that window.
+Both surfaces read photos and videos, and look a month either side of the year so a trip across New
+Year stays whole. `--person` narrows **detection** (whose pictures are scanned for GPS, useful when
+one phone carries it); the film still takes everything shot in the trip's window. Some cameras strip
+GPS, so a library shot on one can look full of holidays and find none.
 
-Two things to know. The web UI detects trips from **videos only** while the CLI reads every asset
-type, so a trip you only photographed has to be cut from the CLI. And GPS is the whole input: some
-cameras strip it and screen recordings never had it, so a library shot on a camera can come back with
-nothing while looking full of holidays.
+The name is the smallest place holding at least 85 % of the trip's located pictures, walking up from
+city to island, region, two regions, country. It comes from the place Immich already stored on each
+picture, offline:
+
+| The trip | Its name |
+|---|---|
+| A long weekend, nearly every picture in Las Vegas | `Las Vegas, United States` |
+| Two weeks across Heraklion, Rethymno and Chania | `Crete, Greece` (French film: `Crète, Grèce`) |
+| Palma and Pollença | `Mallorca, Spain` |
+| A road trip, mostly Utah and Nevada | `Utah and Nevada, United States` |
+| Four states, none of them most of it | `United States` |
+
+`network.geocoding: true` lets Nominatim name a one-city or one-region trip in the film's language.
+It is off by default: it sends coordinates to a third party.
 
 ## Album
 
-One Immich album instead of a date range. The album *is* the selection: nothing outside it is
-considered, nothing inside it is filtered out by date. This is the mode for material you already
-curated by hand. An album someone shared with you counts as one of your own.
+One Immich album instead of a date range. The album is the selection: nothing outside it is
+considered, nothing inside it is dropped for its date. A shared album counts as your own.
 
 ```bash
 immich-memories generate --from-album "Trip 2025"
 immich-memories generate --from-album 59080965-22f0-46a4-be67-135692a9f584
 ```
 
-`--from-album` already makes this an album memory, so `--memory-type album` is optional and cannot
-accompany anything else. On its own it is an error: an album memory has no window to fall back on.
-The flag cannot be combined with `--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`,
-`--month`, another `--memory-type` or `--person`. Everything else works as usual.
+`--from-album` makes it an album memory, and cannot be combined with `--year`, `--start`/`--end`,
+`--period`, `--birthday`, `--season`, `--month`, `--person` or another `--memory-type`. The film is
+titled after the album and named `album_<slug>.mp4`. Two albums with one name stop the CLI with the
+candidates and their IDs; the web UI lists albums largest first and stores the choice by ID.
 
-The video is titled after the album and named `album_<slug>.mp4`; the title model is not asked for a
-second opinion, because a name you typed yourself beats one it invents. In the web UI the dropdown
-lists every album with assets, largest first, with the item count beside each name, and stores the
-choice by ID: real libraries carry several albums with the same name. On the CLI an ambiguous name
-stops the run and lists the candidates with their IDs.
-
-A Live Photo in an album is merged into one moving clip as everywhere else, and with merging turned
-off it is used as a still rather than dropped: you picked these by hand, so nothing silently
-disappears.
-
-Smart albums like *Recents* can hold tens of thousands of assets. Reading one costs about 9 KB of
-memory per asset, so album mode reads at most `advanced.analysis.max_album_assets` per media type
-(default `10000`), newest first, and says so:
-
-```
-Album exceeds 10000 assets per type, using the most recent ones
-```
-
-If you hit that line you probably want a date range. Raise the limit only after multiplying 9 KB by
-your album size.
+Smart albums like *Recents* can hold tens of thousands of assets. Album mode reads at most
+`advanced.analysis.max_album_assets` per media type (10,000), newest first, and says so. Past that you
+probably want a date range.
 
 ## Special day (Surprise me)
 
-The nine types above cover something you named. A special day is the one you did not: a day out of
-your own library that a scan flagged as an occasion, wrote down, and offers back years later when
-its anniversary comes round.
-
-Nothing searches for it. [`discover-days`](./cli/prepare.md#discover-days) walks the library a month at a
-time, keeps the days that stayed alive for hours rather than the days that merely shot a lot, and
-asks the local model whether the day was an occasion: something the people in it would tell other
-people about afterwards. That is why it finds the day that mattered with 30 photos and skips the one
-with 413 pictures of a street performer. A pleasant afternoon at home is not an occasion, and the
-scan says so.
-
-It asks in text and never sends pictures. The day arrives as one line per sampled picture, carrying
-its capture time and whatever the library records about it: place, coordinates, recognised names,
-whether it is a favourite, whether it is a video, and its caption when preparation has written one.
-A day with nothing written about it at all is recorded as unjudged rather than guessed at.
+The nine types above cover something you named. A special day is one you did not: a day from your
+own library that a scan flagged, wrote down, and offers back when its anniversary comes round.
 
 ```bash
-immich-memories discover-days     # build the catalogue once; hours over twenty years, and it resumes
+immich-memories discover-days     # build the catalogue once; it resumes
 immich-memories days-due          # what falls within three days of today
 immich-memories generate --memory-type special_day --day 2016-06-12
 ```
 
-The catalogue lives at `~/.immich-memories/special-days.json`: the date, a title derived from that
-day's own pictures, how many hours the day put pictures in, the hours an event ran when the day
-contained one rather than being one, and the prompt version and app version of the scan that judged
-it. That stamp is what makes a row written by an older scan recognisable:
-`discover-days --replace --since YYYY --until YYYY` re-asks a period and replaces what it holds, so
-a catalogue that filled up over several releases can be cleaned without editing JSON by hand.
-Nothing is ever deleted unless you ask for it.
+[`discover-days`](./cli/prepare.md) walks the library a month at a time. On a plain NAS, a day is
+kept when one recorded fact stands out: it was spent away from home, it holds three or more
+favourites, it is mostly video, or it ran long (20 pictures over 6 hours or more) with close family
+in it. Each year keeps its strongest `automation.special_days_per_year` (6), away days first. The
+title comes from the day's own place.
 
-Scope is that window when there is one, otherwise the day's **run**: the stretch of photographs the
-occasion left, which the scan groups by five hours of silence rather than by midnight. The row
-records `run_start` and `run_end`, and a run can outlast the date it began on: one catalogued day is
-a long occasion that ran most of two days, and scoped to the date it began on the film
-stopped at midnight with a quarter of its 379 pictures on the other side.
-Rows written before the run was recorded fall back to midnight-to-midnight, and
-`discover-days --replace` is what repairs them.
+The catalogue is `~/.immich-memories/special-days.json`. A film covers the day's **run**, the stretch
+of pictures the occasion left, split at five hours of silence rather than at midnight, so a long
+night out is not cut at 00:00. It never reaches past its own first and last picture, and a run longer
+than 48 hours is not one occasion. `window_origin` in the run record says what bounded the film.
 
-The run does not pad either. It never reaches past its own first and last picture, so a neighbouring
-day it merely shares a date with stays out; a run reaching into a trip's dates is cut back at the
-scan, and a run longer than 48 hours is not treated as one occasion at all.
-
-The window shrinks and never pads, so a track day starts at the circuit rather than at the cat on
-the balcony that morning. What decides whether a window is kept is how much of the run it holds, not
-how long it runs: the row records `window_photos` beside `photos`, and a window holding fewer than
-half of them is dropped in favour of the run itself. That track day spends 2.3 hours of a 10.6-hour
-day in one place and still holds 92 % of its pictures, so it keeps its window. The occasion above,
-whose recorded window held a few dozen of 379, does not: cut from that window the film saw a sliver
-of the night and was refused for want of material. Rows written before the count existed are taken
-as written.
-
-Whichever of the three was used, and why, reaches the run record as `window_origin`, so
-`immich-memories runs` can say a film was cut from the run rather than from the date.
-
-Three routes bring a day back: `auto run` offers anniversaries within 3 days, **Surprise me** on the
-Memory page offers the whole catalogue with anniversaries first, and `generate --day` takes any day
-at all, catalogued or not. Automation is the strict one because it interrupts you: it proposes a day only
-on its anniversary and scores it by how round that anniversary is. For a 200-photo day never
-generated before that lands at **0.893** for a decade, **0.759** for a half-decade and **0.536**
-otherwise, so a decade goes ahead of every other detector and a seventh anniversary competes with
-the monthly review. At most one special day per run, because a queue of surprises is not a surprise.
-A day that got its memory at ten years can get another at fifteen: five more years of library have
-been analysed since.
-
-### A day the scan never found
-
-`--day` works for any day, whether or not the catalogue holds it. An uncatalogued day is scoped to
-itself and nothing is written back to the catalogue: filming a day is not discovering it. What
-changes is only the name, which walks a ladder:
-
-1. `--title`, when you gave one.
-2. The catalogue's title, when the day has a row with one.
-3. The model, writing an occasion title from the day's own facts (its places, its people, the album
-   the day sits in) wherever a reader is configured. It is given no catalogue entry and invents no
-   event name.
-4. The day's date, when there is no reader and nothing else named it.
-
-Refuse over fake still holds: nothing on that ladder names an event the facts do not name. What it
-no longer does is refuse the film. Two cases still error: `special_day` with no `--day`, and `--day`
-on a type that has no day (only `special_day` and `on_this_day` take one).
-
-A catalogued day is still the better film, because the scan wrote its title against the day's
-evidence months earlier and can bound the occasion inside it. An uncatalogued day gets the whole
-day and a title written at render time.
+Three routes bring a day back: `auto run` offers anniversaries within 3 days (round ones first, a
+decade before a seventh), **Surprise me** on the Memory page offers the whole catalogue, and
+`generate --day` takes any day, catalogued or not. An uncatalogued day is scoped to itself and named
+by `--title`, else by its date.
 
 Catalogue titles name real people and places, so they never reach the command line: automation
-passes `--day 2016-06-12` and nothing else, and `generate` re-reads the catalogue itself for the
-name. argv is logged in full by the automation runner and readable in `ps`. A special-day candidate
-also carries an empty person list, so no recognised name reaches the run database. What automation
-says out loud is the evidence rather than the title:
+passes `--day` alone and `generate` re-reads the title. What automation prints is the evidence:
 
 ```
 10 years ago today · 289 photos over 18 hours
 via special-days catalogue
 ```
 
-It needs an LLM configured under `llm:`. A vision model is not needed: see
-[`discover-days`](./cli/prepare.md#discover-days).
+## Make it better (optional)
+
+A reader (a local or hosted text model) changes three things here, and nothing else about the
+types:
+
+- `discover-days` asks the reader whether each day was an occasion, reading one text line per
+  sampled picture. No picture is sent. It finds the day with 30 photos that mattered and skips the
+  one with 400 pictures of a street performer, and keeps every occasion it finds rather than six a
+  year.
+- An uncatalogued special day, and people and occasion films, get a title written from their facts.
+  The reader invents no event name the facts do not carry.
+- A month or year gets a light polish on top of the NAS draft. What that polish does and costs
+  is on [What a model adds](../how-it-chooses/what-a-model-adds.md) and
+  [Make it better](../better/overview.md).

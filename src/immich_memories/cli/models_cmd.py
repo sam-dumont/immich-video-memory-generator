@@ -8,7 +8,13 @@ from pathlib import Path
 import click
 
 from immich_memories.analysis.editorial_preparation_detectors import DETECTOR_SNAPSHOTS
-from immich_memories.pinned_models import ENCODER, MARQO_ONNX, fetch_pinned_model
+from immich_memories.pinned_models import (
+    ENCODER,
+    LAYA_AUDIENCE,
+    LAYA_MAX_BYTES,
+    MARQO_ONNX,
+    fetch_pinned_model,
+)
 
 
 def register_models_commands(cli_group: click.Group) -> None:
@@ -25,8 +31,13 @@ def register_models_commands(cli_group: click.Group) -> None:
         default=True,
         help="Also fetch the pinned detector export and warm the pinned detector snapshot",
     )
+    @click.option(
+        "--laya",
+        is_flag=True,
+        help="Also fetch the optional Laya audience checkpoint (811 MB, Apple silicon)",
+    )
     @click.pass_context
-    def fetch(ctx: click.Context, force: bool, detectors: bool) -> None:
+    def fetch(ctx: click.Context, force: bool, detectors: bool, laya: bool) -> None:
         """Download every pinned model artifact a first cut needs, in one command."""
         config = ctx.obj["config"]
         preparation = config.editorial.preparation
@@ -37,6 +48,15 @@ def register_models_commands(cli_group: click.Group) -> None:
             sha256=ENCODER.sha256,
             force=force,
         )
+        if laya:
+            _fetch_pinned(
+                label="laya audience",
+                url=config.editorial.laya_checkpoint_url,
+                destination=config.editorial.laya_checkpoint_path,
+                sha256=LAYA_AUDIENCE.sha256,
+                force=force,
+                max_bytes=LAYA_MAX_BYTES,
+            )
         if not detectors:
             return
         _fetch_pinned(
@@ -54,9 +74,20 @@ def register_models_commands(cli_group: click.Group) -> None:
             raise SystemExit(1) from exc
 
 
-def _fetch_pinned(*, label: str, url: str, destination: Path, sha256: str, force: bool) -> None:
+def _fetch_pinned(
+    *,
+    label: str,
+    url: str,
+    destination: Path,
+    sha256: str,
+    force: bool,
+    max_bytes: int | None = None,
+) -> None:
+    limit = {} if max_bytes is None else {"max_bytes": max_bytes}
     try:
-        outcome = fetch_pinned_model(url=url, destination=destination, sha256=sha256, force=force)
+        outcome = fetch_pinned_model(
+            url=url, destination=destination, sha256=sha256, force=force, **limit
+        )
     except (OSError, ValueError, urllib.error.URLError) as exc:
         click.echo(f"{label}: {exc}")
         raise SystemExit(1) from exc

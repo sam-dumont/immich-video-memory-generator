@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import ChainMap
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -40,14 +39,9 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
-from immich_memories.analysis.editorial_sampled_reference import sampled_source_relation
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_candidates import story_candidates
-from immich_memories.analysis.editorial_story_lookalike import (
-    hash_pair_relation,
-    hash_then_model,
-    picture_pair_relation,
-)
+from immich_memories.analysis.editorial_story_lookalike import hash_pair_relation
 from immich_memories.analysis.editorial_story_planner import alternatives_pool, select_story_first
 from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_story_trips import detect_film_trips
@@ -106,23 +100,6 @@ from immich_memories.security import write_secret_file
 SECONDS_PER_SLOT = NOMINAL_STILL_SECONDS
 STORY_RANK = {"central": 0, "supporting": 1}
 FLAGGED_LINE = re.compile(r"nsfw=yes|exposure=(partial|nude)")
-
-
-def _looks_alike_relation(ports, material, episode_relation, relation_records):
-    """The repetition question: the preview hashes first, then whatever else this reader has."""
-    hashes = hash_pair_relation(ports.thumbnail_hash)
-    if ports.rules is not None:
-        return hashes
-    return hash_then_model(
-        hashes,
-        picture_pair_relation(
-            observe=material.picture_evidence.observe if ports.observe_picture else None,
-            episode_relation=episode_relation,
-            story_relation=sampled_source_relation(
-                ports.confirm_story_pairs, picture_records=relation_records
-            ),
-        ),
-    )
 
 
 def _near_home_test(source: StructurePlanningInput, wall: Wall):
@@ -384,16 +361,16 @@ def _select(
         bank_path=audit_dir / "shareability.private.json",
         library=AudienceBank(
             source.bank_dir.parent / AUDIENCE_BANK_NAME,
-            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}",
+            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}"
+            + "|laya" * bool(ports.laya),
         ),
         check_audience=audience_check_for(audience_tier),
         chains=chain_holds_for(
             source.assets, source.audience_annotations, source.companion_detectors
         ),
         companion_heads=source.companion_detectors,
+        activity_reader=ports.laya.activity_answers if ports.laya else None,
     )
-    attached_relation_records: dict[str, dict[str, Any]] = {}
-    relation_records = ChainMap(attached_relation_records, material.picture_evidence.records)
     tier, worth_reason, marker = _worthiness_gate(
         source,
         ports,
@@ -406,10 +383,6 @@ def _select(
     pool = _subject_pool(marker, tier, wall, material)
     if pool.record is not None:
         record_story("subject-pool", pool.record)
-    # One memo for the repetition question, shared by the story check and the final review.
-    episode_relation = sampled_source_relation(
-        ports.confirm_episode_pairs, picture_records=relation_records
-    )
     # A no-model draft asks nothing, so it reads the model's answers through `banked` alone.
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     banked = _banked_facts(source, ports)
@@ -428,7 +401,7 @@ def _select(
         record=record_story,
         partition_limit=partition_limit,
         banked=banked,
-        looks_alike=_looks_alike_relation(ports, material, episode_relation, relation_records),
+        looks_alike=hash_pair_relation(ports.thumbnail_hash),
     )
     run.carriers = list(selection.carriers)
     if ports.thin is not None:
@@ -476,10 +449,6 @@ def _select(
     _story_worthiness(selection, wall, tier, worth_reason)
     evidence_partitions = _evidence_partitions(source.intent, wall, tier)
     carriers_at_selection = len(run.carriers)
-    # The final sampled-duplicate review still runs, so it needs its relation.
-    source_relation = sampled_source_relation(
-        ports.confirm_sampled_pairs, picture_records=relation_records
-    )
     run.carriers.sort(key=itemgetter("taken"))
     run.selection_stages = {
         "funded_picture_requests": 0,
@@ -495,9 +464,7 @@ def _select(
             {"removed": sorted(required - {c["asset_id"] for c in run.carriers})},
         )
     resolve_motion_and_timing(run, source, ports)
-    attached, observed = observe_attached(
-        run, ports, gate, material.picture_evidence, attached_relation_records, share_log
-    )
+    attached, observed = observe_attached(run, ports, gate, material.picture_evidence, share_log)
     # The review protects the same people the seat counts: in a person film, the subject's own.
     close_of = film_close_family(source)
     final_duplicate_review(
@@ -506,14 +473,8 @@ def _select(
         replacements_for=replacement_offers(
             alternatives_pool(selection, material.units, wall.anchor_label)
         ),
-        source_relation=source_relation,
-        episode_relation=episode_relation,
-        picture_records=material.picture_evidence.records,
-        attached=attached,
         prior=source.prior_plan,
         prior_assets=prior_assets,
-        quality=material.builder.quality,
-        pixel_facts=source.pixel_facts,
         owner_required=source.owner_required_asset_ids,
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
         gate=gate,

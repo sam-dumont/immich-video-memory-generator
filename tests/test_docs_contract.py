@@ -291,7 +291,7 @@ def test_launch_audit_closes_the_immich_code_and_docs_blocker() -> None:
 
 
 def test_auto_docs_state_the_daily_variety_contract() -> None:
-    text = " ".join(_read("docs-site/docs/being-rewritten/auto.md").lower().split())
+    text = " ".join(_read("docs-site/docs/make/automate.md").lower().split())
 
     for phrase in (
         "latest completed month",
@@ -304,7 +304,7 @@ def test_auto_docs_state_the_daily_variety_contract() -> None:
 
 
 def test_auto_quiet_json_example_includes_the_stable_action_field() -> None:
-    text = _read("docs-site/docs/being-rewritten/auto.md")
+    text = _read("docs-site/docs/make/automate.md")
     example = text.split("Quiet output is a stable JSON object", 1)[1]
     json_block = example.split("```json", 1)[1].split("```", 1)[0]
 
@@ -319,7 +319,7 @@ def test_daily_auto_run_is_the_recommended_entry_point() -> None:
 
 
 def test_scheduler_docs_call_the_daemon_advanced_or_legacy() -> None:
-    text = _read("docs-site/docs/being-rewritten/scheduler.md").lower()
+    text = _read("docs-site/docs/make/automate.md").lower()
 
     assert "advanced/legacy" in text
     assert "auto" in text
