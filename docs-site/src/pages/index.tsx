@@ -44,7 +44,7 @@ function HeroSection() {
               preload="metadata">
               <source src={useBaseUrl('/demo/trip-preview.mp4')} type="video/mp4" />
             </video>
-            <p style={{fontSize: '0.8rem', opacity: 0.75, marginTop: '0.5rem'}}>
+            <p className={styles.heroCredit}>
               A finished trip film. CC0 stock pictures from StockSnap and Wikimedia Commons,{' '}
               <a href="https://github.com/sam-dumont/immich-video-memory-generator/blob/main/tests/e2e/fixtures/library/CREDITS.md">
                 credited with their authors
