@@ -487,6 +487,7 @@ def select_story_first(
     journey: bool = False,
     partition_of: Callable[[str], str | None] | None = None,
     partition_limit: int | None = None,
+    voice_per_partition: bool = False,
     motion_line: Callable[[Mapping[str, Any]], str] | None = None,
     motion_identity: str = "",
     episode_readings: Mapping[str, Any] | None = None,
@@ -510,6 +511,8 @@ def select_story_first(
     `near_home(family)` says whether a happening was photographed near the home base.
     `banked` answers what a model already said about these pictures on an earlier run; it asks
     nothing, and on a library nothing has read it answers nothing and the draft is unchanged.
+    `voice_per_partition` gives every partition (`partition_of`) that holds a story one picture
+    before any story takes a second.
     """
     calls = {
         "story_pages": 0,
@@ -519,7 +522,12 @@ def select_story_first(
     }
     _check_partition_request(partition_limit, partition_of)
     unit_by_asset = {u["asset_id"]: (f, u) for f, units in event_units.items() for u in units}
-    parts = PartitionedSlots(unit_by_asset, partition_of=partition_of, limit=partition_limit)
+    parts = PartitionedSlots(
+        unit_by_asset,
+        partition_of=partition_of,
+        limit=partition_limit,
+        voiced=voice_per_partition,
+    )
     units = _MomentUnits(event_units, family_of_moment, dict(family_tier or {}))
     place_of_moment = {
         row.get("moment_id"): str(row.get("places") or "").strip()

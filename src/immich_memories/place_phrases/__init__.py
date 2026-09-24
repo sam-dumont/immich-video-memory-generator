@@ -27,7 +27,7 @@ __all__ = ["PREPOSITION_FREE", "Place", "PlacePhrase", "phrase_module_name", "pl
 PlacePhrase = Callable[[Place], "str | None"]
 
 # Title languages that write trip titles with no preposition, on purpose.
-PREPOSITION_FREE: frozenset[str] = frozenset()
+PREPOSITION_FREE: frozenset[str] = frozenset({"ru", "ja", "zh-Hans", "ko"})
 
 
 def phrase_module_name(locale: str) -> str:

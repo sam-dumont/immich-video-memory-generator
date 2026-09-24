@@ -322,41 +322,14 @@ def _trip(
     )
 
 
-_HOLIDAY_LABELS = {
-    "new_year": "New Year",
-    "valentines": "Valentine's Day",
-    "easter": "Easter",
-    "mothers_day": "Mother's Day",
-    "fathers_day": "Father's Day",
-    "halloween": "Halloween",
-    "thanksgiving": "Thanksgiving",
-    "christmas_eve": "Christmas Eve",
-    "christmas": "Christmas",
-    "new_years_eve": "New Year's Eve",
-}
-
-
-_HOLIDAY_LABELS_FR = {
-    "new_year": "Nouvel An",
-    "valentines": "Saint-Valentin",
-    "easter": "Pâques",
-    "mothers_day": "Fête des mères",
-    "fathers_day": "Fête des pères",
-    "halloween": "Halloween",
-    "thanksgiving": "Thanksgiving",
-    "christmas_eve": "Réveillon de Noël",
-    "christmas": "Noël",
-    "new_years_eve": "Réveillon du Nouvel An",
-}
-
-
 def holiday_label(holiday: str, year: int, locale: str = "en") -> str:
     """A printable name, falling back to the date for a household's own occasion."""
+    from immich_memories.i18n import film_text
+
     key = holiday.strip().lower().replace("-", "_").replace(" ", "_")
-    if locale == "fr" and key in _HOLIDAY_LABELS_FR:
-        return _HOLIDAY_LABELS_FR[key]
-    if key in _HOLIDAY_LABELS:
-        return _HOLIDAY_LABELS[key]
+    label = film_text(f"holiday.{key}", locale)
+    if label != f"holiday.{key}":
+        return label
     resolved = resolve_holiday(holiday, year)
     return resolved.strftime("%-d %B")
 

@@ -113,6 +113,45 @@ still draws its letters, unjoined, and the log says so once.
 Chinese characters use the Simplified Chinese forms unless the title has kana (Japanese forms) or
 Hangul (Korean).
 
+## Languages
+
+`title_screens.locale` sets the language of everything the film prints: titles, month and
+weekday names, trip cards, holiday names. `auto` (the default) follows the host's own locale.
+
+| Language | Code | Trip titles |
+|---|---|---|
+| English | `en` | full: "A WEEK IN THE NETHERLANDS" |
+| French | `fr` | full: "UNE SEMAINE AUX PAYS-BAS" |
+| Dutch | `nl` | full: "op Kreta", "in de Verenigde Staten" |
+| German | `de` | full: "auf Kreta", "in der Schweiz" |
+| Spanish | `es` | full: "en el Reino Unido" |
+| Italian | `it` | full: "a Creta", "negli Stati Uniti" |
+| Portuguese (Brazil) | `pt-BR` | full: "na Itália", "nos Estados Unidos" |
+| Portuguese (Portugal) | `pt-PT` | full: "em França", "no Japão" |
+| Polish | `pl` | full for the places it lists ("na Krecie", "we Włoszech"); others use the fallback design |
+| Swedish | `sv` | full: "på Kreta", "i Italien" |
+| Russian | `ru` | fallback design |
+| Japanese | `ja` | fallback design |
+| Chinese (Simplified) | `zh-Hans` | fallback design |
+| Korean | `ko` | fallback design |
+
+Dates, months and weekdays come from CLDR, so they are right in every language. The rest of the
+wording lives in one catalogue per language under `src/immich_memories/locales/`. English and French
+are written by hand. **Every other catalogue, and the preposition rules for Dutch, German, Spanish,
+Italian, Portuguese, Polish and Swedish, were drafted by an AI** and checked by tests, not by native
+speakers yet; each file says so at the top. A correction is a one-line pull request.
+
+"Fallback design" means the trip card never guesses a preposition: the place is the big line and
+the duration and date go under it. A language gets prepositions only once its rules are written
+down and tested. Titles in Russian, Japanese, Chinese and Korean draw with the Noto fonts (see
+[Other alphabets](#other-alphabets)).
+
+Why these fourteen: Immich publishes no usage numbers per language. Its translation project on
+[Hosted Weblate](https://hosted.weblate.org/projects/immich/) has 44 languages at 95 % or more, so
+completeness does not separate them. The first ten are the languages of Western Europe and the
+Americas with the most speakers among those, plus Dutch; the last four are the largest non-Latin
+ones.
+
 ## Date and place captions
 
 `generate --add-date --add-place` burns small translucent context onto clips: 48 px on a 1080p frame
@@ -209,7 +248,12 @@ place on the cut. See
 ### Trip titles and classification
 
 A template gives you "TWO WEEKS IN SPAIN, SUMMER 2025". The model gives you "Sous les falaises de
-grès". English and French are the two locales the app ships.
+grès". See [Languages](#languages) for the languages a film can speak.
+
+When the model names a trip, the prompt carries the trip's place as trip detection named it, and
+the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,
+Greece"). A title about somewhere else is refused and the template names the trip; the run's
+**Title From** then says `place`, not `model`.
 
 When the model names a trip, the prompt carries the trip's place as trip detection named it, and
 the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,

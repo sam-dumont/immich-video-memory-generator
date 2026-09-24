@@ -1,0 +1,109 @@
+# Dutch film text for Immich Memories: titles, trip cards, holidays.
+# AI-DRAFTED: written by an AI model (Claude) and not yet reviewed by a native
+# speaker. Corrections are welcome: edit this file and open a pull request.
+# Month and weekday names come from CLDR (Babel), not from this file.
+# Placeholders in braces are filled by the code; keep them as they are.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "season.spring"
+msgstr "Lente"
+
+msgid "season.summer"
+msgstr "Zomer"
+
+msgid "season.autumn"
+msgstr "Herfst"
+
+msgid "season.winter"
+msgstr "Winter"
+
+msgid "ordinal"
+msgstr "{n}e"
+
+msgid "title.year_ordinal"
+msgstr "{ordinal} jaar"
+
+msgid "title.month_year"
+msgstr "{month} {year}"
+
+msgid "title.month_range_same_year"
+msgstr "{start_month} tot {end_month_lc} {year}"
+
+msgid "title.month_range_different_year"
+msgstr "{start_month} {start_year} tot {end_month_lc} {end_year}"
+
+msgid "title.season_year"
+msgstr "{season} {year}"
+
+msgid "title.season_year_span"
+msgstr "{season} {start_year}-{end_year}"
+
+msgid "title.on_this_day"
+msgstr "{day} {month_lc}"
+
+msgid "title.on_this_day_subtitle"
+msgstr "Door de jaren heen"
+
+msgid "title.person_spotlight_subtitle"
+msgstr "Jouw jaar met {person}"
+
+msgid "trip.day"
+msgstr "Een dag"
+
+msgid "trip.weekend"
+msgstr "Een weekend"
+
+msgid "trip.week"
+msgstr "Een week"
+
+msgid "trip.two_weeks"
+msgstr "Twee weken"
+
+msgid "trip.three_weeks"
+msgstr "Drie weken"
+
+msgid "trip.month"
+msgstr "Een maand"
+
+msgid "trip.days"
+msgid_plural "trip.days"
+msgstr[0] "{n} dag"
+msgstr[1] "{n} dagen"
+
+msgid "holiday.new_year"
+msgstr "Nieuwjaar"
+
+msgid "holiday.valentines"
+msgstr "Valentijnsdag"
+
+msgid "holiday.easter"
+msgstr "Pasen"
+
+msgid "holiday.mothers_day"
+msgstr "Moederdag"
+
+msgid "holiday.fathers_day"
+msgstr "Vaderdag"
+
+msgid "holiday.halloween"
+msgstr "Halloween"
+
+msgid "holiday.thanksgiving"
+msgstr "Thanksgiving"
+
+msgid "holiday.christmas_eve"
+msgstr "Kerstavond"
+
+msgid "holiday.christmas"
+msgstr "Kerstmis"
+
+msgid "holiday.new_years_eve"
+msgstr "Oudejaarsavond"

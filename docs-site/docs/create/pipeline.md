@@ -170,7 +170,10 @@ depend on which film asked. A favourite video is the exception on both: a favour
 wall means something happened there, so the fact still shows on its line but never removes it. A
 Live Photo is never refused for its clip either, since its favourite is on the still: a clip that
 misses its subject plays as its still, and a Live Photo plays as motion only when its clip moves
-(residual at or above 1.5) and shows its subject. Measured on 33 real clips: the two a reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
+(residual at or above 1.5) and shows its subject. That holds on every tier: the no-model cut
+used to render every Live Photo as its still whatever its clip showed, so a NAS film had no Live
+motion at all. It now keeps the run's Live Photo setting and measures a kept clip nobody measured
+yet, exactly like a model film. Measured on 33 real clips: the two a reviewer called "mostly wall" read five of eight frames as a moment, every clip kept beside them six
 or more. The frames are sampled once for this and the exposure head together; a clip already
 prepared is sampled again once. A clip whose frames cannot be read, or an install without the
 encoder, keeps its preview's reading and is named in `preparation.private.json`; it never blocks a
@@ -527,8 +530,13 @@ favourite is never displaced. A frame any hold refuses (an earlier `do_not_show`
 refusal, a source rule, or an exposure hold on a film for outside the family) is never the seat,
 and the family-viewing gate still judges the cut afterwards. When no frame of theirs clears the bar,
 or their stories hold nothing but favourites and the film is full, nobody is seated and
-`derived-decisions/family-seat.private.json` says so, by relation only. Nothing is asked of a model
-on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
+`derived-decisions/family-seat.private.json` says so, by relation only. Only pictures the film could
+show count toward the 20: a person whose every picture in the film is refused as a carrier (every
+one a hospital scene the medical-care rule holds back, for instance) is owed nothing, and the
+record says that rather than "no frame clears a story's bar". When the story holding most of their
+pictures has no shot to give up (it got no slot, or holds only favourites) and the film is full, the
+seat replaces the film's weakest non-favourite in a story that keeps another shot. Nothing is asked
+of a model on any tier. The two numbers are `advanced.editorial.people.seat_min_pictures` and
 `seat_min_share`.
 
 ### Filler nothing vouches for

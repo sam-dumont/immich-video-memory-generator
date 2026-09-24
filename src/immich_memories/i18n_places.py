@@ -45,7 +45,7 @@ def _codes_by_english_name() -> dict[str, str]:
 @lru_cache(maxsize=32)
 def _territories(locale: str) -> dict[str, str]:
     try:
-        return dict(Locale.parse(locale).territories)
+        return dict(Locale.parse(locale.replace("-", "_")).territories)
     except (UnknownLocaleError, ValueError, TypeError):
         return {}
 
