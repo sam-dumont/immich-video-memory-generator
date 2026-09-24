@@ -1029,16 +1029,16 @@ def _prepare_generation(
         "immich_memories.cache.video_cache.VideoDownloadCache",
         lambda **_kwargs: MagicMock(),
     )
-    monkeypatch.setattr(generate_render_module, "_extract_clips", lambda *_args: [assembly_clip])
+    monkeypatch.setattr(generate_render_module, "extract_clips", lambda *_args: [assembly_clip])
     monkeypatch.setattr(
         generate_render_module,
-        "_build_assembly_settings",
+        "build_assembly_settings",
         lambda *_args: AssemblySettings(encoding_plan=plan),
     )
-    monkeypatch.setattr(generate_render_module, "_create_assembler", lambda *_args: Assembler())
-    monkeypatch.setattr(generate_module, "_run_music_phase", music_phase)
-    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
-    monkeypatch.setattr(generate_module, "_cleanup_temp_clips", lambda _clips: None)
+    monkeypatch.setattr(generate_render_module, "create_assembler", lambda *_args: Assembler())
+    monkeypatch.setattr(generate_module, "run_music_phase", music_phase)
+    monkeypatch.setattr("immich_memories.generate_delivery.upload_to_immich", upload)
+    monkeypatch.setattr(generate_module, "cleanup_temp_clips", lambda _clips: None)
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
     # WHY: the final check is where the authoritative probe enters the run record.
     monkeypatch.setattr(generate_module.PreparedGeneration, "publish", final_publish)
@@ -1068,7 +1068,7 @@ def test_deferred_generation_returns_exact_context_on_the_caller_owned_tracker(
     exact_plan = _h264_plan()
     monkeypatch.setattr(
         generate_render_module,
-        "_build_assembly_settings",
+        "build_assembly_settings",
         lambda *_args: AssemblySettings(encoding_plan=exact_plan),
     )
     tracker = RunTracker("ui-owned-run", db_path=tmp_path / "runs.db", capture_system=False)
@@ -1379,7 +1379,7 @@ def test_delivery_transition_failure_cannot_count_or_downgrade_a_second_attempt(
         upload_enabled=True,
     )
     monkeypatch.setattr(
-        "immich_memories.generate_delivery._upload_to_immich",
+        "immich_memories.generate_delivery.upload_to_immich",
         lambda *_args: {"asset_id": "asset-already-committed"},
     )
 
@@ -1551,7 +1551,7 @@ def test_hard_stop_during_upload_leaves_requested_delivery_pending(
         events.append("upload-started")
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", stop_during_upload)
+    monkeypatch.setattr("immich_memories.generate_delivery.upload_to_immich", stop_during_upload)
 
     with pytest.raises(KeyboardInterrupt):
         generate_memory(params)  # type: ignore[arg-type]

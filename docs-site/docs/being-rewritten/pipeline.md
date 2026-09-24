@@ -453,6 +453,12 @@ repeats. Measured on five recorded cells, 0.65 caught every repeat the owner nam
 and nothing else in the year film; the closest pair of same-day favourites the owner kept as two
 moments sat at 0.63.
 
+A replacement arrives after the family-viewing gate has judged the cut, so it is judged on its own
+before it takes the slot: the verdict already banked for it if there is one, a new question
+otherwise. A replacement the gate holds, a detector's hold included, is passed over for the next
+one, and when every offer is held the slot stays empty. A shorter film beats an unsafe one.
+Measured on four real films, this review had put four pictures into cuts with no verdict at all.
+
 Audience-safe replacements must also respect the existing five-minute capture spacing. The gate
 reserves all surviving pictures first, then checks each replacement against those survivors and
 earlier replacements. It skips a conflicting candidate before asking for an audience verdict.

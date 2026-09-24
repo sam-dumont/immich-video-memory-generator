@@ -145,7 +145,7 @@ def test_actual_generation_fails_before_assembly_on_lost_certified_content(
         lambda *_args, **_kw: [rendered],
     )
     assembly = MagicMock(side_effect=AssertionError("changed certified content reached assembly"))
-    monkeypatch.setattr(generate_render_module, "_create_assembler", assembly)
+    monkeypatch.setattr(generate_render_module, "create_assembler", assembly)
     monkeypatch.setattr(generate, "_fail_run_if_running", lambda *args: tracker.fail_run(args[1]))
     with pytest.raises(GenerationError, match="Certified editorial Live source was lost"):
         generate.generate_memory(params, run_tracker=tracker)

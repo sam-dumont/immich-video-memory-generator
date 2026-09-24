@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 def build_render_request(params: GenerationParams) -> dict:
     """Freeze the kept intervals without running selection or reading any media."""
-    from immich_memories.generate import _build_memory_key
+    from immich_memories.generate import build_memory_key
     from immich_memories.generate_clips import _validated_render_directives
     from immich_memories.processing.encoding_plan import resolve_output_selection
 
@@ -40,7 +40,7 @@ def build_render_request(params: GenerationParams) -> dict:
     return {
         "version": 1,
         "render_attempt": str(uuid4()),
-        "memory_key": _build_memory_key(params) or binding["sha256"],
+        "memory_key": build_memory_key(params) or binding["sha256"],
         "immich": {"url": params.config.immich.url, "api_key": params.config.immich.api_key},
         "plan": {
             "clips": clips,

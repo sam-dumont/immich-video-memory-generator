@@ -445,27 +445,26 @@ class TestHDRUtilities:
 
     def test_get_colorspace_filter_hlg(self):
         """HLG colorspace filter contains arib-std-b67."""
-        from immich_memories.processing.hdr_utilities import _get_colorspace_filter
+        from immich_memories.processing.hdr_utilities import get_colorspace_filter
 
-        result = _get_colorspace_filter("hlg")
+        result = get_colorspace_filter("hlg")
         assert "arib-std-b67" in result
         assert "setparams" in result
 
     def test_get_colorspace_filter_pq(self):
         """PQ colorspace filter contains smpte2084."""
-        from immich_memories.processing.hdr_utilities import _get_colorspace_filter
+        from immich_memories.processing.hdr_utilities import get_colorspace_filter
 
-        result = _get_colorspace_filter("pq")
+        result = get_colorspace_filter("pq")
         assert "smpte2084" in result
         assert "setparams" in result
 
-    def test_get_dominant_hdr_type_sdr_clips(self, test_clip_720p, test_clip_720p_b):
-        """All-SDR clips default to hlg."""
-        from immich_memories.processing.hdr_utilities import _get_dominant_hdr_type
+    def test_all_sdr_clips_have_no_dominant_hdr_transfer(self, test_clip_720p, test_clip_720p_b):
+        from immich_memories.processing.encoding_plan import HdrTransfer
+        from immich_memories.processing.hdr_utilities import detect_dominant_hdr_transfer
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
-        result = _get_dominant_hdr_type(clips)
-        assert result == "hlg"
+        assert detect_dominant_hdr_transfer(clips) is HdrTransfer.NONE
 
     def test_get_clip_hdr_types(self, test_clip_720p, test_clip_720p_b):
         """SDR clips all return None HDR type."""
@@ -478,25 +477,25 @@ class TestHDRUtilities:
 
     def test_get_hdr_conversion_filter_same_type(self):
         """Same source and target HDR type returns empty string."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        from immich_memories.processing.hdr_utilities import get_hdr_conversion_filter
 
-        result = _get_hdr_conversion_filter("hlg", "hlg")
+        result = get_hdr_conversion_filter("hlg", "hlg")
         assert result == ""
 
     def test_get_hdr_conversion_filter_sdr_to_hlg(self):
         """Required SDR-to-HLG conversion either runs or fails closed."""
         from immich_memories.processing.hdr_utilities import (
             RequiredColorConversionUnavailable,
-            _get_hdr_conversion_filter,
             check_zscale_available,
+            get_hdr_conversion_filter,
         )
 
         if not check_zscale_available():
             with pytest.raises(RequiredColorConversionUnavailable):
-                _get_hdr_conversion_filter(None, "hlg", required=True)
+                get_hdr_conversion_filter(None, "hlg", required=True)
             return
 
-        result = _get_hdr_conversion_filter(None, "hlg", required=True)
+        result = get_hdr_conversion_filter(None, "hlg", required=True)
         assert "zscale=" in result
         assert "t=arib-std-b67" in result
 
@@ -1097,8 +1096,8 @@ class TestHDRUtilitiesExtra:
     """Additional HDR utility tests for uncovered paths."""
 
     def test_check_zscale_available(self):
-        """_check_zscale_available returns bool without crashing."""
-        from immich_memories.processing.hdr_utilities import _check_zscale_available
+        """check_zscale_available returns bool without crashing."""
+        from immich_memories.processing.hdr_utilities import check_zscale_available
 
-        result = _check_zscale_available()
+        result = check_zscale_available()
         assert isinstance(result, bool)

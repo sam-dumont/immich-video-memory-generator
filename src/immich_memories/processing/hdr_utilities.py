@@ -17,9 +17,8 @@ __all__ = [
     "RequiredColorConversionUnavailable",
     "_detect_hdr_type",
     "_detect_color_primaries",
-    "_get_dominant_hdr_type",
-    "_get_colorspace_filter",
-    "_get_hdr_conversion_filter",
+    "get_colorspace_filter",
+    "get_hdr_conversion_filter",
     "_get_clip_hdr_types",
     "_resolve_clip_hdr",
     "detect_dominant_hdr_transfer",
@@ -143,19 +142,6 @@ def _detect_color_primaries(
     return None
 
 
-def _get_dominant_hdr_type(clips: list) -> str:
-    """Detect the dominant HDR type from a list of clips.
-
-    Returns "hlg" or "pq" based on what most clips use.
-    Defaults to "hlg" if detection fails (iPhone is most common).
-    """
-    transfer = detect_dominant_hdr_transfer(clips)
-    if transfer is HdrTransfer.NONE:
-        logger.info("No HDR detected, defaulting to HLG colorspace")
-        return HdrTransfer.HLG.value
-    return transfer.value
-
-
 def detect_dominant_hdr_transfer(
     clips: list, *, probe_cache: ProbeCache | None = None
 ) -> HdrTransfer:
@@ -185,7 +171,7 @@ def detect_dominant_hdr_transfer(
     return HdrTransfer.NONE
 
 
-def _get_colorspace_filter(hdr_type: str) -> str:
+def get_colorspace_filter(hdr_type: str) -> str:
     """Get the setparams filter string for the given HDR type.
 
     Args:
@@ -221,10 +207,6 @@ def check_zscale_available() -> bool:
     except (OSError, subprocess.SubprocessError, ValueError):
         _zscale_cache = False
     return _zscale_cache
-
-
-# Keep private alias for backward compat within this module
-_check_zscale_available = check_zscale_available
 
 
 def _get_sdr_to_hdr_filter(
@@ -289,7 +271,7 @@ def _get_hdr_to_sdr_filter(source_type: str, has_zscale: bool) -> str:
     )
 
 
-def _get_hdr_conversion_filter(
+def get_hdr_conversion_filter(
     source_type: str | None,
     target_type: str,
     source_primaries: str | None = None,
@@ -318,7 +300,7 @@ def _get_hdr_conversion_filter(
     if normalized_source == target_type:
         return ""
 
-    has_zscale = _check_zscale_available()
+    has_zscale = check_zscale_available()
     if required and not has_zscale:
         raise RequiredColorConversionUnavailable(
             f"Required {normalized_source}-to-{target_type} color conversion "
@@ -418,13 +400,13 @@ def _resolve_clip_hdr(
     source_type: str | None = None
     source_primaries: str | None = None
     output_pix_fmt = ""
-    colorspace_filter = _get_colorspace_filter(target_type)
+    colorspace_filter = get_colorspace_filter(target_type)
 
     if ctx is not None:
         target_type = getattr(ctx, "hdr_type", target_type)
         pix_fmt = getattr(ctx, "pix_fmt", "")
         output_pix_fmt = f",format={pix_fmt}" if pix_fmt else ""
-        colorspace_filter = getattr(ctx, "colorspace_filter", "") or _get_colorspace_filter(
+        colorspace_filter = getattr(ctx, "colorspace_filter", "") or get_colorspace_filter(
             target_type
         )
         clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
@@ -436,7 +418,7 @@ def _resolve_clip_hdr(
 
     clip_is_hdr = source_type in {HdrTransfer.HLG.value, HdrTransfer.PQ.value}
     normalized_source = source_type or "sdr"
-    hdr_conversion = _get_hdr_conversion_filter(
+    hdr_conversion = get_hdr_conversion_filter(
         normalized_source,
         target_type,
         source_primaries=source_primaries,

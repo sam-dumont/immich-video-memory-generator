@@ -3,7 +3,8 @@
 from datetime import date
 
 from immich_memories.config_loader import Config
-from immich_memories.generate import GenerationParams, _build_title_settings
+from immich_memories.generate import GenerationParams
+from immich_memories.generate_settings import build_title_settings
 from immich_memories.titles.text_builder import generate_title, infer_selection_type
 
 
@@ -24,13 +25,13 @@ def test_holiday_opening_names_the_occasion(tmp_path):
         date_start=date(2020, 12, 23),
         date_end=date(2024, 12, 27),
     )
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
     assert settings is not None
     assert settings.title_override == "Christmas"
     assert settings.subtitle_override == "Through the Years"
 
     params.title, params.subtitle = "Our Christmases", "2020–2024"
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
     assert settings.title_override == "Our Christmases"
     assert settings.subtitle_override == "2020–2024"
 
@@ -47,7 +48,7 @@ def test_a_holiday_that_lost_its_parameter_is_not_called_christmas(tmp_path):
         date_end=date(2024, 12, 27),
     )
 
-    settings = _build_title_settings(params, params.config, [])
+    settings = build_title_settings(params, params.config, [])
 
     assert settings is not None
     assert settings.title_override is None

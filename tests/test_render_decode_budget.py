@@ -90,14 +90,14 @@ def render_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # WHY: an eleven-hour encode is measured on a clock only the fake assembler moves.
     monkeypatch.setattr(generate_render_module, "_time", clock)
     # WHY: extraction downloads the sources from Immich.
-    monkeypatch.setattr(generate_render_module, "_extract_clips", lambda *_a, **_k: [clip])
+    monkeypatch.setattr(generate_render_module, "extract_clips", lambda *_a, **_k: [clip])
     # WHY: settings and the assembler are the FFmpeg-backed encode; the fake one only takes time.
     monkeypatch.setattr(
         generate_render_module,
-        "_build_assembly_settings",
+        "build_assembly_settings",
         lambda *_a, **_k: AssemblySettings(encoding_plan=_h264_plan()),
     )
-    monkeypatch.setattr(generate_render_module, "_create_assembler", lambda *_a, **_k: Assembler())
+    monkeypatch.setattr(generate_render_module, "create_assembler", lambda *_a, **_k: Assembler())
     tracker = MagicMock()
     tracker.run_id = "fixed-run"
     return params, tracker, tmp_path / "memory_fixed-run"
@@ -142,7 +142,7 @@ def uploads(render_run, monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
         return {"asset_id": "asset-1"}
 
     # WHY: the Immich upload is the write this run ends with.
-    monkeypatch.setattr("immich_memories.generate_delivery._upload_to_immich", upload)
+    monkeypatch.setattr("immich_memories.generate_delivery.upload_to_immich", upload)
     return sent
 
 

@@ -126,7 +126,7 @@ def _validated_render_directives(params: GenerationParams) -> dict[str, Editoria
     return {directive.asset_id: directive for directive in directives}
 
 
-def _probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -> float | None:
+def probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -> float | None:
     """Probe actual file duration via ffprobe. Returns None on failure."""
     from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 
@@ -221,11 +221,11 @@ class _Extraction:
 
 
 def _rendered_photo(extraction: _Extraction, clip, directive: EditorialSelection | None):
-    from immich_memories.generate_photos import _render_photo_as_clip
+    from immich_memories.generate_photos import render_photo_as_clip
 
     params = extraction.params
     segment = params.clip_segments.get(clip.asset.id) if directive is not None else None
-    return _render_photo_as_clip(
+    return render_photo_as_clip(
         clip,
         params,
         extraction.output_dir,
@@ -264,9 +264,9 @@ def _extracted_segment(extraction: _Extraction, clip, video_path: Path, progress
         # (prevents audio starting early).
         nominal_duration = end_time - start_time
         actual_duration = (
-            _probe_file_duration(segment_path, probe_cache=extraction.probe_cache)
+            probe_file_duration(segment_path, probe_cache=extraction.probe_cache)
             if extraction.probe_cache is not None
-            else _probe_file_duration(segment_path)
+            else probe_file_duration(segment_path)
         )
         duration = min(actual_duration, nominal_duration) if actual_duration else nominal_duration
 
@@ -373,7 +373,7 @@ def _prepare_in_workers(params, video_cache, output_dir, directives, coordinator
     return [ordered[index] for index in sorted(ordered)]
 
 
-def _extract_clips(
+def extract_clips(
     params: GenerationParams,
     video_cache: CacheBatch | None,
     output_dir: Path,
@@ -419,14 +419,14 @@ def _extract_clips(
     return assembly_clips
 
 
-def _cleanup_temp_clips(assembly_clips: list[AssemblyClip]) -> None:
+def cleanup_temp_clips(assembly_clips: list[AssemblyClip]) -> None:
     for clip in assembly_clips:
         with contextlib.suppress(Exception):
             if clip.path.exists() and "tmp" in str(clip.path).lower():
                 clip.path.unlink()
 
 
-def _cleanup_temp_dirs(output_dir: Path) -> None:
+def cleanup_temp_dirs(output_dir: Path) -> None:
     """Remove intermediate directories created during generation."""
     import shutil
 

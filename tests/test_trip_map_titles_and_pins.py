@@ -13,7 +13,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from immich_memories.config_loader import Config
-from immich_memories.generate import GenerationParams, _build_title_settings
+from immich_memories.generate import GenerationParams
+from immich_memories.generate_settings import build_title_settings
 from immich_memories.processing.assembly_config import AssemblyClip
 
 
@@ -43,14 +44,14 @@ def test_a_curated_title_reaches_the_trip_map_intro() -> None:
     from the preset params, so a curated title was computed, stored and then
     ignored on the one screen a viewer is guaranteed to see.
     """
-    settings = _build_title_settings(_trip_params(title="Two Weeks in Spain"), Config(), [])
+    settings = build_title_settings(_trip_params(title="Two Weeks in Spain"), Config(), [])
 
     assert settings is not None
     assert settings.trip_title_text == "Two Weeks in Spain"
 
 
 def test_without_a_curated_title_the_template_still_wins() -> None:
-    settings = _build_title_settings(_trip_params(), Config(), [])
+    settings = build_title_settings(_trip_params(), Config(), [])
 
     assert settings is not None
     assert settings.trip_title_text
@@ -61,7 +62,7 @@ def test_trip_template_uses_the_caption_language_and_inclusive_days() -> None:
     """The country is read in the film's language too, not left in English."""
     config = Config()
     config.title_screens.locale = "fr"
-    settings = _build_title_settings(_trip_params(config=config), config, [])
+    settings = build_title_settings(_trip_params(config=config), config, [])
 
     assert settings is not None
     assert settings.trip_title_text == "DEUX SEMAINES EN ESPAGNE, JUILLET 2025"
@@ -82,7 +83,7 @@ def test_pin_names_line_up_with_the_pins_they_label() -> None:
     """
     config = Config()
     config.network.map_tiles = True  # the pins only exist for a map
-    settings = _build_title_settings(
+    settings = build_title_settings(
         _trip_params(config=config),
         config,
         [
@@ -100,7 +101,7 @@ def test_pin_names_line_up_with_the_pins_they_label() -> None:
 
 def test_a_pin_with_no_known_place_still_holds_its_slot() -> None:
     """A missing name must not shorten the list and shift every later label."""
-    settings = _build_title_settings(
+    settings = build_title_settings(
         _trip_params(),
         Config(),
         [_gps_clip(48.8566, 2.3522, None), _gps_clip(51.5074, -0.1278, "London")],

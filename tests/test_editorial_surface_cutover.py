@@ -44,7 +44,7 @@ def test_cli_runtime_keeps_exact_windows_and_total_duration_for_story_selection(
     # WHY: stubs clip conversion, the pipeline class, and its builder for this wiring check.
     with (
         # WHY: avoids real ffprobe/file reads when turning the asset into a clip.
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
+        patch("immich_memories.generate_clips.assets_to_clips", return_value=[clip]),
         # WHY: replaces the real selection engine class so no analysis actually runs.
         patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
         # WHY: captures the editorial_context and dry_run kwargs asserted on below.
@@ -114,7 +114,7 @@ def test_cli_runtime_defaults_to_primary_range_without_treating_no_render_as_dry
     # WHY: stubs clip conversion and the pipeline chain for this default-window wiring test.
     with (
         # WHY: skips real ffprobe/file reads for the single stub clip used here.
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
+        patch("immich_memories.generate_clips.assets_to_clips", return_value=[clip]),
         # WHY: replaces the selection engine class; construction must not run real analysis.
         patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
         # WHY: the call under inspection; its kwargs are asserted after the raise.
@@ -179,7 +179,7 @@ def test_cli_album_runtime_uses_the_immutable_captured_corpus_not_its_display_sp
     # WHY: stubs clip conversion and the pipeline chain around the album corpus wiring.
     with (
         # WHY: avoids real ffprobe/file reads for the stub video clip in this album fixture.
-        patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
+        patch("immich_memories.generate_clips.assets_to_clips", return_value=[clip]),
         # WHY: replaces the selection engine class so construction never runs real analysis.
         patch("immich_memories.analysis.smart_pipeline.SmartPipeline", return_value=pipeline),
         # WHY: the collaborator whose editorial_context/album kwargs are asserted below.

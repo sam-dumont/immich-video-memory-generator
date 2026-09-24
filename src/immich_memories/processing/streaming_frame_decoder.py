@@ -22,8 +22,8 @@ from immich_memories.processing.ffmpeg_runner import stop_owned_process
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _detect_hdr_type,
-    _get_colorspace_filter,
     _resolve_clip_hdr,
+    get_colorspace_filter,
 )
 
 logger = logging.getLogger(__name__)
@@ -271,7 +271,7 @@ def make_decoder(
             pix_fmt="yuv420p10le" if hdr_type else "yuv420p",
             clip_hdr_types=source_types,
             clip_primaries=source_primaries,
-            colorspace_filter=_get_colorspace_filter(target_type),
+            colorspace_filter=get_colorspace_filter(target_type),
         )
 
     # Title videos may be pre-encoded, but only an exact transfer match may

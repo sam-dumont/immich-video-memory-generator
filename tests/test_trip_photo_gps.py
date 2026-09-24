@@ -33,7 +33,7 @@ class TestPhotoOnlyTripNotSkipped:
                 "immich_memories.cli._pipeline_runner.sys.exit",
                 side_effect=SystemExit(1),
             ),
-            patch("immich_memories.generate.assets_to_clips", return_value=[]),
+            patch("immich_memories.generate_clips.assets_to_clips", return_value=[]),
         ):
             from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 
@@ -77,7 +77,7 @@ class TestPhotoOnlyTripNotSkipped:
                 "immich_memories.cli._pipeline_runner.sys.exit",
                 side_effect=SystemExit(1),
             ),
-            patch("immich_memories.generate.assets_to_clips", return_value=[]),
+            patch("immich_memories.generate_clips.assets_to_clips", return_value=[]),
         ):
             from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
 

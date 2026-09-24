@@ -653,7 +653,7 @@ class TestApplyMusicFileAtomic:
 
 def test_music_failure_keeps_valid_base_and_returns_sanitized_warning(tmp_path: Path) -> None:
     from immich_memories import generate_music
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
 
     base_video = tmp_path / "memory.mp4"
     base_video.write_bytes(b"validated-base")
@@ -671,7 +671,7 @@ def test_music_failure_keeps_valid_base_and_returns_sanitized_warning(tmp_path: 
         "immich_memories.generate_music.apply_music_file",
         side_effect=RuntimeError("music backend unavailable"),
     ):
-        result = _run_music_phase(
+        result = run_music_phase(
             params,
             [],
             base_video,
@@ -692,7 +692,7 @@ def test_music_failure_keeps_valid_base_and_returns_sanitized_warning(tmp_path: 
 
 def test_music_resolution_failure_is_optional_and_sanitized(tmp_path: Path) -> None:
     from immich_memories import generate_music
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
 
     base_video = tmp_path / "memory.mp4"
     base_video.write_bytes(b"validated-base")
@@ -706,7 +706,7 @@ def test_music_resolution_failure_is_optional_and_sanitized(tmp_path: Path) -> N
         "immich_memories.generate_music.resolve_music",
         side_effect=RuntimeError("api_key=top-secret backend unavailable"),
     ):
-        result = _run_music_phase(
+        result = run_music_phase(
             params,
             [],
             base_video,
@@ -731,7 +731,7 @@ def test_optional_music_logs_never_include_raw_backend_secret(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Raw backend tracebacks must not bypass the optional boundary sanitizer."""
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
 
     base_video = tmp_path / "memory.mp4"
     base_video.write_bytes(b"validated-base")
@@ -747,7 +747,7 @@ def test_optional_music_logs_never_include_raw_backend_secret(
         new_callable=AsyncMock,
         side_effect=RuntimeError("backend rejected top-secret"),
     ):
-        result = _run_music_phase(
+        result = run_music_phase(
             params,
             [],
             base_video,
@@ -767,7 +767,7 @@ def test_optional_music_logs_never_include_raw_backend_secret(
 
 def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -> None:
     from immich_memories import generate_music
-    from immich_memories.generate_settings import _run_music_phase
+    from immich_memories.generate_settings import run_music_phase
 
     base_video = tmp_path / "memory.mp4"
     base_video.write_bytes(b"validated-base")
@@ -783,7 +783,7 @@ def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -
     tracker = MagicMock()
 
     with patch("immich_memories.generate_music.apply_music_file") as apply_music:
-        result = _run_music_phase(
+        result = run_music_phase(
             params,
             [],
             base_video,
@@ -861,19 +861,19 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
     with (
         patch("immich_memories.tracking.RunTracker", return_value=tracker),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "extract_clips", return_value=[assembly_clip]),
         patch.object(
             generate_render_module,
-            "_build_assembly_settings",
+            "build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=plan),
         ),
-        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_render_module, "create_assembler", return_value=Assembler()),
         patch(
             "immich_memories.generate_music.apply_music_file",
             side_effect=RuntimeError("music backend unavailable"),
         ),
-        patch("immich_memories.generate_delivery._upload_to_immich", side_effect=upload),
-        patch.object(generate_module, "_cleanup_temp_clips"),
+        patch("immich_memories.generate_delivery.upload_to_immich", side_effect=upload),
+        patch.object(generate_module, "cleanup_temp_clips"),
     ):
         result = generate_memory(params)
 
@@ -928,15 +928,15 @@ def test_no_music_skips_core_music_phase_entirely(
     with (
         patch("immich_memories.tracking.RunTracker", return_value=MagicMock()),
         patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
-        patch.object(generate_render_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_render_module, "extract_clips", return_value=[assembly_clip]),
         patch.object(
             generate_render_module,
-            "_build_assembly_settings",
+            "build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=plan),
         ),
-        patch.object(generate_render_module, "_create_assembler", return_value=Assembler()),
-        patch.object(generate_module, "_run_music_phase") as music_phase,
-        patch.object(generate_module, "_cleanup_temp_clips"),
+        patch.object(generate_render_module, "create_assembler", return_value=Assembler()),
+        patch.object(generate_module, "run_music_phase") as music_phase,
+        patch.object(generate_module, "cleanup_temp_clips"),
     ):
         generate_memory(params)
 

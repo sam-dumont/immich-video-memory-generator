@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -20,14 +19,13 @@ from immich_memories.processing.clips import (
     ClipSegment,
     extract_clip,
 )
+from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 from immich_memories.processing.hdr_utilities import (
-    _get_colorspace_filter,
-    _get_dominant_hdr_type,
-    _get_hdr_conversion_filter,
-    _get_hdr_to_hdr_filter,
-    _get_sdr_to_hdr_filter,
+    detect_dominant_hdr_transfer,
+    get_colorspace_filter,
+    get_hdr_conversion_filter,
     quality_to_crf,
 )
 
@@ -530,7 +528,7 @@ class TestRenderSinglePhoto:
 
     def test_returns_none_on_download_failure(self, tmp_path):
         from immich_memories.config_models_render import PhotoConfig
-        from immich_memories.photos.photo_pipeline import _render_single_photo
+        from immich_memories.photos.photo_pipeline import render_single_photo
 
         asset = _make_asset(id="render-fail-001")
         config = PhotoConfig()
@@ -538,7 +536,7 @@ class TestRenderSinglePhoto:
         def fail_download(asset_id, path):
             raise ConnectionError("offline")
 
-        result = _render_single_photo(asset, config, 1920, 1080, tmp_path, fail_download)
+        result = render_single_photo(asset, config, 1920, 1080, tmp_path, fail_download)
         assert result is None
 
 
@@ -561,10 +559,10 @@ class TestPhotoPlaceCaption:
         from immich_memories.api.models import ExifInfo
         from immich_memories.config_models_render import PhotoConfig
         from immich_memories.generate_privacy import clip_location_name
-        from immich_memories.photos.photo_pipeline import _render_single_photo
+        from immich_memories.photos.photo_pipeline import render_single_photo
 
         # WHY: the encoder is what this fails on, not the caption.
-        # _render_single_photo picks hevc_videotoolbox when zscale is present, and
+        # render_single_photo picks hevc_videotoolbox when zscale is present, and
         # VideoToolbox writes no file inside CI's macOS VM -- the render returns
         # None and the assertion below blames the caption instead. This test has
         # never passed on a macOS runner for that reason, at any duration.
@@ -584,165 +582,10 @@ class TestPhotoPlaceCaption:
 
         config = PhotoConfig(duration=1.0)
 
-        clip = _render_single_photo(asset, config, 640, 360, tmp_path, download)
+        clip = render_single_photo(asset, config, 640, 360, tmp_path, download)
 
         assert clip is not None
         assert clip.location_name == clip_location_name(exif) == "Ghent, Belgium"
-
-
-class TestStreamRenderToMp4:
-    """FFmpeg streaming render (SDR and HDR paths)."""
-
-    def test_sdr_path_uses_rgb24(self, tmp_path):
-        import numpy as np
-
-        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
-        from immich_memories.photos.renderer import KenBurnsParams
-
-        img = np.zeros((100, 100, 3), dtype=np.float32)
-        params = KenBurnsParams(
-            zoom_start=1.0,
-            zoom_end=1.05,
-            pan_start=(0.5, 0.5),
-            pan_end=(0.5, 0.5),
-            fps=30,
-            duration=1.0,
-        )
-        output = tmp_path / "photo.mp4"
-
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        mock_proc.wait.return_value = None
-        mock_proc.returncode = 0
-        mock_proc.stderr = MagicMock()
-        mock_proc.stderr.read.side_effect = [b""]
-
-        # WHY: subprocess.Popen starts ffmpeg process for encoding
-        with (
-            patch("immich_memories.photos.photo_pipeline.subprocess.Popen", return_value=mock_proc),
-            patch(
-                "immich_memories.photos.photo_pipeline._get_photo_encoder_args",
-                return_value=["-c:v", "libx265"],
-            ),
-            patch(
-                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming",
-                return_value=[img],
-            ),
-        ):
-            _stream_render_to_mp4(img, params, output, 100, 100, gain_map_hdr=False)
-
-        # Check the command used rgb24 pixel format
-        call_args = mock_proc.stdin.write.call_args_list
-        assert len(call_args) > 0
-
-    def test_hdr_path_uses_rgb48le(self, tmp_path):
-        import numpy as np
-
-        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
-        from immich_memories.photos.renderer import KenBurnsParams
-
-        img = np.zeros((100, 100, 3), dtype=np.float32)
-        params = KenBurnsParams(
-            zoom_start=1.0,
-            zoom_end=1.05,
-            pan_start=(0.5, 0.5),
-            pan_end=(0.5, 0.5),
-            fps=30,
-            duration=1.0,
-        )
-        output = tmp_path / "photo_hdr.mp4"
-
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        mock_proc.wait.return_value = None
-        mock_proc.returncode = 0
-        mock_proc.stderr = MagicMock()
-        mock_proc.stderr.read.side_effect = [b""]
-
-        with (
-            patch(
-                "immich_memories.photos.photo_pipeline.subprocess.Popen", return_value=mock_proc
-            ) as mock_popen,
-            patch(
-                "immich_memories.photos.photo_pipeline._get_photo_encoder_args",
-                return_value=["-c:v", "libx265"],
-            ),
-            patch(
-                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming",
-                return_value=[img],
-            ),
-            patch(
-                "immich_memories.processing.hdr_utilities.check_zscale_available",
-                return_value=True,
-            ),
-        ):
-            _stream_render_to_mp4(img, params, output, 100, 100, gain_map_hdr=True, peak_nits=1200)
-
-        # Verify FFmpeg was called with rgb48le for HDR
-        popen_cmd = mock_popen.call_args[0][0]
-        assert "rgb48le" in popen_cmd
-
-    def test_encoding_failure_raises(self, tmp_path):
-        import numpy as np
-
-        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
-        from immich_memories.photos.renderer import KenBurnsParams
-
-        img = np.zeros((100, 100, 3), dtype=np.float32)
-        params = KenBurnsParams(
-            zoom_start=1.0,
-            zoom_end=1.05,
-            pan_start=(0.5, 0.5),
-            pan_end=(0.5, 0.5),
-            fps=30,
-            duration=1.0,
-        )
-        output = tmp_path / "fail.mp4"
-
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        mock_proc.wait.return_value = None
-        mock_proc.returncode = 1
-        # WHY: a real pipe reaches EOF; a constant return_value spins the
-        # stderr drain thread for the rest of the suite.
-        mock_proc.stderr.read.side_effect = [b"encode error", b""]
-
-        with (
-            patch("immich_memories.photos.photo_pipeline.subprocess.Popen", return_value=mock_proc),
-            patch(
-                "immich_memories.photos.photo_pipeline._get_photo_encoder_args",
-                return_value=["-c:v", "libx265"],
-            ),
-            patch(
-                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming",
-                return_value=[img],
-            ),
-            pytest.raises(RuntimeError, match="Photo FFmpeg encoding failed"),
-        ):
-            _stream_render_to_mp4(img, params, output, 100, 100)
-
-
-class TestGetPhotoEncoderArgs:
-    """Encoder selection for photo pipeline."""
-
-    def test_detects_videotoolbox(self):
-        from immich_memories.photos.photo_pipeline import _get_photo_encoder_args
-
-        # WHY: subprocess.run checks ffmpeg for available encoders
-        with patch("immich_memories.photos.photo_pipeline.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="hevc_videotoolbox blah")
-            args = _get_photo_encoder_args()
-
-        assert "hevc_videotoolbox" in args
-
-    def test_falls_back_without_videotoolbox(self):
-        from immich_memories.photos.photo_pipeline import _get_photo_encoder_args
-
-        with patch("immich_memories.photos.photo_pipeline.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="libx264 libx265")
-            args = _get_photo_encoder_args()
-
-        assert "hevc_videotoolbox" not in args
 
 
 # ============================================================================
@@ -887,127 +730,92 @@ class TestGetColorspaceFilter:
     """Pure string building — no subprocess."""
 
     def test_hlg_filter(self):
-        f = _get_colorspace_filter("hlg")
+        f = get_colorspace_filter("hlg")
         assert "arib-std-b67" in f
         assert "bt2020nc" in f
 
     def test_pq_filter(self):
-        f = _get_colorspace_filter("pq")
+        f = get_colorspace_filter("pq")
         assert "smpte2084" in f
         assert "bt2020nc" in f
 
 
-class TestGetDominantHdrType:
-    def test_mostly_hlg(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / f"{i}.mp4") for i in range(3)]
+class TestDetectDominantHdrTransfer:
+    @pytest.mark.parametrize(
+        ("probed", "expected"),
+        [
+            (["hlg", "hlg", "pq"], HdrTransfer.HLG),
+            (["pq", "pq", "hlg"], HdrTransfer.PQ),
+            ([None, None, None], HdrTransfer.NONE),
+        ],
+    )
+    def test_the_majority_transfer_wins(self, tmp_path, probed, expected):
+        clips = [AssemblyClip(path=tmp_path / f"{i}.mp4", duration=1.0) for i in range(3)]
 
         # WHY: _detect_hdr_type shells out to ffprobe
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            side_effect=["hlg", "hlg", "pq"],
-        ):
-            assert _get_dominant_hdr_type(clips) == "hlg"
-
-    def test_mostly_pq(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / f"{i}.mp4") for i in range(3)]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            side_effect=["pq", "pq", "hlg"],
-        ):
-            assert _get_dominant_hdr_type(clips) == "pq"
-
-    def test_no_hdr_defaults_hlg(self, tmp_path):
-        @dataclass
-        class FakeClip:
-            path: Path
-
-        clips = [FakeClip(path=tmp_path / "a.mp4")]
-
-        with patch(
-            "immich_memories.processing.hdr_utilities._detect_hdr_type",
-            return_value=None,
-        ):
-            assert _get_dominant_hdr_type(clips) == "hlg"
+        with patch("immich_memories.processing.hdr_utilities._detect_hdr_type", side_effect=probed):
+            assert detect_dominant_hdr_transfer(clips) is expected
 
 
-class TestSdrToHdrFilter:
-    def test_hlg_conversion(self):
-        f = _get_sdr_to_hdr_filter("hlg", "bt709", has_zscale=True)
-        assert "arib-std-b67" in f
+def _conversion(source, target, primaries=None, *, zscale=True):
+    # WHY: check_zscale_available asks the installed ffmpeg which filters it has
+    with patch(
+        "immich_memories.processing.hdr_utilities.check_zscale_available", return_value=zscale
+    ):
+        return get_hdr_conversion_filter(source, target, primaries)
+
+
+class TestConversionChoices:
+    def test_sdr_to_hlg_lifts_reference_white_to_203_nits(self):
+        f = _conversion("sdr", "hlg", "bt709")
+        assert "t=arib-std-b67" in f
         assert "npl=203" in f
 
-    def test_pq_conversion(self):
-        f = _get_sdr_to_hdr_filter("pq", "bt709", has_zscale=True)
-        assert "smpte2084" in f
-
-    def test_no_zscale_fails_closed(self):
-        with pytest.raises(RuntimeError, match="zscale"):
-            _get_sdr_to_hdr_filter("hlg", "bt709", has_zscale=False)
-
-    def test_display_p3_source(self):
-        f = _get_sdr_to_hdr_filter("hlg", "smpte432", has_zscale=True)
+    def test_display_p3_keeps_its_primaries_and_a_bt709_matrix(self):
+        f = _conversion("sdr", "hlg", "smpte432")
         assert "pin=smpte432" in f
         assert "min=bt709" in f
 
-    def test_unknown_target_returns_empty(self):
-        assert _get_sdr_to_hdr_filter("unknown", "bt709", has_zscale=True) == ""
+    def test_hlg_and_pq_convert_into_each_other(self):
+        assert "tin=arib-std-b67:t=smpte2084" in _conversion("hlg", "pq")
+        assert "tin=smpte2084:t=arib-std-b67" in _conversion("pq", "hlg")
 
+    def test_an_unknown_target_gets_no_filter(self):
+        assert _conversion("sdr", "unknown") == ""
 
-class TestHdrToHdrFilter:
-    def test_hlg_to_pq(self):
-        f = _get_hdr_to_hdr_filter("hlg", "pq", has_zscale=True)
-        assert "tin=arib-std-b67" in f
-        assert "t=smpte2084" in f
-
-    def test_pq_to_hlg(self):
-        f = _get_hdr_to_hdr_filter("pq", "hlg", has_zscale=True)
-        assert "tin=smpte2084" in f
-        assert "t=arib-std-b67" in f
-
-    def test_same_type_returns_empty(self):
-        assert _get_hdr_to_hdr_filter("hlg", "hlg", has_zscale=True) == ""
-
-    def test_no_zscale_fails_closed(self):
+    @pytest.mark.parametrize(("source", "target"), [("sdr", "hlg"), ("hlg", "pq")])
+    def test_a_conversion_without_zscale_fails_closed(self, source, target):
         with pytest.raises(RuntimeError, match="zscale"):
-            _get_hdr_to_hdr_filter("hlg", "pq", has_zscale=False)
+            _conversion(source, target, zscale=False)
 
 
 class TestGetHdrConversionFilter:
     def test_same_type_no_conversion(self):
-        assert _get_hdr_conversion_filter("hlg", "hlg") == ""
+        assert get_hdr_conversion_filter("hlg", "hlg") == ""
 
     def test_sdr_to_hlg(self):
-        # WHY: _check_zscale_available shells out to ffmpeg
+        # WHY: check_zscale_available shells out to ffmpeg
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
-            f = _get_hdr_conversion_filter(None, "hlg")
+            f = get_hdr_conversion_filter(None, "hlg")
         assert "arib-std-b67" in f
 
     def test_sdr_string_to_pq(self):
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
-            f = _get_hdr_conversion_filter("sdr", "pq")
+            f = get_hdr_conversion_filter("sdr", "pq")
         assert "smpte2084" in f
 
     def test_hlg_to_pq(self):
         with patch(
-            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            "immich_memories.processing.hdr_utilities.check_zscale_available",
             return_value=True,
         ):
-            f = _get_hdr_conversion_filter("hlg", "pq")
+            f = get_hdr_conversion_filter("hlg", "pq")
         assert "smpte2084" in f
 
 
@@ -1018,113 +826,3 @@ class TestQualityToCrf:
 
     def test_unknown_defaults_to_balanced(self):
         assert quality_to_crf("ultra") == quality_to_crf("balanced")
-
-
-class TestZscaleFallbackBehavior:
-    """When zscale is unavailable, photo rendering falls back to SDR."""
-
-    def setup_method(self):
-        import immich_memories.processing.hdr_utilities as hdr_mod
-
-        hdr_mod._zscale_cache = None
-
-    def teardown_method(self):
-        """Do not leak a mocked FFmpeg capability into unrelated tests."""
-        import immich_memories.processing.hdr_utilities as hdr_mod
-
-        hdr_mod._zscale_cache = None
-
-    def test_photo_sdr_encoder_args_are_h264(self):
-        """SDR fallback should use H.264 (not HEVC HDR)."""
-        from immich_memories.photos.photo_pipeline import _get_sdr_encoder_args
-
-        args = _get_sdr_encoder_args()
-        assert "-c:v" in args
-        assert "libx264" in args
-        assert "yuv420p" in args
-
-    def test_photo_pipeline_uses_sdr_when_no_zscale(self):
-        """Without zscale, _stream_render_to_mp4 should use SDR filter (not crash)."""
-        from immich_memories.photos.photo_pipeline import _get_sdr_encoder_args
-
-        # WHY: mock check_zscale_available — we're testing the fallback decision
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="scale only")
-            from immich_memories.processing.hdr_utilities import check_zscale_available
-
-            assert check_zscale_available() is False
-
-        # Verify SDR args don't include HDR metadata
-        args = _get_sdr_encoder_args()
-        assert "bt2020" not in " ".join(args)
-        assert "arib-std-b67" not in " ".join(args)
-
-    def test_photo_stream_render_sdr_fallback_for_gain_map(self):
-        """HDR gain map photo should fall back to SDR pix_fmt when no zscale."""
-        import immich_memories.processing.hdr_utilities as hdr_mod
-
-        hdr_mod._zscale_cache = False  # Force no-zscale
-
-        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
-
-        # WHY: mock subprocess.Popen — we're testing filter selection, not FFmpeg
-        with (
-            patch("immich_memories.photos.photo_pipeline.subprocess.Popen") as mock_popen,
-            patch(
-                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming", return_value=[]
-            ),
-        ):
-            mock_proc = MagicMock()
-            mock_proc.returncode = 0
-            mock_proc.stdin = MagicMock()
-            mock_proc.stderr.read.side_effect = [b""]
-            mock_popen.return_value = mock_proc
-
-            import numpy as np
-
-            from immich_memories.photos.renderer import KenBurnsParams
-
-            img = np.zeros((100, 100, 3), dtype=np.uint8)
-            params = KenBurnsParams(duration=1.0, fps=1)
-
-            _stream_render_to_mp4(img, params, Path("/tmp/test.mp4"), 100, 100, gain_map_hdr=True)
-
-            call_args = mock_popen.call_args[0][0]
-            # Should use rgb24 (SDR) not rgb48le (HDR) and format=yuv420p not yuv420p10le
-            assert "rgb24" in call_args
-            assert "format=yuv420p" in call_args
-
-    def test_photo_stream_render_sdr_fallback_for_sdr_source(self):
-        """SDR photo should use simple format filter when no zscale."""
-        import immich_memories.processing.hdr_utilities as hdr_mod
-
-        hdr_mod._zscale_cache = False
-
-        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
-
-        with (
-            patch("immich_memories.photos.photo_pipeline.subprocess.Popen") as mock_popen,
-            patch(
-                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming", return_value=[]
-            ),
-        ):
-            mock_proc = MagicMock()
-            mock_proc.returncode = 0
-            mock_proc.stdin = MagicMock()
-            mock_proc.stderr.read.side_effect = [b""]
-            mock_popen.return_value = mock_proc
-
-            import numpy as np
-
-            from immich_memories.photos.renderer import KenBurnsParams
-
-            img = np.zeros((100, 100, 3), dtype=np.uint8)
-            params = KenBurnsParams(duration=1.0, fps=1)
-
-            _stream_render_to_mp4(img, params, Path("/tmp/test.mp4"), 100, 100, gain_map_hdr=False)
-
-            call_args = mock_popen.call_args[0][0]
-            assert "rgb24" in call_args
-            assert "format=yuv420p" in call_args
-            # Must NOT contain zscale
-            assert not any("zscale" in str(a) for a in call_args)
