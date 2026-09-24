@@ -50,6 +50,12 @@ case "$cmd" in
 fetch)
 	if [ -s "$tarball" ]; then
 		docker load --quiet --input "$tarball" || echo "docker load failed"
+		# A digest-pinned save loads back nameless, as an image whose ID is the
+		# pinned digest. Naming that exact ID repo:tag lets repo:tag@digest
+		# resolve; a tarball without the pinned content has no such ID to name.
+		for ref in "$@"; do
+			docker tag "sha256:${ref##*@sha256:}" "${ref%@*}" 2>/dev/null || true
+		done
 		if [ -z "$(missing "$@")" ]; then
 			echo "all pinned images loaded from $tarball"
 			exit 0
