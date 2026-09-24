@@ -34,7 +34,7 @@ the vulnerability.
 - Authentication is **off by default**. Outside Docker the UI then binds `127.0.0.1` unless you
   name another address. The container listens on `0.0.0.0:8080` and the shipped compose file
   publishes `127.0.0.1:8080:8080`, so the port mapping is the boundary. Enable
-  [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
+  [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/authentication)
   before exposing the port beyond localhost, and put a TLS reverse proxy in front.
 - The UI never sends the saved Immich key to a URL typed into it: a new server URL needs its key
   typed in too. Whoever reaches an unauthenticated UI can still use your library through it.
@@ -44,7 +44,7 @@ the vulnerability.
   hard-deletes. Anything without that upload identity is left alone, unmarked Immich v3
   uploads included.
 - What leaves your network (geocoding, map tiles, LLM, music, notifications) is listed on the
-  [network & privacy page](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/network-and-privacy).
+  [network & privacy page](https://sam-dumont.github.io/immich-video-memory-generator/docs/run/privacy).
 - CI runs five security scans on every change: Bandit, Semgrep, pip-audit, Gitleaks and Hadolint.
   OpenSSF Scorecard runs on its own schedule and on pushes to `main`. The Docker image is
   digest-pinned and runs as a non-root user.
