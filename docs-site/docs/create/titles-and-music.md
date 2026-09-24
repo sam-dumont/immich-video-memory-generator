@@ -246,6 +246,11 @@ the title has to name that place, in English or in the film's language ("Crète"
 Greece"). A title about somewhere else is refused and the template names the trip; the run's
 **Title From** then says `place`, not `model`.
 
+When the model names a trip, the prompt carries the trip's place as trip detection named it, and
+the title has to name that place, in English or in the film's language ("Crète" counts for "Crete,
+Greece"). A title about somewhere else is refused and the template names the trip; the run's
+**Title From** then says `place`, not `model`.
+
 The model never sees coordinates. The selected material's GPS points are clustered greedily within
 5 km, each cluster is reverse-geocoded to a city name, and the prompt is one line per day: the place
 names and how many of the selected pictures fell at each. Back come a title, an optional subtitle, a

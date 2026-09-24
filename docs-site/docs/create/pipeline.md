@@ -516,7 +516,10 @@ shot at all: on hundreds of a month's pictures, none starred, while every story 
 funded for one favourite. So once the draft is cut, and after the model's
 polish on a tier that has one, every close family member (partner, child or parent, as the people
 file names them) who is on at least 20 of the period's pictures, or 5 % of them, and in none of its
-shots gets one seat. It is their best frame by the rules' own standing answer that clears the
+shots gets one seat. Close family means yours, the owner's. A film about a person (a person
+spotlight or a multi-person film) also counts that person's own partner, children and parents, as
+the confirmed links in `people.yaml` connect them: in a film of your partner, their parents count,
+though to you they are in-laws. It is their best frame by the rules' own standing answer that clears the
 story's usual standing bar, in the story holding most of their pictures. The seat is appended when
 the film has a slot left and its timing budget allows one more carrier; otherwise it replaces that
 story's weakest shot that is neither a favourite nor another close family member's only shot. A
