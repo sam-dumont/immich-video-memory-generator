@@ -11,7 +11,7 @@ The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
 Selection is the story-first editorial route, the only one: `generate` (or the Memory page's
 Cut) -> `build_smart_pipeline(editorial_context)` (`analysis/editorial_runtime.py`) ->
 `SmartPipeline.run_editorial_source()` -> `RuntimeEditorialPlanner.plan_source()`, which reports
-five stages: **Preparing source metadata -> Reading event evidence
+five stages: **Reading dates, places and people -> Reading event evidence
 -> Building editorial cards -> Editing the memory -> Validating selected source timing**. Every
 attempt is durable under `<cache>/editorial-runs/<key>/attempts/<id>/`
 (`operations/editorial_attempt.py`, an OS lease tells interrupted from slow); the facts and banks
@@ -198,10 +198,18 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 - **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
   holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show` from the
   caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
-  and only the owner clears a hold (`editorial_shareability*.py`).
+  and only the owner clears a hold (`editorial_shareability*.py`). In a film shared outside the
+  family, anything a detector head or exposure flag marked stays held whatever the text says
+  (`editorial.strict_sharing`, on by default; applied per film, never banked). On the model tier
+  the activity question (a bath, a nappy change, ...) may be answered by **Laya**, a local 0.4B
+  text classifier over the compact caption, instead of the reader (`editorial_laya_reader.py`,
+  `editorial.laya_audience`, off by default, Apple Silicon): it only adds holds, and its answers
+  bank under their own answerer.
 - **Pictures are read once**: a model looks at a picture only at ingest (the caption server, the
   heads, the detectors). No film-time stage sends a picture to any model, on any tier; the reader
-  is text only (`tests/test_editorial_demanded_previews.py` holds the production route to that).
+  is text only. `refuse_pictures` in `tests/test_editorial_source_route_integration.py` wraps the
+  one dispatch every model request passes through and fails on any request carrying a picture;
+  `tests/test_editorial_demanded_previews.py` holds the production route to that, cold and warm.
 - **Exposure chain**: a capture run at least half flagged by the exposure head, with at least three
   flagged captures, is held whole (`editorial_exposure_chains.py`).
 
@@ -219,7 +227,7 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 ## Two Trees
 
 `src/immich_memories/` is the app. `services/inference/immich_memories_inference/` is a second
-top-level package — the inference service, which serves the encoder, the six public heads and the
+top-level package — the inference service, which serves the encoder, the eight public heads and the
 two detectors over HTTP (`/ping`, `/health`, `/facts`) in its own image with its own device
 variant (`docker/Dockerfile.inference`, `docker/hwaccel.inference.yml`). It imports the app's
 triage engine and detector module rather than reimplementing them, which is what keeps a fact
@@ -337,7 +345,7 @@ src/immich_memories/
 ├── memory_types/               # Memory type presets & factory
 │   ├── __init__.py             # Public API re-exports
 │   ├── registry.py             # MemoryType enum
-│   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
+│   ├── presets.py              # PersonFilter, MemoryPreset
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
 │   └── factory.py              # Registry + preset factories; Album is handled by cli/_album_generation.py
 │
@@ -372,6 +380,8 @@ src/immich_memories/
 │   │                               # only a story whose reading records a moment gets a seat
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
 │   │                               # meet the gates, and a refused pick is picked once more
+│   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
+│   │                               # caption (model tier, editorial.laya_audience); only adds holds
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,
 │   │                               # one answer each; either order's hold holds
 │   │                               # (advanced.editorial.thin_batched_audience, off by default)
@@ -414,7 +424,7 @@ src/immich_memories/
 │   ├── llm_single_flight.py    # One paid answer per judgment key, however many readers ask at once
 │   ├── editorial_structure_*.py    # The structure planner: wall, subject/trip admission + standing gates, audience, record
 │   │                               # _finishing.py holds PlanRun and the passes that run over a settled cut
-│   │                               # (motion/timing, attached material, audience gate, duplicate review, trim)
+│   │                               # (motion/timing, audience gate, duplicate review, trim)
 │   ├── editorial_projection.py # Plan -> PipelineResult, and the stage reporter
 │   ├── provider_health.py      # ProviderHealth: what a provider's answer says about its availability (preflight)
 │   ├── selection_trace.py      # Per-stage funnel record: what each filter received and let through
@@ -477,6 +487,7 @@ src/immich_memories/
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
 │   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
+│   ├── caption_image.py        # Captions drawtext cannot draw (non-Latin scripts), rendered with the title fonts
 │   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
 │   ├── playback_keyframes.py   # A playback's index and a few keyframes by byte range, decoded from a sparse copy
 │   ├── frame_preview.py        # Frame extraction for previews
@@ -533,6 +544,7 @@ src/immich_memories/
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── text_layout.py          # Where the two text blocks sit, and the gate that refuses an overlap
+│   ├── letter_case.py          # Capitals the way each script sets them, for titles and captions
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)
 │   ├── kernels.py              # GPU kernels + lazy compilation (init_kernels)
@@ -607,7 +619,10 @@ src/immich_memories/
 │       ├── memory.py               # The Memory page router: brief, cut in progress, result
 │       ├── memory_brief.py         # The brief: type select, its params, Advanced, Cut
 │       ├── memory_duration.py      # The duration line: the type's answer or an override
-│       ├── memory_run.py           # The cut that outlives its page: arm, poll the attempt, cancel, recover
+│       ├── memory_run.py           # The cut that outlives its page: install check, arm, poll, cancel, recover;
+│       │                           # a refused or failed cut lands in AppState.cut_failure, the brief's red card
+│       ├── memory_storyboard.py    # The storyboard tab: the cut in the order it plays
+│       ├── cut_progress_view.py    # A cut in progress: its pictures, the bar, the stage lines
 │       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
 │       ├── memory_story_data.py    # The only UI reader of plan.private.json -> frozen StoryView
 │       ├── step1_config.py         # Immich connection panel + custom date range
@@ -671,7 +686,7 @@ src/immich_memories/
 │                               # "measured as nothing")
 │                               # (annotations.sqlite; see docs/research for the design)
 │
-├── triage/                     # The pinned DINOv2 ONNX encoder and its six context heads
+├── triage/                     # The pinned DINOv2 ONNX encoder and its eight context heads
 │
 ├── people/                     # The library's people graph (counts and dates, no pixels)
 │   ├── signatures.py           # Tiers, onset, twins, duplicates, dyads, owner curve pairing
@@ -707,6 +722,8 @@ src/immich_memories/
 ├── operations/                 # Public lifecycle contract + read-only ops reports
 │   ├── auto_output.py           # Private complete child transcripts, addressed by automation attempt
 │   ├── call_families.py        # family_of()/calls_by_family(): model calls grouped by stage family
+│   ├── cut_progress.py         # Where a run is, as one record the page and the terminal both read
+│   ├── run_index.py            # A run id resolved to its attempt directory, for both surfaces
 │   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
 │   ├── caption_origins.py      # One picture's caption origin, and the run's distinct-origin line
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
@@ -745,12 +762,16 @@ src/immich_memories/
 ├── locked_file.py              # file_lock(): one writer at a time on a bank file several runs rewrite
 ├── i18n.py                     # Internationalization
 ├── i18n_places.py              # Country names in the film's language (CLDR, offline)
-├── place_names.py              # Offline island boxes and short island/region names (en, fr)
-├── place_phrases/              # Per-language trip-title place phrases (en, fr); none = no preposition
+├── place_names.py              # Offline island boxes and short island/region names
+├── place_name_translations.py  # Island and region names for the languages whose titles take no preposition
+├── place_phrases/              # Per-language trip-title place phrases, one module per language; none = no preposition
+├── locales/                    # gettext catalogues for the fourteen film languages
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check
-├── preflight_run.py            # Pinned models + writable output dir; `generate`/`prepare` refuse to start on an error
+├── preflight_run.py            # Pinned models + writable output dir; `generate`/`prepare` and the web
+│                               # Cut (`memory_run.install_refusal`, before the pool loads) refuse to start
+├── preflight_homebase.py       # Trip setup checks that read no library and expose no coordinates
 ├── logging_config.py           # Logging setup
 └── _version.py                 # Auto-generated by hatch-vcs (do not edit)
 ```
@@ -787,7 +808,7 @@ generate / Memory page Cut
               └── RuntimeEditorialPlanner.plan_source()
                     ├── EditorialAttempt: lease + status.private.json   (operations/editorial_attempt.py)
                     ├── source model: fetch_full_window_source -> prepare_editorial_source
-                    ├── "Preparing source metadata": prepare_editorial_annotations
+                    ├── "Reading dates, places and people": prepare_editorial_annotations
                     ├── TextEditorialPlanner.plan_prepared             (editorial_orchestration.py)
                     │     ├── "Reading event evidence": episode reader + cull
                     │     ├── "Building editorial cards": build_moment_cards -> moment wall
@@ -829,7 +850,7 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 Config is organized in 3 tiers (see `config_loader.py`):
 
 - **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `network`, `photos`
-- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`, `inference`
+- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`, `inference`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
@@ -839,7 +860,8 @@ The tiers are a YAML layout, not a code layout. The section models are grouped b
 domain across the `config_models*.py` modules (resources, analysis, render,
 soundtrack, automation, llm, auth, server), and `Config` in `config_loader.py`
 assembles them into one flat settings object. A file naming a key of the removed
-clip scorer (`_REMOVED_CONFIG_KEYS`) is refused at load with a message naming it.
+clip scorer (`_REMOVED_CONFIG_KEYS`) or a removed section (`_REMOVED_TOP_LEVEL_SECTIONS`) loads:
+the key is dropped with one warning naming it, never a crash.
 
 ## Render worker (S1)
 
@@ -853,8 +875,10 @@ keeps atomic job transitions behind a repository contract ready for a future
 PostgreSQL implementation, with a per-job JSON record so a restart can say a
 render died with its process. `native.py` and `native_plan.py` adapt selected
 cuts to the existing generator: a missing NVENC is a recorded degradation, a
-changed selection is a refusal. The app does not call this service yet;
-orchestration and deployment belong to later slices of #931.
+changed selection is a refusal. The app hands a cut to it when `render.worker_base_url` is set
+(`generate_render.py`, `processing/remote_render.py`; `preflight_render.py` checks the worker's
+version and capabilities first); deployment files are `services/render-worker/compose.yaml` and
+`kubernetes.yaml`.
 
 ## Conventions
 

@@ -128,7 +128,7 @@ run, or give them their own machine.
 
 ## FFmpeg not found
 
-FFmpeg is called by name off `PATH`, so a missing binary surfaces as
+The app calls FFmpeg by name off `PATH`, so a missing binary surfaces as
 `FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'` at the first encode. `brew install ffmpeg`,
 `apt install ffmpeg`, or use the Docker image.
 

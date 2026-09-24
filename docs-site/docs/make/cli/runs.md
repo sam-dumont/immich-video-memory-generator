@@ -8,8 +8,8 @@ title: runs
 Reader: power user.
 
 Every `generate`, from the CLI or the web UI, writes a run row: how long it took, how many clips it processed,
-where the title came from, the model's call count and cost when a model was used, errors, system info. Render
-settings are not recorded. `runs` reads that history back, and `runs story` and `runs why` are how you find out
+where the title came from, the model's call count and cost when a model was used, errors, system info. It does
+not record render settings. `runs` reads that history back, and `runs story` and `runs why` are how you find out
 what the editor did and why. Every flag
 is in the [CLI reference](../../reference/cli-reference.md#runs).
 

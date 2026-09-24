@@ -67,7 +67,7 @@ kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 
 :::caution One private replica
 Authentication is disabled by default, so do not add an Ingress or expose the Service until it is
-on. The UI is single-user, single-replica because workflow state is kept in-process: leave
+on. The UI keeps workflow state in its own process, so it is single-user, single-replica: leave
 `replicas: 1` even with shared storage.
 :::
 
@@ -142,7 +142,7 @@ saved from the UI or written in the file changes nothing on these pods. For `ful
 On a running Deployment, `kubectl -n immich-memories set env deployment/immich-memories` with the
 same two pairs does it.
 
-What each tier runs and gives up is on [Running modes](../being-rewritten/running-modes.md).
+What each tier runs and gives up is on [Requirements and tiers](./requirements.md#the-preparation-tier).
 :::
 
 ## Check it from outside the pod

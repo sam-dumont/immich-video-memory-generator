@@ -15,7 +15,7 @@ module to a live cluster, so read the plan before you apply it.
 Authentication is disabled by default. An enabled Ingress exposes the UI to every client that can
 reach it, so configure authentication first (`secret_env` with `IMMICH_MEMORIES_AUTH_USERNAME` /
 `IMMICH_MEMORIES_AUTH_PASSWORD`, or [OIDC](./authentication.mdx)). The UI is
-single-user, single-replica; do not scale the deployment beyond one pod.
+single-user, single-replica: do not scale the deployment beyond one pod.
 :::
 
 ## What it creates
@@ -86,7 +86,7 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # The reader, a separate deployment. It must take images and hold 32k of context; `llm_model`
+  # The reader, a separate deployment. It reads text only and must hold 32k of context; `llm_model`
   # is the tag that server reports at /v1/models.
   llm_base_url = "http://your-model-host:8000/v1"
   llm_model    = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"

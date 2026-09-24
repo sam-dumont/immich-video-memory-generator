@@ -42,10 +42,10 @@ them.
 
 ## Built with AI, on purpose
 
-Claude writes the code; I make the decisions, test the films and debug what breaks. That's the
-experiment: how far can you push AI on a codebase this size and keep it clean?
+Claude writes the code; I make the decisions, test the films and debug what breaks. The
+experiment is how far AI can go on a codebase this size while the code stays clean.
 
-The answer so far is guardrails. Every PR goes through the gates in the `Makefile` (lint, types,
+So far, guardrails are what make it work. Every PR goes through the gates in the `Makefile` (lint, types,
 complexity, an 800-line file cap, dead code, duplication, architecture boundaries, security scans,
 docs drift) and the build stays red until they pass. They catch real bugs that Claude introduces
 with a straight face. The file cap forced a composition-based design with zero mixins, which

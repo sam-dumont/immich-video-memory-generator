@@ -69,7 +69,7 @@ video, create an album, or upload anything. It prints the `v2` or `v3` contract 
 ## Config compatibility
 
 There is no automatic config migration. An unknown key inside a known section is ignored, so a
-renamed field just stops doing anything; an unknown top-level key or an invalid value fails at
+renamed field stops doing anything; an unknown top-level key or an invalid value fails at
 startup. When a setting seems to have stopped working, look for its rename in the release notes.
 
 Keys of the retired per-clip scorer (`content_analysis`, `audio_content`, `transcription`,

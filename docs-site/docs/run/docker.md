@@ -25,7 +25,7 @@ curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generat
 cp example.env .env
 ```
 
-**2. Fill in `.env`.** Two values are required, the home base is the one that makes trips work:
+**2. Fill in `.env`.** Two values are required, and the home base makes trips work:
 
 ```bash
 IMMICH_URL=http://192.168.1.10:2283       # your Immich, as the container reaches it
@@ -91,7 +91,7 @@ In Immich: **Account Settings > API Keys > New API Key**. **All** works. The min
 | Upload assets, create and update albums | Upload-back to Immich, if you turn it on |
 | Delete assets (optional) | Lets upload-back trash the previous render of the same recipe; without it, old copies pile up |
 
-Your originals are never touched. Without the tag permissions the upload still works, the film is
+The app never touches your originals. Without the tag permissions the upload still works, the film is
 not tagged, and on Immich v3 a later run cannot recognise its own render.
 
 ## Using the CLI
@@ -239,7 +239,7 @@ docker compose up -d
 docker compose exec immich-memories immich-memories models fetch
 ```
 
-`up` does not re-pull a `latest` the machine already has, hence the `pull`. `models fetch` is a
+`up` does not re-pull a `latest` the machine already has, so `pull` comes first. `models fetch` is a
 no-op when the files are right, and downloads again when a release moves a pin. Config, banks and
 films live on the volume and the bind mount, so a recreate loses nothing.
 

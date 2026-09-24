@@ -76,7 +76,7 @@ whether the shipped compose file already passes it.
 | Variable | Config key | Default | Tier | Compose | What it does |
 |---|---|---|---|---|---|
 | `IMMICH_MEMORIES_LLM__BASE_URL` | `llm.base_url` | `http://localhost:8080/v1` | advanced | commented | The reader's endpoint. The default is the app's own port: set it |
-| `IMMICH_MEMORIES_LLM__MODEL` | `llm.model` | empty | advanced | commented | The reader. Empty means the rules editor works alone. Must match `GET /v1/models` and take images |
+| `IMMICH_MEMORIES_LLM__MODEL` | `llm.model` | empty | advanced | commented | The reader. Empty means the rules editor works alone. Must match `GET /v1/models`; a text model is enough |
 | `IMMICH_MEMORIES_LLM__API_KEY` | `llm.api_key` | empty | advanced | no | The reader's token, for a server that answers `401` |
 | `IMMICH_MEMORIES_INFERENCE__FACTS_BASE_URL` | `inference.facts_base_url` | empty | advanced | commented | Send the heads and detectors to the [inference service](../better/inference.md) |
 
@@ -141,7 +141,7 @@ An empty shorthand counts as unset.
 :::caution An LLM key written in the file beats its shorthand
 `OPENAI_API_KEY` is the name every OpenAI-SDK client reads, a local mlx or vLLM server included, so
 on a machine that exports it for that server it says nothing about the endpoint the key will be
-sent to. A key in `llm.api_key` therefore wins, and the variable fills the field only where the
+sent to. So a key in `llm.api_key` wins, and the variable fills the field only where the
 file leaves it empty or holds a `${VAR}` nobody set. `ANTHROPIC_API_KEY` works the same way. To
 replace a key that is in the file, use `IMMICH_MEMORIES_LLM__API_KEY`.
 :::

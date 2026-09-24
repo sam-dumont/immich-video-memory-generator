@@ -550,7 +550,7 @@ library's audience bank, so setting it to `false` gives the reader's own answer 
 `laya_audience` answers the audience check's activity question with a local Laya model instead of
 the text model: Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
 first. It reads the compact caption and adds holds; detector and rule holds still apply and
-are never lifted. See [Running modes](../being-rewritten/running-modes.md#the-laya-audience-pre-screen).
+are never lifted. See [Add a reader](../better/reader.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,
@@ -780,7 +780,7 @@ scheduler:
 
 ## Automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../being-rewritten/auto.md) for the full command reference. Tier 2: lives under `advanced:` when the app writes the file.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See [Automate it](../make/automate.md) for the commands. Tier 2: lives under `advanced:` when the app writes the file.
 
 ```yaml
 automation:

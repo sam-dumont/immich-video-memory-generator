@@ -255,14 +255,21 @@ tests/integration/
   **you MUST update the corresponding Docusaurus page** in `docs-site/docs/`.
 - Run `make docs-build` after any docs change to verify the build passes.
 - The mapping of code → docs pages:
-  - CLI commands/flags → `docs-site/docs/create/cli/`
-  - UI wizard changes → `docs-site/docs/create/web-ui.mdx`
-  - Config options → `docs-site/docs/deploy/configuration/`
-  - Hardware support → `docs-site/docs/deploy/hardware.md`
-  - Audio/music → `docs-site/docs/create/titles-and-music.md`
-  - Pipeline features → `docs-site/docs/create/pipeline.md`
-  - Deployment guides → `docs-site/docs/deploy/`
-  - Reference (all flags/config) → `docs-site/docs/reference/`
+  - CLI commands/flags → `docs-site/docs/make/cli/` (and `make docs-cli` for the generated reference)
+  - Web UI changes → `docs-site/docs/make/web-ui.mdx`
+  - Memory types → `docs-site/docs/make/memory-types.mdx`
+  - Titles, maps, music → `docs-site/docs/make/titles-maps-music.md`
+  - Photos, Live Photos, HDR → `docs-site/docs/make/photos-and-live-photos.md`
+  - Automation (`auto`, the daily timer) → `docs-site/docs/make/automate.md`
+  - Selection (how a cut is chosen) → `docs-site/docs/how-it-chooses/`
+  - Config options → `docs-site/docs/run/config-file.md`, `run/environment-variables.md` and `reference/config-reference.md` (`make docs-config-check`)
+  - Install and deployment → `docs-site/docs/run/` (requirements, docker, nas, uv-pip, kubernetes, terraform)
+  - Privacy (anything that can leave the network) → `docs-site/docs/run/privacy.md`
+  - Hardware encoding → `docs-site/docs/run/hardware.md`
+  - Optional add-ons (reader, captions, inference service, render worker, generated music) → `docs-site/docs/better/`
+  - Dated measurements → `docs-site/docs/better/measured.md` (the only page with dates)
+  - First run → `docs-site/docs/get-started/`
+  - Reference (all flags/config, FAQ, troubleshooting) → `docs-site/docs/reference/`
 - After structural changes, also update `docs-site/sidebars.ts` if new pages were added.
 
 ### Makefile Is The Single Source of Truth

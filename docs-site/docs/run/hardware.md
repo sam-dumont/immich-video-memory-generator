@@ -45,7 +45,7 @@ numbers are on [Measured](../better/measured.md).
 | Software | everywhere | libx264, libx265 | FFmpeg | swscale | CPU (YuNet) |
 
 The app probes NVIDIA, Apple, Intel QSV, then VAAPI, and takes the first one whose one-frame test
-encode succeeds. An FFmpeg that merely lists a backend (Debian's does, inside the image too) does
+encode succeeds. An FFmpeg that only lists a backend (Debian's does, inside the image too) does
 not send a GPU-less box down the hardware path.
 
 ```yaml
@@ -136,7 +136,7 @@ list `VAEntrypointEncSlice` or `VAEntrypointEncSliceLP`. During a render, the lo
 per codec; `nvidia-smi` or `intel_gpu_top` shows the card busy.
 
 Nothing to redo after enabling a backend: prepared facts don't depend on the encoder, so the next
-render just encodes faster.
+render encodes faster.
 
 ## Quality: one dial, calibrated per encoder
 

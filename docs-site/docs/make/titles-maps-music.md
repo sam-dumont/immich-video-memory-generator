@@ -15,7 +15,7 @@ of your camera roll:
   (`title_screens.title_duration`). Title and subtitle shrink together when the pair would pass 80 % of the
   frame height.
 - **Month dividers**: at each month change in a single-year film spanning four months or more. The first
-  month gets none, the intro already said it. `month_divider_threshold` sizes a budget, and when the budget
+  month gets none: the intro already said it. `month_divider_threshold` sizes a budget, and when the budget
   binds the first month changes win, so a thin January can keep its card while a busy November loses one.
 - **Trip map**: a satellite fly-over from home to the destination, in place of the intro. Off by default, see
   [The map fly-over](#the-map-fly-over).
@@ -181,14 +181,14 @@ and the run carries on.
 
 ## When a model names the film
 
-Make it better (optional): with a [reader](../better/reader.md) configured, people and occasion films are
-named by the model ("Ada and her grandparents" instead of three stacked full names). `--llm-title` adds trips,
+Make it better (optional): with a [reader](../better/reader.md) configured, the model names people and
+occasion films ("Ada and her grandparents" instead of three stacked full names). `--llm-title` adds trips,
 `--no-llm-title` pins the template everywhere, and `--title` always wins.
 
 The title reader gets facts, never pictures and never coordinates: first names, birth dates and ages, the
 relations your [people file](../get-started/who-is-who.md) confirms, the special-day catalogue's words, the
 album that holds most of the cut, and the place names by day. A capitalised word found in none of those facts
-gets the title refused and the template used instead, and a trip title has to name the trip's place. Refusing
+gets the title refused in favour of the template, and a trip title has to name the trip's place. Refusing
 costs a plainer title, so the check leans towards refusing.
 
 ### Where the title came from
@@ -237,7 +237,7 @@ The bundled tracks come with the `music` extra, which the Docker image and the `
 royalty-free tracks in five moods (calm, energetic, happy, nostalgic, tender), about 30 s each, looped with a
 crossfade. They were generated locally with ACE-Step from nothing sampled; tempo, key and seed per track are in
 `LICENSE-MUSIC`. A pip install without the extra renders silent unless you pass a file. In a film with photos,
-a track whose beat lands within 0.2 beats of the photo cadence is preferred.
+the pick prefers a track whose beat lands within 0.2 beats of the photo cadence.
 
 Ducking is a sidechain compressor keyed on the clips' audio, so speech, laughter and wind all lower the music.
 `--music-volume` (0.0 to 1.0, default 0.5) maps onto -20 dB to 0 dB before ducking. When a generator gave four

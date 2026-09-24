@@ -23,10 +23,10 @@ For this app's container, on top of what Immich itself uses:
 
 What the minimum costs you:
 
-- **Two cores** make the render the long part of every run. What the editor reads is banked, the
-  encode is not: a second cut of the same month reads nothing again and still encodes the whole
+- **Two cores** make the render the long part of every run. The editor banks what it reads, but not
+  the encode: a second cut of the same month reads nothing again and still encodes the whole
   film.
-- **No AVX** (Intel Celeron J4125 and friends) means titles are drawn by the CPU fallback instead
+- **No AVX** (Intel Celeron J4125 and friends) means the CPU fallback draws the titles instead
   of the animated title kernels: [CPUs without AVX](./hardware.md#cpus-without-avx).
 - **ARM64** gets no hardware encoder: the VA-API drivers ship in the amd64 image only.
 
@@ -44,7 +44,7 @@ Kubernetes cluster. Timings per host are on [Measured](../better/measured.md).
 |---|---|---|
 | **A plain NAS** (the default) | This container and one `models fetch` | The film: the rules editor, eight context heads and two detectors on every picture the film can reach, the family-viewing gate, titles, maps, music |
 | **+ a GPU box** (optional) | The [inference service](../better/inference.md) or the [render worker](../better/gpu-render.md) on an NVIDIA box | The same facts, faster, or the encode off the NAS. Nothing already banked is read again |
-| **+ a model** (optional) | A model with a 32k context; it reads text only, so it needs no vision. About 17 GB resident for the 30B one at 4-bit, on a 32 GB Mac or a 24 GB card, or a hosted API key | A reader that polishes the draft the rules editor makes, free-text subjects, and captions if you also raise the tier. [What a model adds](../better/overview.md) |
+| **+ a model** (optional) | A model with a 32k context; it reads text only, so it needs no vision. About 17 GB resident for the 30B one at 4-bit, on a 32 GB Mac or a 24 GB card, or a hosted API key | A reader that writes the prose (what happened, the title) and polishes the draft the rules editor makes, free-text subjects, and captions if you also raise the tier. [What a model adds](../better/overview.md) |
 
 With a model, the rules editor still makes the draft. The model reads it and says which shots add
 nothing, so the NAS setup is the same editor minus that last pass.

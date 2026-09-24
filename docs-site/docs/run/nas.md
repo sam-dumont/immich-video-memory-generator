@@ -90,11 +90,11 @@ through to use it; the compose file carries the block commented out:
 `stat -c '%g' /dev/dri/renderD128` on the host prints the GID. Without `group_add` the device is
 there and the container cannot open it. More on [Hardware encoding](./hardware.md#intel-quick-sync-and-amd-vaapi).
 
-If you switch to `output.codec: h265`, know that Gemini Lake (the J4125 class) has no HEVC encode:
+With `output.codec: h265`, remember that Gemini Lake (the J4125 class) has no HEVC encode:
 that part goes to software, and the log says `vaapi cannot encode h265 on this device`. ARM NAS
 models have no hardware encoder here at all.
 
-The J4125 has no AVX either, so titles are drawn by the CPU fallback instead of the animated
+The J4125 has no AVX either, so the CPU fallback draws the titles instead of the animated
 kernels: [CPUs without AVX](./hardware.md#cpus-without-avx).
 
 ## Long films

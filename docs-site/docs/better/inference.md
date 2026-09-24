@@ -1,20 +1,28 @@
 ---
-sidebar_position: 5
-title: Inference service
+title: Inference on a GPU box
 ---
 
-# The inference service
+# Inference on a GPU box
 
-The encoder, the eight public heads and the two detectors behind one HTTP port, in their own
-container, with their own device variant. It is modelled on `immich-machine-learning`: one image
-per backend, weights in a cache volume, weights dropped when idle.
+Reader: power user.
 
-It is **optional**. Leave it out and the app runs the same producers in process, which is what a
-laptop wants. Run it when the models belong somewhere other than the box running the app: a GPU
-machine, a Kubernetes node, or a container you can restart without restarting the app.
+On a plain NAS the app runs the DINOv2 encoder, its eight heads and the two detectors in its own
+process, on the CPU, once per picture. The inference service moves that work to another machine:
+a GPU box, a Kubernetes node, or just a container you can restart on its own. The facts are the
+same rows either way, so you can add it, move it or drop it without re-deriving anything.
+
+It is modelled on `immich-machine-learning`: one image per backend, weights in a cache volume,
+weights dropped when idle. It pays on a slow box. On a four-core Celeron NAS, sending the facts to
+a service on a cluster took preparation from about 1.5 s to 0.45 s a picture; on a Mac, which
+computes them in process in tens of milliseconds, it buys nothing. It does nothing for the render:
+for that, see [Render on a GPU box](./gpu-render.md).
 
 It answers on port `8092`, which is also where `caption_base_url` looks for the
-[caption server](./captions.md). Two services, one default port: on one host, move one.
+[caption server](./captions.md). Two services, one default port: on one host, move one (the
+compose file publishes captions on 8094 for that reason).
+
+What leaves the app: one preview of each picture, once, to the URL you set. Nothing behind the port
+checks a credential, so keep it on your LAN.
 
 ## The two images
 
@@ -49,7 +57,16 @@ docker compose --profile inference up -d
 curl -s localhost:8092/health
 ```
 
-For a GPU, uncomment the device reservation on that service and change the tag with it:
+For a GPU, install the NVIDIA container toolkit from
+[NVIDIA's guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+and check that a container sees the card:
+
+```bash
+sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+```
+
+Then uncomment the device reservation on that service and change the tag with it:
 
 ```yaml
     deploy:
@@ -211,7 +228,7 @@ anything: one request at a time measured 0.69 s a picture whatever the card was 
 round trip and not the classifier was the cost. Match it to the service's `REQUEST_THREADS` and
 give the pod the CPU to go with them; past that the requests queue inside the service. Raising it
 re-derives nothing. What a GPU-backed service, a CPU-backed one and a pod computing its own facts
-each measured is on [Running modes](../being-rewritten/running-modes.md#what-dominates-per-host).
+each measure is on [Measured](./measured.md).
 
 The summary's `remote_facts` row carries a `service s/pic` column beside the wall clock, off the
 `X-Facts-Seconds` header. A wide gap between the two is the network or a queue inside the service;
