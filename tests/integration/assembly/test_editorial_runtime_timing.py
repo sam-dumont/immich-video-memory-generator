@@ -78,9 +78,9 @@ def test_production_speech_cuts_use_real_detector_and_reuse_facts(
         def __init__(self, **_kwargs):
             pass
 
-        def get_video_playback(self, asset_id):
+        def download_playback(self, asset_id, path):
             calls.append(asset_id)
-            return spoken_video.read_bytes()
+            path.write_bytes(spoken_video.read_bytes())
 
         def close(self):
             calls.append("closed")

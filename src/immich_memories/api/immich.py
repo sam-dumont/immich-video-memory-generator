@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from immich_memories.api.album_service import AlbumRef, AlbumService, FilmScope
 from immich_memories.api.all_assets_service import AllAssetsService
-from immich_memories.api.asset_service import AssetService
+from immich_memories.api.asset_service import TRANSIENT_STATUS, AssetService
 from immich_memories.api.compatibility import (
     ApiVersionPolicy,
     ResolvedApiVersion,
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_RETRYABLE_STATUS = TRANSIENT_STATUS
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0
 
@@ -525,6 +525,9 @@ class ImmichClient:
 
     async def get_video_playback(self, asset_id: str) -> bytes:
         return await self.assets.get_video_playback(asset_id)
+
+    async def download_playback(self, asset_id: str, output_path: Path) -> Path:
+        return await self.assets.download_playback(asset_id, output_path)
 
     async def get_video_playback_range(
         self, asset_id: str, start: int, length: int

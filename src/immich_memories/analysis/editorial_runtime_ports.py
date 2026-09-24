@@ -206,7 +206,7 @@ def production_speech_resolver(source, *, resources):
         return None
     client = None
 
-    def fetch(asset_id):
+    def fetch(asset_id, path):
         nonlocal client
         if client is None:
             from immich_memories.api.sync_client import SyncImmichClient
@@ -216,7 +216,8 @@ def production_speech_resolver(source, *, resources):
                 base_url=config.url, api_key=config.api_key, api_version=config.api_version
             )
             resources.callback(client.close)
-        return client.get_video_playback(asset_id)
+        # WHY: a whole video's rendition streams to disk; bytes would hold it in RAM
+        client.download_playback(asset_id, path)
 
     facts = SpeechFacts(
         assets=dict(source.assets) | dict(source.companion_assets),
