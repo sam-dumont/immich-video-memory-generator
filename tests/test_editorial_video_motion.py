@@ -201,8 +201,6 @@ def test_a_still_clip_captioned_with_an_action_is_judged_by_its_frames(tmp_path,
         BankedMotionLines,
         read_motion_residuals,
     )
-    from immich_memories.analysis.editorial_structure_lines import UnitLines
-    from tests.test_editorial_unsupported_motion import admission
 
     store = tmp_path / "annotations.sqlite"
     room = clip_video("room", favourite=favourite)
@@ -210,16 +208,12 @@ def test_a_still_clip_captioned_with_an_action_is_judged_by_its_frames(tmp_path,
     banked_sentence(store, room, "A woman dances across the living room.")
     unit = video_unit(room, read_motion_residuals(store, [room]))
     lines = BankedMotionLines(store_path=store, assets={"room": room}, described=True)
-    text = UnitLines({"room": "2024-03-02 | An empty living room with a grey sofa."})
 
     assert unit["kind"] == "video" and unit["residual"] < RESIDUAL_MIN
-    # Judged by its frames: nothing in them moves, so a non-favourite's sentence is withheld
-    # and it does not stand on it. A favourite is the owner's own word: this never removes it.
+    # Judged by its frames: nothing in them moves, so a non-favourite's sentence is withheld.
+    # A favourite is the owner's own word: this never removes it.
     assert ("dances" in lines.observe(unit)) is favourite
     assert lines.metrics()["unsupported"] == (0 if favourite else 1)
-    gate = admission(unit, text, lines, pictures=5)
-    gate.ensure(["room"])
-    assert gate.stands("room", "minor", "K01") is favourite
 
 
 @requires_ffmpeg
@@ -228,8 +222,6 @@ def test_a_clip_whose_frames_measure_motion_keeps_its_sentence(tmp_path):
         BankedMotionLines,
         read_motion_residuals,
     )
-    from immich_memories.analysis.editorial_structure_lines import UnitLines
-    from tests.test_editorial_unsupported_motion import admission
     from tests.test_playback_keyframes import encode
 
     store = tmp_path / "annotations.sqlite"
@@ -238,13 +230,9 @@ def test_a_clip_whose_frames_measure_motion_keeps_its_sentence(tmp_path):
     banked_sentence(store, busy, "A child runs in and jumps onto the swing.")
     unit = video_unit(busy, read_motion_residuals(store, [busy]))
     lines = BankedMotionLines(store_path=store, assets={"busy": busy}, described=True)
-    text = UnitLines({"busy": "2024-03-02 | An empty swing in a garden."})
 
     assert unit["residual"] >= RESIDUAL_MIN
     assert lines.observe(unit).startswith("A child runs in and jumps onto the swing.")
-    gate = admission(unit, text, lines, pictures=1)
-    gate.ensure(["busy"])
-    assert gate.stands("busy", "major", "K01")
 
 
 def test_a_video_nobody_measured_keeps_its_sentence(tmp_path):

@@ -19,11 +19,10 @@ def _shot(asset_id: str, *, kind: str = "still", favourite: bool = False) -> dic
     return {"asset_id": asset_id, "kind": kind, "favourite": favourite, "seconds": 3.5}
 
 
-def _evidence(frame_kinds, *, people=(), banked=(), protected=()):
+def _evidence(frame_kinds, *, people=(), protected=()):
     return FillerEvidence(
         frame_kind_of=frame_kinds.get,
         known_person=lambda asset: asset in people,
-        vouched_by_bank=lambda asset: asset in banked,
         protected=frozenset(protected),
     )
 
@@ -53,10 +52,9 @@ def test_a_plain_still_the_heads_read_as_a_lone_object_leaves_and_nothing_takes_
     [
         (_shot("object", kind="live-motion"), {}),
         (_shot("object"), {"people": ["object"]}),
-        (_shot("object"), {"banked": ["object"]}),
         (_shot("object"), {"protected": ["object"]}),
     ],
-    ids=["motion-plays", "known-person", "banked-standing", "owner-ticked"],
+    ids=["motion-plays", "known-person", "owner-ticked"],
 )
 def test_any_indicator_keeps_a_picture_whatever_the_heads_read(shot, vouched):
     kept, dropped = drop_unvouched_filler(

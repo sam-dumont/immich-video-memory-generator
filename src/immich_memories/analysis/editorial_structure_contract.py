@@ -210,7 +210,6 @@ class StructurePlannerPorts:
     observe_picture: Callable[[str], Mapping[str, Any]] | None = None
     picture_facts_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_story_motion: Callable[[Mapping[str, Any]], str] | None = None
-    story_motion_identity: str = ""
     story_motion_metrics: Callable[[], Mapping[str, Any]] | None = None
     observe_attached_material: Callable[[list[dict[str, Any]]], AttachedMaterialEvidence] | None = (
         None

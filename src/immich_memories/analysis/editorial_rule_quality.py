@@ -33,7 +33,6 @@ class PictureFacts:
     place: int
     of: int
     taken: str
-    banked_weak: bool = False
     banked_lead: bool = False
 
 
@@ -44,7 +43,6 @@ def picture_facts(
     place: int,
     of: int,
     residual: float | None,
-    banked_weak: bool = False,
     banked_lead: bool = False,
 ) -> PictureFacts:
     """Read one picture's facts off the asset, its annotation line and its motion residual.
@@ -53,10 +51,9 @@ def picture_facts(
     subject-framing observation a rules reader needs are rendered there and stripped from the
     line the story reader sees.
 
-    `banked_weak` and `banked_lead` are the two things a rules reader cannot work out for
-    itself: that a model already said this picture stands for nothing, and that a banked
-    reading named it for its episode. On a library nothing has read they are both false and
-    the order is the one this reader has always produced.
+    `banked_lead` is the one thing a rules reader cannot work out for itself: that a banked
+    reading named it for its episode. On a library nothing has read it is false and the order is
+    the one this reader has always produced.
     """
     visibility = framing_visibility(line)
     return PictureFacts(
@@ -70,7 +67,6 @@ def picture_facts(
         place=place,
         of=of,
         taken=asset.file_created_at.isoformat(),
-        banked_weak=banked_weak,
         banked_lead=banked_lead,
     )
 
@@ -79,9 +75,7 @@ def representative_key(facts: PictureFacts) -> tuple:
     """Sort key, smallest first."""
     return (
         not facts.favourite,
-        # A picture a model already refused standing to does not carry a moment while
-        # anything else in the group could; a picture its episode's reading named does.
-        facts.banked_weak,
+        # A picture its episode's reading named carries the moment.
         not facts.banked_lead,
         not facts.motion,
         -facts.known_people,
@@ -102,14 +96,12 @@ def rule_representative_rank(
     lines: Mapping[str, str],
     residuals: Mapping[str, Mapping[str, Any]],
     *,
-    weak: Collection[str] = (),
     leads: Collection[str] = (),
 ):
     """The rank a no-model reader gives one picture of a group of ``of`` pictures.
 
-    `weak` and `leads` are what earlier model answers about this library say: pictures already
-    refused standing, and pictures a banked episode reading named. Both are empty on a library
-    nothing has read.
+    `leads` are the pictures a banked episode reading named: what earlier model answers about
+    this library say. It is empty on a library nothing has read.
     """
 
     def rank(asset_id: str, place: int, of: int) -> tuple:
@@ -120,7 +112,6 @@ def rule_representative_rank(
                 place=place,
                 of=of,
                 residual=(residuals.get(asset_id) or {}).get("residual"),
-                banked_weak=asset_id in weak,
                 banked_lead=asset_id in leads,
             )
         )

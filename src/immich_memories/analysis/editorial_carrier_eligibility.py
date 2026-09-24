@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Any
 
 from immich_memories.analysis.annotation_line_fields import content_of
 
@@ -50,19 +49,6 @@ SCREEN_DOCUMENT_LABELS = frozenset(
 _DOCUMENT_FIELD = re.compile(r"(?:^|[|,])\s*document=([a-z_]+)(?=\s*(?:[,|]|$))")
 SCREEN_HEAD_YES = "yes"
 _SCREEN_HEAD_FIELD = re.compile(rf"(?:^|[|,])\s*screen={SCREEN_HEAD_YES}(?=\s*(?:[,|]|$))")
-
-
-def people_moment(annotations: Mapping[str, Any], lines: Mapping[str, str], asset_id: str) -> bool:
-    """The frame head calls the picture a people moment and the line does not call it blurry.
-
-    A people moment is never a body part (that is a kind of its own), so this is the whole
-    free guard the standing gate applies before it asks a reader anything (#1205).
-    """
-    record = annotations.get(asset_id)
-    heads = dict(getattr(record, "heads", None) or {})
-    return heads.get("frame_kind") == "people_moment" and "SOFT (blurry)" not in lines.get(
-        asset_id, ""
-    )
 
 
 def screen_flagged(heads: Mapping[str, str]) -> bool:

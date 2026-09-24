@@ -22,7 +22,6 @@ from immich_memories.analysis.editorial_person_period_facts import (
 from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     BankedFacts,
-    standing_with_bank,
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_story_carriers import (
@@ -459,6 +458,7 @@ def _read_the_period(
 def select_story_first(
     *,
     judge: Any,
+    standing: Callable[[str], int],
     tables: Mapping[str, Any],
     aliases: Sequence[str],
     factual_rows_fn: Callable[[Mapping[str, Any], Sequence[str]], list[dict]],
@@ -479,9 +479,6 @@ def select_story_first(
     full_lines: Mapping[str, str] | None = None,
     life: Callable[[str], bool] = lambda _asset: True,
     family_tier: Mapping[str, int] | None = None,
-    standing_subject: str = "",
-    standing_bank: dict | None = None,
-    standing_save: Callable[[], None] | None = None,
     excluded: Mapping[str, str] | None = None,
     allow_story_gaps: bool = False,
     journey: bool = False,
@@ -489,7 +486,6 @@ def select_story_first(
     partition_limit: int | None = None,
     voice_per_partition: bool = False,
     motion_line: Callable[[Mapping[str, Any]], str] | None = None,
-    motion_identity: str = "",
     episode_readings: Mapping[str, Any] | None = None,
     rules=None,
     trips: FilmTrips | None = None,
@@ -509,6 +505,8 @@ def select_story_first(
     `looks_alike(candidate, keeper)` refuses a story's further picture that repeats one it holds.
     `film_span` is the requested period; a recurring activity is one thread per era of it.
     `near_home(family)` says whether a happening was photographed near the home base.
+    `standing(asset)` is a picture's standing score (0 refuses), read from its facts on every
+    tier: no model is asked whether a picture stands.
     `banked` answers what a model already said about these pictures on an earlier run; it asks
     nothing, and on a library nothing has read it answers nothing and the draft is unchanged.
     `voice_per_partition` gives every partition (`partition_of`) that holds a story one picture
@@ -518,7 +516,6 @@ def select_story_first(
         "story_pages": 0,
         "story_pages_fresh": 0,
         "pick_calls": 0,
-        "standing_rounds": 0,
     }
     _check_partition_request(partition_limit, partition_of)
     unit_by_asset = {u["asset_id"]: (f, u) for f, units in event_units.items() for u in units}
@@ -632,20 +629,11 @@ def select_story_first(
     # 5. Pick the moments that tell each story, then one picture per moment that stands by
     #    itself. The audience gate judges the cut afterwards, not every candidate.
     gate = StandingGate(
-        judge,
-        subject=standing_subject,
+        standing,
         line_of=line_of,
         life=life,
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in stories},
-        score_of=standing_with_bank(rules.standing, banked, favourite=starred)
-        if rules is not None
-        else None,
-        bank=standing_bank,
-        save=standing_save,
-        calls=calls,
-        motion_line=motion_line,
-        motion_identity=motion_identity,
     )
     admission = CarrierAdmission(
         judge,

@@ -4,19 +4,13 @@ The rules draft is built from indicators and head facts and asks no question. On
 where a model HAS answered — an earlier cut of the same film, or the thin layer polishing last
 week's draft — those answers are sitting in banks the draft never opened, so it kept offering
 pictures a gate had already refused and the film came out short. This module opens those banks
-read-only and answers five questions about a picture or an episode. It never asks anything, it
+read-only and answers four questions about a picture or an episode. It never asks anything, it
 never writes, and a missing bank answers None, False or () everywhere, so a cold install draws
 exactly the draft it drew before.
 
 Keying. A bank answer is only an answer to the question it was asked, so each read is named the
 way the writing side named it:
 
-* Standing votes live per picture in the library's `picture-stands.private.json`, named by the
-  criterion, the motion seat behind a moving row, the replying model, the picture and the row's
-  own text (`editorial_standing_vote.standing_row_name`). No film scope is in the name, so a month's
-  answers serve the year around it. The model identity is part of that name,
-  so a bank written by another reader simply does not answer here — it cannot be mistaken for
-  one that does.
 * Episode readings live in the annotation store under (group, producer, evidence). The producer
   is the reading contract; the evidence is a digest of the exact annotation lines. This module
   matches on group and evidence and ignores the producer, so a reading made by any reader of the
@@ -32,6 +26,9 @@ way the writing side named it:
 
 A favourite is never withheld by anything read here. The owner's own choice outranks a banked
 answer about it, exactly as it outranks the rules' own standing verdict.
+
+Standing is not read here: the heads answer it on every tier (`editorial_standing_facts`), and a
+model's banked standing vote agreed with a stronger reader less often than the heads do.
 """
 
 from __future__ import annotations
@@ -46,8 +43,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from immich_memories.analysis.editorial_shareability import allowed
-from immich_memories.analysis.editorial_standing_vote import standing_row_name
-from immich_memories.analysis.editorial_story_standing import standing_bank_path
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
     library_refusals,
@@ -59,9 +54,7 @@ CUT_RECORD_NAME = "plan.private.json"
 
 
 class BankedFacts(Protocol):
-    """The five things the rules draft asks of answers it did not pay for."""
-
-    def standing_of(self, asset_id: str) -> int | None: ...
+    """The four things the rules draft asks of answers it did not pay for."""
 
     def refused_for_audience(self, asset_id: str) -> bool: ...
 
@@ -76,13 +69,9 @@ class BankedFacts(Protocol):
 class BankedAnswers:
     """Answers already banked for this film, resolved once when the banks are opened."""
 
-    standing: Mapping[str, int]
     refused: frozenset[str]
     representatives: Mapping[str, tuple[str, ...]]
     culls: frozenset[str]
-
-    def standing_of(self, asset_id: str) -> int | None:
-        return self.standing.get(asset_id)
 
     def refused_for_audience(self, asset_id: str) -> bool:
         return asset_id in self.refused
@@ -111,8 +100,6 @@ class BankedAnswers:
         cold film.
         """
         return {
-            "standing_answers": len(self.standing),
-            "standing_refused": sum(1 for score in self.standing.values() if score == 0),
             "audience_refusals": len(self.refused),
             "episodes_read": len(self.representatives),
             "banked_representatives": len(set(chain.from_iterable(self.representatives.values()))),
@@ -120,7 +107,7 @@ class BankedAnswers:
         }
 
 
-NO_BANKED_FACTS = BankedAnswers({}, frozenset(), {}, frozenset())
+NO_BANKED_FACTS = BankedAnswers(frozenset(), {}, frozenset())
 """A library nothing has read yet: every question comes back unanswered."""
 
 
@@ -149,87 +136,31 @@ def open_banked_facts(
     attempts_dir: Path | None,
     store_path: Path | None,
     audience: str,
-    model_identity: str,
-    subject: str,
-    motion_identity: str,
-    rows_of: Mapping[str, str],
     episode_cards: Mapping[str, Any],
     own_producers: frozenset[str] = frozenset(),
 ) -> BankedAnswers:
     """Open this film's banks read-only and resolve what they already say.
 
-    `rows_of` is each picture's standing row as the gate renders it; `episode_cards` maps a
-    moment alias to the episode card the run carries, whose episode id and evidence key name the
+    `episode_cards` maps a moment alias to the episode card the run carries, whose episode id and evidence key name the
     reading to look for. `own_producers` names the reading contracts this very run produced, so
     the draft is not handed its own answer back as if somebody else had given it. Anything
     unreadable is treated as unanswered rather than raised: a draft that cannot open a bank is
     the cold draft, which is always a valid film.
     """
-    standing = (
-        _banked_standing(
-            standing_bank_path(bank_dir),
-            rows_of=rows_of,
-            model_identity=model_identity,
-            subject=subject,
-            motion_identity=motion_identity,
-        )
-        if model_identity
-        else {}
-    )
     representatives, culls = _banked_readings(store_path, episode_cards, own_producers)
     answers = BankedAnswers(
-        standing=standing,
         refused=_refused_before(attempts_dir, audience=audience)
         | library_refusals(bank_dir.parent / AUDIENCE_BANK_NAME, audience),
         representatives=representatives,
         culls=culls,
     )
     logger.debug(
-        "banked facts: %d standing, %d refused, %d read episodes, %d culled",
-        len(answers.standing),
+        "banked facts: %d refused, %d read episodes, %d culled",
         len(answers.refused),
         len(answers.representatives),
         len(answers.culls),
     )
     return answers
-
-
-def _banked_standing(
-    path: Path,
-    *,
-    rows_of: Mapping[str, str],
-    model_identity: str,
-    subject: str,
-    motion_identity: str,
-) -> dict[str, int]:
-    """Each picture's banked standing score, named exactly as the asking side named it."""
-    rows = _bank_rows(path)
-    if not rows:
-        return {}
-    banked = {}
-    for asset_id, row in rows_of.items():
-        if not row:
-            continue
-        name = standing_row_name(
-            asset_id,
-            row,
-            subject=subject,
-            identity=model_identity,
-            motion_identity=motion_identity,
-        )
-        entry = rows.get(name)
-        if isinstance(entry, Mapping) and "votes" in entry:
-            banked[asset_id] = 2 - int(entry["votes"])
-    return banked
-
-
-def _bank_rows(path: Path) -> Mapping[str, Any]:
-    try:
-        bank = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-    rows = bank.get("rows") if isinstance(bank, Mapping) else None
-    return rows if isinstance(rows, Mapping) else {}
 
 
 def _refused_before(attempts_dir: Path | None, *, audience: str) -> frozenset[str]:
@@ -342,31 +273,6 @@ def _asset_ids(payload: object) -> tuple[str, ...]:
     )
 
 
-def standing_with_bank(
-    rule_standing: Callable[[str], int], banked: BankedFacts, *, favourite: Callable[[str], bool]
-) -> Callable[[str], int]:
-    """The rules' own standing answer, tightened by a banked one where a model gave it.
-
-    Tightened, never loosened. The rules answer zero for a document, a photographed screen, an
-    exposure flag in a film for outside the family, and a frame the head calls empty: those are eligibility,
-    not an opinion about whether the picture stands, and a model's vote on the same row cannot
-    clear one. The direction that is allowed is the useful one anyway: the model saying a
-    picture the rules liked does not in fact stand.
-
-    A favourite keeps the rules answer whole: the owner's choice is the one judgment nothing
-    banked overrules, so a banked zero on a starred picture leaves it standing.
-    """
-
-    def standing(asset_id: str) -> int:
-        own = rule_standing(asset_id)
-        if favourite(asset_id):
-            return own
-        answer = banked.standing_of(asset_id)
-        return own if answer is None else min(own, answer)
-
-    return standing
-
-
 def withheld_by_bank(
     banked: BankedFacts, *, favourite: Callable[[str], bool]
 ) -> Callable[[str], bool]:
@@ -388,15 +294,4 @@ def banked_leaders(banked: BankedFacts, episode_keys: tuple[str, ...]) -> frozen
         asset_id
         for key in episode_keys
         for asset_id in (*banked.episode_representatives(key), *banked.record_owning(key))
-    )
-
-
-def banked_weak(
-    banked: BankedFacts, assets: tuple[str, ...], *, favourite: Callable[[str], bool]
-) -> frozenset[str]:
-    """The pictures a model said stand for nothing, the owner's own choices excepted."""
-    return frozenset(
-        asset_id
-        for asset_id in assets
-        if not favourite(asset_id) and banked.standing_of(asset_id) == 0
     )
