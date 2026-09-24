@@ -98,8 +98,6 @@ render_trip_map_frame  # unused function (src/immich_memories/titles/map_rendere
 #                    and the recovery page still expect to exist
 #   validate_image_path  its video/audio twins are used in ~14 places while image
 #                    paths are opened unvalidated; a gap, not dead weight
-#   reranker_identity    provenance written at editorial_runtime_backend.py:204
-#                    and recorded nowhere
 #   response_sha256, unreadable_or_omitted_pages
 #                    feed episode_diagnostics_sink, an optional callback that
 #                    defaults to None and that only tests ever supply
@@ -110,7 +108,6 @@ render_trip_map_frame  # unused function (src/immich_memories/titles/map_rendere
 #                    clear module-global state so tests do not leak into each
 #                    other; production never resets either
 #   PACK_DIM         one consumer, tests/test_triage_engine.py:15
-reranker_identity  # unused variable (src/immich_memories/analysis/editorial_structure_contract.py:158)
 response_sha256  # unused variable (src/immich_memories/analysis/text_episode_answers.py:48)
 unreadable_or_omitted_pages  # unused variable (src/immich_memories/analysis/text_episode_answers.py:49)
 get_active_display  # unused function (src/immich_memories/cli/_helpers.py:38)

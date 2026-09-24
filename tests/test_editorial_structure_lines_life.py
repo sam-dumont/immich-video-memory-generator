@@ -80,8 +80,6 @@ def test_a_model_tier_picture_the_captioner_left_bare_still_shows_its_named_face
     ports = StructurePlannerPorts(
         judge=ControlledStoryJudge(),
         thumbnail_hash=lambda _: None,
-        rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-        reranker_identity={"endpoint": "test://local", "model": "controlled-ranker"},
     )
 
     material = build_material(captured, ports, read_wall(captured))

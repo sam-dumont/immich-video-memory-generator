@@ -117,8 +117,6 @@ def test_real_factory_and_no_live_planner_seal_and_replay_empty_material(tmp_pat
                 StructurePlannerPorts(
                     judge=ControlledStoryJudge(bank, require_hits=warm),
                     thumbnail_hash=lambda _: None,
-                    rank=lambda _query, docs: dict.fromkeys(range(len(docs)), 1.0),
-                    reranker_identity={"model": "controlled", "endpoint": "test://local"},
                     observe_attached_material=observe,
                     attached_material_metrics=samples.metrics,
                 ),

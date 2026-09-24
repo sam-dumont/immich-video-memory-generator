@@ -1,19 +1,15 @@
-"""Production text and reranker adapters for the shared structure planner."""
+"""Production text adapter for the shared structure planner."""
 
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from immich_memories.analysis.editorial_async_bridge import _run_sync
 from immich_memories.analysis.editorial_case import TextRequest
-from immich_memories.analysis.editorial_reranking import rerank
 from immich_memories.analysis.editorial_text_failures import (
     StageCallFailure,
     TextCompletionFailure,
@@ -155,38 +151,3 @@ class StructureTextJudge:
             }
         )
         return call.raw
-
-
-class StructureReranker:
-    """Open transport only for an uncached retrieval request."""
-
-    def __init__(
-        self,
-        *,
-        endpoint: str | None = None,
-        api_key: str | None = None,
-        model: str = "Qwen3-Reranker-0.6B-4bit",
-    ) -> None:
-        self.endpoint = (
-            endpoint
-            if endpoint is not None
-            else os.environ.get("OMLX_BASE_URL", "http://localhost:9999/v1")
-        )
-        self.api_key = api_key if api_key is not None else os.environ.get("OMLX_API_KEY", "")
-        self.model = model
-
-    @property
-    def identity(self) -> dict[str, str]:
-        return {"endpoint": self.endpoint.rstrip("/"), "model": self.model}
-
-    def __call__(self, query: str, documents: tuple[str, ...]) -> dict[int, float]:
-        with httpx.Client(timeout=180, trust_env=False) as client:
-            results, _usage = rerank(
-                client,
-                endpoint=self.endpoint,
-                api_key=self.api_key,
-                model=self.model,
-                query=query,
-                documents=documents,
-            )
-        return {row.index: row.relevance_score for row in results}

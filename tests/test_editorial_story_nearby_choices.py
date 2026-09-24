@@ -106,8 +106,6 @@ def test_actual_planner_observes_the_admitted_pictures_and_not_every_choice(tmp_
         StructurePlannerPorts(
             judge=ObservedJudge(),
             thumbnail_hash=lambda _: None,
-            rank=lambda _query, documents: dict.fromkeys(range(len(documents)), 1.0),
-            reranker_identity={"endpoint": "test://local", "model": "controlled"},
             observe_picture=observe,
         ),
     ).plan
