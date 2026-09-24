@@ -418,11 +418,10 @@ jobs:
             INSTALL_EXTRAS=all
             VCS_REF=${{ github.sha }}
             SOURCE_URL=https://github.com/${{ github.repository }}
-          # WHY scoped: both platform jobs wrote the same default cache scope
-          # and clobbered each other — measured ZERO cached layers on every PR
-          # build, a full image rebuild each time.
-          cache-from: type=gha,scope=docker-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform }}
+          # No gha layer cache: the Dockerfile copies src/ and takes APP_VERSION
+          # before every heavy RUN, so no commit reuses a layer (0 CACHED steps
+          # measured, #1272), while exporting cost ~140 s per job and ~3 GB of
+          # the repo's 10 GB Actions cache per PR, evicting caches that do hit.
 
   docs:
     name: Docs Build
