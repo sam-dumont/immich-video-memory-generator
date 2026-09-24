@@ -245,6 +245,7 @@ def _build_generation_params(state, selected_clips, output_path):
         memory_preset_params=state.memory_preset_params,
         title=state.title_suggestion_title,
         subtitle=state.title_suggestion_subtitle,
+        title_source=state.title_suggestion_source,
         clip_segments=state.clip_segments,
         clip_rotations=state.clip_rotations,
         editorial_selections=editorial_selections,

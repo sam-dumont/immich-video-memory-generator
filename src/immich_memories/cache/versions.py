@@ -1,3 +1,3 @@
 """Independent database schema and cached-analysis algorithm versions."""
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
