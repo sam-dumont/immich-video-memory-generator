@@ -117,6 +117,10 @@ class AppState:
     # than in the widget so a reload mid-cut rebuilds the detail panel with what
     # the session already saw, the way the phase rows rebuild from the attempt.
     cut_stage_log: list[str] = field(default_factory=list)
+    # Why the last cut ended without a result, shown on the brief until the next
+    # Cut. A toast would not do: the page navigates back to the brief as it fails,
+    # and the reason is often a command the owner has to go and run.
+    cut_failure: str | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
