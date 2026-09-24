@@ -227,7 +227,8 @@ async def test_a_model_title_that_names_another_place_gives_way_to_the_template(
 def test_a_refused_model_title_leaves_the_trip_to_its_place_template(tmp_path):
     from immich_memories.cli._llm_title import resolve_cli_title
     from immich_memories.config_loader import Config
-    from immich_memories.generate import GenerationParams, _build_title_settings
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_settings import build_title_settings
     from immich_memories.timeperiod import DateRange
 
     config = Config()
@@ -257,7 +258,7 @@ def test_a_refused_model_title_leaves_the_trip_to_its_place_template(tmp_path):
         title_source=source,
     )
 
-    settings = _build_title_settings(params, config, [])
+    settings = build_title_settings(params, config, [])
 
     assert settings is not None
     assert settings.title_source == "place"
