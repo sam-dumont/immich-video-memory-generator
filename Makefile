@@ -280,10 +280,23 @@ IMMICH_GATE_COMPOSE = IMMICH_GATE_SERVER_IMAGE=$(IMMICH_GATE_SERVER_$(IMMICH_GAT
 	IMMICH_GATE_PORT=$(IMMICH_GATE_PORT) \
 	docker compose -f tests/integration/immich_gate/docker-compose.yml -p immich-gate-$(IMMICH_GATE_VERSION)
 
-.PHONY: test-immich-gate immich-gate-up immich-gate-down immich-gate-logs immich-gate-pull
+IMMICH_GATE_IMAGES_TAR ?= $(IMMICH_GATE_DIR)/images/$(IMMICH_GATE_VERSION).tar
+
+.PHONY: test-immich-gate immich-gate-up immich-gate-down immich-gate-logs immich-gate-pull \
+	immich-gate-images immich-gate-fetch immich-gate-save
 immich-gate-pull:  ## Pull the pinned images for IMMICH_GATE_VERSION (v2|v3)
 	@test -n "$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION))" || { echo "IMMICH_GATE_VERSION must be v2 or v3"; exit 2; }
 	$(IMMICH_GATE_COMPOSE) pull --quiet
+
+immich-gate-images:  ## Print the pinned image refs for IMMICH_GATE_VERSION, one per line
+	@test -n "$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION))" || { echo "IMMICH_GATE_VERSION must be v2 or v3"; exit 2; }
+	@$(IMMICH_GATE_COMPOSE) config --images | sort
+
+immich-gate-fetch:  ## Load the pinned images from IMMICH_GATE_IMAGES_TAR, pulling (3 tries) whatever it lacks
+	@scripts/immich_gate_images.sh fetch $(IMMICH_GATE_IMAGES_TAR) $$($(MAKE) -s --no-print-directory immich-gate-images)
+
+immich-gate-save:  ## docker save the pinned images for IMMICH_GATE_VERSION into IMMICH_GATE_IMAGES_TAR
+	@scripts/immich_gate_images.sh save $(IMMICH_GATE_IMAGES_TAR) $$($(MAKE) -s --no-print-directory immich-gate-images)
 
 immich-gate-up:  ## Start a fresh gate Immich for IMMICH_GATE_VERSION; fails if it is not healthy in 5 min
 	@test -n "$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION))" || { echo "IMMICH_GATE_VERSION must be v2 or v3"; exit 2; }
