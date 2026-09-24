@@ -13,8 +13,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from immich_memories.analysis.editorial_block_votes import judge_standing
 from immich_memories.analysis.editorial_clip_frames import subject_often_missing
+from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.analysis.editorial_story_pick_contract import (
     carries_motion,
     moving_picture_row,
@@ -109,8 +109,10 @@ class StandingGate:
         motion_line: Callable[[Mapping[str, Any]], str] | None = None,
         motion_identity: str = "",
         subject: str = "",
+        people_moment: Callable[[str], bool] | None = None,
     ) -> None:
         self._judge = judge
+        self._people_moment = people_moment
         self._score_of = score_of
         self._subject = subject
         self._line_of = line_of
@@ -148,6 +150,14 @@ class StandingGate:
             return
         if self._score_of is not None:
             self.scores.update({a: self._score_of(a) for a in unknown})
+            return
+        # A picture the frame head calls a people moment, sharp and not a body part, stands
+        # without a question: the reader's doubts about quiet family pictures were the error
+        # it was never asked to make (#1205).
+        free = [a for a in unknown if self._people_moment and self._people_moment(a)]
+        self.scores.update(dict.fromkeys(free, 2))
+        unknown = [a for a in unknown if a not in free]
+        if not unknown:
             return
         self._calls["standing_rounds"] += 1
         votes = judge_standing(

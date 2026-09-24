@@ -262,6 +262,57 @@ test-integration-processing:  ## Run ONLY processing probing/runner/filter tests
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/processing-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/processing-junit.xml
 
+# ── Real-Immich PR gate ───────────────────────────────────────────────────
+# Starts a digest-pinned Immich (no machine learning) in Docker, seeds the CC0
+# fixture month plus a >1000-asset paging album, and runs the small gate suite
+# in tests/integration/immich_gate/. REQUIRE_IMMICH=1: an Immich that never
+# answers FAILS the run, it does not skip. CI runs it for v2 and v3.
+IMMICH_GATE_VERSION ?= v3
+IMMICH_GATE_PORT ?= 2299
+IMMICH_GATE_DIR ?= .immich-gate
+IMMICH_GATE_SERVER_v2 := ghcr.io/immich-app/immich-server:v2.7.5@sha256:c15bff75068effb03f4355997d03dc7e0fc58720c2b54ad6f7f10d1bc57efaa5
+IMMICH_GATE_VALKEY_v2 := docker.io/valkey/valkey:9@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9
+IMMICH_GATE_SERVER_v3 := ghcr.io/immich-app/immich-server:v3.2.2@sha256:79cc1623323d5894922686d8743b4780181428f98eecbfb58ce12c41ef02d1ea
+IMMICH_GATE_VALKEY_v3 := docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
+IMMICH_GATE_HOME = $(CURDIR)/$(IMMICH_GATE_DIR)/home-$(IMMICH_GATE_VERSION)
+IMMICH_GATE_COMPOSE = IMMICH_GATE_SERVER_IMAGE=$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION)) \
+	IMMICH_GATE_VALKEY_IMAGE=$(IMMICH_GATE_VALKEY_$(IMMICH_GATE_VERSION)) \
+	IMMICH_GATE_PORT=$(IMMICH_GATE_PORT) \
+	docker compose -f tests/integration/immich_gate/docker-compose.yml -p immich-gate-$(IMMICH_GATE_VERSION)
+
+.PHONY: test-immich-gate immich-gate-up immich-gate-down immich-gate-logs immich-gate-pull
+immich-gate-pull:  ## Pull the pinned images for IMMICH_GATE_VERSION (v2|v3)
+	@test -n "$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION))" || { echo "IMMICH_GATE_VERSION must be v2 or v3"; exit 2; }
+	$(IMMICH_GATE_COMPOSE) pull --quiet
+
+immich-gate-up:  ## Start a fresh gate Immich for IMMICH_GATE_VERSION; fails if it is not healthy in 5 min
+	@test -n "$(IMMICH_GATE_SERVER_$(IMMICH_GATE_VERSION))" || { echo "IMMICH_GATE_VERSION must be v2 or v3"; exit 2; }
+	$(IMMICH_GATE_COMPOSE) down --remove-orphans
+	$(IMMICH_GATE_COMPOSE) up -d --wait --wait-timeout 300
+
+immich-gate-down:  ## Stop the gate Immich (tmpfs only: nothing is left behind)
+	$(IMMICH_GATE_COMPOSE) down --remove-orphans
+
+immich-gate-logs:
+	$(IMMICH_GATE_COMPOSE) logs --no-color --timestamps
+
+test-immich-gate:  ## Real Immich in Docker + CC0 fixture library + gate tests (IMMICH_GATE_VERSION=v2|v3, ~5 min)
+	$(MAKE) immich-gate-up
+	@mkdir -p $(IMMICH_GATE_DIR); rm -rf $(IMMICH_GATE_HOME); status=0; \
+	uv run python -m tests.integration.immich_gate.seed \
+		--url http://127.0.0.1:$(IMMICH_GATE_PORT) \
+		--media $(IMMICH_GATE_DIR)/media --home $(IMMICH_GATE_HOME) \
+	&& REQUIRE_IMMICH=1 IMMICH_GATE_VERSION=$(IMMICH_GATE_VERSION) uv run env HOME=$(IMMICH_GATE_HOME) \
+		pytest tests/integration/immich_gate/ -v -m integration --tb=short -p no:cacheprovider \
+		--junitxml=tests/immich-gate-$(IMMICH_GATE_VERSION)-junit.xml \
+	|| status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		$(MAKE) --no-print-directory immich-gate-logs > $(IMMICH_GATE_DIR)/immich-$(IMMICH_GATE_VERSION).log 2>&1 || true; \
+		echo "Immich logs: $(IMMICH_GATE_DIR)/immich-$(IMMICH_GATE_VERSION).log"; \
+	fi; \
+	[ -n "$(IMMICH_GATE_KEEP)" ] || $(MAKE) --no-print-directory immich-gate-down; \
+	exit $$status
+
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
 	$(MAKE) test-integration-assembly

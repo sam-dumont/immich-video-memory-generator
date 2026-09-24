@@ -12,12 +12,14 @@ import re
 from collections import ChainMap
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from operator import itemgetter
 from typing import Any
 
 from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_block_votes import judge_worthiness, worth_criterion_v44
+from immich_memories.analysis.editorial_carrier_eligibility import people_moment
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
 from immich_memories.analysis.editorial_family_seat import FilmSeatSource, seat_in_film
@@ -740,6 +742,7 @@ def _thin_polish(
         calls=selection.calls,
         motion_line=ports.observe_story_motion,
         motion_identity=ports.story_motion_identity,
+        people_moment=partial(people_moment, source.audience_annotations, selection.lines),
     )
     return ports.thin.polish(
         carriers,

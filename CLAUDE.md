@@ -308,10 +308,15 @@ After initial release, the project follows **trunk-based development** with smal
 2. Create branch from `main`
 3. Implement with TDD (RED → GREEN → REFACTOR)
 4. Open PR, link to issue
-5. CI passes → review → merge → delete branch
+5. CI passes → squash-merge (the merge train) → delete branch
 
 **AI-assisted development rules:**
-- AI can implement, but humans review every PR before merge
+- Claude writes most of the code; the maintainer sets direction, rules on product decisions,
+  and reviews results (films, contact sheets, measurements) plus the PR diffs they pick
+- Not every PR diff is read by a human: under the maintainer's standing permission, the merge
+  train squash-merges green PRs to `main`. The CI gates above are what every change must pass
+- A design conflict, or a failing gate that needs a product ruling, goes back to the
+  maintainer instead of merging
 - No mega-commits — if the AI generates 2000 lines, split into multiple PRs
 - Every AI session should produce at most 1-2 PRs, not a 40-commit branch
 - Run `make critique` before opening any PR

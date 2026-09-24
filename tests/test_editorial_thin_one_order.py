@@ -56,7 +56,7 @@ def test_one_orders_doubt_asks_the_other_order_and_never_removes_a_shot_alone(tm
 
     judge, payload, cut, _newcomers = polish(tmp_path, film)
 
-    assert any(stage.endswith("-hashed") for stage in asked(judge, "standing-"))
+    assert asked(judge, "standing-check-")
     assert any(stage.endswith("-hashed") for stage in asked(judge, "thesis-fit-"))
     # a minor story's lively shot needs one order's approval, and the hashed order gave it
     assert "d005" in {row["asset_id"] for row in cut}
@@ -72,7 +72,7 @@ def test_a_glimpse_one_order_doubts_is_asked_again_and_kept(tmp_path):
 
     judge, payload, cut, _newcomers = polish(tmp_path, film)
 
-    assert any(stage.endswith("-hashed") for stage in asked(judge, "standing-"))
+    assert asked(judge, "standing-check-")
     assert payload["refused_by_the_gates"] == []
     assert "d005" in {row["asset_id"] for row in cut}
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import sys
-import unicodedata
 from typing import TYPE_CHECKING
 
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
+from immich_memories.filename_builder import safe_slug
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,13 +15,10 @@ if TYPE_CHECKING:
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
 
-_SLUG_STRIP = re.compile(r"[^a-z0-9]+")
-
 
 def album_output_path(default_path: Path, album_name: str, container: str) -> Path:
     """Name the output file after the album, alongside the default output."""
-    folded = unicodedata.normalize("NFKD", album_name).encode("ascii", "ignore").decode()
-    slug = _SLUG_STRIP.sub("_", folded.lower()).strip("_")[:40]
+    slug = safe_slug(album_name)
     stem = f"album_{slug}" if slug else "album"
     return default_path.parent / f"{stem}.{container}"
 

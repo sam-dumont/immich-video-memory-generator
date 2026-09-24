@@ -95,7 +95,7 @@ class RenderJobs:
         self.cleanup()
         job_id = job_identity(request)
         material = request.model_dump(mode="json")
-        # A resubmitted cut is recognised without ever storing the scoped key.
+        # A resubmitted cut is recognised without ever storing the Immich key.
         material["immich"]["api_key"] = credential_fingerprint(
             request.immich.api_key.get_secret_value()
         )
@@ -145,7 +145,7 @@ class RenderJobs:
             self._publish(job_id, directory, self.renderer.render(request, directory, progress))
         except (
             Exception
-        ) as exc:  # WHY: one failed job must not kill the worker or expose its scoped key.
+        ) as exc:  # WHY: one failed job must not kill the worker or expose its Immich key.
             self.store.update(
                 job_id, state="failed", phase="failed", error=clean(str(exc)), finished_at=_now()
             )

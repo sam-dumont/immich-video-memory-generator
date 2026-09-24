@@ -45,7 +45,7 @@ OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
 VERDICTS = ("share", "family_only", "do_not_show")  # loosest to strictest
 PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
-AUDIENCE_PROMPT_VERSION = "audience-evidence-v14-categories-need-supporting-facts"
+AUDIENCE_PROMPT_VERSION = "audience-evidence-v16-person-in-the-activity"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
 _AUDIENCE_HEADS = frozenset(
     {"nsfw_marqo", "uncovered_person", "people", "children", "doc_docling", "venue", "location"}

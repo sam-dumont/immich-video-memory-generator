@@ -14,9 +14,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from immich_memories.analysis.editorial_block_votes import judge_standing, judge_worthiness
+from immich_memories.analysis.editorial_block_votes import judge_worthiness
 from immich_memories.analysis.editorial_intent import build_editorial_intent
 from immich_memories.analysis.editorial_page_recovery import PageReadFailure
+from immich_memories.analysis.editorial_standing_vote import judge_standing
 from immich_memories.config_models_llm import LLMConfig
 from tests.test_editorial_duration_planner_integration import run
 from tests.test_editorial_story_first_planner import StoryJudge, make_source

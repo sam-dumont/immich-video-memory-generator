@@ -1,4 +1,4 @@
-"""Versioned, path-free job contract. The scoped Immich key is an ephemeral input."""
+"""Versioned, path-free job contract. The Immich key (the app's own) is an ephemeral input."""
 
 from datetime import date, datetime
 from typing import Literal
@@ -30,7 +30,7 @@ class ImmichAccess(Contract):
     @classmethod
     def require_key(cls, value: SecretStr) -> SecretStr:
         if not value.get_secret_value().strip():
-            raise ValueError("a scoped Immich key is required")
+            raise ValueError("an Immich key is required")
         return value
 
 
