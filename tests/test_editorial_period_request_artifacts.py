@@ -218,7 +218,8 @@ def test_production_episode_recording_follows_each_active_attempt_even_on_failur
     )
     # The whole-film planner's up-front episode stage; the polish route reads on demand.
     config = Config(
-        llm={"model": "test-model"},
+        tier="full",
+        llm={"model": "test-model", "base_url": "http://llm.test/v1"},
         cache={"directory": str(tmp_path / "cache")},
         editorial={"thin_model_layer": False},
     )
@@ -269,7 +270,8 @@ def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch
     )
     # The whole-film planner's up-front episode stage; the polish route reads on demand.
     config = Config(
-        llm={"model": "test-model"},
+        tier="full",
+        llm={"model": "test-model", "base_url": "http://llm.test/v1"},
         cache={"directory": str(tmp_path / "cache")},
         editorial={"thin_model_layer": False},
     )

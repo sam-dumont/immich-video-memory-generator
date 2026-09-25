@@ -122,8 +122,7 @@ def test_a_special_day_is_named_by_its_catalogue():
 
 
 def test_a_title_the_model_wrote_is_the_models():
-    config = Config()
-    config.llm.model = "some-model"
+    config = Config(tier="full", llm={"base_url": "http://llm.test/v1", "model": "some-model"})
 
     title, _subtitle, source = _resolve(memory_type="multi_person", config=config)
 

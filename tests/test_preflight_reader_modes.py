@@ -42,5 +42,6 @@ def test_explicit_model_reader_without_a_model_is_a_configuration_error(monkeypa
     monkeypatch.setattr(
         "httpx.Client", lambda *_args, **_kwargs: pytest.fail("model endpoint contacted")
     )
-    config = Config(llm={"model": ""}, editorial={"reader": "model"})
+    config = Config(tier="full", llm={"base_url": "http://llm.test/v1", "model": "reader"})
+    config.llm.model = ""
     assert check_llm(config).status is CheckStatus.ERROR

@@ -45,6 +45,7 @@ def setup_runtime(
         else {a.id: "A clothed person carries furniture during a move." for a in sources},
     )
     config = Config(
+        tier="full",
         llm={"model": "text-model", "base_url": "http://localhost:9999/v1"},
         editorial={
             "enabled": True,

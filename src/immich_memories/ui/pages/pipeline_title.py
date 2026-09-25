@@ -293,8 +293,8 @@ async def _model_title(
     if config is None:
         return None
     llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
-    if not llm_cfg.model:
-        logger.debug("LLM model not configured — using template title")
+    if not llm_cfg.model or config.tier != "full":
+        logger.debug("No LLM on this tier — using template title")
         return None
 
     trip = _gather_trip_context(state)

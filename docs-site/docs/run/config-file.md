@@ -14,6 +14,14 @@ annotated example is
 and every key with its default is in the [config reference](../reference/config-reference.md). In
 Docker you can skip the file entirely and use [environment variables](./environment-variables.md).
 
+## Compute tier
+
+Set `tier: nas` for inexpensive CPU heads and detectors, `tier: gpu` to add captions and Laya,
+or `tier: full` to add a prose LLM. NAS is the default. GPU and NAS never call the prose LLM,
+even if its endpoint remains in the file; titles and music use their local fallbacks.
+Full requires a model and an explicit endpoint or hosted provider. See the
+[tier reference](../reference/config-reference.md#tier) for the effective settings.
+
 ## Quick start config
 
 A full plain-NAS setup, every default kept except the two values that make a cut good
