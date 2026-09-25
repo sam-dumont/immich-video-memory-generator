@@ -39,7 +39,7 @@ from immich_memories.automation.status import (
 )
 from immich_memories.automation.variety import VarietyDecision
 from immich_memories.config_loader import Config
-from immich_memories.operations.auto_output import retain_output
+from immich_memories.operations.auto_output import NOTHING_WORTH_A_FILM, retain_output
 from immich_memories.operations.bounded_process import run_bounded_process
 from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.tracking.models import RunMetadata
@@ -282,6 +282,25 @@ class AutoRunner:
         if stderr_tail:
             details.append(f"stderr:\n{stderr_tail}")
         return _BoundedProcessDetails("\n".join(details) or "no subprocess output")
+
+    def _proven_output(
+        self, attempt_id: str, candidate: MemoryCandidate, stdout: str | None
+    ) -> tuple[RunMetadata, Path] | str:
+        """This attempt's completed run and its file on disk, or why there is none."""
+        matching_run = self.db.get_completed_run_by_automation_attempt(
+            attempt_id, memory_key=candidate.memory_key
+        )
+        if matching_run is None and NOTHING_WORTH_A_FILM in (stdout or ""):
+            # Kept a failure so the candidate backs off instead of re-running daily.
+            return "nothing worth a film in this period"
+        if matching_run is None:
+            return "no matching completed auto run"
+        if not matching_run.output_path:
+            return "matching run has no output path"
+        output_path = Path(matching_run.output_path)
+        if not output_path.is_file():
+            return "generated output file is missing"
+        return matching_run, output_path
 
     def _retain_child_output(self, attempt_id: str, stdout: Any, stderr: Any) -> None:
         """Keep one complete transcript per attempt, whatever ended the child."""
@@ -653,36 +672,10 @@ class AutoRunner:
                     error=process_error,
                 )
 
-            matching_run = self.db.get_completed_run_by_automation_attempt(
-                attempt.id,
-                memory_key=candidate.memory_key,
-            )
-            if matching_run is None:
-                reason = "no matching completed auto run"
-                return self._fail_candidate(
-                    attempt,
-                    reason,
-                    candidate=candidate,
-                    error=reason,
-                )
-            if not matching_run.output_path:
-                reason = "matching run has no output path"
-                return self._fail_candidate(
-                    attempt,
-                    reason,
-                    candidate=candidate,
-                    error=reason,
-                )
-
-            output_path = Path(matching_run.output_path)
-            if not output_path.is_file():
-                reason = "generated output file is missing"
-                return self._fail_candidate(
-                    attempt,
-                    reason,
-                    candidate=candidate,
-                    error=reason,
-                )
+            proven = self._proven_output(attempt.id, candidate, process.stdout)
+            if isinstance(proven, str):
+                return self._fail_candidate(attempt, proven, candidate=candidate, error=proven)
+            matching_run, output_path = proven
 
             logger.info("Generation completed successfully: %s", output_path)
             return self._finish(

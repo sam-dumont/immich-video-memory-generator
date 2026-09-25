@@ -182,15 +182,19 @@ def judge_film(run: FilmRun, library: Library, household_path: Path) -> Verdict:
     return verdict
 
 
-NO_CLIPS = "selected no clips"
+NOTHING_WORTH = "Nothing worth a film in"
 
 
 def _judge_no_film(verdict: Verdict, run: FilmRun, video: Path | None) -> Verdict:
     """A film whose right outcome is none: nothing rendered, and the run says why."""
     if video is not None or verdict.shots:
         verdict.hard.append(f"a film was made from {len(verdict.shots)} shot(s); none was expected")
-    if NO_CLIPS not in run.log.read_text(errors="replace"):
-        verdict.hard.append("no film, but the log does not say that nothing was selected")
+    if run.exit_code != 0:
+        verdict.hard.append(
+            f"generate exited {run.exit_code} for a period with nothing worth a film"
+        )
+    if NOTHING_WORTH not in run.log.read_text(errors="replace"):
+        verdict.hard.append("no film, but the run does not say there was nothing worth one")
     verdict.metrics = {"exit_code": run.exit_code, "wall_seconds": run.wall_seconds}
     verdict.status = "FAIL" if verdict.hard else "ok (no film, as expected)"
     return verdict
