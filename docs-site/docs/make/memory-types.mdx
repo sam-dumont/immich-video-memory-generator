@@ -314,10 +314,11 @@ via special-days catalogue
 A reader (a local or hosted text model) changes three things here, and nothing else about the
 types:
 
-- `discover-days` asks the reader whether each day was an occasion, reading one text line per
-  sampled picture. No picture is sent. It finds the day with 30 photos that mattered and skips the
-  one with 400 pictures of a street performer, and keeps every occasion it finds rather than six a
-  year.
+- `discover-days` first reads each month's days together, then checks each proposed occasion
+  against that day's own picture descriptions. Both readings must agree it was an occasion;
+  a title alone does not qualify it. No picture is sent. Confirmed occasions need enough varied
+  material for a film, with no six-per-year cap. Unread days remain marked for retry. Run
+  `discover-days --rescan` to check an older catalogue with this confirmation rule.
 - An uncatalogued special day, and people and occasion films, get a title written from their facts.
   The reader invents no event name the facts do not carry.
 - A month or year gets a light polish on top of the NAS draft. What that polish does and costs

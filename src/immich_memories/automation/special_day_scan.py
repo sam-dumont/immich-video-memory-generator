@@ -186,7 +186,8 @@ def scan_year(
 
     Every run of activity off a trip is read, a month at a time and in order, and the reader
     says which were occasions (`special_day_sequence`); no bar decides what it may see. Each
-    occasion a film could be cut from is then named from its own pictures' lines. A month the
+    occasion a film could be cut from is then confirmed and named from its own pictures' lines.
+    A negative day-level verdict drops it, even when the month proposed it. A month the
     reader could not read raises `YearNotRead` so the year is scanned again, not recorded
     half-read; the months it did read are banked and cost nothing the second time.
 
@@ -195,7 +196,7 @@ def scan_year(
     titled from its own place. The film floor applies the same on both tiers.
     `close_family` maps Immich person ids to close family roles (`close_family_roles`). The
     no-model tier keeps only the `per_year` strongest (`special_day_facts`); the model tier
-    names every occasion it reads.
+    keeps every occasion the day-level reading confirms.
 
     Anything generation would throw away is removed first, so the scan judges
     the same library a memory could actually be cut from. Measured on a real
@@ -345,8 +346,8 @@ def _day_from(day: date, items: list, verdict: Any, what: str = "") -> Discovere
             prompt_version=SCAN_VERSION,
             app_version=__version__,
         )
-    # The sequence reading decided this was an occasion; the day's own lines only name it.
-    if not verdict.title:
+    # The month proposes an occasion; its own evidence must independently confirm it.
+    if not verdict.special or not verdict.title:
         return None
     # The model read the day's own timestamps and what the lines said was in
     # the frames; event_window only knows where the pictures were. Either way
