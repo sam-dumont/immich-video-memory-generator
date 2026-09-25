@@ -11,6 +11,7 @@ def test_editorial_extra_declares_each_optional_runtime_and_all_includes_it():
     extras = project["project"]["optional-dependencies"]
     assert {Requirement(value).name for value in extras["editorial"]} == {
         "onnxruntime",
+        "tokenizers",
         "huggingface-hub",
         "kaldi-native-fbank",
     }
@@ -31,6 +32,7 @@ def test_a_cpu_install_resolves_no_cuda_wheel_and_no_torch_family():
     assert not cpu & {"torch", "torchvision", "timm", "onnxruntime-gpu"}
     assert {Requirement(value).name for value in extras["editorial-cuda"]} == {
         "onnxruntime-gpu",
+        "tokenizers",
         "huggingface-hub",
         "kaldi-native-fbank",
     }
