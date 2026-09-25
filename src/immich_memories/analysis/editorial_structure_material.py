@@ -27,6 +27,7 @@ from immich_memories.analysis.editorial_person_period_facts import (
     render_person_period_facts,
 )
 from immich_memories.analysis.editorial_speech import banked_unit_regions, speech_buffer
+from immich_memories.analysis.editorial_standing_facts import face_evidence
 from immich_memories.analysis.editorial_structure_budget import (
     MIN_CARRIER_SECONDS,
     MIN_MOTION_SECONDS,
@@ -518,6 +519,7 @@ def build_material(
         # tier it answers for the pictures the captioner could not describe and for nothing
         # else. Reading "nobody is in it" off a blank line was never the right answer.
         life_without_prose=metadata_life(source.assets, source.audience_annotations),
+        face=face_evidence(source.assets),
     )
     # The story reader reads what the pictures show, not the flag/people tail of the line.
     story_lines = dict(lines)

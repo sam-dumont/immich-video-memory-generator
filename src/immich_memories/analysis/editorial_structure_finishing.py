@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
@@ -38,6 +39,8 @@ from immich_memories.analysis.editorial_structure_record import shave_content_du
 from immich_memories.analysis.editorial_unvouched_filler import (
     FillerEvidence,
     drop_unvouched_filler,
+    filler_evidence,
+    owner_vouches_for,
 )
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 
@@ -98,6 +101,7 @@ def resolve_motion_and_timing(
         lambda cs: timing.resolve(cs, source.assets).content_budget,
         MIN_CARRIER_SECONDS,
         protected=frozenset(source.owner_required_asset_ids),
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
     )
     run.cut_carriers.extend(dropped)
     run.render_timeline = timing.resolve(run.carriers, source.assets)
@@ -279,6 +283,7 @@ def trim_to_timing(
         lambda cs: source.render_timing.resolve(cs, source.assets).content_budget,
         MIN_CARRIER_SECONDS,
         protected=protected,
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
     )
     record("timing-trim", {"dropped": [c["asset_id"] for c in dropped], "kept": len(run.carriers)})
 

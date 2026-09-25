@@ -10,8 +10,9 @@ beats a guess.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from immich_memories.analysis.editorial_carrier_eligibility import NOTHING_KINDS
 
@@ -28,14 +29,24 @@ class FillerEvidence:
     protected: frozenset[str] = frozenset()
 
 
-def _has_indicator(carrier: dict, evidence: FillerEvidence) -> bool:
+def owner_vouches_for(carrier: Mapping[str, Any], evidence: FillerEvidence) -> bool:
+    """Whether the library itself says this picture matters: a star, a recorded video, a
+    person Immich knows, or an owner requirement.
+
+    A Live Photo's motion is not one: the phone records it with every still, so it says
+    nothing the photographer chose.
+    """
     asset = carrier["asset_id"]
     return (
         bool(carrier.get("favourite"))
-        or carrier.get("kind") in MOVING_KINDS
+        or carrier.get("kind") == "video"
         or asset in evidence.protected
         or evidence.known_person(asset)
     )
+
+
+def _has_indicator(carrier: dict, evidence: FillerEvidence) -> bool:
+    return owner_vouches_for(carrier, evidence) or carrier.get("kind") in MOVING_KINDS
 
 
 def drop_unvouched_filler(

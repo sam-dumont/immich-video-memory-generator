@@ -13,12 +13,15 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from immich_memories.analysis.annotation_line_fields import content_of
+from immich_memories.analysis.editorial_standing_facts import face_evidence
 from immich_memories.analysis.editorial_story_pick_contract import measured_motion
 
 LIVING = re.compile(
     r"\b(man|woman|person|people|child|children|kid|girl|boy|baby|couple|family|friend|friends|group|crowd|cyclist|cyclists|rider|runner|hiker|hikers|walker|player|someone|he|she|they|cat|dog|kitten|kittens|puppy|horse|bird|animal|selfie|portrait|face)\b",
     re.IGNORECASE,
 )
+# The living words above that name an animal: an animal has no face for Immich to find.
+ANIMAL = re.compile(r"\b(cat|dog|kitten|kittens|puppy|horse|bird|animal)\b", re.IGNORECASE)
 
 
 def metadata_life(
@@ -31,10 +34,16 @@ def metadata_life(
     with no sentence to read has no other way to reach them.
     """
 
+    face = face_evidence(assets)
+
     def shows_life(asset_id: str) -> bool:
         asset = assets.get(asset_id)
         if asset is not None and (asset.people or asset.faces):
             return True
+        if face(asset_id) is False:
+            # Immich reads this library's faces and found none here: the people head saw legs,
+            # feet or a back, not somebody.
+            return False
         record = audience_annotations.get(asset_id)
         heads = dict(record.heads) if record else {}
         return heads.get("people", "undetermined") not in {"none", "undetermined"}
@@ -50,8 +59,19 @@ def strangers_only(
     The people graph decides: a named, visible Immich person is someone the owner knows; a
     face nobody named, or people only the people head saw, are strangers. A library that
     names nobody has no strangers to set apart, so nothing reads as one there.
+
+    This reads the people head directly rather than `metadata_life`: a frame of people Immich
+    found no face for is either strangers or a body part, and either way it ranks below a
+    frame of someone the library knows.
     """
-    shows_somebody = metadata_life(assets, audience_annotations)
+
+    def shows_somebody(asset_id: str) -> bool:
+        asset = assets.get(asset_id)
+        if asset is not None and (asset.people or asset.faces):
+            return True
+        record = audience_annotations.get(asset_id)
+        heads = dict(record.heads) if record else {}
+        return heads.get("people", "undetermined") not in {"none", "undetermined"}
 
     def knows(asset: Any) -> bool:
         return any(p.name and not p.is_hidden for p in asset.people)
@@ -74,9 +94,11 @@ class UnitLines:
         lines: Mapping[str, str],
         *,
         life_without_prose: Callable[[str], bool] | None = None,
+        face: Callable[[str], bool | None] = lambda _asset_id: None,
     ) -> None:
         self._lines = lines
         self._life_without_prose = life_without_prose or (lambda _asset_id: False)
+        self._face = face
 
     def label(self, u: dict) -> str:
         media = {
@@ -99,7 +121,13 @@ class UnitLines:
 
     def shows_life(self, u) -> bool:
         prose = self.description(u)
-        shown = bool(LIVING.search(prose)) if prose else self._life_without_prose(u["asset_id"])
+        if prose:
+            # A person the prose names is alive in the picture once Immich found a face on it.
+            shown = bool(LIVING.search(prose)) and (
+                self._face(u["asset_id"]) is not False or bool(ANIMAL.search(prose))
+            )
+        else:
+            shown = self._life_without_prose(u["asset_id"])
         # Media kind is not a subject: an unmeasured Live Photo is the photograph it holds.
         return shown or measured_motion(u) or bool(u.get("favourite"))
 

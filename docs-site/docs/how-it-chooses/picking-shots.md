@@ -86,21 +86,31 @@ facts, and `StandingGate` refuses a score under 1.
 - Otherwise the heads decide: people, an activity, or an outdoor or public place scores 2; nobody,
   no activity and a private interior scores 0; an indoor scene with nobody in it scores 1.
 
-The points table (`editorial_standing_facts.py`) comes in two versions. Weights were fitted on a
-public CC BY corpus against a hosted reader's answers and rounded to half points; nothing in it came
-from anyone's library.
+The points table (`editorial_standing_facts.py`) comes in two versions, and the caption version in
+two fits: one for a library where Immich reads faces, one for a library where it recognised nobody
+at all (face recognition off, or only pets and places). Weights were fitted on a public CC BY corpus
+against a hosted reader's answers and rounded to half points; nothing in it came from anyone's
+library.
 
-| | Heads only (`no_captions`) | Heads and the ingest caption (`full`) |
-|---|---|---|
-| Refuses at | 3.0 points | 4.5 points |
-| `frame_kind` | empty room 4, accidental frame 4, lone object 3.5, body part 2.5, record 2.5, screen or document 2 | the four "nothing" kinds 2.5, record or screen 1.5, scenery -0.5 |
-| People head | two -0.5, small group -1, crowd -1.5 | two -0.5, small group or crowd -1 |
-| Flags | children -1, document +1, screen +1, `BLOWN OUT` +1.5, `SOFT` +0.5 | children -0.5, document +1, screen +1, `BLOWN OUT` +2, `SOFT` +1 |
-| Caption | | nobody alive +2; objects +1, screens and devices +1; feet or hands, food, room or furniture, plants, text or signs +0.5 each |
+| | Heads only (`no_captions`) | Heads and caption, faces read | Heads and caption, no faces |
+|---|---|---|---|
+| Refuses at | 3.0 points | 4.5 points | 4.5 points |
+| `frame_kind` | empty room 4, accidental frame 4, lone object 3.5, body part 2.5, record 2.5, screen or document 2 | the four "nothing" kinds 2, record or screen 1, scenery -1 | the four "nothing" kinds 2.5, record or screen 1.5, scenery -0.5 |
+| People head | two -0.5, small group -1, crowd -1.5 | two -0.5, small group -1, crowd -1.5 | two -0.5, small group or crowd -1 |
+| Flags | children -1, document +1, screen +1, `BLOWN OUT` +1.5, `SOFT` +0.5 | children -0.5, document +1, screen +1, `BLOWN OUT` +1.5, `SOFT` +1 | children -0.5, document +1, screen +1, `BLOWN OUT` +2, `SOFT` +1 |
+| Face | | people head saw somebody, Immich found no face +1 | |
+| Caption | | nobody alive +1.5; objects +1, screens and devices +1; feet or hands, food, room or furniture, plants, text or signs +0.5 each; goods on display (a shelf, products, a showroom) make the frame a lone object | nobody alive +2; the same words; goods on display +1 |
 
-Two short cuts sit above the table: a sharp frame the head calls a people moment is never refused,
-and neither is a picture whose caption names a person or an animal (a stuffed dog or a statue of one
-still counts as an object). A picture of your cat asleep on the sofa stands; the sofa alone does not.
+Two short cuts sit above the table. A frame the head calls a people moment is never refused when it
+is sharp, not dark, and Immich found a face on it. A picture whose caption names a person is never
+refused when Immich found a face on it, and one that names an animal never is (a stuffed dog or a
+statue of one still counts as an object). The frame head calls a pair of legs in a mirror a people
+moment too; with no face in it, it is counted like anything else. A picture of your cat asleep on the
+sofa stands; the sofa alone does not. In a library where Immich recognised nobody, an empty face list
+says nothing, and the heads and the caption are taken at their word.
+
+The same face rule decides whether a picture "shows life" for the gate: a picture with life in a
+major story is only ordered, never refused, and a person Immich found no face for no longer counts.
 
 Once a moment's frames are through the gate, the ones that stand are sorted again: favourite first,
 then the higher standing score, then the order above. A still that scores 2 can beat a video that

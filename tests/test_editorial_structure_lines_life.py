@@ -88,6 +88,51 @@ def test_a_model_tier_picture_the_captioner_left_bare_still_shows_its_named_face
     assert all(material.text.shows_life(u) for units in material.units.values() for u in units)
 
 
+# -- a person is alive in the picture once Immich found a face -------------------------------------
+
+PERSON_LINE = {
+    "a": "2023-06-04 09:00 | at a town | A person stands on a tiled floor | activity=posing"
+}
+
+
+def test_a_caption_naming_a_person_immich_found_no_face_for_shows_no_life():
+    """Legs, feet or a back: the captioner says "a person", but no face vouches for one."""
+    assert UnitLines(PERSON_LINE).shows_life(STILL) is True
+    assert UnitLines(PERSON_LINE, face=lambda _asset: True).shows_life(STILL) is True
+    assert UnitLines(PERSON_LINE, face=lambda _asset: False).shows_life(STILL) is False
+
+
+def test_an_animal_needs_no_face_to_show_life():
+    lines = {"a": "2023-06-04 09:00 | at a town | A dog sleeps on a tiled floor | activity=other"}
+    assert UnitLines(lines, face=lambda _asset: False).shows_life(STILL) is True
+
+
+def test_the_people_head_alone_shows_no_life_where_immich_reads_faces_and_found_none():
+    assets = {"a": _asset(), "b": SimpleNamespace(id="b", people=[_person()], faces=[])}
+    life = metadata_life(assets, {"a": _heads(people="one")})
+    assert UnitLines(BARE, life_without_prose=life).shows_life(STILL) is False
+
+
+def test_the_material_reads_the_faces_immich_found(tmp_path):
+    captured = source(tmp_path, seconds=12, pictures=2)
+    first, second = sorted(captured.assets)
+    named = captured.assets[first].model_copy(update={"people": [Person(id="p1", name="Someone")]})
+    lines = {
+        a: f"2023-06-04 09:00 | at a town | A person stands by a wall | x={a}"
+        for a in captured.assets
+    }
+    captured = replace(captured, assets={**captured.assets, first: named}, annotations=lines)
+    ports = StructurePlannerPorts(judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None)
+
+    material = build_material(captured, ports, read_wall(captured))
+
+    life = {
+        u["asset_id"]: material.text.shows_life(u) for us in material.units.values() for u in us
+    }
+    assert life.get(first) is True
+    assert life.get(second) is False
+
+
 def test_only_a_named_visible_person_is_someone_the_library_knows():
     from immich_memories.analysis.editorial_structure_lines import strangers_only
 
