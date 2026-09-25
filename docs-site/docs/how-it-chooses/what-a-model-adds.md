@@ -162,6 +162,5 @@ The captions under the pictures are dates and places from Immich metadata on eve
 |---|---|---|
 | `advanced.editorial.reader` | `auto` | `rules`, `model`, or `auto` (rules when `llm.model` is blank) |
 | `advanced.editorial.thin_model_layer` | `true` | `false` makes the model plan every film whole (Route C) |
-| `advanced.editorial.thin_batched_audience` | `false` | asks the audience question of 12 shots per request, in two orders |
 | `advanced.editorial.laya_audience` | `false` | a local pre-screen for the audience question ([details](./family-audience-duplicates.md#the-family-viewing-gate)) |
 | `advanced.llm.reader_concurrency` | unset | requests in flight: 1 local, 4 hosted when unset |

@@ -117,10 +117,52 @@ def test_the_tier_with_no_detectors_never_says_share():
 
 
 def test_each_tier_gets_its_own_check_and_an_unknown_one_gets_the_strictest():
-    assert audience_check_for("full") is share.check_audience
+    assert audience_check_for("full") is rule_audience
     assert audience_check_for("no_captions") is rule_audience
     assert audience_check_for("metadata_only") is withheld_audience
     assert audience_check_for("something-a-later-schema-adds") is withheld_audience
+
+
+LAYA_BATH = '{"finding": "bathing", "why": "laya hold p=0.900"}'
+LAYA_NONE = '{"finding": "none", "why": "laya hold p=0.010"}'
+
+
+def test_captions_and_laya_answer_the_activity_question_and_no_llm_is_asked():
+    check = audience_check_for("full", local_reader=True)
+    clean = evidence_of(heads=(("nsfw_marqo", "no"),), description="A family picnic.")
+
+    bath = evidence_of(heads=(("nsfw_marqo", "no"),), description="A toddler in the bathtub.")
+
+    assert check(RefusingJudge(), clean, "unit-1", activity_answer=LAYA_NONE)["verdict"] == "share"
+    held = check(RefusingJudge(), bath, "unit-1", activity_answer=LAYA_BATH)
+    assert held["verdict"] != "share" and held["finding"] == "private_activity"
+
+
+def test_what_laya_left_unanswered_falls_to_the_heads_and_rules():
+    check = audience_check_for("full", local_reader=True)
+    clean = evidence_of(heads=(("nsfw_marqo", "no"),), description="A family picnic.")
+
+    assert check(RefusingJudge(), clean, "unit-1") == rule_audience(RefusingJudge(), clean, "u")
+
+
+@pytest.mark.parametrize("local_reader", [False, True])
+def test_unanswered_caption_is_not_cleared_for_sharing_by_clean_heads(local_reader):
+    check = audience_check_for("full", strict_sharing=True, local_reader=local_reader)
+    clean = evidence_of(heads=(("nsfw_marqo", "no"),), description="A family picnic.")
+
+    result = check(RefusingJudge(), clean, "unit-1")
+
+    assert result["verdict"] == "family_only"
+    assert result["finding"] == "unread_private_activity"
+
+
+def test_a_detector_hold_is_never_sent_for_a_reading():
+    check = audience_check_for("full", local_reader=True)
+    flagged = evidence_of(heads=(("nsfw_marqo", "yes"),), description="A family picnic.")
+
+    result = check(RefusingJudge(), flagged, "unit-1", activity_answer=LAYA_NONE)
+
+    assert result["verdict"] == "family_only" and result["finding"] == "exposure_evidence"
 
 
 def test_a_shareable_export_is_refused_outright_when_nothing_looked_at_the_pictures(tmp_path):

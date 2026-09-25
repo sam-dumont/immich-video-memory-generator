@@ -8,6 +8,7 @@ import pytest
 
 from immich_memories.analysis import editorial_structure_planner as planner
 from tests.editorial_story_fixtures import AnnualStoryJudge, ControlledStoryJudge
+from tests.editorial_thin_fixtures import caption_laya
 from tests.test_editorial_duration_planner_integration import (
     asked_again,
     run,
@@ -96,7 +97,7 @@ def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions
         annotations={key: row.text for key, row in rows.items()},
     )
     judge = AnnualStoryJudge()
-    plan = run(captured, judge)
+    plan = run(captured, judge, laya=caption_laya())
     assert len(plan["carriers"]) == 3
     assert {row["asset_id"] for row in plan["carriers"]}.isdisjoint(private)
     assert plan["intent_report"]["coverage"] == {f"year-{year}": 1 for year in (2030, 2031, 2032)}
