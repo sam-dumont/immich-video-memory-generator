@@ -28,7 +28,7 @@ def _reader(*, favourite=False, description=None, ticked=(), **heads):
         },
         annotations={"a": ""},
         intent=SimpleNamespace(product="month"),
-        audience="sendable",
+        audience="shareable",
         owner_required_asset_ids=frozenset(ticked),
     )
     return RuleStructureReader(source)

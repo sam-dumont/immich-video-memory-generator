@@ -91,3 +91,14 @@ def test_the_store_knows_a_live_photo_s_clip_without_being_told(tmp_path):
         )
 
     assert holds.read(config, ["s"])["s"].can_clear
+
+
+def test_a_clearance_says_which_films_it_reaches(tmp_path):
+    config = config_at(tmp_path)
+    bank_a_head(config, "beach")
+
+    holds.clear_hold(config, "beach", via="web", level="family")
+    hold = holds.read(config, ["beach"])["beach"]
+
+    assert hold.describe() == "You cleared its hold for the family (a nudity detector flagged it)."
+    assert hold.decision == "cleared_family"

@@ -48,6 +48,13 @@ NEVER_AUTO = "never_auto"
 REVIEW = "review"
 OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
+# The owner's clearance of a picture, by the widest film it may play in. `cleared` is fine for
+# anyone, as it was before a clearance named a level.
+OWNER_CLEARANCES = {
+    OWNER_CLEARED: "share",
+    "cleared_family": "family_only",
+    "cleared_just_us": "just_us",
+}
 # Loosest to strictest. `just_us` is a private moment of the household: it plays only in a
 # film the household keeps to itself.
 VERDICTS = ("share", "family_only", "just_us", "do_not_show")
@@ -146,30 +153,43 @@ def load_detector_heads(
 def never_auto_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
     out = set()
     for asset_id, rows in flags.items():
-        if any(r.source == OWNER_SOURCE and r.flag == OWNER_CLEARED for r in rows):
+        if _owner_clearance(rows) is not None:
             continue
         if any(r.flag == NEVER_AUTO for r in rows):
             out.add(asset_id)
     return frozenset(out)
 
 
-def owner_cleared_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
-    """The pictures whose holds the owner cleared, one by one."""
-    return frozenset(
-        asset_id
-        for asset_id, rows in flags.items()
-        if any(r.source == OWNER_SOURCE and r.flag == OWNER_CLEARED for r in rows)
+def _owner_clearance(rows: Sequence[FlagRow]) -> str | None:
+    """The verdict the owner's clearance of this picture gives it, or None when there is none."""
+    return next(
+        (
+            OWNER_CLEARANCES[r.flag]
+            for r in rows
+            if r.source == OWNER_SOURCE and r.flag in OWNER_CLEARANCES
+        ),
+        None,
     )
 
 
-def owner_cleared_unit(unit: Mapping[str, Any], flags: Mapping[str, Sequence[FlagRow]]) -> bool:
-    """Whether the owner cleared every picture this unit shows, its Live clip included.
+def owner_cleared_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
+    """The pictures the owner cleared for anyone, one by one."""
+    return frozenset(
+        asset_id for asset_id, rows in flags.items() if _owner_clearance(rows) == "share"
+    )
+
+
+def owner_verdict(unit: Mapping[str, Any], flags: Mapping[str, Sequence[FlagRow]]) -> str | None:
+    """The verdict the owner gave this unit, when they cleared every picture it shows.
 
     A clearance is per picture and never inherited: a burst with one member the owner did not
-    clear, or a clip the clearance did not reach, is judged as any other unit.
+    clear, or a clip the clearance did not reach, is judged as any other unit. Members cleared
+    for different levels play at the strictest of them.
     """
-    cleared = owner_cleared_ids({m: flags.get(m, ()) for m in unit_members(unit)})
-    return bool(cleared) and set(unit_members(unit)) <= cleared
+    verdicts = [_owner_clearance(flags.get(member, ())) for member in unit_members(unit)]
+    if not verdicts or any(verdict is None for verdict in verdicts):
+        return None
+    return tighten(*verdicts)
 
 
 def unit_members(unit: Mapping[str, Any]) -> tuple[str, ...]:

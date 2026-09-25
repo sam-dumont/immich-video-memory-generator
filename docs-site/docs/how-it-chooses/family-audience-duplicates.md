@@ -101,8 +101,8 @@ empty.
 flowchart TD
   shot["a shot of the cut<br/>AudienceGate.verdict_of"] --> rule{"carrier rule?<br/>excluded_carrier_sources"}
   rule -- yes --> dns["do_not_show"]
-  rule -- no --> owner{"you cleared it?<br/>owner_cleared_unit"}
-  owner -- yes --> share["share, nothing asked"]
+  rule -- no --> owner{"you cleared it?<br/>owner_verdict"}
+  owner -- "for just us, family, anyone" --> ov["just_us, family_only or share,<br/>nothing asked"]
   owner -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
   floor --> tier{"preparation tier<br/>editorial_shareability_tiers.audience_check_for"}
   tier -- "no_captions, or no model" --> ra["rule_audience<br/>share only on clean evidence, in a shareable film"]
@@ -175,9 +175,11 @@ rules:
 
 - **Clear hold** is offered where something holds the picture: a detector flagged it or its Live
   clip, or an earlier cut banked a hold (a caption that names a private moment, most of its capture
-  run flagged). A cleared unit is `share` in `AudienceGate.verdict_of` before any check runs, on every
-  tier, and no banked hold or earlier refusal comes back. A unit is cleared only when you cleared
-  every picture it shows. A carrier rule still refuses first.
+  run flagged). You clear it for a level: just us (`just_us`), family (`family_only`, the default) or
+  anyone (`share`). A cleared unit gets that verdict in `AudienceGate.verdict_of` before any check
+  runs, on every tier, and no banked hold or earlier refusal within that level comes back. A unit is
+  cleared only when you cleared every picture it shows, at the strictest of their levels. A carrier
+  rule still refuses first.
 - **Never use** writes `never_auto`: the picture stays evidence that its moment happened and is
   never a carrier. A tick doesn't bring it back.
 - **Undo** forgets the decision, and the banked holds apply again, since clearing never deleted them.

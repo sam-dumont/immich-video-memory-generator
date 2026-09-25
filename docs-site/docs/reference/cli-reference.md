@@ -477,7 +477,7 @@ immich-memories pictures [OPTIONS]
 
 ### `pictures clear-hold`
 
-Clear this one picture's hold, after you've looked at it yourself.
+Clear this one picture's hold for a level, after you've looked at it yourself.
 
 ```bash
 immich-memories pictures clear-hold [OPTIONS]
@@ -485,6 +485,7 @@ immich-memories pictures clear-hold [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
+| `--level` | choice: `anyone` \| `family` \| `just-us` | - | The widest film it may play in; asked when not given (--yes: family) |
 | `--yes` | boolean | false | Clear it without asking |
 
 **Arguments:**

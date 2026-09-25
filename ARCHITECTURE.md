@@ -207,7 +207,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
   and only the owner clears a hold (`editorial_shareability*.py`): per picture, from the pool,
   the storyboard or `pictures clear-hold`, written by `store/owner_decisions.py` as `source='owner'`
-  flag rows. A cleared unit is `share` in `AudienceGate.verdict_of` before any check or banked hold,
+  flag rows. A cleared unit gets its clearance's level (`cleared` = share, `cleared_family` =
+  family_only, `cleared_just_us` = just_us; `owner_verdict`) in `AudienceGate.verdict_of` before any
+  check or banked hold,
   and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
   pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says

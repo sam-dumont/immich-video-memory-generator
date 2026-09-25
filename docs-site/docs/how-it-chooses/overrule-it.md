@@ -93,14 +93,15 @@ A held picture says why, in plain words, with **Clear hold** under it:
 
 <ThemedScreenshot name="pictures-pool-held" alt="A pool card: the swim picture, 'Held: a nudity detector flagged it.', then Clear hold and Never use" />
 
-**Clear hold** asks first, and shows you the picture while it does. The app never clears a hold on
-its own, and there's no bulk clear.
+**Clear hold** asks first, and shows you the picture while it does. It also asks how far the picture
+may go: **Just us** (only films for the household), **Family** (the default: family films too) or
+**Anyone** (shareable films too). The app never clears a hold on its own, and there's no bulk clear.
 
-<ThemedScreenshot name="pictures-clear-dialog" alt="The dialog: 'Clear this picture's hold?', the picture, the reason, and Cancel or Clear hold" />
+<ThemedScreenshot name="pictures-clear-dialog" alt="The dialog: 'Clear this picture's hold?', the picture, the reason, Fine for Just us, Family or Anyone, and Cancel or Clear hold" />
 
 Once cleared, the card says so, and **Undo** is there if you change your mind:
 
-<ThemedScreenshot name="pictures-pool-cleared" alt="The same card after clearing: 'You cleared its hold (a nudity detector flagged it).', Never use and Undo" />
+<ThemedScreenshot name="pictures-pool-cleared" alt="The same card after clearing for anyone: 'You cleared its hold for anyone (a nudity detector flagged it).', Never use and Undo" />
 
 **Never use** keeps a picture out of every film from the next cut on. In the pool it also unticks
 it; on the storyboard the shot says so until you cut again.
@@ -116,16 +117,19 @@ flowchart TD
   hold["a hold on the picture<br/>detector on it or its Live clip, a private moment in its caption,<br/>most of its capture run flagged"] --> you{"your decision<br/>store/owner_decisions.py"}
   you -- "none" --> stands["the hold stands"]
   stands --> fo{"which hold?"}
-  fo -- "family_only: a detector, a flagged run" --> household["plays in a household film,<br/>held back from a shared one"]
-  fo -- "do_not_show: a private moment" --> none1["leaves every film"]
-  you -- "Clear hold" --> share["share: plays in every film,<br/>nothing re-asked, on every tier"]
+  fo -- "family_only: a detector, a flagged run" --> household["plays in just-us and family films,<br/>held back from a shareable one"]
+  fo -- "just_us: a household moment" --> justus["plays only in a just-us film"]
+  fo -- "do_not_show: a record, a procedure" --> none1["leaves every film"]
+  you -- "Clear hold: fine for ..." --> level{"the level you picked"}
+  level -- "Just us" --> j2["just-us films"]
+  level -- "Family" --> f2["just-us and family films"]
+  level -- "Anyone" --> a2["every film, shareable too"]
   you -- "Never use" --> none2["no film, ever;<br/>a tick doesn't bring it back"]
-  share -. "Undo" .-> stands
+  level -. "Undo" .-> stands
   none2 -. "Undo" .-> stands
 ```
 
-Every film the app cuts today is a household film, so clearing matters most for a picture a
-caption reading refused. A carrier rule isn't a hold: a screenshot or a document is refused for what
+Nothing is re-asked once you've cleared a picture, on any tier. A carrier rule isn't a hold: a screenshot or a document is refused for what
 it is, and clearing doesn't change that.
 
 Unlike a tick, your decisions last: they're kept with the library, not the session, every tier reads
@@ -134,7 +138,7 @@ covers its clip too. The terminal does the same:
 
 ```bash
 immich-memories pictures show 3f1c9a2e-...        # what holds it, and what you decided
-immich-memories pictures clear-hold 3f1c9a2e-...  # asks first; --yes skips the question
+immich-memories pictures clear-hold 3f1c9a2e-... --level family  # asks first; --yes skips it
 immich-memories pictures never-use 3f1c9a2e-...
 immich-memories pictures undo 3f1c9a2e-...
 immich-memories pictures list                     # every decision you've made

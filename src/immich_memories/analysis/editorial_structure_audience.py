@@ -271,17 +271,18 @@ class AudienceGate:
             }
             self.keep_hold(u["asset_id"], self.verdicts[u["asset_id"]])
             return "do_not_show"
-        if _share.owner_cleared_unit(u, self._flag_rows):
-            # The owner looked at this picture and cleared it. Nothing is asked and nothing is
-            # banked: forgetting the clearance brings every banked hold straight back.
+        owned = _share.owner_verdict(u, self._flag_rows)
+        if owned is not None:
+            # The owner looked at this picture and cleared it for a level. Nothing is asked and
+            # nothing is banked: forgetting the clearance brings every banked hold straight back.
             self.verdicts[u["asset_id"]] = {
-                "verdict": "share",
+                "verdict": owned,
                 "finding": "owner_cleared",
                 "source": _share.OWNER_SOURCE,
                 "why": "you cleared this picture's hold",
                 "evidence_key": "",
             }
-            return "share"
+            return owned
         standing = self._held_already(evidence)
         if standing is not None:
             record = {
@@ -336,7 +337,7 @@ class AudienceGate:
             observed_reason, evidence = self._evidence(u)
             if (
                 observed_reason
-                or _share.owner_cleared_unit(u, self._flag_rows)
+                or _share.owner_verdict(u, self._flag_rows) is not None
                 or self._held_already(evidence)
             ):
                 continue

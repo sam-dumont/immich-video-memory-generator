@@ -261,6 +261,7 @@ def test_capture_picture_decisions(
         expect(dialog.locator("img")).to_be_visible()
         page.wait_for_timeout(600)
         _save_part(page, dialog, d, _name("pictures-clear-dialog", theme))
+        dialog.get_by_role("radio", name="Anyone: shareable films too").click()
         dialog.get_by_role("button", name="Clear hold").click()
         expect(card.get_by_text(re.compile("^You cleared its hold"))).to_be_visible()
         page.wait_for_timeout(3500)

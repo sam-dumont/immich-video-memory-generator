@@ -22,22 +22,23 @@ Held: a nudity detector flagged it.
 
 $ immich-memories pictures clear-hold trip-swim-02
 Held: a nudity detector flagged it.
-Once cleared, every film may use it, and nothing the app reads later puts the
-hold back. `pictures undo` does.
+Fine for which films (anyone, family, just-us) [family]: anyone
+Once cleared, every film up to that level may use it, and nothing the app reads
+later puts the hold back. `pictures undo` does.
 Clear the hold on trip-swim-02? [y/N]: y
-✓ Cleared: trip-swim-02 can play in the next cut.
+✓ Cleared for anyone: trip-swim-02 can play in the next cut.
 
 $ immich-memories pictures never-use home-rain-window-01
 ✓ home-rain-window-01 won't be in any film from the next cut on.
 
 $ immich-memories pictures list
 home-rain-window-01  never use
-trip-swim-02  hold cleared
+trip-swim-02  hold cleared for anyone
 ```
 
 The same picture in the media pool, after that `clear-hold`:
 
-<ThemedScreenshot name="pictures-pool-cleared" alt="The pool card of the cleared picture: 'You cleared its hold (a nudity detector flagged it).'" />
+<ThemedScreenshot name="pictures-pool-cleared" alt="The pool card of the cleared picture: 'You cleared its hold for anyone (a nudity detector flagged it).'" />
 
 ## pictures show
 
@@ -55,12 +56,14 @@ decided, if anything.
 ## pictures clear-hold
 
 ```bash
-immich-memories pictures clear-hold 3f1c9a2e-...
-immich-memories pictures clear-hold 3f1c9a2e-... --yes
+immich-memories pictures clear-hold 3f1c9a2e-...                        # asks the level, then asks to clear
+immich-memories pictures clear-hold 3f1c9a2e-... --level just-us --yes
 ```
 
-Says what holds it and asks before clearing. A cleared picture is `share` for the family-viewing gate,
-with nothing asked, and no banked hold comes back. It refuses a picture nothing holds, and doesn't
+Says what holds it, asks how far it may go (`--level anyone`, `family` or `just-us`; `family` when
+you just press enter, or with `--yes` and no `--level`) and asks before clearing. The gate then gives
+the picture that level's verdict (`share`, `family_only` or `just_us`) with nothing asked, and no
+banked hold within that level comes back. It refuses a picture nothing holds, and doesn't
 lift a carrier rule (a screenshot stays a screenshot). One picture per call: there's no bulk clear.
 
 ## pictures never-use

@@ -299,3 +299,83 @@ def test_the_cli_run_carries_its_level_to_the_editor():
     )
 
     assert context.audience == "just_us"
+
+
+# Clearing a hold for a level (#1325, point 4).
+
+from immich_memories.store import owner_decisions as owner  # noqa: E402
+
+HELD = (("nsfw_marqo", "yes"),)
+
+
+def owner_gate(tmp_path, store, level, caption="A person on a beach.", finding="none"):
+    return AudienceGate(
+        Reader(finding),
+        audience=level,
+        annotations={"solo": Annotation(caption, HELD)},
+        flag_rows=share.load_flags(store, ["solo"]),
+        lines={"solo": caption},
+        bank_path=tmp_path / f"{level}-shareability.private.json",
+        library=AudienceBank(tmp_path / "audience.private.json", answerer="full|reader"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("cleared_for", "verdict"),
+    [("anyone", "share"), ("family", "family_only"), ("just-us", "just_us")],
+)
+def test_a_hold_cleared_for_a_level_plays_up_to_that_level(tmp_path, cleared_for, verdict):
+    store = tmp_path / "annotations.sqlite"
+    owner.decide(store, "solo", owner.clearance_for(cleared_for), via="cli")
+
+    plays = {
+        level
+        for level in share.LEVELS
+        if share.allowed(owner_gate(tmp_path, store, level).verdict_of(UNIT), level)
+    }
+
+    assert owner_gate(tmp_path, store, "family").verdict_of(UNIT) == verdict
+    assert plays == {level for level in share.LEVELS if share.allowed(verdict, level)}
+
+
+def test_clearing_for_the_family_lifts_a_caption_hold_the_reader_keeps_casting(tmp_path):
+    store = tmp_path / "annotations.sqlite"
+    owner.decide(store, "solo", owner.clearance_for("family"), via="web")
+
+    verdict = owner_gate(tmp_path, store, "family", BATH, "bathing").verdict_of(UNIT)
+
+    assert verdict == "family_only"
+
+
+def test_a_burst_the_owner_cleared_at_two_levels_takes_the_stricter(tmp_path):
+    store = tmp_path / "annotations.sqlite"
+    owner.decide(store, "a", owner.clearance_for("anyone"), via="cli")
+    owner.decide(store, "b", owner.clearance_for("just-us"), via="cli")
+    flags = share.load_flags(store, ["a", "b"])
+
+    assert share.owner_verdict({"asset_id": "a", "members": ["a", "b"]}, flags) == "just_us"
+    assert share.owner_verdict({"asset_id": "a", "members": ["a", "c"]}, flags) is None
+
+
+def test_the_no_model_draft_lifts_a_banked_refusal_only_where_the_clearance_reaches(tmp_path):
+    from immich_memories.analysis.editorial_rule_banked_facts import open_banked_facts
+    from immich_memories.analysis.editorial_structure_audience import AUDIENCE_BANK_NAME
+
+    store = tmp_path / "annotations.sqlite"
+    bank_dir = tmp_path / "structure-banks" / "case"
+    AudienceBank(bank_dir.parent / AUDIENCE_BANK_NAME, answerer="full|reader").hold(
+        "held", {"verdict": "family_only", "finding": "exposure_evidence", "policy": "heads"}
+    )
+    owner.decide(store, "held", owner.clearance_for("family"), via="cli")
+
+    def refused(level):
+        return open_banked_facts(
+            bank_dir=bank_dir,
+            attempts_dir=None,
+            store_path=store,
+            audience=level,
+            episode_cards={},
+        ).refused_for_audience("held")
+
+    assert not refused("family")
+    assert refused("shareable")
