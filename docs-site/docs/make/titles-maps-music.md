@@ -272,10 +272,12 @@ memory needs: [Generated music](../better/music.md).
 ```bash
 immich-memories music search --mood happy --genre acoustic --limit 5
 immich-memories music add compilation.mp4 output.mp4 --music ~/Music/track.mp3 --fade-in 3 --fade-out 5
-immich-memories music analyze ~/Videos/vacation.mp4
+immich-memories music add compilation.mp4 output.mp4 --mood nostalgic
 ```
 
 `music search` reads `audio.local_music_dir` (`~/Music/Memories`). `music add` mixes a track under a video you
-already have, with the same ducking. `music analyze` is the one command here that sends frames: it extracts
-keyframes and asks your configured vision model what the video sounds like. Every flag is in the
+already have, with the same ducking. Without `--music` it picks a track from that folder by `--mood`, and by
+`calm` when you give none. A standalone video has no cut text to read, and no command here sends a frame to a
+model: pictures are read once, at ingest. The old `music analyze` and `music add --analyze-frames` did, and are
+gone. Every flag is in the
 [CLI reference](../reference/cli-reference.md#music).

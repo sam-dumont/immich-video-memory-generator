@@ -2,7 +2,6 @@
 
 import json
 import sqlite3
-import subprocess
 from contextlib import closing
 from unittest.mock import patch
 
@@ -175,51 +174,6 @@ async def test_standalone_mixer_does_not_contact_a_vision_model_by_default(tmp_p
     ):
         await AudioMixer(cache_dir=tmp_path / "music").add_music_to_video(video, output)
     assert output.read_bytes() == video.read_bytes()
-
-
-@pytest.mark.asyncio
-async def test_explicit_frame_opt_in_uses_the_configured_provider(tmp_path):
-    from immich_memories.audio.mixer_class import AudioMixer
-
-    video = tmp_path / "input.mp4"
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=blue:s=32x32:r=2:d=1",
-            "-pix_fmt",
-            "yuv420p",
-            str(video),
-        ],
-        check=True,
-        capture_output=True,
-    )
-    response = httpx.Response(
-        200,
-        request=httpx.Request("POST", "http://vision.invalid"),
-        json={
-            "choices": [
-                {"message": {"content": '{"primary_mood":"happy"}'}, "finish_reason": "stop"}
-            ]
-        },
-    )
-    # WHY: FFmpeg samples a real film; only the external vision service is replaced.
-    with patch("httpx.AsyncClient.post", return_value=response) as post:
-        await AudioMixer(cache_dir=tmp_path / "music").add_music_to_video(
-            video,
-            tmp_path / "output.mp4",
-            analyze_frames=True,
-            llm_config=LLMConfig(base_url="http://vision.invalid/v1", model="vision-model"),
-        )
-    assert post.call_args.args[0] == "http://vision.invalid/v1/chat/completions"
-    payload = post.call_args.kwargs["json"]
-    assert payload["model"] == "vision-model"
-    assert "image_url" in json.dumps(payload["messages"])
 
 
 @pytest.mark.asyncio

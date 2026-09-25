@@ -365,7 +365,8 @@ immich-memories music [OPTIONS]
 
 Add background music to a video with automatic ducking.
 
-If no music file is provided, automatically selects music based on video mood.
+Without a music file, picks a track from your library by --mood (calm when
+absent). No frame of the video is sent to any model.
 Music volume is automatically lowered when speech/sounds are detected.
 
 ```bash
@@ -380,27 +381,10 @@ immich-memories music add [OPTIONS]
 | `--volume`, `-v` | float | -6.0 | Music volume in dB |
 | `--fade-in` | float | 2.0 | Fade in duration in seconds |
 | `--fade-out` | float | 3.0 | Fade out duration in seconds |
-| `--analyze-frames` | boolean | false | Send video frames to the configured LLM for mood when --mood is absent |
 
 **Arguments:**
 - `video_path` (path)
 - `output_path` (path)
-
-### `music analyze`
-
-Analyze a video to determine its mood for music selection.
-
-```bash
-immich-memories music analyze [OPTIONS]
-```
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--ollama-url` | text | - | Ollama API URL (default: from config) |
-| `--ollama-model` | text | - | Ollama vision model (default: from config) |
-
-**Arguments:**
-- `video_path` (path)
 
 ### `music search`
 

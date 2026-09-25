@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,10 +13,6 @@ from immich_memories.audio.mixer import (
     MixConfig,
 )
 from immich_memories.audio.mood_analyzer import VideoMood
-from immich_memories.audio.mood_analyzer_backends import (
-    OllamaMoodAnalyzer,
-    OpenAICompatibleMoodAnalyzer,
-)
 from immich_memories.audio.music_sources import (
     LocalMusicSource,
     MusicTrack,
@@ -132,101 +128,6 @@ class TestLocalMusicSource:
             assert result == test_file
 
 
-class TestOllamaMoodAnalyzer:
-    """Tests for OllamaMoodAnalyzer class."""
-
-    def test_initialization(self):
-        """Test analyzer initialization."""
-        analyzer = OllamaMoodAnalyzer(model="llava", base_url="http://localhost:11434")
-        assert analyzer.model == "llava"
-        assert analyzer.base_url == "http://localhost:11434"
-
-    def test_base_url_trailing_slash(self):
-        """Test trailing slash is removed from URL."""
-        analyzer = OllamaMoodAnalyzer(base_url="http://localhost:11434/")
-        assert analyzer.base_url == "http://localhost:11434"
-
-    @pytest.mark.asyncio
-    async def test_is_available_mock(self):
-        """Test availability check with mock."""
-        analyzer = OllamaMoodAnalyzer()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-
-        mock_client = MagicMock()
-        mock_client.is_closed = False
-        mock_client.get = AsyncMock(return_value=mock_response)
-        analyzer._client = mock_client
-
-        available = await analyzer.is_available()
-
-        assert available
-
-    def test_parse_mood_response_valid(self):
-        """Test parsing valid mood response."""
-        analyzer = OllamaMoodAnalyzer()
-        response = """
-        {
-            "primary_mood": "happy",
-            "energy_level": "high",
-            "tempo_suggestion": "fast",
-            "genre_suggestions": ["pop", "electronic"],
-            "confidence": 0.9
-        }
-        """
-        mood = analyzer._parse_mood_response(response)
-        assert mood.primary_mood == "happy"
-        assert mood.energy_level == "high"
-        assert mood.tempo_suggestion == "fast"
-        assert mood.confidence == 0.9
-
-    def test_parse_mood_response_markdown(self):
-        """Test parsing response with markdown code block."""
-        analyzer = OllamaMoodAnalyzer()
-        response = """
-        ```json
-        {
-            "primary_mood": "calm",
-            "energy_level": "low"
-        }
-        ```
-        """
-        mood = analyzer._parse_mood_response(response)
-        assert mood.primary_mood == "calm"
-
-    def test_parse_mood_response_invalid(self):
-        """Test parsing invalid response returns default."""
-        analyzer = OllamaMoodAnalyzer()
-        mood = analyzer._parse_mood_response("not valid json")
-        assert mood.primary_mood == "calm"
-        assert mood.confidence == 0.3
-
-
-class TestOpenAICompatibleMoodAnalyzer:
-    """Tests for OpenAICompatibleMoodAnalyzer class."""
-
-    def test_initialization(self):
-        """Test analyzer initialization."""
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="test_key", model="gpt-4o-mini")
-        assert analyzer.api_key == "test_key"
-        assert analyzer.model == "gpt-4o-mini"
-
-    def test_base_url_trailing_slash(self):
-        """Test trailing slash is removed from URL."""
-        analyzer = OpenAICompatibleMoodAnalyzer(
-            api_key="key", base_url="https://api.openai.com/v1/"
-        )
-        assert analyzer.base_url == "https://api.openai.com/v1"
-
-    def test_parse_mood_response_inherits(self):
-        """Test that parse_mood_response works from base class."""
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="test")
-        response = '{"primary_mood": "energetic"}'
-        mood = analyzer._parse_mood_response(response)
-        assert mood.primary_mood == "energetic"
-
-
 class TestMusicTrackEdgeCases:
     """Edge cases for MusicTrack."""
 
@@ -240,32 +141,6 @@ class TestMusicTrackEdgeCases:
             url="https://example.com/song.mp3",
         )
         assert track.duration_seconds == 0.0
-
-
-class TestVideoMoodEdgeCases:
-    """Edge cases for VideoMood."""
-
-    def test_confidence_range(self):
-        """Default confidence is between 0 and 1."""
-        mood = VideoMood(primary_mood="calm")
-        assert 0 <= mood.confidence <= 1
-
-
-class TestOllamaMoodAnalyzerEdgeCases:
-    """Edge cases for mood response parsing."""
-
-    def test_parse_empty_json_object(self):
-        """Empty JSON object returns defaults."""
-        analyzer = OllamaMoodAnalyzer()
-        mood = analyzer._parse_mood_response("{}")
-        assert mood.primary_mood != ""
-
-    def test_parse_partial_json(self):
-        """JSON with only some fields fills defaults for the rest."""
-        analyzer = OllamaMoodAnalyzer()
-        mood = analyzer._parse_mood_response('{"primary_mood": "happy"}')
-        assert mood.primary_mood == "happy"
-        assert mood.energy_level == "medium"  # default
 
 
 class TestBundledMoodFolders:
@@ -356,7 +231,6 @@ class TestMusicMuteWindows:
 
 class TestMuteWindowWiring:
     def test_apply_music_file_hands_windows_to_the_mixer(self, tmp_path):
-        from unittest.mock import MagicMock
 
         from immich_memories.generate_music import apply_music_file
 

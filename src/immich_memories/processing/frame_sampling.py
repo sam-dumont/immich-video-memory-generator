@@ -1,13 +1,12 @@
 """Sampling still frames from a video: one implementation, cached.
 
-Written three times before this: the mood analyser at scale=512, the title
-colour sampler at scale=320, and the analysis preview builder. The first two
-are the same algorithm — probe the duration, take evenly spaced timestamps,
-run one ffmpeg per frame — and neither kept the result, so every run decoded
-the same video again.
+Written three times before this: a mood analyser at scale=512 (gone: music mood
+is read from text), the title colour sampler at scale=320, and the analysis
+preview builder. The first two were the same algorithm (probe the duration, take
+evenly spaced timestamps, run one ffmpeg per frame) and neither kept the result,
+so every run decoded the same video again.
 
-The width genuinely differs by caller: a colour palette does not need what a
-vision model needs. That is a parameter, not a reason to write it twice.
+The width differs by caller. That is a parameter, not a reason to write it twice.
 
 Frames are cached under a key covering everything that changes the pixels:
 the video's identity and size, how many frames, and how wide. A cache that

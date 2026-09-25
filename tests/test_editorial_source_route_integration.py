@@ -18,34 +18,10 @@ from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
 from immich_memories.config_loader import Config
 from tests.editorial_story_fixtures import ControlledStoryJudge
+from tests.no_pictures import refuse_pictures
 from tests.test_editorial_duration_planner_integration import semantic_plan
 from tests.test_editorial_runtime import _create_annotation_store, _window
 from tests.test_editorial_source_route import photo
-
-
-def refuse_pictures(monkeypatch) -> list[int]:
-    """Every model request the run makes passes this one dispatch; a picture in one fails.
-
-    Pictures are read once, at ingest. A film-time request carrying one is a defect whatever
-    stage sent it, so the guard sits where every stage's request meets the wire. The list
-    holds how many pictures each request carried.
-    """
-    from immich_memories.analysis import llm_query
-
-    sent: list[int] = []
-    real = llm_query._dispatch
-
-    async def dispatch(prompt, llm_config, temperature, max_tokens, timeout, thinking, images, *a):
-        sent.append(len(images))
-        if images:
-            pytest.fail(f"a film-time request sent {len(images)} picture(s) to the reader")
-        return await real(
-            prompt, llm_config, temperature, max_tokens, timeout, thinking, images, *a
-        )
-
-    # WHY: the provider wire; this sees what would leave the machine and refuses pictures.
-    monkeypatch.setattr(llm_query, "_dispatch", dispatch)
-    return sent
 
 
 def setup_runtime(

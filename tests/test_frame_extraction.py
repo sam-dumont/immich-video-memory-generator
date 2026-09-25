@@ -172,34 +172,6 @@ def test_a_frame_that_will_not_extract_is_left_out(tmp_path) -> None:
     assert sample_frames(missing, count=2, width=320, cache_dir=tmp_path / "c") == []
 
 
-def test_the_mood_analyser_asks_for_vision_sized_frames(tmp_path) -> None:
-    """512px, and through the shared sampler rather than its own ffmpeg loop."""
-    from immich_memories.audio.mood_analyzer import MoodAnalyzer
-
-    class _Concrete(MoodAnalyzer):
-        """extract_keyframes is concrete on the base; the two abstracts are not."""
-
-        async def analyze_video(self, *_a, **_k):  # pragma: no cover - not exercised
-            raise NotImplementedError
-
-        async def analyze_frames(self, *_a, **_k):  # pragma: no cover - not exercised
-            raise NotImplementedError
-
-    video = tmp_path / "clip.mp4"
-    video.write_bytes(b"pretend")
-    seen: dict = {}
-
-    def _fake(_video, *, count, width, cache_dir):
-        seen.update(count=count, width=width)
-        return [tmp_path / "f0.jpg"]
-
-    # WHY: frame extraction is the ffmpeg boundary; the ask is what is tested.
-    with patch("immich_memories.processing.frame_sampling.sample_frames", new=_fake):
-        _Concrete().extract_keyframes(video, num_frames=4, output_dir=tmp_path)
-
-    assert seen == {"count": 4, "width": 512}
-
-
 def test_the_palette_sampler_asks_for_smaller_frames(tmp_path) -> None:
     """320px: a colour histogram does not need what a vision model needs."""
     from PIL import Image

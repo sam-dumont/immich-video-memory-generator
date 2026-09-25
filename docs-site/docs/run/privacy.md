@@ -92,11 +92,11 @@ reader, when you add one, reads that same text.
 A film you share outside the family also leaves out every picture a detector or an exposure flag
 marked, whatever the reader says about it (`advanced.editorial.strict_sharing`, on by default).
 
-Two features can reach a picture seat without being the editor, and both prefer text. Music
-selection reads the cut's text and falls back to defaults rather than send pictures (the standalone
-`music add --analyze-frames` and `music analyze` do send sampled frames). A special-day scan uses
-prepared captions for a day with at least 20 described pictures over 6 hours of the clock, and
-falls back to sampled frames below that.
+Two features ask a reader something besides the editor, and both send text only. Music
+selection reads the cut's text (thesis, story titles, ingest captions) and falls back to the clips'
+own mood, then `calm`; `music add` on a standalone video takes `--mood` or plays calm, and sends
+nothing. A special-day scan uses prepared captions for a day with at least 20 described pictures
+over 6 hours of the clock, and the day's recorded facts below that.
 
 ## Fonts
 
