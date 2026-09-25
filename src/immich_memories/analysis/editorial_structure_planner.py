@@ -482,6 +482,7 @@ def _select(
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
         gate=gate,
         frame_quality=frame_quality_of(source),
+        requested_seconds=source.case.target_seconds,
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")

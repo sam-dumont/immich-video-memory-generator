@@ -151,8 +151,8 @@ server on your own machine or network and 4 for a public host.
   trips only with `--llm-title`, and `--no-llm-title` keeps the template. With no model the template writes it.
 - **The music's mood**, from the film's story titles and captions, in one text call
   (`audio/text_mood.mood_for_cut`). With no model the clips' own mood decides, or "calm".
-- **The thesis**, the period's account in up to 150 words. It steers the vote; the storyboard shows
-  one when the model planned the whole film (Route C).
+- **The thesis**, the period's account in up to 150 words. It steers the vote, and the storyboard and
+  `runs story` show it on every film the model polished or planned.
 
 The captions under the pictures are dates and places from Immich metadata on every tier.
 

@@ -6,6 +6,10 @@ from uuid import UUID
 
 from immich_memories.security import sanitize_error_message, write_secret_file
 
+# What `generate` prints, and exits 0 on, when a period was read and holds nothing worth a
+# film. Automation reads a child's transcript for it.
+NOTHING_WORTH_A_FILM = "Nothing worth a film"
+
 
 def output_log_path(cache_dir: Path, attempt_id: str) -> Path:
     """Locate an automation transcript by its durable attempt identity."""

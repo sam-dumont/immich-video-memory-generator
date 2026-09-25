@@ -183,7 +183,8 @@ faces Immich found and then the sharper, then the earlier one. A moving frame is
 repeat of a still. A scene repeat is less certain than a hash repeat, so it leaves only when a
 replacement takes its slot or the film still reaches 85 % of its length without it. Two starred
 twins are the exception: the second leaves either way, and its slot goes to a refill when there is
-one. The record names each such pair under `collapsed_favourites`. Every
+one. The one limit: a twin never leaves unreplaced when the film would then hold fewer than 3 shots
+or under 20 % of its length, the point where it gives up and makes no film. The record names each such pair under `collapsed_favourites`. Every
 replacement passes the family-viewing gate first. The `final_duplicate_review` record lists each
 removal, the distance or cosine behind it, and who kept the slot.
 
