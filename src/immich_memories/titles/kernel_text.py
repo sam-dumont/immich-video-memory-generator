@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from immich_memories.titles.colors import ceil_white_for_hdr
 from immich_memories.titles.font_chain import title_font
+from immich_memories.titles.line_breaking import fits, wrap_lines
 from immich_memories.titles.safe_zones import safe_text_width
 from immich_memories.titles.text_layout import (
     TextStack,
@@ -58,39 +59,6 @@ _PAIR_SCALE = 0.65
 def _single_line(_text: str, _font_size: int) -> int:
     """Line count on the SDF path, which scales a string to fit instead of wrapping it."""
     return 1
-
-
-def _split_text_for_rendering(draw, text: str, font, max_width: float) -> list[str]:
-    """Split text into lines using pixel widths, preferring comma boundaries."""
-
-    def _measure(t: str) -> int:
-        bbox = draw.textbbox((0, 0), t, font=font)
-        return bbox[2] - bbox[0]
-
-    if _measure(text) <= max_width:
-        return [text]
-
-    # Try comma split first
-    if "," in text:
-        parts = [p.strip() for p in text.split(",", 1)]
-        parts[0] += ","
-        if all(_measure(p) <= max_width for p in parts):
-            return parts
-
-    # Word-wrap fallback
-    words = text.split()
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        test = f"{current} {word}".strip()
-        if _measure(test) > max_width and current:
-            lines.append(current)
-            current = word
-        else:
-            current = test
-    if current:
-        lines.append(current)
-    return lines or [text]
 
 
 class TextConfig(Protocol):
@@ -237,6 +205,7 @@ class TitleTextRenderer:
         subtitle: str | None,
         count_lines: Callable[[str, int], int],
         sizes: tuple[int, int] | None = None,
+        fits_frame: Callable[[str, int], bool] | None = None,
     ) -> TextStack:
         """Stack the two blocks for the line counts this drawing path produces."""
         title_size, subtitle_size = sizes or self._base_sizes(subtitle)
@@ -248,6 +217,7 @@ class TitleTextRenderer:
             frame_height=self.config.height,
             count_lines=count_lines,
             gap_ratio=self.config.title_subtitle_gap_ratio,
+            fits=fits_frame,
         )
 
     def _compute_animation(self, t: float, progress: float, is_subtitle: bool = False) -> dict:
@@ -453,13 +423,18 @@ class TitleTextRenderer:
 
     def _pil_line_counter(self) -> Callable[[str, int], int]:
         """How many lines a string wraps to, measured the way the layers draw it."""
-        draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
         safe_width = safe_text_width(self.config.width, self.config.height)
 
         def count(text: str, font_size: int) -> int:
-            return len(_split_text_for_rendering(draw, text, self._font(font_size), safe_width))
+            return len(wrap_lines(text, self._font(font_size), safe_width))
 
         return count
+
+    def _pil_fits(self, text: str, font_size: int) -> bool:
+        """Whether every wrapped line of `text` stays inside the frame's safe width."""
+        safe_width = safe_text_width(self.config.width, self.config.height)
+        font = self._font(font_size)
+        return fits(wrap_lines(text, font, safe_width), font, safe_width)
 
     def _render_text_layer(
         self,
@@ -500,7 +475,7 @@ class TitleTextRenderer:
         color: tuple[int, int, int, int],
     ) -> None:
         """Word-wrap text with comma-aware splitting and draw centered."""
-        lines = _split_text_for_rendering(draw, text, font, max_width)
+        lines = wrap_lines(text, font, max_width)
         line_height = int(font_size * 1.2)
         total_h = line_height * len(lines)
         start_y = (height - total_h) // 2
@@ -520,7 +495,7 @@ class TitleTextRenderer:
         never a silent collision.
         """
         count_lines = self._pil_line_counter()
-        stack = self._stack(title, subtitle, count_lines)
+        stack = self._stack(title, subtitle, count_lines, fits_frame=self._pil_fits)
         plan = self._raster(title, subtitle, stack)
         for _ in range(_OVERLAP_ATTEMPTS):
             if not text_blocks_overlap(
@@ -535,7 +510,7 @@ class TitleTextRenderer:
             smaller = shrink_sizes(stack.title_size, stack.subtitle_size, self.config.height)
             if smaller is None:
                 return plan
-            stack = self._stack(title, subtitle, count_lines, smaller)
+            stack = self._stack(title, subtitle, count_lines, smaller, self._pil_fits)
             plan = self._raster(title, subtitle, stack)
         return plan
 

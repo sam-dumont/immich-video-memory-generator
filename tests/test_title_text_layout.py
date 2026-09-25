@@ -7,6 +7,7 @@ three, and the constant shift the compositor used put them on top of each other.
 
 from typing import Any, cast
 
+import numpy as np
 import pytest
 
 from immich_memories.titles.kernel_text import TitleTextRenderer
@@ -128,3 +129,32 @@ def test_the_gate_detects_an_overlap() -> None:
         0.0,
         plan.stack.title_size * 1.3,
     )
+
+
+PORTRAIT_1080 = {"width": 1080, "height": 1920}
+
+
+@pytest.mark.usefixtures("pinned_font")
+def test_a_long_trip_title_in_portrait_stays_within_three_lines() -> None:
+    title = "DEUX SEMAINES DANS L'UTAH ET AU NEVADA, ÉTATS-UNIS, ÉTÉ 2025"
+    renderer = TitleTextRenderer(
+        KernelTitleConfig(**PORTRAIT_1080, title_size_ratio=STYLE_TITLE_RATIO), cast(Any, None)
+    )
+
+    plan = renderer.plan_text_layers(title, None)
+
+    assert plan.stack.title_lines <= 3
+
+
+@pytest.mark.usefixtures("pinned_font")
+def test_a_word_wider_than_the_frame_shrinks_until_it_is_inside() -> None:
+    renderer = TitleTextRenderer(
+        KernelTitleConfig(width=1920, height=1080, title_size_ratio=STYLE_TITLE_RATIO),
+        cast(Any, None),
+    )
+
+    plan = renderer.plan_text_layers("LLANFAIRPWLLGWYNGYLLGOGERYCHWYRNDROBWLL", None)
+
+    inked_columns = np.nonzero(plan.title_layer[..., 3].max(axis=0) > 0)[0]
+    assert inked_columns.min() > 0
+    assert inked_columns.max() < 1919
