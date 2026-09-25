@@ -285,3 +285,18 @@ def test_a_starred_twin_s_slot_goes_to_another_moment_not_to_a_frame_of_its_own(
     survivors, _ = _review(cut, frame_quality=QUALITY.get, replacements_for=lambda _c: list(offers))
 
     assert _ids(survivors) == ["path-again", "kitchen"]
+
+
+def test_a_starred_twin_s_slot_may_go_to_another_starred_frame_of_its_own_moment():
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("path-again", day=5, favourite=True),
+    ]
+    offers = [
+        ("moment", _carrier("beach", day=4, favourite=True, kind="video")),
+        ("story", _carrier("kitchen", day=6)),
+    ]
+
+    survivors, _ = _review(cut, frame_quality=QUALITY.get, replacements_for=lambda _c: list(offers))
+
+    assert _ids(survivors) == ["beach", "path-again"]

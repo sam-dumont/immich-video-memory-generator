@@ -341,8 +341,8 @@ class _Cut:
     def _offers(self, offers, *, twin: bool, alone: set[str]):
         if twin:
             # Its moment is shown by the keeper: a plain frame of it would ship the moment
-            # without its favourite, so the slot goes to a moment the film has not shown.
-            offers = [o for o in offers if o[0] != "moment"]
+            # without its favourite, so only another starred frame of it may take the slot.
+            offers = [o for o in offers if o[0] != "moment" or o[1].get("favourite")]
         if alone:
             offers = [o for o in offers if alone <= set(self.family_of(str(o[1].get("asset_id"))))]
         return offers
