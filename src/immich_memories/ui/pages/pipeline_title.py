@@ -30,38 +30,16 @@ _TEMPLATE_SOURCES: dict[str | None, TitleSource] = {
     MemoryType.TRIP: TitleSource.PLACE,
 }
 
-# Month names for template titles (avoids locale dependency)
-_MONTH_NAMES = [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
-
-# Season detection from month ranges
-_SEASON_MAP = {
-    (12, 1, 2): "Winter",
-    (3, 4, 5): "Spring",
-    (6, 7, 8): "Summer",
-    (9, 10, 11): "Fall",
-}
+# The season a northern-hemisphere span starts in, when the preset did not say.
+_SEASON_OF_MONTH = dict.fromkeys((12, 1, 2), "winter") | dict.fromkeys((3, 4, 5), "spring")
+_SEASON_OF_MONTH |= dict.fromkeys((6, 7, 8), "summer") | dict.fromkeys((9, 10, 11), "autumn")
 
 
-def _detect_season(start_month: int) -> str:
-    """Return season name from start month."""
-    for months, name in _SEASON_MAP.items():
-        if start_month in months:
-            return name
-    return "Memories"
+def _month_year(day: date, locale: str) -> str:
+    from immich_memories.i18n import month_name_forms
+    from immich_memories.titles.text_builder import title_pattern
+
+    return title_pattern("month_year", locale, year=day.year, **month_name_forms(day.month, locale))
 
 
 def _occasion_title(
@@ -69,6 +47,7 @@ def _occasion_title(
     start: date,
     end: date,
     preset_params: dict | None,
+    locale: str,
 ) -> tuple[str, str | None] | None:
     """Titles that name an occasion rather than the span it happens to cover.
 
@@ -76,14 +55,18 @@ def _occasion_title(
     a few hours; naming either by its ends describes none of what happened.
     Returns None for the types whose span *is* the answer.
     """
+    from immich_memories.titles.text_builder import SelectionType, generate_title, title_pattern
+
     if memory_type == "on_this_day":
-        return f"On This Day: {_MONTH_NAMES[start.month]} {start.day}", None
+        info = generate_title(SelectionType.ON_THIS_DAY, start_date=start, locale=locale)
+        return info.main_title, info.subtitle
 
     if memory_type == "holiday":
         from immich_memories.memory_types.factory import holiday_label
 
         holiday = (preset_params or {}).get("holiday", "christmas")
-        return holiday_label(holiday, end.year), "Through the Years"
+        subtitle = title_pattern("on_this_day_subtitle", locale)
+        return holiday_label(holiday, end.year, locale), subtitle
 
     if memory_type == "special_day":
         # The catalogue named this day from the day's own photos, months before
@@ -94,6 +77,13 @@ def _occasion_title(
             return name, (entry.get("subtitle") or "").strip() or None
 
     return None
+
+
+def _season_title(start: date, end: date, preset_params: dict | None, locale: str) -> str:
+    from immich_memories.titles._text_memory_types import generate_season_title
+
+    season = (preset_params or {}).get("season") or _SEASON_OF_MONTH[start.month]
+    return generate_season_title(season, start.year, end.year, None, locale).main_title
 
 
 def generate_template_title(
@@ -107,54 +97,47 @@ def generate_template_title(
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
-    Returns (title, subtitle). Used as fallback when LLM is unavailable.
+    Returns (title, subtitle). Used as fallback when LLM is unavailable. With
+    no model this is the title the film opens on, so it is written in the
+    film's language, with the catalogue and trip wording a CLI run uses.
     """
     from datetime import date as date_cls
 
+    from immich_memories.processing.clip_caption import resolve_caption_locale
+
+    locale = resolve_caption_locale(locale)
     start = date_cls.fromisoformat(start_date)
     end = date_cls.fromisoformat(end_date)
     year = start.year
 
     if memory_type == "album" and album_name:
         # Someone already named this album by hand; no template beats that.
-        return album_name, f"{_MONTH_NAMES[start.month]} {year}"
-
-    if memory_type in ("year_in_review", "year"):
-        return f"Year in Review {year}", None
+        return album_name, _month_year(start, locale)
 
     if memory_type == "season":
-        season = _detect_season(start.month)
-        return f"{season} {year}", f"{_MONTH_NAMES[start.month]} \u2013 {_MONTH_NAMES[end.month]}"
+        return _season_title(start, end, preset_params, locale), None
 
     if memory_type == "person_spotlight" and person_names:
-        return f"{person_names[0]} \u2014 {year}", None
+        return f"{person_names[0]} — {year}", None
 
     if memory_type == "multi_person" and person_names:
         names = " & ".join(person_names)
-        return f"{names} \u2014 {year}", None
-
-    if memory_type == "monthly_highlights":
-        return f"{_MONTH_NAMES[start.month]} {year}", None
+        return f"{names} — {year}", None
 
     if memory_type == "trip":
-        from immich_memories.i18n import get_month_name
-        from immich_memories.processing.clip_caption import resolve_caption_locale
+        from immich_memories.generate_privacy import generate_trip_title_text
 
-        month = get_month_name(start.month, resolve_caption_locale(locale))
-        return f"{month} {year}", f"{start_date} \u2013 {end_date}"
+        # The trip card's own words: a month alone would lose where it went.
+        trip = generate_trip_title_text(preset_params or {}, locale)
+        return trip or _month_year(start, locale), None
 
-    occasion = _occasion_title(memory_type, start, end, preset_params)
+    occasion = _occasion_title(memory_type, start, end, preset_params, locale)
     if occasion is not None:
         return occasion
 
-    # Fallback for unknown types
-    span_months = (end.year - start.year) * 12 + (end.month - start.month)
-    if span_months >= 10:
-        return f"Memories {year}", None
-    return (
-        f"{_MONTH_NAMES[start.month]} \u2013 {_MONTH_NAMES[end.month]} {year}",
-        None,
-    )
+    from immich_memories.titles.text_builder import _generate_date_range_title
+
+    return _generate_date_range_title(start, end, None, locale).main_title, None
 
 
 @dataclass

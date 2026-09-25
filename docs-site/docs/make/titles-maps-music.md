@@ -93,6 +93,9 @@ accent kept two vowels apart). Chinese characters use the Simplified forms unles
 `title_screens.locale` sets the language of everything the film prints: titles, months, weekdays, trip cards,
 holidays. `auto` (the default) follows the host's locale.
 
+The web UI's suggested title is the same template in the same language, so with no reader a French trip made
+in the wizard opens on "DEUX SEMAINES EN CRÈTE, GRÈCE, ÉTÉ 2025", exactly as the CLI would.
+
 | Language | Code | Trip titles |
 |---|---|---|
 | English | `en` | full: "A WEEK IN THE NETHERLANDS" |
