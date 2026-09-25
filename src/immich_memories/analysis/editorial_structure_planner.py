@@ -66,6 +66,7 @@ from immich_memories.analysis.editorial_structure_finishing import (
     apply_audience_gate,
     drop_filler_nothing_vouches_for,
     final_duplicate_review,
+    frame_quality_of,
     held_by_gate,
     replacement_offers,
     resolve_motion_and_timing,
@@ -479,6 +480,7 @@ def _select(
         owner_required=source.owner_required_asset_ids,
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
         gate=gate,
+        frame_quality=frame_quality_of(source),
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")

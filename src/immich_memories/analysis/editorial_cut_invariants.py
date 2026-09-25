@@ -95,6 +95,8 @@ class FinishedCut:
     live_clip_of: Mapping[str, str] = field(default_factory=dict)
     residuals: Mapping[str, float] = field(default_factory=dict)
     clip_misses_subject: Callable[[str], bool] = _never
+    # A starred twin the duplicate review folded into its keeper: one moment, shown by the keeper.
+    collapsed_into: Mapping[str, str] = field(default_factory=dict)
 
     def origin(self, asset: str) -> str:
         """The pass that put a picture in the cut, as far as the record knows."""
@@ -166,6 +168,7 @@ def _favourites_passed_over(cut: FinishedCut) -> list[Violation]:
             for u in by_moment.get(c["moment"], ())
             if u.get("favourite")
             and not {u["asset_id"], *(u.get("members") or ())} & shown
+            and cut.collapsed_into.get(u["asset_id"]) not in shown
             and cut.may_carry(u["asset_id"])
             # A family seat carries a person: only a favourite that shows them could have won.
             and (not seated or seated & set(cut.close_family_of(u["asset_id"])))
@@ -354,6 +357,10 @@ def _finished_cut(source, selection, material, run, gate, banked, share_log) -> 
             if row.get("residual") is not None
         },
         clip_misses_subject=lambda clip: clips_miss_subject(source.clip_frames, [clip]),
+        collapsed_into={
+            str(row["asset_id"]): str(row["keeper"])
+            for row in (run.final_duplicates or {}).get("collapsed_favourites") or ()
+        },
     )
     if not source.intent.voice_per_partition:
         return cut

@@ -108,6 +108,7 @@ def _rules(*, favourite=False, **heads):
         audience_annotations={"a": SimpleNamespace(heads=tuple(heads.items()))},
         annotations={"a": ""},
         intent=SimpleNamespace(product="month"),
+        owner_required_asset_ids=(),
         audience="family",
     )
     return RuleStructureReader(source)

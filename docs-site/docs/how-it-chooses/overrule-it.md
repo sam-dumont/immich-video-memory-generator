@@ -38,8 +38,9 @@ A favourite is the strongest signal you can give, and it costs nothing. What a s
 
 - it wins its moment over every other frame, and always stands on its own;
 - its story counts as present, so it gets at least a `minor` weight; three favourites make it `major`;
-- the duplicate review keeps it over a look-alike you didn't star, and two favourites are the same
-  scene only on the same day;
+- the duplicate review keeps it over a look-alike you didn't star. Two near-identical favourites
+  taken within 2 days of each other are one moment: the best of them stays (a video, then more
+  faces, then the sharper, then the earlier) and the other's slot is refilled;
 - the model's vote never removes it, and a polish refill picks it first inside its moment;
 - a shot nothing vouches for never takes its place: not when the place bound refuses it, not in the
   trim.

@@ -158,6 +158,7 @@ def final_duplicate_review(
     | None = None,
     close_family_of: Callable[[str], Collection[str]] = lambda _asset: (),
     gate: AudienceGate | None = None,
+    frame_quality: Callable[[str], tuple[int, float] | None] = lambda _asset: None,
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward.
@@ -182,6 +183,7 @@ def final_duplicate_review(
         scene_print=ports.scene_print,
         close_family_of=close_family_of,
         admits=_admitted_by(gate),
+        frame_quality=frame_quality,
         # A scene repeat nothing replaces leaves only while the film still reaches its target
         # within the shortfall the owner accepts: a film short of material keeps it.
         content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
@@ -207,6 +209,20 @@ def final_duplicate_review(
     _settle_replacements(
         run, ports, [row["replacement"] for row in removed.values() if "replacement" in row]
     )
+
+
+def frame_quality_of(source) -> Callable[[str], tuple[int, float] | None]:
+    """How many faces Immich found on a picture and how sharp it is, for starred twins."""
+
+    def quality(asset_id: str) -> tuple[int, float] | None:
+        asset = source.assets.get(asset_id)
+        if asset is None:
+            return None
+        faces = max(len(asset.people or ()), len(getattr(asset, "faces", None) or ()))
+        sharpness = (source.pixel_facts.get(asset_id) or (None, None))[0]
+        return faces, float(sharpness or 0.0)
+
+    return quality
 
 
 def _admitted_by(gate: AudienceGate | None) -> Callable[[Mapping[str, Any]], bool]:

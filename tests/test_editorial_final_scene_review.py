@@ -215,3 +215,73 @@ def test_an_only_shot_is_refilled_only_by_a_picture_that_still_shows_the_person(
 
     assert _ids(survivors) == ["path", "beach"]
     assert record["removals"][0]["replacement"] == "beach"
+
+
+# -- near-identical favourites are one moment (the owner's rule) -------------------------------
+
+QUALITY = {"path": (0, 120.0), "path-again": (2, 80.0), "path-third": (2, 300.0)}
+
+
+def test_two_starred_frames_of_one_scene_a_day_apart_are_one_moment_and_the_best_stays():
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("beach", day=6),
+        _carrier("path-again", day=5, favourite=True, story="story-4"),
+    ]
+
+    survivors, record = _review(cut, frame_quality=QUALITY.get)
+
+    assert _ids(survivors) == ["beach", "path-again"]
+    assert [(r["asset_id"], r["keeper"]) for r in record["collapsed_favourites"]] == [
+        ("path", "path-again")
+    ]
+
+
+def test_between_two_starred_stills_with_the_same_faces_the_sharper_stays():
+    cut = [
+        _carrier("path-again", day=4, favourite=True),
+        _carrier("path-third", day=5, favourite=True),
+        _carrier("beach", day=6),
+    ]
+
+    survivors, _ = _review(cut, frame_quality=QUALITY.get)
+
+    assert _ids(survivors) == ["path-third", "beach"]
+
+
+def test_starred_frames_of_one_scene_three_days_apart_stay_two_moments():
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("path-again", day=7, favourite=True),
+    ]
+
+    survivors, record = _review(cut, frame_quality=QUALITY.get)
+
+    assert _ids(survivors) == ["path", "path-again"]
+    assert record["collapsed_favourites"] == []
+
+
+def test_a_starred_twin_leaves_even_when_the_film_has_no_room_to_spare():
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("path-again", day=5, favourite=True),
+    ]
+
+    survivors, record = _review(cut, frame_quality=QUALITY.get, content_floor=float("inf"))
+
+    assert _ids(survivors) == ["path-again"]
+    assert len(record["collapsed_favourites"]) == 1
+
+
+def test_a_starred_twin_s_slot_goes_to_another_moment_not_to_a_frame_of_its_own():
+    """The twin's moment is already shown by its keeper; a plain frame of it would ship a
+    moment without its favourite."""
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("path-again", day=5, favourite=True),
+    ]
+    offers = [("moment", _carrier("beach", day=4)), ("story", _carrier("kitchen", day=6))]
+
+    survivors, _ = _review(cut, frame_quality=QUALITY.get, replacements_for=lambda _c: list(offers))
+
+    assert _ids(survivors) == ["path-again", "kitchen"]
