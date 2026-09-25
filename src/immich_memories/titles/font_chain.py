@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +78,18 @@ def _codepoints(path: str, index: int = 0) -> frozenset[int]:
 
 def _covers(face: _Face, char: str) -> bool:
     return ord(char) in _codepoints(face.path, face.index)
+
+
+def shaping_hint() -> str:
+    """What to do on this system so Pillow shapes text."""
+    if sys.platform == "darwin":
+        # WHY the library path: dlopen does not search Homebrew's lib folder, so
+        # a brew-installed FriBiDi stays invisible to Pillow without it.
+        return (
+            "brew install fribidi, then start immich-memories with "
+            "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix)/lib"
+        )
+    return "install FriBiDi (libfribidi0) to shape it"
 
 
 def raqm_available() -> bool:
@@ -270,9 +283,9 @@ class ChainFont(ImageFont.FreeTypeFont):
                 _warn_once(
                     "raqm",
                     "Pillow has no Raqm layout here, so %r is drawn unshaped (Arabic letters "
-                    "unjoined, Indic clusters apart); install FriBiDi (libfribidi0, or brew "
-                    "install fribidi) to shape it",
+                    "unjoined, Indic clusters apart); %s",
                     run.text,
+                    shaping_hint(),
                 )
             direction, drawn = _direction_for(run, shaped)
             placed.append(_Placed(font, pen, direction, drawn))

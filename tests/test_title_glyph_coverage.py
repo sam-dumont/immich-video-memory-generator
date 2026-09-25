@@ -168,3 +168,16 @@ def test_an_sdf_atlas_says_it_cannot_draw_what_it_has_no_glyph_for() -> None:
 
     assert atlas.draws("Crète Crète")
     assert not atlas.draws(f"Crète {GREEK}")
+
+
+def test_the_shaping_hint_on_a_mac_says_how_pillow_finds_homebrew_fribidi(monkeypatch):
+    # A brew-installed FriBiDi is not on dlopen's path on Apple Silicon: without
+    # the library path Pillow still has no Raqm, so "brew install" alone is wrong.
+    from immich_memories.titles import font_chain
+
+    monkeypatch.setattr(font_chain.sys, "platform", "darwin")
+    assert "DYLD_FALLBACK_LIBRARY_PATH" in font_chain.shaping_hint()
+
+    monkeypatch.setattr(font_chain.sys, "platform", "linux")
+    assert "libfribidi0" in font_chain.shaping_hint()
+    assert "DYLD" not in font_chain.shaping_hint()
