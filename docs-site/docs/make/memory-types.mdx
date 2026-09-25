@@ -212,8 +212,9 @@ Detection is three steps:
 
 1. **Away from home**: a picture counts if its GPS is at least `min_distance_km` (50) from home. No
    GPS, no trip.
-2. **Split on gaps**: a new trip starts wherever more than `max_gap_days` (2) pass between two
-   pictures, so a rest day does not split a trip.
+2. **Split on gaps**: a new trip starts wherever more than `max_gap_days` (2) calendar days pass between two
+   pictures, so a rest day does not split a trip. Saturday morning to Monday afternoon is a
+   two-day gap, regardless of the capture times.
 3. **Drop the short ones**: a trip must span `min_duration_days` (2) nights. `1` catches a weekend.
 
 ```yaml

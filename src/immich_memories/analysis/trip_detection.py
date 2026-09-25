@@ -91,7 +91,7 @@ def _filter_away_assets(
 def _group_by_temporal_gaps(away: list[Asset], max_gap_days: int) -> list[list[Asset]]:
     groups: list[list[Asset]] = [[away[0]]]
     for asset in away[1:]:
-        gap = (asset.file_created_at - groups[-1][-1].file_created_at).total_seconds() / 86400
+        gap = (asset.file_created_at.date() - groups[-1][-1].file_created_at.date()).days
         if gap > max_gap_days:
             groups.append([asset])
         else:
