@@ -64,11 +64,16 @@ a shot it may move. A shot both orders name leaves. A shot one order names is of
 own story and keeps its place until one passes.
 
 **What the vote can't touch.** A favourite, a picture an episode reading recorded as worth a place of
-its own, and the only shot of a close family member. A block made only of those is not asked. Only a
+its own, the only shot of a close family member, and a story's only shot that isn't a portrait
+(a place, a crowd, a race, a party: the frame, people and activity heads say which). Left alone,
+the vote reads a road race as filler and a posed selfie as the point. A block made only of those is
+not asked. Only a
 gate removes them. Your ticks are added back after the polish either way.
 
-**Seats.** A refusal is a seat, not a hole, and seats are filled in this order, as far as the film
-has room at the 3.5 s minimum hold:
+**Seats.** A refusal is a seat, not a hole. N seats take only the room the draft left unused, at
+the 3.5 s minimum hold. R and T seats take the seconds the removed shot held, so every removal is
+refilled even when the draft already filled the film; the length is the one the render timing gives
+the draft, not a rough reserve. When nothing is left to refill a removal, the record says so.
 
 | Seat | What it is for |
 |---|---|
@@ -77,9 +82,13 @@ has room at the 3.5 s minimum hold:
 | T | replaces a shot a gate refused |
 | D | swaps out a shot one order named; needs no room |
 
-A seat's page is its own story's pictures, the refused moment first, then the moments the cut lacks,
-moving ones first, the favourite first inside a moment. The model picks from 12 rows at most; the
-facts then say whether the pick stands, and a failed pick gets one more try. Every newcomer is voted
+A seat's page is its own story's pictures, or, when the story has nothing left, the pictures of the
+stories the film already holds, nearest in time first. The refused moment comes first, then the
+moments the cut lacks, moving ones first, the favourite first inside a moment. A refill's page puts
+the kind of shot its story holds fewer of (portrait or texture) on top of all that. The model picks
+from 12 rows at most; the facts then say whether the pick stands, and a failed pick gets one more
+try, as does an R or T pick a gate refuses. `thin-polish.private.json` records the shot-kind mix of
+the draft and of the polished cut. Every newcomer is voted
 on again inside the block it joined, and one the vote refuses brings back the shot it replaced.
 
 ### A short film gets one more look

@@ -135,7 +135,15 @@ class Film:
         )
 
 
-def polish(tmp_path, film: Film, *, audience_batch: int = 12, short=None, room: float = 120.0):
+def polish(
+    tmp_path,
+    film: Film,
+    *,
+    audience_batch: int = 12,
+    short=None,
+    room: float = 120.0,
+    kind_of=lambda _asset: None,
+):
     judge = CountingJudge()
     recorded: dict = {}
     standing = StandingGate(
@@ -172,6 +180,7 @@ def polish(tmp_path, film: Film, *, audience_batch: int = 12, short=None, room: 
         record=lambda name, payload: recorded.__setitem__(name, payload),
         candidates_of=lambda key: film.pool.get(key, []),
         content_cap=sum(row["seconds"] for row in film.draft) + room,
+        kind_of=kind_of,
     )
     newcomers = [row["asset_id"] for row in cut if row["asset_id"] not in drafted]
     return judge, recorded["thin-polish"], cut, newcomers

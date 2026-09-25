@@ -16,6 +16,7 @@ from datetime import datetime
 from operator import itemgetter
 from typing import Any
 
+from immich_memories.analysis.editorial_shot_kinds import KindOf, lacking
 from immich_memories.analysis.editorial_story_lookalike import MOTION_KINDS
 from immich_memories.analysis.editorial_story_shortlist import DepictedChoice, pick_story_moments
 from immich_memories.analysis.editorial_structure_budget import (
@@ -129,6 +130,7 @@ def plan_slots(
     seen: set[str],
     content_cap: float,
     removed: Mapping[str, Mapping[str, Any]] | None = None,
+    kind_of: KindOf | None = None,
 ) -> list[ThinSlot]:
     """Every seat this polish may fill, in the order the budget is spent on them.
 
@@ -139,6 +141,10 @@ def plan_slots(
     already holds, nearest in time first. A removal nothing is left for is still a seat, which
     records that nothing was eligible. A shot only one
     order doubted keeps its place under a swap, which needs no room at all either.
+
+    Every refill's page leads with the kind of shot (`kind_of`: portrait or texture) its story
+    holds fewer of in the cut, or the film does when the story holds none: the picker reads a
+    page in order, and a film refilled from the top of plain pages drifts to posed portraits.
     """
     story_of = {asset: story.key for story in catalogue.stories for asset in story.asset_ids}
     offers = _offers(candidates_of, seen)
@@ -164,7 +170,21 @@ def plan_slots(
         for number, (asset, verdict) in enumerate(sorted(verdicts.items()), 1)
         if verdict["state"] == "weak"
     )
+    if kind_of is not None:
+        slots = [
+            s if s.kind == NOTABLE else replace(s, page=_variety_first(s, cut, kind_of))
+            for s in slots
+        ]
     return [slot for slot in slots if slot.page or slot.kind in REMOVALS]
+
+
+def _variety_first(slot: ThinSlot, cut, kind_of: KindOf) -> tuple[dict[str, Any], ...]:
+    """The slot's page with the kind its story (else the film) holds fewer of leading."""
+    company = [row for row in cut if row.get("story_episode") == slot.story] or list(cut)
+    want = lacking(kind_of(row["asset_id"]) for row in company if row["asset_id"] != slot.replacing)
+    if want is None:
+        return slot.page
+    return tuple(sorted(slot.page, key=lambda unit: kind_of(unit["asset_id"]) != want))
 
 
 def _offers(candidates_of, seen: set[str]):

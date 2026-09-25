@@ -12,6 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
+from immich_memories.analysis.editorial_shot_kinds import shot_kind
 from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingGate
@@ -85,6 +86,7 @@ def polish_the_draft(
         subject=source.intent.subject or "",
         close_family=film_close_family(source),
         era_of=_partition_of(source.intent) if source.intent.voice_per_partition else None,
+        kind_of=_kind_of(source),
     )
     # Recorded like any pass's removals, so the finished-cut check can name the polish.
     kept = {row["asset_id"] for row in polished}
@@ -104,6 +106,14 @@ def _length_of(source, carriers, run) -> float:
     if source.render_timing is None or not carriers:
         return run.final_content_cap
     return source.render_timing.resolve(list(carriers), source.assets).content_budget
+
+
+def _kind_of(source) -> Callable[[str], str | None]:
+    def kind_of(asset_id: str) -> str | None:
+        record = source.audience_annotations.get(asset_id)
+        return shot_kind(dict(record.heads)) if record is not None else None
+
+    return kind_of
 
 
 def _partition_of(intent) -> Callable[[str], str | None]:

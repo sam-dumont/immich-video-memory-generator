@@ -375,12 +375,15 @@ src/immich_memories/
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
 │   │                               # source order first, the hashed order only where it decides
 │   │                               # rows carry close family relations; a relative's only shot is held
-│   │                               # and so is a year's only shot (voice_per_partition); a year keeps one
+│   │                               # and so is a year's only shot (voice_per_partition); a year keeps one;
+│   │                               # and a story's only texture shot (editorial_shot_kinds)
+│   ├── editorial_shot_kinds.py     # Portrait or texture, off the frame/people/activity heads; the kind mix
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
 │   ├── editorial_thin_short.py     # A short cut reads ≤2·⌈S/3.5⌉ unread episodes of shot-less stories;
 │   │                               # only a story whose reading records a moment gets a seat
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
-│   │                               # meet the gates, and a refused pick is picked once more
+│   │                               # meet the gates, and a refused pick is picked once more; a removal's
+│   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
 │   │                               # caption (model tier, editorial.laya_audience); only adds holds
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,

@@ -28,6 +28,7 @@ from immich_memories.analysis.editorial_block_votes import (
     load_vote_bank,
     save_vote_bank,
 )
+from immich_memories.analysis.editorial_shot_kinds import KindOf, kind_mix
 from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
@@ -56,6 +57,7 @@ from immich_memories.analysis.editorial_thin_vote import (
     keep_every_voice,
     sole_era_shots,
     sole_family_shots,
+    sole_texture_shots,
     vote_thesis_fit,
 )
 
@@ -164,6 +166,7 @@ class ThinPolish:
         subject: str = "",
         close_family: CloseFamily = close_family_on,
         era_of: Callable[[str], str | None] | None = None,
+        kind_of: KindOf | None = None,
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
@@ -173,6 +176,8 @@ class ThinPolish:
         `close_family` who on a line is close family in this film: the owner's, and in a film
         about people the subject's own as well. `era_of` maps a capture time to the partition a
         film promises a voice to (a year of a lifetime film), None when it promises none.
+        `kind_of` says whether a shot is a portrait or texture, for the film's variety: the vote
+        keeps each story's only texture shot, and a refill leads with the kind its story lacks.
         """
         if catalogue is None or not carriers:
             return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
@@ -180,7 +185,9 @@ class ThinPolish:
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
-        fit = _FitQuestion(judge, catalogue, contract, line_of, subject, close_family, era_of)
+        fit = _FitQuestion(
+            judge, catalogue, contract, line_of, subject, close_family, era_of, kind_of
+        )
         kept, verdicts, rounds = self._voted(admitted, fit)
         slots = plan_slots(
             kept,
@@ -191,6 +198,7 @@ class ThinPolish:
             seen={c["asset_id"] for c in carriers},
             content_cap=content_cap,
             removed=_removed(carriers, kept),
+            kind_of=kind_of,
         )
         refill = ThinRefill(
             judge=judge,
@@ -238,6 +246,7 @@ class ThinPolish:
                 "short": short,
                 "revoked_by_the_fit_check": sorted(revoked),
                 "shots": len(final),
+                "shot_kinds": _shot_kinds(carriers, final, kind_of),
                 "planned_seconds": round(sum(c["seconds"] for c in final), 3),
                 "content_cap": content_cap,
                 "calls": _spent(
@@ -321,14 +330,13 @@ class ThinPolish:
             return filled, set()
         newcomers = {row["asset_id"] for row in fresh}
         by_asset = {row["asset_id"]: row for row in filled}
-        family = sole_family_shots(filled, fit.line_of, fit.close_family)
-        eras = sole_era_shots(filled, fit.era_of)
+        family, eras, textures = fit.held(filled)
         votes: dict[str, tuple[int, str]] = {}
         for group in rejoined_blocks(partition, filled, newcomers, outcomes):
             block = [by_asset[asset] for asset in group]
-            block_votes, _rounds = self._ask(block, fit, family | eras, moving=newcomers)
+            block_votes, _rounds = self._ask(block, fit, family | eras | textures, moving=newcomers)
             votes.update(block_votes)
-        verdicts = classify_fit(fresh, votes, family, eras)
+        verdicts = classify_fit(fresh, votes, family, eras, textures)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
             return filled, set()
@@ -346,11 +354,10 @@ class ThinPolish:
     def _voted(
         self, carriers: list[dict[str, Any]], fit: _FitQuestion
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
-        family = sole_family_shots(carriers, fit.line_of, fit.close_family)
-        eras = sole_era_shots(carriers, fit.era_of)
-        votes, rounds = self._ask(carriers, fit, family | eras)
+        family, eras, textures = fit.held(carriers)
+        votes, rounds = self._ask(carriers, fit, family | eras | textures)
         verdicts = keep_every_voice(
-            carriers, classify_fit(carriers, votes, family, eras), fit.era_of
+            carriers, classify_fit(carriers, votes, family, eras, textures), fit.era_of
         )
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
         return kept, verdicts, rounds
@@ -405,6 +412,25 @@ class _FitQuestion:
     subject: str
     close_family: CloseFamily
     era_of: Callable[[str], str | None] | None = None
+    kind_of: KindOf | None = None
+
+    def held(self, cut: Sequence[Mapping[str, Any]]) -> tuple[dict, dict, dict]:
+        """What the vote may not move in this cut: family's, partitions' and texture's only."""
+        return (
+            sole_family_shots(cut, self.line_of, self.close_family),
+            sole_era_shots(cut, self.era_of),
+            sole_texture_shots(cut, self.kind_of),
+        )
+
+
+def _shot_kinds(draft, final, kind_of: KindOf | None) -> dict[str, dict[str, int]]:
+    """The portrait and texture mix of the draft and of the polished cut."""
+    if kind_of is None:
+        return {"draft": {}, "polished": {}}
+    return {
+        "draft": kind_mix((row["asset_id"] for row in draft), kind_of),
+        "polished": kind_mix((row["asset_id"] for row in final), kind_of),
+    }
 
 
 def thin_budget(draft: int, seats: int) -> int:
