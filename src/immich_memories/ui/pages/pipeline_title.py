@@ -94,6 +94,7 @@ def generate_template_title(
     album_name: str | None = None,
     preset_params: dict | None = None,
     locale: str = "en",
+    hemisphere: str | None = None,
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
@@ -137,7 +138,9 @@ def generate_template_title(
 
     from immich_memories.titles.text_builder import _generate_date_range_title
 
-    return _generate_date_range_title(start, end, None, locale).main_title, None
+    return _generate_date_range_title(
+        start, end, None, locale, hemisphere=hemisphere
+    ).main_title, None
 
 
 @dataclass
@@ -351,6 +354,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         album_name=state.album_name,
         preset_params=state.memory_preset_params,
         locale=config.title_screens.locale,
+        hemisphere=config.trips.hemisphere,
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle

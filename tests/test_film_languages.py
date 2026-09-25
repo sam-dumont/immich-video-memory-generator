@@ -52,7 +52,17 @@ def test_a_machine_drafted_catalogue_says_so(locale: str) -> None:
 
 @pytest.mark.parametrize("locale", SUPPORTED_LOCALES)
 def test_no_template_asks_for_a_value_the_code_does_not_give(locale: str) -> None:
-    given = {"season", "year", "start_year", "end_year", "day", "person", "ordinal", "n"}
+    given = {
+        "season",
+        "year",
+        "start_year",
+        "end_year",
+        "end_year_short",
+        "day",
+        "person",
+        "ordinal",
+        "n",
+    }
     for prefix in ("", "start_", "end_"):
         given |= {f"{prefix}month", f"{prefix}month_lc", f"{prefix}month_of", f"{prefix}month_num"}
     for template in re.findall(r'^msgstr(?:\[\d\])? "(.*)"$', _po(locale), flags=re.MULTILINE):

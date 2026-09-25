@@ -60,6 +60,7 @@ def _get_time_label(start_date: date, end_date: date, locale: str = "en") -> str
             season=season,
             start_year=start_date.year,
             end_year=end_date.year,
+            end_year_short=f"{end_date.year % 100:02d}",
         )
     )
 

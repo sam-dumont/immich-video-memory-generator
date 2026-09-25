@@ -158,7 +158,11 @@ def _title_date_range(**kwargs) -> TitleInfo:
     if kwargs["start_date"] is None or kwargs["end_date"] is None:
         raise ValueError("Start and end date required for date range selection")
     return _generate_date_range_title(
-        kwargs["start_date"], kwargs["end_date"], kwargs["person_name"], kwargs["locale"]
+        kwargs["start_date"],
+        kwargs["end_date"],
+        kwargs["person_name"],
+        kwargs["locale"],
+        hemisphere=kwargs["hemisphere"],
     )
 
 
@@ -227,8 +231,13 @@ def generate_title(
     birthday_age: int | None = None,
     season: str | None = None,
     locale: str = "en",
+    hemisphere: str | None = None,
 ) -> TitleInfo:
-    """Generate dynamic title based on video selection criteria."""
+    """Generate dynamic title based on video selection criteria.
+
+    `hemisphere` ("north"/"south", from the home base) lets a date range that is
+    exactly a season be titled by that season; without it the months name it.
+    """
     # Pack all kwargs so dispatch handlers can pick what they need
     kwargs = {
         "year": year,
@@ -244,6 +253,7 @@ def generate_title(
         "birthday_age": birthday_age,
         "season": season,
         "locale": locale,
+        "hemisphere": hemisphere,
     }
     handler = _TITLE_DISPATCH.get(selection_type)
     if handler is not None:
@@ -260,6 +270,8 @@ def _generate_date_range_title(
     end_date: date,
     person_name: str | None,
     locale: str,
+    *,
+    hemisphere: str | None = None,
 ) -> TitleInfo:
     """Generate title for a date range, choosing the best format.
 
@@ -282,6 +294,13 @@ def _generate_date_range_title(
             subtitle=person_name,
             selection_type=SelectionType.CALENDAR_YEAR,
         )
+
+    from immich_memories.memory_types.date_builders import season_of_window
+
+    if season := season_of_window(start_date, end_date, hemisphere):
+        from immich_memories.titles._text_memory_types import generate_season_title
+
+        return generate_season_title(season, start_date.year, end_date.year, person_name, locale)
 
     # Check if it's a single month (entirely within one month)
     if start_date.year == end_date.year and start_date.month == end_date.month:

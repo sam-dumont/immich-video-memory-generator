@@ -202,6 +202,7 @@ def build_title_settings(
         animated_background=config.title_screens.animated_background,
         show_decorative_lines=config.title_screens.show_decorative_lines,
         memory_type=params.memory_type,
+        hemisphere=config.trips.hemisphere,
         trip_locations=trip_locations,
         trip_location_names=trip_location_names,
         trip_title_text=trip_title_text,
