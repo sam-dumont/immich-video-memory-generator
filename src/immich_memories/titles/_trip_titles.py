@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from immich_memories.i18n import film_text, film_text_n, month_name_forms
-from immich_memories.i18n_places import localise_country, localise_place
+from immich_memories.i18n_places import comma, localise_country, localise_place
 from immich_memories.place_phrases import Place, place_phrase
 from immich_memories.place_phrases.place import infer_place_kind
 from immich_memories.processing.clip_caption import resolve_caption_locale
@@ -97,5 +97,5 @@ def generate_trip_title(
     place = Place(location_name, kind or infer_place_kind(location_name))
     phrase = place_phrase(locale, place)
     if phrase is None:
-        return f"{display_upper(_localised(place, locale))} · {duration}, {time_label}"
+        return f"{display_upper(_localised(place, locale))} · {duration}{comma(locale)}{time_label}"
     return f"{duration} {display_upper(phrase)}, {time_label}"
