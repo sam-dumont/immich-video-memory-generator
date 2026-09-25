@@ -143,6 +143,7 @@ def polish(
     short=None,
     room: float = 120.0,
     kind_of=lambda _asset: None,
+    scene_print=None,
 ):
     judge = CountingJudge()
     recorded: dict = {}
@@ -173,6 +174,7 @@ def polish(
             audience=audience,
             thumbnail_hash=lambda _a: None,
             audience_batch=audience_batch,
+            scene_print=scene_print,
         ),
         catalogue=film.catalogue(),
         contract="contract",

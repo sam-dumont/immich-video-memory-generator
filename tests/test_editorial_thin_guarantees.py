@@ -184,3 +184,68 @@ def test_a_removals_refill_the_gates_refuse_is_chosen_again_from_the_same_page(t
 
     assert newcomers == ["fine"]
     assert [slot["outcome"] for slot in record["slots"]] == ["seated"]
+
+
+def test_a_shot_the_vote_removed_is_not_refilled_from_its_own_moment(tmp_path):
+    """April 2021 (09-25): the vote removed a cat at a sink, and its refill was the frame taken
+    three seconds earlier. The vote judged the moment; another frame of it adds nothing either."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("twin", "S001", START + timedelta(days=1, seconds=-3), "the same worktop")
+    film.units["twin"]["moment"] = "m-d2"
+    film.shot("other", "S001", START + timedelta(days=2), "people in the garden")
+
+    _judge, _record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["other"]
+
+
+def test_a_refill_that_repeats_a_scene_the_cut_holds_is_refused_and_chosen_again(tmp_path):
+    """April 2021 (09-25): two refills repeated a scene the cut already held, and the final
+    duplicate review took them out later with nothing in their place."""
+    from datetime import timedelta
+
+    import numpy as np
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "a beach at noon"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("again", "S001", START + timedelta(hours=5), "the same beach")
+    film.shot("fresh", "S001", START + timedelta(hours=9), "people in the garden")
+    beach, garden = np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    prints = {"d1": beach, "again": beach, "fresh": garden, "d2": garden}
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film, scene_print=prints.get)
+
+    assert newcomers == ["fresh"]
+    assert [slot["outcome"] for slot in record["slots"]] == ["seated"]
+
+
+def test_a_removals_refill_the_vote_revokes_is_chosen_again(tmp_path):
+    """April 2021 (09-25): the vote re-check revoked a removal's refill, and the film kept the
+    hole. A removal's seat picks once more from what is left of its page."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("filler", "S001", START + timedelta(hours=5), f"{JUNK} again")
+    film.shot("fine", "S001", START + timedelta(hours=9), "people in the garden")
+
+    _judge, record, cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["fine"]
+    assert record["revoked_by_the_fit_check"] == ["filler"]
+    assert len(cut) == 2

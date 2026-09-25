@@ -16,7 +16,10 @@ from dataclasses import dataclass
 from operator import itemgetter
 from typing import Any, Protocol
 
-from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
+from immich_memories.analysis.editorial_final_hash_review import (
+    ScenePrint,
+    review_cut_by_cached_hashes,
+)
 from immich_memories.analysis.editorial_shareability import allowed
 from immich_memories.analysis.editorial_story_shortlist import capture_space_available
 
@@ -63,6 +66,9 @@ class ThinGates:
     audience_name: str = "family"
     # Carriers asked the audience question per request; below two, one at a time.
     audience_batch: int = 0
+    # A frame's scene print: a newcomer that repeats a scene the cut holds is refused, as the
+    # final duplicate review would take it out later with nothing in its place.
+    scene_print: ScenePrint | None = None
 
     def admit(
         self,
@@ -115,6 +121,9 @@ class ThinGates:
             [*company, dict(candidate)],
             thumbnail_hash=self.thumbnail_hash,
             protected_asset_ids=[row["asset_id"] for row in cut],
+            scene_print=self.scene_print,
+            # a newcomer's seconds are always spendable elsewhere: a repeat of it leaves
+            content_floor=0.0,
         )
         if candidate["asset_id"] in {row["asset_id"] for row in survivors}:
             return None

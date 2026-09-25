@@ -45,8 +45,9 @@ def test_a_newcomer_both_orders_name_is_still_revoked(tmp_path):
     _judge, payload, cut, newcomers = polish(tmp_path, film)
 
     assert newcomers == []
-    assert len(payload["revoked_by_the_fit_check"]) == 1
-    assert payload["revoked_by_the_fit_check"][0] not in {row["asset_id"] for row in cut}
+    # the removal's seat picks once more after the first refill is revoked; both are revoked
+    assert len(payload["revoked_by_the_fit_check"]) == 2
+    assert not set(payload["revoked_by_the_fit_check"]) & {row["asset_id"] for row in cut}
 
 
 def test_a_swap_takes_its_shots_block_and_an_append_joins_the_block_its_time_falls_in():

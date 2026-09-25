@@ -70,6 +70,7 @@ def polish_the_draft(
             standing=standing,
             audience=gate,
             thumbnail_hash=ports.thumbnail_hash,
+            scene_print=ports.scene_print,
             audience_name=source.audience,
             audience_batch=AUDIENCE_BATCH_SIZE
             if source.config.editorial.thin_batched_audience or ports.laya

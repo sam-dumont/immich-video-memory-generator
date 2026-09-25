@@ -149,6 +149,7 @@ def plan_slots(
     story_of = {asset: story.key for story in catalogue.stories for asset in story.asset_ids}
     offers = _offers(candidates_of, seen)
     removed = removed or {}
+    by_asset = {row["asset_id"]: row for row in cut}
     freed = sum(row["seconds"] for row in removed.values())
     room = openable_slots(content_cap, sum(row["seconds"] for row in cut) + freed)
     slots = newcomer_slots(cut, catalogue, offers, room, refused=refused)
@@ -164,7 +165,12 @@ def plan_slots(
             key=f"D9{number:02d}",
             story=story_of.get(asset, ""),
             kind=VOTE_WEAK,
-            page=tuple(records_first(offers(story_of.get(asset, "")), catalogue.notable_record_of)),
+            page=tuple(
+                records_first(
+                    _other_moments(offers(story_of.get(asset, "")), by_asset.get(asset)),
+                    catalogue.notable_record_of,
+                )
+            ),
             replacing=asset,
         )
         for number, (asset, verdict) in enumerate(sorted(verdicts.items()), 1)
@@ -234,6 +240,8 @@ def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
     slots = []
     for number, (asset, kind, story, _moment) in enumerate(appends, 1):
         page = offers(story) or _nearest_in_the_film(cut, offers, removed.get(asset))
+        if kind == VOTE_BAD:
+            page = _other_moments(page, removed.get(asset))
         if story in refused_moments:
             page = gate_refill_page(page, refused_moments[story], moments_in_cut)
         else:
@@ -250,6 +258,13 @@ def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
             )
         )
     return slots
+
+
+def _other_moments(page, shot: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """The page without the moment of a shot the vote named: the vote judged the moment, and
+    another frame of it adds nothing either."""
+    moment = shot.get("moment") if shot else None
+    return [dict(row) for row in page if not moment or row.get("moment") != moment]
 
 
 def _why_empty(refusal: GateRefusal | None) -> str:

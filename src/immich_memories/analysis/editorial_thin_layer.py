@@ -16,7 +16,7 @@ import calendar
 import logging
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 from operator import itemgetter
 from pathlib import Path
@@ -37,6 +37,7 @@ from immich_memories.analysis.editorial_thin_catalogue import (
 )
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
 from immich_memories.analysis.editorial_thin_refill import (
+    REMOVALS,
     ThinRefill,
     ThinSlot,
     newcomer_slots,
@@ -213,6 +214,10 @@ class ThinPolish:
         filled, outcomes = refill.fill(kept, slots)
         partition = balanced_groups([c["asset_id"] for c in admitted])
         final, revoked = self._checked(filled, kept, outcomes, partition, fit)
+        final, outcomes, late, retried = self._again(
+            final, outcomes, revoked, refill, partition, fit
+        )
+        revoked |= late
         seen = {c["asset_id"] for c in carriers} | {c["asset_id"] for c in final}
         topped, short_slots, short = self._short_reads(
             final,
@@ -251,7 +256,7 @@ class ThinPolish:
                 "content_cap": content_cap,
                 "calls": _spent(
                     len(judge.calls) - first_call,
-                    thin_budget(len(carriers), len(outcomes))
+                    thin_budget(len(carriers), len(outcomes) + retried)
                     + short_budget(short.get("episodes_read", 0), len(short_slots)),
                 ),
             },
@@ -306,6 +311,35 @@ class ThinPolish:
                 "seats": len(slots),
             },
         )
+
+    def _again(
+        self,
+        cut: list[dict[str, Any]],
+        outcomes: Sequence[ThinSlot],
+        revoked: set[str],
+        refill: ThinRefill,
+        partition: Sequence[Sequence[str]],
+        fit: _FitQuestion,
+    ) -> tuple[list[dict[str, Any]], list[ThinSlot], set[str], int]:
+        """A removal's seat whose newcomer the re-check revoked picks once more from what is
+        left of its page, and that pick is re-checked the same way. Returns the cut, every
+        seat's outcome, what the second check revoked, and how many seats picked again."""
+        again = [
+            replace(
+                slot,
+                filled_by="",
+                outcome="",
+                page=tuple(unit for unit in slot.page if unit["asset_id"] not in revoked),
+            )
+            for slot in outcomes
+            if slot.kind in REMOVALS and slot.filled_by in revoked
+        ]
+        if not again:
+            return cut, list(outcomes), set(), 0
+        filled, refilled = refill.fill(cut, again)
+        final, late = self._checked(filled, cut, refilled, partition, fit)
+        stayed = [s for s in outcomes if not (s.kind in REMOVALS and s.filled_by in revoked)]
+        return final, [*stayed, *refilled], late, len(again)
 
     def _checked(
         self,
