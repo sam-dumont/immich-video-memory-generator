@@ -186,3 +186,50 @@ def test_a_film_that_promises_every_partition_a_voice_keeps_it_through_the_polis
     assert voiced_by_the_draft <= {week_of(c["asset_id"]) for c in plan["carriers"]}
     assert any("of week-" in verdict["held_by"] for verdict in audit["verdicts"].values())
     assert any(c.get("review_stage") == "thin-polish" for c in plan["cut_carriers"])
+
+
+class NamesOneClip(PolishJudge):
+    """# WHY: a thesis-fit vote that names one drafted clip in both orders."""
+
+    def answer(self, stage, prompt):
+        if stage.startswith("thesis-fit-"):
+            named = re.findall(r"^(P\d+): .*2030-05-07T11", prompt, re.MULTILINE)
+            return json.dumps({"weak": dict.fromkeys(named, "adds nothing")})
+        return super().answer(stage, prompt)
+
+
+def test_a_shot_the_vote_removes_is_refilled_inside_the_films_real_length(tmp_path):
+    """Feb 2024 and the 2024 year (09-24): the rules draft filled the length the render timing
+    gives it, the polish measured its room against a rougher reserve the draft had already
+    passed, and so it removed a shot and never opened a seat to refill it."""
+    from dataclasses import replace
+
+    from immich_memories.api.models import AssetType
+    from immich_memories.processing.editorial_timing import build_editorial_timing_policy
+
+    source = film(tmp_path)
+    source = replace(
+        source,
+        assets={
+            key: asset.model_copy(update={"type": AssetType.VIDEO, "duration_seconds": 12.0})
+            for key, asset in source.assets.items()
+        },
+    )
+    source = replace(
+        source,
+        render_timing=build_editorial_timing_policy(
+            config=source.config,
+            target_seconds=60,
+            memory_type=source.case.product,
+            transition="crossfade",
+        ),
+    )
+
+    plan = run(source, NamesOneClip(), account=ACCOUNT)
+
+    audit = audit_of(source)
+    assert len(audit["removed_by_the_vote"]) == 1
+    assert [slot["outcome"] for slot in audit["slots"]] == ["seated"]
+    assert len(plan["carriers"]) == audit["draft_shots"]
+    # the polish measured the film against the length finishing holds it to
+    assert audit["content_cap"] == plan["content_cap_seconds"]

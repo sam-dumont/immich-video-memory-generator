@@ -100,10 +100,16 @@ class MlxLayaScorer:
     def probabilities(
         self, states: Sequence[str], question: Mapping[str, Any]
     ) -> list[list[float]]:
-        import mlx.core as mx  # type: ignore[import-not-found]
+        import mlx.core as mx  # type: ignore[import-not-found,import-untyped,unused-ignore]
         import numpy as np
-        from laya_mlx.agent import Agent, collate_items  # type: ignore[import-not-found]
-        from laya_mlx.common import QTYPES, build_sequence  # type: ignore[import-not-found]
+        from laya_mlx.agent import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            Agent,
+            collate_items,
+        )
+        from laya_mlx.common import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            QTYPES,
+            build_sequence,
+        )
 
         if self._agent is None:
             self._agent = Agent(

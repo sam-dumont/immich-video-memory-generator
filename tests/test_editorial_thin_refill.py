@@ -206,3 +206,13 @@ def test_a_refill_page_inside_a_drafted_story_leads_with_what_the_catalogue_reco
     assert pages["vote-bad"][0] == "rec1"
     assert pages["gate-refused"][0] == "rec2"
     assert pages["vote-weak"][0] == "rec3"
+
+
+def test_a_removal_that_held_less_than_a_clips_floor_is_still_refilled_at_the_floor():
+    """The 2024 year (09-25): the vote removed a 1.85 s live photo from a film at its length,
+    and no refill could fit in 1.85 s. The refill takes the floor; finishing shaves the rest."""
+    cut = [shot("a1", "S1", seconds=58.0)]
+    after, changed = seat(
+        cut, shot("new", "S1", day="02", seconds=4.0), replacing="", content_cap=58.0, frees=1.85
+    )
+    assert changed and after[1]["seconds"] == 2.0
