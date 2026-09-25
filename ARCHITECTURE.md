@@ -175,8 +175,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   `editorial_carrier_eligibility.py`). A carrier is a shot before it is rendered.
 - **Standing**: does a picture stand by itself, and may it serve as context inside its story.
   Answered on every tier from the facts, never asked of a model (`editorial_standing_facts.py`: two
-  points tables, heads alone or heads plus the ingest caption; a caption naming a person or an
-  animal is never refused), and applied by `StandingGate` (`editorial_story_standing.py`).
+  points tables, heads alone or heads plus the ingest caption; a caption naming an animal, or a
+  person Immich found a face for, is never refused; `face_evidence` reads the faces), and applied
+  by `StandingGate` (`editorial_story_standing.py`).
 - **Look-alike / scene print**: a story's next picture is kept only if it adds to the ones already
   kept (`editorial_story_lookalike.py`). The final review drops repeats by perceptual hash and by
   scene print, the pooled DINOv2 vector of a preview, which catches the same scene in another
@@ -360,7 +361,7 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
-│   ├── editorial_standing_facts.py # Standing from facts, no model: heads (+ caption words), living subjects never refused
+│   ├── editorial_standing_facts.py # Standing from facts, no model: heads (+ caption words), faces and animals never refused
 │   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
