@@ -32,12 +32,16 @@ def _polish(story, catalogue):
         intent=SimpleNamespace(subject="", voice_per_partition=False),
         case=SimpleNamespace(product="monthly_highlights", people=()),
         people=None,
+        render_timing=None,
+        audience_annotations={},
+        assets={},
     )
     ports = SimpleNamespace(
         thin=Thin(catalogue),
         rules=SimpleNamespace(standing=None),
         judge=None,
         thumbnail_hash=None,
+        scene_print=None,
         laya=None,
     )
     selection = SimpleNamespace(story=story, lines={}, episodes=[])

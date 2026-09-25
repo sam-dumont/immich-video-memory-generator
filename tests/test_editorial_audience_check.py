@@ -89,7 +89,7 @@ def test_nudity_is_household_only_while_the_listed_private_activities_leave_no_e
 
     assert result["verdict"] == "family_only"
     assert result["finding"] == "private_activity"
-    assert share.allowed(result["verdict"], "sendable") is False
+    assert share.allowed(result["verdict"], "shareable") is False
 
 
 def test_an_answer_outside_the_owner_vocabulary_leaves_the_carrier_undecided():

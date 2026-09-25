@@ -29,7 +29,8 @@ immich-memories runs list --person "Emma" --limit 5
 immich-memories runs show 20260105_1430
 ```
 
-Status, date range, clip counts, **Title From**, output file, duration and size, the phase-by-phase timing,
+Status, date range, clip counts, **Title From**, output file, duration and size, **Sharing** (who the cut was
+for: just us, family or shareable; `runs story` prints it too), the phase-by-phase timing,
 and the machine it ran on (CPU, GPU, RAM, FFmpeg version).
 
 **Title From** is the source of the opening title: `override` (you typed it), `album`, `occasion`, `model`,

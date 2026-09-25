@@ -17,6 +17,7 @@ from immich_memories.analysis.editorial_block_votes import (
     vote_blocks,
     weak_example,
 )
+from immich_memories.analysis.editorial_shot_kinds import TEXTURE
 from immich_memories.analysis.editorial_story_replies import OF_THE_SUBJECT, close_family_on
 
 THESIS_FIT_VERSION = "thesis-fit-v4-owner-relations"
@@ -209,6 +210,25 @@ def sole_era_shots(
     return {assets[0]: era for era, assets in shots_of.items() if len(assets) == 1}
 
 
+def sole_texture_shots(
+    cut: Sequence[Mapping[str, Any]], kind_of: Callable[[str], str | None] | None
+) -> dict[str, str]:
+    """Each story's only shot in the cut that is not a portrait (a place, a crowd, an event).
+
+    The vote reads a portrait as the film's subject and a place or a race as filler, so left to
+    itself it turns a story into posed portraits. It never removes the one shot that keeps a
+    story from being only that; a gate still can. Maps the shot to its story.
+    """
+    if kind_of is None:
+        return {}
+    texture_of: dict[str, list[str]] = {}
+    for shot in cut:
+        if kind_of(shot["asset_id"]) == TEXTURE:
+            story = str(shot.get("story_episode") or shot["asset_id"])
+            texture_of.setdefault(story, []).append(shot["asset_id"])
+    return {assets[0]: story for story, assets in texture_of.items() if len(assets) == 1}
+
+
 def keep_every_voice(
     cut: Sequence[Mapping[str, Any]],
     verdicts: dict[str, dict[str, Any]],
@@ -248,6 +268,7 @@ def classify_fit(
     votes: Mapping[str, tuple[int, str]],
     family_held: Mapping[str, str] | None = None,
     era_held: Mapping[str, str] | None = None,
+    texture_held: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Bad, weak or kept.
 
@@ -259,15 +280,17 @@ def classify_fit(
     Everything else: an unprotected shot named by both orders is `bad` and leaves; by one order
     it is `weak` and is offered a same-story replacement whose place it gives up only once a
     candidate has passed. `family_held` maps a close family member's only shot to their relation:
-    it is held the same way, and so is a partition's only shot (`era_held`, shot to partition).
+    it is held the same way, and so is a partition's only shot (`era_held`, shot to partition)
+    and a story's only shot that is not a portrait (`texture_held`, shot to story).
     """
     held = family_held or {}
-    eras = era_held or {}
+    eras = dict(era_held or {})
+    textures = texture_held or {}
     verdicts = {}
     for shot in cut:
         asset = shot["asset_id"]
         named, why = votes.get(asset, (0, ""))
-        protected = is_protected(shot) or asset in held or asset in eras
+        protected = is_protected(shot) or asset in held or asset in eras or asset in textures
         verdicts[asset] = {
             "state": _state(named, protected=protected),
             "named_by": named,
@@ -284,10 +307,12 @@ def _held_by(
 ) -> str:
     if is_protected(shot):
         return HELD_BY_THE_OWNER
-    if shot["asset_id"] not in family_held:
+    if shot["asset_id"] in era_held:
         return (
             f"the only shot of {era_held[shot['asset_id']]} in the film; the vote does not move it"
         )
+    if shot["asset_id"] not in family_held:
+        return "its story's only shot that is not a portrait; the vote does not move it"
     whose = _whose(family_held[shot["asset_id"]])
     return f"the only shot of {whose} in the film; the vote does not move it"
 

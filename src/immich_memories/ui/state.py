@@ -134,6 +134,8 @@ class AppState:
     include_live_photos: bool = False
     include_photos: bool = False
     accept_any_provenance: bool = False
+    # Who the next cut is for (`just-us`, `family`, `shareable`); None reads defaults.sharing.
+    sharing: str | None = None
     photo_assets: list[Any] = field(default_factory=list)
     selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0

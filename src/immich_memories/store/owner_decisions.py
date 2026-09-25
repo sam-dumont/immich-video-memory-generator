@@ -21,14 +21,29 @@ from pathlib import Path
 
 from immich_memories.analysis.editorial_shareability import (
     NEVER_AUTO,
+    OWNER_CLEARANCES,
     OWNER_CLEARED,
     OWNER_SOURCE,
 )
 from immich_memories.store.editorial_preparation import initialize, now, private_database_path
 
-CLEAR_HOLD = OWNER_CLEARED
+CLEAR_HOLD = OWNER_CLEARED  # fine for anyone
 NEVER_USE = NEVER_AUTO
-DECISIONS = (CLEAR_HOLD, NEVER_USE)
+DECISIONS = (*OWNER_CLEARANCES, NEVER_USE)
+# The widest film a cleared picture may play in, as the owner picks it.
+CLEARANCE_LEVELS = {"anyone": CLEAR_HOLD, "family": "cleared_family", "just-us": "cleared_just_us"}
+
+
+def clearance_for(level: str) -> str:
+    """The decision that clears a picture's hold for this level (`anyone`, `family`, `just-us`)."""
+    try:
+        return CLEARANCE_LEVELS[level]
+    except KeyError:
+        raise ValueError(f"unknown level {level!r}: pick anyone, family or just-us") from None
+
+
+def is_clearance(decision: str | None) -> bool:
+    return decision in OWNER_CLEARANCES
 
 
 def _open(store_path: Path | str) -> sqlite3.Connection:

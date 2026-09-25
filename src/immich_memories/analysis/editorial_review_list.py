@@ -10,7 +10,7 @@ carriers in that band that no other hold already keeps to the family, with the h
 probability, and the run's summary says how many there are. The owner decides.
 
 A `family_only` verdict is the rules tier's answer for every carrier, so this matters most
-to the model tier and to a `sendable` export, where a shot in the band is otherwise on its
+to the model tier and to a `shareable` export, where a shot in the band is otherwise on its
 way out of the house with no one having looked.
 """
 

@@ -343,7 +343,7 @@ class _FakeEditorialPipeline:
             "key": context.key,
             "product": context.product,
             "target_seconds": context.target_seconds,
-            "audience": "family",
+            "audience": context.audience,
             "hemisphere": context.hemisphere,
             "date_ranges": [[r.start.isoformat(), r.end.isoformat()] for r in context.case_ranges],
             "requested_assets": [_asset_of(source).id for source in sources],

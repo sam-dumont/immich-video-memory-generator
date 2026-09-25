@@ -36,7 +36,7 @@ def test_clearing_a_detector_hold_asks_first_and_a_no_changes_nothing(tmp_path):
     config = config_at(tmp_path)
     bank_a_head(config, "beach")
 
-    result = run(config, "clear-hold", "beach", answer="n\n")
+    result = run(config, "clear-hold", "beach", answer="\nn\n")
 
     assert "nudity detector" in result.output
     assert holds.read(config, ["beach"])["beach"].decision is None
@@ -46,7 +46,7 @@ def test_clearing_with_a_yes_writes_the_clearance(tmp_path):
     config = config_at(tmp_path)
     bank_a_head(config, "beach")
 
-    result = run(config, "clear-hold", "beach", answer="y\n")
+    result = run(config, "clear-hold", "beach", answer="anyone\ny\n")
 
     assert result.exit_code == 0, result.output
     assert holds.read(config, ["beach"])["beach"].describe().startswith("You cleared its hold")
@@ -69,3 +69,24 @@ def test_never_use_and_undo(tmp_path):
     assert run(config, "undo", "calm").exit_code == 0
 
     assert holds.read(config, ["calm"])["calm"].decision is None
+
+
+def test_clear_hold_takes_a_level(tmp_path):
+    config = config_at(tmp_path)
+    bank_a_head(config, "beach")
+
+    result = run(config, "clear-hold", "beach", "--level", "just-us", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert "just us" in result.output
+    assert holds.read(config, ["beach"])["beach"].decision == "cleared_just_us"
+
+
+def test_clear_hold_asks_for_the_level_and_defaults_to_the_family(tmp_path):
+    config = config_at(tmp_path)
+    bank_a_head(config, "beach")
+
+    result = run(config, "clear-hold", "beach", answer="\ny\n")
+
+    assert "Fine for" in result.output
+    assert holds.read(config, ["beach"])["beach"].decision == "cleared_family"

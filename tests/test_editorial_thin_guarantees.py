@@ -107,3 +107,189 @@ def test_a_seat_takes_the_favourite_of_the_moment_it_picked(tmp_path):
 
     assert newcomers == ["c-starred"]
     assert "c-recorded" not in {row["asset_id"] for row in cut}
+
+
+def test_a_removed_shot_is_refilled_when_the_draft_already_runs_past_the_length(tmp_path):
+    """Feb 2024 and the 2024 year (09-24): the draft ran past the length the polish measured
+    against, so no seat opened for the shot the vote removed and the film lost a picture.
+    A removal frees its own place; the refill takes it, and the film grows no longer."""
+    from tests.editorial_thin_fixtures import JUNK, UNSTEADY, Film, draft_of, polish
+
+    film = Film()
+    draft_of(film, 8, flagged={2: JUNK, 5: UNSTEADY})
+
+    _judge, record, cut, newcomers = polish(tmp_path, film, room=-10.0)
+
+    assert len(newcomers) == 2
+    assert len(cut) == len(film.draft)
+    assert sum(row["seconds"] for row in cut) <= sum(row["seconds"] for row in film.draft)
+    assert {slot["outcome"] for slot in record["slots"]} == {"seated"}
+
+
+def test_a_removal_whose_story_has_nothing_left_is_refilled_from_the_films_other_stories(
+    tmp_path,
+):
+    """The refill comes from the removed shot's own story, or else from the pool of the stories
+    the film already holds, nearest in time first."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers.update({"S001": "maybe", "S002": "maybe", "S003": "maybe"})
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S002", START + timedelta(days=10), JUNK))
+    film.draft.append(film.shot("d3", "S003", START + timedelta(days=20), "a walk in the park"))
+    film.shot("far", "S001", START + timedelta(days=1), "people at a table again")
+    film.shot("near", "S003", START + timedelta(days=12), "the park at dusk")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["near"]
+    assert [(slot["rule"], slot["outcome"]) for slot in record["slots"]] == [("vote-bad", "seated")]
+
+
+def test_a_removal_with_nothing_left_to_refill_it_says_so(tmp_path):
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers.update({"S001": "maybe", "S002": "maybe"})
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S002", START.replace(day=3), JUNK))
+
+    _judge, record, cut, newcomers = polish(tmp_path, film)
+
+    assert [row["asset_id"] for row in cut] == ["d1"] and not newcomers
+    assert [(slot["rule"], slot["outcome"]) for slot in record["slots"]] == [
+        ("vote-bad", "none available")
+    ]
+
+
+def test_a_removals_refill_the_gates_refuse_is_chosen_again_from_the_same_page(tmp_path):
+    """The 2024 year (09-24): seats were lost to capture spacing with a whole page still
+    unasked. A removal's seat picks once more when the gates refuse its first choice."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("close", "S001", START + timedelta(minutes=2), "people at a table, closer")
+    film.units["close"]["moment"] = "m-d1"
+    film.shot("fine", "S001", START + timedelta(hours=3), "people in the garden")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["fine"]
+    assert [slot["outcome"] for slot in record["slots"]] == ["seated"]
+
+
+def test_a_shot_the_vote_removed_is_not_refilled_from_its_own_moment(tmp_path):
+    """April 2021 (09-25): the vote removed a cat at a sink, and its refill was the frame taken
+    three seconds earlier. The vote judged the moment; another frame of it adds nothing either."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("twin", "S001", START + timedelta(days=1, seconds=-3), "the same worktop")
+    film.units["twin"]["moment"] = "m-d2"
+    film.shot("other", "S001", START + timedelta(days=2), "people in the garden")
+
+    _judge, _record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["other"]
+
+
+def test_a_refill_that_repeats_a_scene_the_cut_holds_is_refused_and_chosen_again(tmp_path):
+    """April 2021 (09-25): two refills repeated a scene the cut already held, and the final
+    duplicate review took them out later with nothing in their place."""
+    from datetime import timedelta
+
+    import numpy as np
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "a beach at noon"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("again", "S001", START + timedelta(hours=5), "the same beach")
+    film.shot("fresh", "S001", START + timedelta(hours=9), "people in the garden")
+    beach, garden = np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    prints = {"d1": beach, "again": beach, "fresh": garden, "d2": garden}
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film, scene_print=prints.get)
+
+    assert newcomers == ["fresh"]
+    assert [slot["outcome"] for slot in record["slots"]] == ["seated"]
+
+
+def test_a_removals_refill_the_vote_revokes_is_chosen_again(tmp_path):
+    """April 2021 (09-25): the vote re-check revoked a removal's refill, and the film kept the
+    hole. A removal's seat picks once more from what is left of its page."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("filler", "S001", START + timedelta(hours=5), f"{JUNK} again")
+    film.shot("fine", "S001", START + timedelta(hours=9), "people in the garden")
+
+    _judge, record, cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["fine"]
+    assert record["revoked_by_the_fit_check"] == ["filler"]
+    assert len(cut) == 2
+
+
+def test_two_removals_in_a_story_with_one_picture_left_both_refill_from_the_pool(tmp_path):
+    """June 2023 (09-25): a removal's page held one picture, another seat took it, and the seat
+    ended 'none available' while the film's other stories still had pictures."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers.update({"S001": "maybe", "S002": "maybe"})
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.draft.append(film.shot("d3", "S001", START + timedelta(days=2), f"{JUNK}, later"))
+    film.draft.append(film.shot("d4", "S002", START + timedelta(days=4), "a walk in the park"))
+    film.shot("spare", "S001", START + timedelta(days=1, hours=5), "people in the garden")
+    film.shot("near", "S002", START + timedelta(days=3), "the park at dusk")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert sorted(newcomers) == ["near", "spare"]
+    assert {slot["outcome"] for slot in record["slots"]} == {"seated"}
+
+
+def test_a_removals_page_offers_only_pictures_that_stand(tmp_path):
+    """April 2021 (09-25): two removals' seats ended 'refused by standing', each pick and its
+    second try refused by the facts, while their pages held pictures that stand. Standing is
+    read from facts and costs no call, so a page offers only rows that stand."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, UNSTEADY, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    for n in range(3):
+        film.shot(f"blur{n}", "S001", START + timedelta(hours=3 + n), f"{UNSTEADY} {n}")
+    film.shot("fine", "S001", START + timedelta(hours=9), "people in the garden")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["fine"]
+    assert [slot["outcome"] for slot in record["slots"]] == ["seated"]

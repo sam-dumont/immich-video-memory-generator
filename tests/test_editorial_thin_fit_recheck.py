@@ -27,10 +27,10 @@ def rechecks(judge) -> list[str]:
 
 
 def test_one_newcomer_re_asks_only_the_block_it_joined(tmp_path):
-    """The shot voted out early in the film leaves no newcomer behind it, so every later block
-    of the cut holds different shots than the vote saw; only the newcomer's is asked again."""
+    """The shot voted out late in the film is refilled from the film's pool, its story having
+    nothing else; only the newcomer's block is asked again, not the cut's other three."""
     film = Film()
-    draft(film, 48, junk=(2, 40), empty=(2,))
+    draft(film, 48, junk=(40,), empty=(40,))
 
     judge, _payload, _cut, newcomers = polish(tmp_path, film)
 
@@ -45,8 +45,9 @@ def test_a_newcomer_both_orders_name_is_still_revoked(tmp_path):
     _judge, payload, cut, newcomers = polish(tmp_path, film)
 
     assert newcomers == []
-    assert len(payload["revoked_by_the_fit_check"]) == 1
-    assert payload["revoked_by_the_fit_check"][0] not in {row["asset_id"] for row in cut}
+    # the removal's seat picks once more after the first refill is revoked; both are revoked
+    assert len(payload["revoked_by_the_fit_check"]) == 2
+    assert not set(payload["revoked_by_the_fit_check"]) & {row["asset_id"] for row in cut}
 
 
 def test_a_swap_takes_its_shots_block_and_an_append_joins_the_block_its_time_falls_in():

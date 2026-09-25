@@ -59,9 +59,10 @@ flowchart LR
 
 | Word | Meaning | Where |
 |---|---|---|
-| **Verdict** | `share`, `family_only` or `do_not_show`; the strictest wins, and a household film shows the first two | `editorial_shareability.py` |
+| **Verdict** | `share`, `family_only`, `just_us` or `do_not_show`; the strictest wins | `editorial_shareability.py` |
+| **Sharing level** | who a film is for: just us (plays up to `just_us`), family (up to `family_only`, the default), shareable (`share` only) | `allowed`, `defaults.sharing` |
 | **Detector hold** | an exposure flag on a still, a video frame or a Live clip; `family_only`, never lifted by a reading, only by you | `floors_under` |
-| **Your decision** | per picture: hold cleared, or never use; kept in the annotation store, read by every tier | `store/owner_decisions.py` |
+| **Your decision** | per picture: hold cleared for a level, or never use; kept in the annotation store, read by every tier | `store/owner_decisions.py` |
 | **Exposure chain** | a capture run at least half flagged, with three or more flagged captures, held whole | `editorial_exposure_chains.py` |
 | **Laya** | an optional local model answering the audience check's activity question from the caption | `editorial_laya_reader.py` |
 | **Review list** | shots with an exposure probability between 0.2 and 0.5, listed for you; changes nothing | `review-before-sharing.private.json` |

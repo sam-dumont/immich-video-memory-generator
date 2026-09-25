@@ -85,7 +85,7 @@ def empty_store(tmp_path):
     return store
 
 
-def gate(tmp_path, store, *, tier="full", audience="sendable"):
+def gate(tmp_path, store, *, tier="full", audience="shareable"):
     return AudienceGate(
         RefusingJudge(),
         audience=audience,
@@ -199,7 +199,7 @@ def test_a_cleared_picture_stands_in_a_film_shared_outside_the_family(tmp_path):
     line = captured.audience_annotations["picture-001"]
     flagged = replace(
         captured,
-        audience="sendable",
+        audience="shareable",
         audience_annotations=captured.audience_annotations
         | {"picture-001": replace(line, heads=(("nsfw_marqo", "yes"),))},
     )

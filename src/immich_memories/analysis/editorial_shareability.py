@@ -9,7 +9,7 @@ Two layers, in this order, both text-only:
    ``flag='cleared'``) lifts the exclusion. No model is asked.
 2. Tighten-only check. Every selected carrier is put to the reader once, on its line and
    its flags (including the exposure-source flags the editorial line hides): ``share``,
-   ``family_only`` or ``do_not_show``. Verdicts combine to the strictest; a sendable export keeps
+   ``family_only`` or ``do_not_show``. Verdicts combine to the strictest; a shareable export keeps
    only ``share``. A refused carrier is replaced from the same anchor's shareable pool or its slot
    is dropped. Never a refill from another anchor.
 
@@ -31,6 +31,7 @@ from typing import Any
 from immich_memories.analysis.annotation_line_fields import content_of
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_shareability_audience import (
+    HOUSEHOLD_FINDINGS,
     _clean,
     _exposure_flag,
     _parse_exposure_verdict,
@@ -47,7 +48,31 @@ NEVER_AUTO = "never_auto"
 REVIEW = "review"
 OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
-VERDICTS = ("share", "family_only", "do_not_show")  # loosest to strictest
+# The owner's clearance of a picture, by the widest film it may play in. `cleared` is fine for
+# anyone, as it was before a clearance named a level.
+OWNER_CLEARANCES = {
+    OWNER_CLEARED: "share",
+    "cleared_family": "family_only",
+    "cleared_just_us": "just_us",
+}
+# Loosest to strictest. `just_us` is a private moment of the household: it plays only in a
+# film the household keeps to itself.
+VERDICTS = ("share", "family_only", "just_us", "do_not_show")
+# The sharing levels a film is cut for, widest audience last, and the strictest verdict each
+# one plays.
+JUST_US, FAMILY, SHAREABLE = "just_us", "family", "shareable"
+LEVELS = (JUST_US, FAMILY, SHAREABLE)
+_PLAYS_UP_TO = {JUST_US: "just_us", FAMILY: "family_only", SHAREABLE: "share"}
+
+
+def level_of(value: str) -> str:
+    """The sharing level a config value or a flag names (`just-us` is `just_us`)."""
+    level = value.strip().replace("-", "_")
+    if level not in LEVELS:
+        raise ValueError(f"unknown sharing level {value!r}: pick just-us, family or shareable")
+    return level
+
+
 PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
 AUDIENCE_PROMPT_VERSION = "audience-evidence-v17-every-finding-needs-its-activity"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
@@ -128,30 +153,43 @@ def load_detector_heads(
 def never_auto_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
     out = set()
     for asset_id, rows in flags.items():
-        if any(r.source == OWNER_SOURCE and r.flag == OWNER_CLEARED for r in rows):
+        if _owner_clearance(rows) is not None:
             continue
         if any(r.flag == NEVER_AUTO for r in rows):
             out.add(asset_id)
     return frozenset(out)
 
 
-def owner_cleared_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
-    """The pictures whose holds the owner cleared, one by one."""
-    return frozenset(
-        asset_id
-        for asset_id, rows in flags.items()
-        if any(r.source == OWNER_SOURCE and r.flag == OWNER_CLEARED for r in rows)
+def _owner_clearance(rows: Sequence[FlagRow]) -> str | None:
+    """The verdict the owner's clearance of this picture gives it, or None when there is none."""
+    return next(
+        (
+            OWNER_CLEARANCES[r.flag]
+            for r in rows
+            if r.source == OWNER_SOURCE and r.flag in OWNER_CLEARANCES
+        ),
+        None,
     )
 
 
-def owner_cleared_unit(unit: Mapping[str, Any], flags: Mapping[str, Sequence[FlagRow]]) -> bool:
-    """Whether the owner cleared every picture this unit shows, its Live clip included.
+def owner_cleared_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
+    """The pictures the owner cleared for anyone, one by one."""
+    return frozenset(
+        asset_id for asset_id, rows in flags.items() if _owner_clearance(rows) == "share"
+    )
+
+
+def owner_verdict(unit: Mapping[str, Any], flags: Mapping[str, Sequence[FlagRow]]) -> str | None:
+    """The verdict the owner gave this unit, when they cleared every picture it shows.
 
     A clearance is per picture and never inherited: a burst with one member the owner did not
-    clear, or a clip the clearance did not reach, is judged as any other unit.
+    clear, or a clip the clearance did not reach, is judged as any other unit. Members cleared
+    for different levels play at the strictest of them.
     """
-    cleared = owner_cleared_ids({m: flags.get(m, ()) for m in unit_members(unit)})
-    return bool(cleared) and set(unit_members(unit)) <= cleared
+    verdicts = [_owner_clearance(flags.get(member, ())) for member in unit_members(unit)]
+    if not verdicts or any(verdict is None for verdict in verdicts):
+        return None
+    return tighten(*verdicts)
 
 
 def unit_members(unit: Mapping[str, Any]) -> tuple[str, ...]:
@@ -558,6 +596,26 @@ def partition_units(
     return kept, excluded
 
 
+PRIVATE_ACTIVITY = "private_activity"
+
+
+def at_household_level(record: dict[str, Any]) -> dict[str, Any]:
+    """A caption reading that names a household's private moment keeps it to the household.
+
+    The reader's categories stay the prompt's; which films a category plays in is decided here,
+    so an answer banked before sharing levels existed reads the same way as a fresh one.
+    """
+    activity = record.get("activity")
+    if (
+        record.get("verdict") == "do_not_show"
+        and record.get("finding") == PRIVATE_ACTIVITY
+        and isinstance(activity, Mapping)
+        and activity.get("finding") in HOUSEHOLD_FINDINGS
+    ):
+        return record | {"verdict": "just_us"}
+    return record
+
+
 def tighten(*verdicts: str | None) -> str:
     """The strictest of the given verdicts; nothing known means 'share'."""
     known = [v for v in verdicts if v in VERDICTS]
@@ -566,12 +624,11 @@ def tighten(*verdicts: str | None) -> str:
     return max(known, key=VERDICTS.index)
 
 
-def allowed(verdict: str, audience: str = "family") -> bool:
-    if verdict == "share":
-        return True
-    if verdict == "family_only":
-        return audience == "family"
-    return False
+def allowed(verdict: str, audience: str = FAMILY) -> bool:
+    """Whether a shot with this verdict plays in a film cut for this sharing level."""
+    if verdict not in VERDICTS or audience not in _PLAYS_UP_TO:
+        return False
+    return VERDICTS.index(verdict) <= VERDICTS.index(_PLAYS_UP_TO[audience])
 
 
 def _first_shareable(

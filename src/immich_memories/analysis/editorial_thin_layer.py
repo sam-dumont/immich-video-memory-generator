@@ -16,7 +16,7 @@ import calendar
 import logging
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 from operator import itemgetter
 from pathlib import Path
@@ -28,6 +28,7 @@ from immich_memories.analysis.editorial_block_votes import (
     load_vote_bank,
     save_vote_bank,
 )
+from immich_memories.analysis.editorial_shot_kinds import KindOf, kind_mix
 from immich_memories.analysis.editorial_story_replies import close_family_on
 from immich_memories.analysis.editorial_thin_catalogue import (
     BankedCatalogue,
@@ -36,6 +37,7 @@ from immich_memories.analysis.editorial_thin_catalogue import (
 )
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
 from immich_memories.analysis.editorial_thin_refill import (
+    REMOVALS,
     ThinRefill,
     ThinSlot,
     newcomer_slots,
@@ -56,6 +58,7 @@ from immich_memories.analysis.editorial_thin_vote import (
     keep_every_voice,
     sole_era_shots,
     sole_family_shots,
+    sole_texture_shots,
     vote_thesis_fit,
 )
 
@@ -164,6 +167,8 @@ class ThinPolish:
         subject: str = "",
         close_family: CloseFamily = close_family_on,
         era_of: Callable[[str], str | None] | None = None,
+        kind_of: KindOf | None = None,
+        vouched: Callable[[Mapping[str, Any]], bool] = lambda _row: True,
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
@@ -173,6 +178,9 @@ class ThinPolish:
         `close_family` who on a line is close family in this film: the owner's, and in a film
         about people the subject's own as well. `era_of` maps a capture time to the partition a
         film promises a voice to (a year of a lifetime film), None when it promises none.
+        `kind_of` says whether a shot is a portrait or texture, for the film's variety: the vote
+        keeps each story's only texture shot, and a refill leads with the kind its story lacks,
+        among the rows the library `vouched` for.
         """
         if catalogue is None or not carriers:
             return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
@@ -180,7 +188,9 @@ class ThinPolish:
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
-        fit = _FitQuestion(judge, catalogue, contract, line_of, subject, close_family, era_of)
+        fit = _FitQuestion(
+            judge, catalogue, contract, line_of, subject, close_family, era_of, kind_of
+        )
         kept, verdicts, rounds = self._voted(admitted, fit)
         slots = plan_slots(
             kept,
@@ -190,6 +200,9 @@ class ThinPolish:
             candidates_of=lambda key: _with_records(candidates_of(key), catalogue),
             seen={c["asset_id"] for c in carriers},
             content_cap=content_cap,
+            removed=_removed(carriers, kept),
+            kind_of=kind_of,
+            vouched=vouched,
         )
         refill = ThinRefill(
             judge=judge,
@@ -204,6 +217,10 @@ class ThinPolish:
         filled, outcomes = refill.fill(kept, slots)
         partition = balanced_groups([c["asset_id"] for c in admitted])
         final, revoked = self._checked(filled, kept, outcomes, partition, fit)
+        final, outcomes, late, retried = self._again(
+            final, outcomes, revoked, refill, partition, fit
+        )
+        revoked |= late
         seen = {c["asset_id"] for c in carriers} | {c["asset_id"] for c in final}
         topped, short_slots, short = self._short_reads(
             final,
@@ -237,11 +254,12 @@ class ThinPolish:
                 "short": short,
                 "revoked_by_the_fit_check": sorted(revoked),
                 "shots": len(final),
+                "shot_kinds": _shot_kinds(carriers, final, kind_of),
                 "planned_seconds": round(sum(c["seconds"] for c in final), 3),
                 "content_cap": content_cap,
                 "calls": _spent(
                     len(judge.calls) - first_call,
-                    thin_budget(len(carriers), len(outcomes))
+                    thin_budget(len(carriers), len(outcomes) + retried)
                     + short_budget(short.get("episodes_read", 0), len(short_slots)),
                 ),
             },
@@ -297,6 +315,36 @@ class ThinPolish:
             },
         )
 
+    def _again(
+        self,
+        cut: list[dict[str, Any]],
+        outcomes: Sequence[ThinSlot],
+        revoked: set[str],
+        refill: ThinRefill,
+        partition: Sequence[Sequence[str]],
+        fit: _FitQuestion,
+    ) -> tuple[list[dict[str, Any]], list[ThinSlot], set[str], int]:
+        """A removal's seat whose newcomer the re-check revoked picks once more from what is
+        left of its page, and that pick is re-checked the same way. Returns the cut, every
+        seat's outcome, what the second check revoked, and how many seats picked again."""
+        again = [
+            replace(
+                slot,
+                filled_by="",
+                outcome="",
+                page=tuple(unit for unit in slot.page if unit["asset_id"] not in revoked),
+                fallback=tuple(u for u in slot.fallback if u["asset_id"] not in revoked),
+            )
+            for slot in outcomes
+            if slot.kind in REMOVALS and slot.filled_by in revoked
+        ]
+        if not again:
+            return cut, list(outcomes), set(), 0
+        filled, refilled = refill.fill(cut, again)
+        final, late = self._checked(filled, cut, refilled, partition, fit)
+        stayed = [s for s in outcomes if not (s.kind in REMOVALS and s.filled_by in revoked)]
+        return final, [*stayed, *refilled], late, len(again)
+
     def _checked(
         self,
         filled: list[dict[str, Any]],
@@ -320,14 +368,13 @@ class ThinPolish:
             return filled, set()
         newcomers = {row["asset_id"] for row in fresh}
         by_asset = {row["asset_id"]: row for row in filled}
-        family = sole_family_shots(filled, fit.line_of, fit.close_family)
-        eras = sole_era_shots(filled, fit.era_of)
+        family, eras, textures = fit.held(filled)
         votes: dict[str, tuple[int, str]] = {}
         for group in rejoined_blocks(partition, filled, newcomers, outcomes):
             block = [by_asset[asset] for asset in group]
-            block_votes, _rounds = self._ask(block, fit, family | eras, moving=newcomers)
+            block_votes, _rounds = self._ask(block, fit, family | eras | textures, moving=newcomers)
             votes.update(block_votes)
-        verdicts = classify_fit(fresh, votes, family, eras)
+        verdicts = classify_fit(fresh, votes, family, eras, textures)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
             return filled, set()
@@ -345,11 +392,10 @@ class ThinPolish:
     def _voted(
         self, carriers: list[dict[str, Any]], fit: _FitQuestion
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
-        family = sole_family_shots(carriers, fit.line_of, fit.close_family)
-        eras = sole_era_shots(carriers, fit.era_of)
-        votes, rounds = self._ask(carriers, fit, family | eras)
+        family, eras, textures = fit.held(carriers)
+        votes, rounds = self._ask(carriers, fit, family | eras | textures)
         verdicts = keep_every_voice(
-            carriers, classify_fit(carriers, votes, family, eras), fit.era_of
+            carriers, classify_fit(carriers, votes, family, eras, textures), fit.era_of
         )
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
         return kept, verdicts, rounds
@@ -404,6 +450,25 @@ class _FitQuestion:
     subject: str
     close_family: CloseFamily
     era_of: Callable[[str], str | None] | None = None
+    kind_of: KindOf | None = None
+
+    def held(self, cut: Sequence[Mapping[str, Any]]) -> tuple[dict, dict, dict]:
+        """What the vote may not move in this cut: family's, partitions' and texture's only."""
+        return (
+            sole_family_shots(cut, self.line_of, self.close_family),
+            sole_era_shots(cut, self.era_of),
+            sole_texture_shots(cut, self.kind_of),
+        )
+
+
+def _shot_kinds(draft, final, kind_of: KindOf | None) -> dict[str, dict[str, int]]:
+    """The portrait and texture mix of the draft and of the polished cut."""
+    if kind_of is None:
+        return {"draft": {}, "polished": {}}
+    return {
+        "draft": kind_mix((row["asset_id"] for row in draft), kind_of),
+        "polished": kind_mix((row["asset_id"] for row in final), kind_of),
+    }
 
 
 def thin_budget(draft: int, seats: int) -> int:
@@ -470,6 +535,12 @@ def _with_records(
         record = catalogue.notable_record_of(row["asset_id"])
         marked.append(dict(row) | {"notable_record": record} if record else dict(row))
     return marked
+
+
+def _removed(carriers: Sequence[Mapping[str, Any]], kept: Sequence[Mapping[str, Any]]):
+    """The draft rows the gates or the vote took out, by asset."""
+    staying = {row["asset_id"] for row in kept}
+    return {row["asset_id"]: row for row in carriers if row["asset_id"] not in staying}
 
 
 def _drafted_shots(

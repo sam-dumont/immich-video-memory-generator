@@ -261,6 +261,7 @@ def test_capture_picture_decisions(
         expect(dialog.locator("img")).to_be_visible()
         page.wait_for_timeout(600)
         _save_part(page, dialog, d, _name("pictures-clear-dialog", theme))
+        dialog.get_by_role("radio", name="Anyone: shareable films too").click()
         dialog.get_by_role("button", name="Clear hold").click()
         expect(card.get_by_text(re.compile("^You cleared its hold"))).to_be_visible()
         page.wait_for_timeout(3500)
@@ -278,3 +279,16 @@ def test_capture_picture_decisions(
 
         for asset_id in (_HELD, shot, ticked):
             owner_decisions.forget(store, asset_id)
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_sharing_levels(page: Page, launch_app_url: str, screenshot_dir: Path, theme: str):
+    """Who will watch it: the brief's sharing level, open on its three choices (#1325)."""
+    _open_brief(page, launch_app_url)
+    set_theme(page, theme)
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Monthly Highlights")
+    _choose(page, "Month", "June")
+    _choose(page, "Sharing", "Just us")
+    expect(page.get_by_text("The household.", exact=False)).to_be_visible()
+    _save(page, screenshot_dir, _name("memory-brief-sharing", theme))

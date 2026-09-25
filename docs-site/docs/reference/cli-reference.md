@@ -301,6 +301,7 @@ immich-memories generate [OPTIONS]
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--include` | text | - | Keep this picture in the cut even if the editor would drop it (repeatable) |
 | `--exclude` | text | - | Leave this picture out of the cut (repeatable) |
+| `--sharing` | choice: `just-us` \| `family` \| `shareable` | - | Who the film is for: just-us (the household), family (default: defaults.sharing) or shareable (anyone) |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
 | `--add-date` | boolean | false | Caption each clip with its date |
@@ -460,7 +461,7 @@ immich-memories pictures [OPTIONS]
 
 ### `pictures clear-hold`
 
-Clear this one picture's hold, after you've looked at it yourself.
+Clear this one picture's hold for a level, after you've looked at it yourself.
 
 ```bash
 immich-memories pictures clear-hold [OPTIONS]
@@ -468,6 +469,7 @@ immich-memories pictures clear-hold [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
+| `--level` | choice: `anyone` \| `family` \| `just-us` | - | The widest film it may play in; asked when not given (--yes: family) |
 | `--yes` | boolean | false | Clear it without asking |
 
 **Arguments:**

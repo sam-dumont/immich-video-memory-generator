@@ -50,7 +50,7 @@ def test_an_nsfw_head_hold_is_untouched_when_the_record_is_unsupported():
     )
     assert result["verdict"] == "family_only"
     assert result["finding"] == "exposure_evidence"
-    assert not share.allowed(result["verdict"], "sendable")
+    assert not share.allowed(result["verdict"], "shareable")
 
 
 def test_ordinary_shirtlessness_read_as_adult_changing_stays_in_the_family():
@@ -59,7 +59,7 @@ def test_ordinary_shirtlessness_read_as_adult_changing_stays_in_the_family():
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="no"), "test")
     assert result["verdict"] == "family_only"
     assert share.allowed(result["verdict"], "family")
-    assert not share.allowed(result["verdict"], "sendable")
+    assert not share.allowed(result["verdict"], "shareable")
 
 
 def test_depicted_undressing_still_holds_as_adult_changing():
@@ -103,7 +103,7 @@ def test_a_breastfeeding_read_under_a_nsfw_hold_keeps_the_hold():
     caption = "A woman holds a newborn baby wrapped in a blanket."
     judge = Judge(activity("breastfeeding_or_expressing_milk"), exposure())
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="yes"), "test")
-    assert not share.allowed(result["verdict"], "sendable")
+    assert not share.allowed(result["verdict"], "shareable")
 
 
 @pytest.mark.parametrize(
@@ -325,4 +325,4 @@ def test_an_unsupported_text_hold_never_lifts_a_nsfw_head_hold():
     judge = Judge(activity("sexual_content"), exposure())
     result = share.check_audience(judge, evidence(caption, nsfw_marqo="yes"), "test")
     assert result["activity"]["supported"] is False
-    assert not share.allowed(result["verdict"], "sendable")
+    assert not share.allowed(result["verdict"], "shareable")

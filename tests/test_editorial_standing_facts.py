@@ -167,7 +167,7 @@ def test_a_library_whose_faces_were_never_read_keeps_the_table_fitted_without_th
 # -- the rules reader -----------------------------------------------------------------------------
 
 
-def _reader(*, favourite=False, line="", description=None, audience="sendable", **heads):
+def _reader(*, favourite=False, line="", description=None, audience="shareable", **heads):
     source = SimpleNamespace(
         assets={"a": SimpleNamespace(is_favorite=favourite, people=())},
         audience_annotations={

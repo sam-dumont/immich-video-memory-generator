@@ -15,9 +15,10 @@ written once by a 500M vision model and banked:
 
 What that buys:
 
-- **The family-viewing check can clear a picture.** Eight findings (a bath, a nappy change, an
-  identifying record and the rest) are only named by a sentence. Without one, the check refuses
-  what `full` refuses and can never clear, so a `sendable` export needs captions.
+- **The family-viewing check reads what only a sentence names.** Eight findings (a bath, a nappy
+  change, an identifying record and the rest) exist only in a caption. Without one, a shareable
+  film clears what every detector read as clean, and a private moment no detector sees can pass;
+  with captions, the bath goes to just-us films and the record out of every film.
 - **A [reader](./reader.md) reads them**, and the [Laya pre-screen](./reader.md#the-laya-audience-pre-screen)
   answers from them.
 

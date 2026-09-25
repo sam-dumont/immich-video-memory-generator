@@ -39,10 +39,10 @@ def carried(plan):
 
 
 def test_a_banked_hold_is_not_lifted_by_a_later_cut_that_would_clear_it(tmp_path):
-    # The first cut reads a bath and refuses it for a sendable film. The second reads the same
+    # The first cut reads a bath and refuses it for a shareable film. The second reads the same
     # picture as ordinary furniture moving: new evidence, a new question, and a clear answer.
-    held = replace(source(tmp_path, seconds=60, private_opening=True), audience="sendable")
-    cleared = replace(source(tmp_path, seconds=60), audience="sendable")
+    held = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
+    cleared = replace(source(tmp_path, seconds=60), audience="shareable")
     elsewhere = replace(cleared, bank_dir=tmp_path / "other-library" / "banks")
 
     assert "picture-000" not in carried(cut(held, ControlledStoryJudge(), "first-cut"))
@@ -84,7 +84,7 @@ def bump_audience_prompt(monkeypatch):
 def test_a_text_model_hold_from_an_older_audience_prompt_is_asked_again_and_can_clear(
     tmp_path, monkeypatch
 ):
-    held = replace(source(tmp_path, seconds=60, private_opening=True), audience="sendable")
+    held = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
     assert "picture-000" not in carried(cut(held, ControlledStoryJudge(), "first-cut"))
     bump_audience_prompt(monkeypatch)
     judge = ClearingJudge()
@@ -105,7 +105,7 @@ def test_a_body_hold_an_older_library_banked_stays(tmp_path, monkeypatch):
         AudienceBank,
     )
 
-    held = replace(source(tmp_path, seconds=60), audience="sendable")
+    held = replace(source(tmp_path, seconds=60), audience="shareable")
     AudienceBank(held.bank_dir.parent / AUDIENCE_BANK_NAME, answerer="older").hold(
         "picture-000",
         {
@@ -146,7 +146,7 @@ def test_a_banked_clearance_of_a_detector_hold_is_not_served(tmp_path):
     )
     gate = AudienceGate(
         SimpleNamespace(calls=[]),
-        audience="sendable",
+        audience="shareable",
         annotations={},
         flag_rows={},
         lines={},

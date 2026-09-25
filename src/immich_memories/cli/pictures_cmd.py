@@ -9,8 +9,8 @@ import click
 from immich_memories.cli._helpers import console, print_error, print_success
 
 _CLEAR_WARNING = (
-    "Once cleared, every film may use it, and nothing the app reads later puts the hold back. "
-    "`pictures undo` does."
+    "Once cleared, every film up to that level may use it, and nothing the app reads later "
+    "puts the hold back. `pictures undo` does."
 )
 
 
@@ -39,10 +39,16 @@ def register_pictures_commands(main: click.Group) -> None:
 
     @pictures.command("clear-hold")
     @click.argument("asset_id")
+    @click.option(
+        "--level",
+        type=click.Choice(["anyone", "family", "just-us"]),
+        default=None,
+        help="The widest film it may play in; asked when not given (--yes: family)",
+    )
     @click.option("--yes", is_flag=True, help="Clear it without asking")
     @click.pass_context
-    def clear_hold(ctx: click.Context, asset_id: str, yes: bool) -> None:
-        """Clear this one picture's hold, after you've looked at it yourself."""
+    def clear_hold(ctx: click.Context, asset_id: str, level: str | None, yes: bool) -> None:
+        """Clear this one picture's hold for a level, after you've looked at it yourself."""
         from immich_memories.operations import picture_holds as holds
 
         config = ctx.obj["config"]
@@ -51,12 +57,13 @@ def register_pictures_commands(main: click.Group) -> None:
             print_error(_nothing_to_clear(hold))
             raise SystemExit(1)
         console.print(hold.describe())
+        level = level or _ask_level(yes)
         console.print(_CLEAR_WARNING)
         if not yes and not click.confirm(f"Clear the hold on {asset_id}?", default=False):
             console.print("Left as it was.")
             return
-        holds.clear_hold(config, asset_id, via="cli")
-        print_success(f"Cleared: {asset_id} can play in the next cut.")
+        holds.clear_hold(config, asset_id, via="cli", level=level)
+        print_success(f"Cleared {_LEVEL_WORDS[level]}: {asset_id} can play in the next cut.")
 
     @pictures.command("never-use")
     @click.argument("asset_id")
@@ -83,24 +90,38 @@ def register_pictures_commands(main: click.Group) -> None:
     def list_decisions(ctx: click.Context) -> None:
         """Every picture you cleared or will never use."""
         from immich_memories.operations import picture_holds as holds
-        from immich_memories.store.owner_decisions import CLEAR_HOLD, decisions
+        from immich_memories.store.owner_decisions import CLEARANCE_LEVELS, decisions
+
+        cleared = {decision: _LEVEL_WORDS[level] for level, decision in CLEARANCE_LEVELS.items()}
 
         decided = decisions(holds.store_of(ctx.obj["config"]))
         if not decided:
             console.print("You haven't cleared or ruled out any picture.")
             return
         for asset_id, decision in decided.items():
-            console.print(
-                f"{asset_id}  {'hold cleared' if decision == CLEAR_HOLD else 'never use'}"
-            )
+            words = f"hold cleared {cleared[decision]}" if decision in cleared else "never use"
+            console.print(f"{asset_id}  {words}")
 
     main.add_command(pictures)
 
 
-def _nothing_to_clear(hold: Any) -> str:
-    from immich_memories.store.owner_decisions import CLEAR_HOLD, NEVER_USE
+_LEVEL_WORDS = {"anyone": "for anyone", "family": "for the family", "just-us": "for just us"}
 
-    if hold.decision == CLEAR_HOLD:
+
+def _ask_level(yes: bool) -> str:
+    if yes:
+        return "family"
+    return click.prompt(
+        "Fine for which films",
+        type=click.Choice(["anyone", "family", "just-us"]),
+        default="family",
+    )
+
+
+def _nothing_to_clear(hold: Any) -> str:
+    from immich_memories.store.owner_decisions import NEVER_USE, is_clearance
+
+    if is_clearance(hold.decision):
         return f"You already cleared {hold.asset_id}."
     if hold.decision == NEVER_USE:
         return f"You ruled {hold.asset_id} out. `pictures undo` it first."

@@ -10,14 +10,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from functools import partial
 
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
+from immich_memories.analysis.editorial_shot_kinds import shot_kind
 from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_replies import film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_material import Material, Wall
 from immich_memories.analysis.editorial_thin_gates import ThinGates
 from immich_memories.analysis.editorial_thin_layer import PeriodUnread
+from immich_memories.analysis.editorial_unvouched_filler import filler_evidence, owner_vouches_for
 
 
 def shows_life(material: Material, unit_of, asset_id: str) -> bool:
@@ -74,6 +77,7 @@ def polish_the_draft(
             standing=standing,
             audience=gate,
             thumbnail_hash=ports.thumbnail_hash,
+            scene_print=ports.scene_print,
             audience_name=source.audience,
             audience_batch=AUDIENCE_BATCH_SIZE
             if source.config.editorial.thin_batched_audience or ports.laya
@@ -85,11 +89,13 @@ def polish_the_draft(
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         record=record,
         candidates_of=story_candidates(selection, wall, pool, material.units),
-        content_cap=run.final_content_cap,
+        content_cap=_length_of(source, carriers, run),
         protected=source.owner_required_asset_ids,
         subject=source.intent.subject or "",
         close_family=film_close_family(source),
         era_of=_partition_of(source.intent) if source.intent.voice_per_partition else None,
+        kind_of=_kind_of(source),
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
     )
     # Recorded like any pass's removals, so the finished-cut check can name the polish.
     kept = {row["asset_id"] for row in polished}
@@ -99,6 +105,24 @@ def polish_the_draft(
         if row["asset_id"] not in kept
     )
     return polished
+
+
+def _length_of(source, carriers, run) -> float:
+    """The content seconds the render timing gives this draft, the budget finishing will hold
+    the film to. The planner's rough reserve (target less 7.5 s) is not it: on measured months
+    the draft already ran past that reserve, and a polish measured against it had no room to
+    refill a single removal."""
+    if source.render_timing is None or not carriers:
+        return run.final_content_cap
+    return source.render_timing.resolve(list(carriers), source.assets).content_budget
+
+
+def _kind_of(source) -> Callable[[str], str | None]:
+    def kind_of(asset_id: str) -> str | None:
+        record = source.audience_annotations.get(asset_id)
+        return shot_kind(dict(record.heads)) if record is not None else None
+
+    return kind_of
 
 
 def _partition_of(intent) -> Callable[[str], str | None]:

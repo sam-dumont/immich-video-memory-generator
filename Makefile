@@ -372,7 +372,7 @@ playwright-install:  ## Install Playwright browsers for E2E tests
 
 e2e:  ## Run required fake-service contracts and real hermetic browser render
 	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py \
-		tests/e2e/test_memory_page.py tests/e2e/test_picture_decisions.py tests/e2e/test_people_page.py tests/e2e/test_automation_pages.py -v \
+		tests/e2e/test_memory_page.py tests/e2e/test_picture_decisions.py tests/e2e/test_sharing_levels.py tests/e2e/test_people_page.py tests/e2e/test_automation_pages.py -v \
 		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
