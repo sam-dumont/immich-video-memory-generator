@@ -383,7 +383,8 @@ src/immich_memories/
 │   │                               # only a story whose reading records a moment gets a seat
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
 │   │                               # meet the gates, and a refused pick is picked once more; a removal's
-│   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind
+│   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind;
+│   │                               # a vote-named shot's refill comes from another moment
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
 │   │                               # caption (model tier, editorial.laya_audience); only adds holds
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,

@@ -88,9 +88,13 @@ stories the film already holds, nearest in time first. The refused moment comes 
 moments the cut lacks, moving ones first, the favourite first inside a moment. A refill's page puts
 the kind of shot its story holds fewer of (portrait or texture) on top of all that. The model picks
 from 12 rows at most; the facts then say whether the pick stands, and a failed pick gets one more
-try, as does an R or T pick a gate refuses. `thin-polish.private.json` records the shot-kind mix of
+try, as does an R or T pick a gate refuses. A replacement for a shot the vote named comes from
+another moment: the vote judged the moment, and a frame taken seconds apart adds nothing either. A
+newcomer that repeats a scene the cut already holds (the same scene prints the final duplicate review
+reads) is refused on the spot, so the review doesn't take it out later with nothing in its place. `thin-polish.private.json` records the shot-kind mix of
 the draft and of the polished cut. Every newcomer is voted
-on again inside the block it joined, and one the vote refuses brings back the shot it replaced.
+on again inside the block it joined, and one the vote refuses brings back the shot it replaced; an
+R or T seat whose newcomer the vote refuses picks once more.
 
 ### A short film gets one more look
 
