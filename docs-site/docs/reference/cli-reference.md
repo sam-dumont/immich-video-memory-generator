@@ -351,7 +351,7 @@ immich-memories models fetch [OPTIONS]
 | --- | --- | --- | --- |
 | `--force` | boolean | false | Re-download even when the file is already right |
 | `--detectors` | boolean | true | Also fetch the pinned detector export and warm the pinned detector snapshot |
-| `--laya` | boolean | false | Also fetch the optional Laya audience checkpoint (811 MB, Apple silicon) |
+| `--laya` | boolean | false | Fetch the Laya audience checkpoint even on the nas tier (gpu and full fetch it anyway) |
 
 ## `music`
 

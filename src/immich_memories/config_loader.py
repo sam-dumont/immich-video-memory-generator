@@ -13,6 +13,7 @@ import os
 import stat
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import Field, PrivateAttr, model_validator
@@ -47,6 +48,7 @@ from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.config_presets import PresetName, apply_preset
+from immich_memories.config_tiers import ProductTier, apply_tier, forget_applied
 from immich_memories.logging_config import install_secret_redaction
 from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import (
@@ -315,8 +317,8 @@ def _keep_env_secrets_out(data: dict, templates: dict[str, str]) -> None:
 class Config(BaseSettings):
     """Main configuration for Immich Memories.
 
-    Config tiers (YAML layout):
-      Tier 1 (top level): immich, defaults, output, audio, title_screens,
+    Config tiers (YAML layout; not the product `tier`, which picks nas, gpu or full):
+      Tier 1 (top level): tier, immich, defaults, output, audio, title_screens,
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
                            server, auth, automation, notifications, triage, editorial, inference
@@ -336,6 +338,12 @@ class Config(BaseSettings):
         default=None,
         description="Named profile that fills several knobs at once (fast = CPU-only/NAS); "
         "explicit values win",
+    )
+
+    tier: ProductTier = Field(
+        default="nas",
+        description="nas = inexpensive CPU classifiers; gpu = captions, heads and Laya, no LLM; "
+        "full = gpu plus an LLM for prose, and it needs advanced.llm.base_url and model",
     )
 
     server: ServerConfig = Field(default_factory=ServerConfig)
@@ -370,6 +378,8 @@ class Config(BaseSettings):
     # `${VAR}` forms as written in config.yaml, so Save can put them back
     # instead of the secrets they expanded to.
     _credential_templates: dict[str, str] = PrivateAttr(default_factory=dict)
+    # The knobs `tier` set, so Save writes the tier and not what it decided.
+    _tier_applied: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
     def _apply_preset(self) -> Config:
@@ -377,27 +387,8 @@ class Config(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _settle_preparation_tier(self) -> Config:
-        """Do not ask a blank install for captions nothing can produce.
-
-        The default tier is `full`, which demands a caption for every picture. A blank
-        `llm.model` already resolves the reader to `rules`, so with no reader and no
-        stated caption seat there is nothing to caption for, and the run spends every
-        batch on a connection refused at the default caption address. Stating the tier,
-        the caption endpoint or a model keeps the tier exactly as written.
-        """
-        preparation = self.editorial.preparation
-        stated = preparation.model_fields_set & {"tier", "caption_base_url", "caption_artifact_id"}
-        if preparation.tier != "full" or stated:
-            return self
-        if self.editorial.reader == "model" or self.llm.model.strip():
-            return self
-        preparation.tier = "no_captions"
-        logging.getLogger(__name__).info(
-            "No LLM model and no caption endpoint are configured, so preparation runs at "
-            "the no_captions tier (heads and detectors only). Set "
-            "advanced.editorial.preparation.tier to choose another."
-        )
+    def _apply_tier(self) -> Config:
+        self._tier_applied = apply_tier(self)
         return self
 
     @classmethod
@@ -444,6 +435,7 @@ class Config(BaseSettings):
         if "host" not in self.server.model_fields_set:
             data["server"].pop("host", None)
         _keep_env_secrets_out(data, self._credential_templates)
+        forget_applied(data, self._tier_applied)
 
         # Group tier 2 sections under advanced:
         advanced: dict = {}

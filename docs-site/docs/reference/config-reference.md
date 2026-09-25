@@ -25,6 +25,32 @@ stays top level. Unknown keys inside a section are ignored; unknown top-level ke
 values fail validation at startup.
 :::
 
+## Tier
+
+The one choice that decides which models run. Top level, like `preset`.
+
+```yaml
+tier: nas                          # nas | gpu | full
+```
+
+| `tier` | Models | Reader | Needs |
+| --- | --- | --- | --- |
+| `nas` (default) | inexpensive CPU heads and detectors, no captions | rules | `models fetch` |
+| `gpu` | every light model: captions, heads, detectors, Laya | rules | a caption server, `models fetch` |
+| `full` | everything in `gpu` | an LLM polishes the rules draft and writes the prose | `advanced.llm.base_url` and `advanced.llm.model` |
+
+`tier` sets three advanced keys: `editorial.reader`, `editorial.preparation.tier` and
+`editorial.laya_audience`. Explicit preparation choices can reduce the work; `nas` and `gpu`
+always use the rules reader, even if an old file says `auto` or `model`. Save preserves your
+choices and omits unchanged tier defaults. `full` refuses to start without an LLM endpoint: a `base_url` you
+stated (or a hosted `provider` such as `anthropic`) and a `model`. Only `full` asks an LLM for
+anything, including titles and music mood: on `nas` and `gpu` a model left in the file is unused and the title
+comes from the template. Music uses the local fallback mood. A light model that is missing (no Laya checkpoint, say) is skipped with a
+one-line notice, and the heads and rules decide alone.
+
+Env: `IMMICH_MEMORIES_TIER=gpu`. `uv run python scripts/tier_settings.py` prints what each tier runs
+with, as the product resolves it.
+
 ## Preset
 
 One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
@@ -466,11 +492,11 @@ triage hook: they load, they validate, they do nothing.
 
 ```yaml
 editorial:
-  reader: auto                  # auto | model | rules
+  reader: auto                  # auto | model | rules; `tier` sets it unless you do
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
   strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
-  laya_audience: false           # answer the audience activity question with the local Laya model
+  laya_audience: false           # Laya answers the audience activity question; `tier` sets it
   laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
   laya_checkpoint_url: "https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v2/laya-audience-a79ad9fa.tar"
   laya_audience_threshold: 0.186 # Laya's hold probability at or above which a carrier is held
@@ -488,7 +514,7 @@ editorial:
     uncovered_person: public-v1
     venue: oi-v3
   preparation:
-    tier: full                   # full | no_captions | metadata_only
+    tier: full                   # full | no_captions | metadata_only; the top-level `tier` sets it
     caption_base_url: http://localhost:8092/v1
     caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
@@ -536,8 +562,8 @@ strict band, baked into its coefficients because the bundle schema holds no thre
 it answered `yes` on 37 of 3,564 photographs and every one of them was a screen. Each of the three
 only adds to a rule another producer already answered, and none of them can clear anything.
 
-`reader: auto` uses the model when `llm.model` is set and rules when it is blank. `reader: model`
-requires a model; `reader: rules` skips model editing even when a model is
+The top-level [`tier`](#tier) sets `reader`: `rules` on `nas` and `gpu`, `model` on `full`. On `full`,
+`reader: auto` uses the configured model and `reader: rules` skips model editing even when a model is
 configured. Rules cover the ten standard memory products, including albums and recurring dates,
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
@@ -566,8 +592,10 @@ detector read as clean and nothing flagged is `share`; with it off, a NAS clears
 and family films are unchanged. Turning it off does not let a caption clear an exposure flag.
 
 `laya_audience` answers the sharing question with a local Laya model:
-Apple silicon only, `pip install laya-mlx` and `immich-memories models fetch --laya`
-first. It reads the compact caption and adds holds; detector and rule holds still apply and
+`tier: gpu` and `tier: full` turn it on, and `immich-memories models fetch` downloads it.
+This version needs Apple silicon and `pip install laya-mlx`. A missing checkpoint or runtime
+is reported, and the run continues with the conservative rules fallback.
+It reads the compact caption and adds holds; detector and rule holds still apply and
 are never lifted. It works with the rules reader as well as the prose reader. A captioned shot
 without a Laya answer stays held to the family. Sharing never calls an LLM, including exposure
 checks and missing-answer fallbacks. The former `thin_batched_audience` option is removed.
