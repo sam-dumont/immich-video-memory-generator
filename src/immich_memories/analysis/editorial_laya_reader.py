@@ -14,6 +14,7 @@ observations the vision reader may have added.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import tarfile
@@ -60,9 +61,11 @@ class LayaScorer(Protocol):
 class LayaReader:
     """The audience check's activity question, answered by a Laya scorer at a fixed threshold."""
 
-    def __init__(self, scorer: LayaScorer, *, threshold: float) -> None:
+    def __init__(self, scorer: LayaScorer, *, threshold: float, checkpoint_id: str) -> None:
         self._scorer = scorer
         self._threshold = threshold
+        backend = f"{type(scorer).__module__}.{type(scorer).__qualname__}"
+        self.cache_identity = f"laya|{backend}|{checkpoint_id}|threshold={threshold.hex()}"
 
     def activity_answers(self, pending: Mapping[str, tuple[Sequence[str], bool]]) -> dict[str, str]:
         """Each carrier's activity answer, in the JSON form the audience check reads.
@@ -166,6 +169,18 @@ def unpack_checkpoint(archive: Path, destination: Path) -> Path:
     return destination
 
 
+def checkpoint_identity(checkpoint: Path) -> str:
+    """Fingerprint the files actually loaded, including local replacements of pinned weights."""
+    files = {}
+    for path in sorted(checkpoint.rglob("*")):
+        if path.is_file():
+            with path.open("rb") as content:
+                files[str(path.relative_to(checkpoint))] = hashlib.file_digest(
+                    content, "sha256"
+                ).hexdigest()
+    return hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+
+
 def laya_reader_for(editorial_config) -> LayaReader | None:
     """The configured Laya reader, or None when it is off or cannot run here.
 
@@ -191,4 +206,8 @@ def laya_reader_for(editorial_config) -> LayaReader | None:
         )
         return None
     checkpoint = unpack_checkpoint(archive, archive.with_suffix(""))
-    return LayaReader(MlxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold)
+    return LayaReader(
+        MlxLayaScorer(checkpoint),
+        threshold=editorial_config.laya_audience_threshold,
+        checkpoint_id=checkpoint_identity(checkpoint),
+    )

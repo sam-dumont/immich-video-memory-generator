@@ -60,7 +60,9 @@ def gate(tmp_path, annotations, scorer):
         lines=lines,
         bank_path=tmp_path / "shareability.private.json",
         library=AudienceBank(tmp_path / "audience.private.json", answerer="full|model-a|laya"),
-        activity_reader=LayaReader(scorer, threshold=0.186).activity_answers,
+        activity_reader=LayaReader(
+            scorer, threshold=0.186, checkpoint_id="test-checkpoint"
+        ).activity_answers,
     )
 
 
@@ -105,10 +107,14 @@ def test_laya_reads_the_compact_caption(tmp_path):
 
 def test_the_nudity_finding_is_never_answered_where_the_check_may_not_ask_it():
     allowed = json.loads(
-        LayaReader(StubScorer(), threshold=0.1).activity_answers({"k": ([PRIVATE], True)})["k"]
+        LayaReader(StubScorer(), threshold=0.1, checkpoint_id="test-checkpoint").activity_answers(
+            {"k": ([PRIVATE], True)}
+        )["k"]
     )
     barred = json.loads(
-        LayaReader(StubScorer(), threshold=0.95).activity_answers({"k": ([PRIVATE], False)})["k"]
+        LayaReader(StubScorer(), threshold=0.95, checkpoint_id="test-checkpoint").activity_answers(
+            {"k": ([PRIVATE], False)}
+        )["k"]
     )
 
     assert allowed["finding"] == "bathing"
@@ -117,7 +123,12 @@ def test_the_nudity_finding_is_never_answered_where_the_check_may_not_ask_it():
 
 
 def test_a_carrier_with_no_caption_is_left_to_the_text_model():
-    assert LayaReader(StubScorer(), threshold=0.1).activity_answers({"k": ([""], True)}) == {}
+    assert (
+        LayaReader(StubScorer(), threshold=0.1, checkpoint_id="test-checkpoint").activity_answers(
+            {"k": ([""], True)}
+        )
+        == {}
+    )
 
 
 def test_laya_is_off_by_default_and_a_missing_checkpoint_degrades_naming_the_fetch(
