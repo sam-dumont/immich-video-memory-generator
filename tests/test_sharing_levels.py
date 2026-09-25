@@ -180,6 +180,7 @@ from immich_memories.analysis.editorial_structure_contract import (  # noqa: E40
 from immich_memories.analysis.editorial_structure_planner import plan_structure  # noqa: E402
 from immich_memories.config_loader import Config  # noqa: E402
 from tests.editorial_story_fixtures import ControlledStoryJudge  # noqa: E402
+from tests.editorial_thin_fixtures import caption_laya  # noqa: E402
 from tests.test_editorial_duration_planner_integration import source  # noqa: E402
 
 
@@ -230,12 +231,51 @@ def test_a_just_us_film_plays_the_bath_a_family_film_leaves_out(tmp_path):
     def cut(level):
         plan = plan_structure(
             replace(captured, audience=level, artifact_dir=captured.bank_dir.parent / level),
-            StructurePlannerPorts(judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None),
+            StructurePlannerPorts(
+                judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None, laya=caption_laya()
+            ),
         ).plan
         return shots(plan)
 
     assert "picture-000" not in cut("family")
     assert "picture-000" in cut("just_us")
+
+
+def test_the_gpu_tier_holds_the_bath_with_laya_and_asks_no_llm(tmp_path):
+    """The rules reader with captions and Laya: the light models do the job, no LLM is asked."""
+    from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
+
+    gpu = replace(
+        source(tmp_path, seconds=12, pictures=2, private_opening=True),
+        audience="family",
+        config=Config(editorial={"reader": "rules", "preparation": {"tier": "full"}}),
+    )
+    laya = caption_laya()
+    judge = NoModelJudge()
+    plan = plan_structure(
+        gpu,
+        StructurePlannerPorts(
+            judge=judge, thumbnail_hash=lambda _: None, rules=RuleStructureReader(gpu), laya=laya
+        ),
+    ).plan
+
+    assert "picture-000" not in shots(plan)
+    assert plan["shareability"]["verdicts"]["picture-000"]["finding"] == "private_activity"
+    assert laya.scorer.states, "Laya read the captions"
+    assert judge.calls == []
+
+
+def test_the_full_tier_asks_the_llm_no_sharing_question_even_where_laya_cannot_answer(tmp_path):
+    """A flagged picture never reaches Laya and a bath does; neither goes to the reader."""
+    captured = flag_nudity(source(tmp_path, seconds=60, private_opening=True), "picture-001")
+    judge = ControlledStoryJudge()
+    plan = plan_structure(
+        replace(captured, audience="shareable"),
+        StructurePlannerPorts(judge=judge, thumbnail_hash=lambda _: None, laya=caption_laya()),
+    ).plan
+
+    assert not {"picture-000", "picture-001"} & set(shots(plan))
+    assert not [c for c in judge.calls if c["stage"].startswith("shareability-")]
 
 
 # Choosing the level.

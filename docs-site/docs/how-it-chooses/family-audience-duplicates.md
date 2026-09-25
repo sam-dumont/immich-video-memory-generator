@@ -105,9 +105,9 @@ flowchart TD
   owner -- "for just us, family, anyone" --> ov["just_us, family_only or share,<br/>nothing asked"]
   owner -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
   floor --> tier{"preparation tier<br/>editorial_shareability_tiers.audience_check_for"}
-  tier -- "no_captions, or no model" --> ra["rule_audience<br/>share only on clean evidence, in a shareable film"]
+  tier -- "no_captions" --> ra["rule_audience<br/>share only on clean evidence, in a shareable film"]
   tier -- "metadata_only" --> wa["withheld_audience<br/>family_only for all"]
-  tier -- "full, with a model" --> laya["Laya pre-screen, optional<br/>editorial_laya_reader"]
+  tier -- "full, with captions" --> laya["Laya, no prose LLM<br/>editorial_laya_reader"]
   laya --> ca["activity question over the caption<br/>check_audience, audience-evidence-v17;<br/>a household moment is just_us"]
   ra --> strict["strictest wins<br/>tighten, with banked holds"]
   wa --> strict
@@ -125,7 +125,7 @@ Nothing a later reading says lifts a detector's hold. Only you do, one picture a
 looking at it (see [Your word on a picture](#your-word-on-a-picture)). A false positive costs a shot
 in a wider film; a false negative puts the wrong picture in front of the wrong people.
 
-**On a plain NAS** (`no_captions`, or any film with no model), the answer is `family_only` for every
+**Without captions** (`no_captions`), the answer is `family_only` for every
 shot, with the finding that holds it: the heads can't see the private moments only a written
 description names. So a just-us and a family film on a NAS are the same film, and what leaves them
 is what the carrier rules catch. A shareable film is the one exception, under `strict_sharing` (on by
@@ -141,26 +141,25 @@ Anything else stays `family_only` and leaves the shareable film (`clean_evidence
 `editorial_shareability_tiers.py`). A private moment that no detector sees and no caption names can
 still pass. That is the price of a shareable film without captions, and a caption tier closes it.
 
-**With a model and captions** (`full`), the reader answers an activity question over each shot's
-ingest caption, written at ingest by SmolVLM2 500M. It never sees the picture.
+**With captions** (`full` preparation), Laya answers the activity question from each shot's
+ingest caption. This works with either reader: a prose LLM is never asked about sharing.
 - Four findings are a household's private moments and give `just_us`: breastfeeding, bathing,
-  toileting or changing, and intimate hygiene. They play in a just-us film, automatically.
+  toileting or changing, and intimate hygiene. They play in a just-us film automatically.
 - Four give `do_not_show` and never play at any level: a graphic medical procedure, an identifying
   record, sexual content, and an adult changing.
 
 The v17 checks (`audience-evidence-v17-every-finding-needs-its-activity`) hold a finding only when
 the caption states the activity: a pool or the sea is never a bath, a race bib never an identifying
-record. A flagged shot the reader called `share` gets one more question about whether anyone is
-uncovered, which can only tighten. A shot with no caption stays `family_only`. A detector's floor
-still applies under a household moment: a flagged bath is `just_us`, never looser.
+record. A detector or exposure flag holds the shot without a further model question. A missing
+caption or missing Laya answer stays `family_only`; nothing falls back to the prose reader.
 
-**Laya** is an optional local pre-screen for that activity question: a 0.4B model reading the compact
-caption, Apple silicon only, on the polish route. Turn it on with `advanced.editorial.laya_audience`
-after `pip install laya-mlx` and `immich-memories models fetch --laya`. A shot it leaves unanswered
-goes to the text model; detector holds apply either way.
+**Laya** is a 0.4B local text classifier reading the compact ingest caption. On Apple silicon,
+turn it on with `advanced.editorial.laya_audience` after `pip install laya-mlx` and
+`immich-memories models fetch --laya`. It runs on the rules route too, without a polish step.
+Detector and owner holds still apply.
 
 **`advanced.editorial.strict_sharing`** (on by default) applies to shareable films: any shot a head
-or an exposure flag marked stays at `family_only` even when the reader said `share`. On a NAS it is
+or an exposure flag marked stays at `family_only` even when the caption suggests `share`. On a NAS it is
 also what allows the clean-evidence `share` above. Just-us and family films don't read it.
 
 **The review list.** Every run writes `review-before-sharing.private.json` in its attempt directory:

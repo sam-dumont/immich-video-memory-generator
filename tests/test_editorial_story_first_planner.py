@@ -567,21 +567,28 @@ def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, w
 
 
 def test_the_audience_reads_the_finished_cut_not_every_candidate(tmp_path):
-    class RefusingJudge(StoryJudge):
-        """Holds back one named picture whenever the audience gate reads it. Adult changing
-        with no undressing described stays in the family, so a shareable film refuses it."""
+    """Laya, not the judge, holds back one named picture; the sharing question never reaches
+    an LLM, and only the finished cut's own carriers and their refusals pay for a read."""
+    from tests.editorial_thin_fixtures import caption_laya
 
-        def answer(self, stage, prompt):
-            if stage.startswith("shareability-") and "outing 1, view 2" in prompt:
-                return json.dumps({"finding": "adult_changing", "why": "Changing clothes"})
-            return super().answer(stage, prompt)
+    captured = replace(make_source(tmp_path), audience="shareable")
+    private = "A person is bathing in a bathtub."
+    line = captured.audience_annotations["o1-p2"]
+    rows = captured.audience_annotations | {
+        "o1-p2": replace(line, text=private, description=private)
+    }
+    captured = replace(
+        captured,
+        audience_annotations=rows,
+        annotations={key: row.text for key, row in rows.items()},
+    )
 
-    plan = run(replace(make_source(tmp_path), audience="shareable"), RefusingJudge())
+    plan = run(captured, StoryJudge(), laya=caption_laya())
 
     refused = [row["asset_id"] for row in plan["shareability"]["tightened"]]
     assert refused == ["o1-p2"]
     assert "o1-p2" not in {carrier["asset_id"] for carrier in plan["carriers"]}
-    assert plan["calls_by_stage"]["shareability"]["asked"] <= len(plan["carriers"]) + len(refused)
+    assert not any(c["stage"].startswith("shareability-") for c in plan["calls"])
 
 
 def test_each_moment_carries_its_episodes_banked_meaning_and_representatives():

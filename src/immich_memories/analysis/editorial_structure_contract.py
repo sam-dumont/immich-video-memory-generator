@@ -219,7 +219,7 @@ class StructurePlannerPorts:
     # cut repeats and not only the frame; None reads the cached hash alone.
     scene_print: Callable[[str], Any] | None = None
     # The local Laya model answering the audience check's activity question
-    # (`editorial.laya_audience`); None asks the text model.
+    # (`editorial.laya_audience`); None leaves sharing to the heads and rules.
     laya: LayaReader | None = None
 
 

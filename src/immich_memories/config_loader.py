@@ -92,6 +92,8 @@ _REMOVED_CONFIG_KEYS: dict[str, str] = {
     "transcription": "transcription " + _WENT_WITH_THE_SCORER + " (the transcribe extra is gone)",
     "description_llm": "nothing read it; the editor's descriptions come from editorial.description_model",
     "hardware.gpu_analysis": _WENT_WITH_THE_SCORER,
+    "editorial.thin_batched_audience": "the sharing question never goes to an LLM, so there "
+    "is no LLM request to batch",
     "photos.max_ratio": _WENT_WITH_THE_SCORER,
     "photos.read_moments": _WENT_WITH_THE_SCORER,
     "photos.moment_gap_seconds": _WENT_WITH_THE_SCORER,
