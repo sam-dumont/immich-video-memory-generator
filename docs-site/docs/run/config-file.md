@@ -52,7 +52,7 @@ tier most installs run; a model makes the cut better. What a model adds and cost
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8000/v1"
-  model: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+  model: "gemma-4-e4b-it-6bit"
 ```
 
 ## Everyday keys and advanced keys

@@ -122,7 +122,7 @@ already in it).
 On a NAS, it is almost always a long film's audio mix on a small container: the mixer runs one FFmpeg per clip
 and the failure names the clip. Raise the container's memory limit.
 
-With a model on the same box, it is the model: a 30B reader at 4-bit holds about 17 GB for as long as its server
+With a model on the same box, it is the model: the default Gemma 4 E4B holds about 7 GB and the optional 30B about 17 GB for as long as its server
 is up, and ACE-Step in `lib` mode refuses a render it cannot hold. Stop the model servers before a music-heavy
 run, or give them their own machine.
 

@@ -55,11 +55,11 @@ services:
       IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD:-}"
       # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
-      # The model editor's vision reader. Left unset, as it ships, the rules
+      # The model editor's text reader. Left unset, as it ships, the rules
       # reader cuts instead. Set both keys to switch.
       # "localhost" here means this container, so use a real hostname.
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
-      # IMMICH_MEMORIES_LLM__MODEL: "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+      # IMMICH_MEMORIES_LLM__MODEL: "gemma-4-e4b-it-6bit"
       # Which producers this box pays for: full | no_captions | metadata_only.
       # Pinned here rather than left to the code default, which is full, so that
       # a first `up` with only IMMICH_URL and IMMICH_API_KEY set finishes a cut

@@ -117,7 +117,7 @@ the [config reference](../reference/config-reference.md#size-the-thumbnail-cache
 
 ## What a NAS can't do
 
-- Hold a 30B reader. A model is optional; if you want one, it goes on a Mac, a GPU box or a hosted
+- Hold a reader. A model is optional; if you want one, it goes on a Mac, a GPU box or a hosted
   API: [Add a reader](../better/reader.md).
 - Captions at a useful speed. A caption per picture on four Celeron cores is about 30 seconds, so
   `full` on a NAS alone is days for a year. The compose file has a captioner profile if you are

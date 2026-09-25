@@ -19,12 +19,38 @@ changes, with diagrams: [What a model adds](../how-it-chooses/what-a-model-adds.
 - A text model with at least a 32k context. No vision needed.
 - An endpoint that speaks the OpenAI `/v1/chat/completions` or the Anthropic `/v1/messages` API, or
   Ollama's own.
-- For a local model, a machine that holds it for as long as its server is up. The graded one is
-  `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`: about 17 GB resident, so a 32 GB Apple Silicon
-  Mac, or a 24 GB card under vLLM or Ollama.
+- For a local model, a machine that holds it for as long as its server is up. The default is
+  **Gemma 4 E4B** (`mlx-community/gemma-4-e4b-it-6bit` on a Mac, `google/gemma-4-E4B-it` under vLLM
+  or Ollama; Apache 2.0): 5.7 GB of weights and 6.7 GB at its peak on an 8k-token read, so it fits
+  a 16 GB Mac beside the 500M caption server (2.4 GB).
+- The bigger reader is optional: `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`, about 17 GB
+  resident, a 32 GB Mac or a 24 GB card. It writes a little more of a story; on the graded films it
+  did not make better cuts.
 
-The graded model is the only one whose cuts have been judged. Anything else that holds 32k and
-returns valid JSON is expected to work, and its quality is your own measurement.
+Both are graded. Anything else that holds 32k and returns valid JSON is expected to work, and its
+quality is your own measurement.
+
+### How the default was chosen
+
+Gemma 4 E4B against the 30B on the same four months and one year, with the same prepared store and
+the same rules draft: every episode reading, account and title written by Gemma, the polish vote
+left with the 30B in both.
+
+| | Gemma 4 E4B | the 30B |
+|---|---|---|
+| episode readings read on the first try (public test set, 243 episodes) | 100 % | 97 to 100 % |
+| names or places in the prose that the input does not carry (owner year) | 0 of 591 | 0 of 230 |
+| prose seconds, one year cold | 929 | 763 |
+| the finished cut's overlap with the 30B's (months; year) | 0.80 to 1.00; 0.99 | 1.00 (February, asked twice) |
+| finished-cut invariant violations | 0 | 0 |
+
+Known gaps, measured and left as they are: Gemma names fewer moments as records (58 against 146 on
+the year, most of the 30B's extra ones infer a "first" the prompt forbids); its episode sentences
+read more like a list than a story; the special-day scan (`discover-days`) finds a different set of
+days than the 30B does, and neither set was judged better. Gemma 4 E2B (the 2B one) parses well but
+leaves the polish vote with nothing to remove, names the prompt's own example city in a quarter of
+its titles (the title check then falls back to the template), and writes music moods outside the
+allowed list, so it is not recommended.
 
 The `full` tier (a [caption server](./captions.md)) is worth adding with a reader: the reader reads
 the captions, and the family-viewing check's activity question needs them.
@@ -39,14 +65,15 @@ brew install jundot/omlx/omlx
 omlx start        # serves on port 8000
 ```
 
-Pull the model from `http://localhost:8000/admin/chat`, then point the app at it:
+Pull `mlx-community/gemma-4-e4b-it-6bit` from `http://localhost:8000/admin/chat`, then point the
+app at it:
 
 ```yaml
 advanced:
   llm:
     provider: openai-compatible
     base_url: http://localhost:8000/v1
-    model: mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit
+    model: gemma-4-e4b-it-6bit
 ```
 
 `model` must be exactly what the server reports at `GET /v1/models`. `base_url` defaults to

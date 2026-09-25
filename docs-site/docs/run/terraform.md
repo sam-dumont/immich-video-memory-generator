@@ -89,7 +89,7 @@ module "immich_memories" {
   # The reader, a separate deployment. It reads text only and must hold 32k of context; `llm_model`
   # is the tag that server reports at /v1/models.
   llm_base_url = "http://your-model-host:8000/v1"
-  llm_model    = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+  llm_model    = "gemma-4-e4b-it-6bit"
 
   # Optional: the in-pod daily run, NVIDIA nodes, bigger claims
   env = {

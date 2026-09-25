@@ -320,7 +320,7 @@ works: mlx-vlm, oMLX, Ollama, vLLM, Groq, OpenAI, Claude, z.ai.
 llm:
   provider: "openai-compatible"   # openai-compatible | openai | zai | anthropic | ollama
   base_url: "http://localhost:8080/v1"
-  model: ""                        # e.g. mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit
+  model: ""                        # e.g. gemma-4-e4b-it-6bit (the default reader)
   api_key: ""                      # optional, only for cloud APIs
   timeout_seconds: 300             # increase for slow local models (10-3600)
   send_image_detail: true          # off: APIs whose strict schema rejects image_url.detail
