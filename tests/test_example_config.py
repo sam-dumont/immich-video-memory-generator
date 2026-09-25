@@ -11,7 +11,7 @@ from pathlib import Path
 from immich_memories.config import Config
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "config.example.yaml"
-GRADED_READER = "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+GRADED_READER = "mlx-community/gemma-4-e4b-it-6bit"
 
 
 def test_example_config_loads_and_names_the_graded_reader(monkeypatch, tmp_path: Path) -> None:

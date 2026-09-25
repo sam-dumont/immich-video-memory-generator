@@ -25,7 +25,7 @@ flowchart LR
 
 | Add-on | What it buys | What it needs | What leaves the box |
 |---|---|---|---|
-| [A reader](./reader.md) | Prose (what happened in each episode, an account of the period, the title, the music's mood) and a polish of the draft | A text model with a 32k context: local (about 17 GB resident for the graded 30B at 4-bit) or a hosted API key | The candidates' annotation lines, people and place names included, to the model. Never a picture |
+| [A reader](./reader.md) | Prose (what happened in each episode, an account of the period, the title, the music's mood) and a polish of the draft | A text model with a 32k context: local (Gemma 4 E4B by default: 6.7 GB at its peak, a 16 GB Mac) or a hosted API key | The candidates' annotation lines, people and place names included, to the model. Never a picture |
 | [Captions](./captions.md) | One sentence under every picture. The reader reads it, and a caption lets the family-viewing check see the private moments no detector does, before a picture goes into a shareable film | A 500M vision model behind any OpenAI-compatible server, 1 to 2 GB | A 400 px tile of each picture, once, to your caption server |
 | [Inference on a GPU box](./inference.md) | The encoder, its eight heads and the two detectors on a card or a bigger CPU | A second machine, CPU or NVIDIA | A preview of each picture, once, to your service |
 | [A render worker](./gpu-render.md) | The encode on a GPU box instead of the NAS | An NVIDIA box running the same app version | The chosen cut and your Immich key; the worker fetches the originals itself |
@@ -72,8 +72,8 @@ Time, memory and euros per setup (cold month, warm month, cold year) go on
 [Measured](./measured.md), from one measurement of today's code. The sizes that don't move with the
 code:
 
-- A reader holds its weights for as long as its server is up: about 17 GB for the graded 30B at
-  4-bit, so a 32 GB Mac or a 24 GB card.
+- A reader holds its weights for as long as its server is up: 6.7 GB at its peak for the default
+  Gemma 4 E4B, so a 16 GB Mac beside the caption server.
 - A caption on four Celeron cores takes about 31 s, and well under a second on a Mac or a GPU.
   That is why the NAS default is `no_captions`.
 - A hosted reader bills tokens, and the prose is banked, so a week is paid for once, not once per
