@@ -6,6 +6,7 @@ through a judge's call log.
 """
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 from immich_memories.analysis import editorial_shareability as share
 from immich_memories.analysis.editorial_laya_reader import LayaReader
@@ -65,6 +66,81 @@ def test_a_second_cut_over_the_same_pictures_reads_no_caption_it_already_answere
     assert first_laya.scorer.calls, "the first cut had to read the captions"
     assert second_laya.scorer.calls == 0, "the library bank already answered every one"
     assert second_plan["carriers"] == first_plan["carriers"]
+
+
+class _BorderlineScorer:
+    """# WHY: replaces the trained checkpoint with fixed probabilities near the threshold."""
+
+    def probabilities(self, states, question):
+        return [
+            [
+                0.18 if name == "bathing" else 0.82 if name == "none" else 0.0
+                for name in question["criteria"]
+            ]
+            for _ in states
+        ]
+
+
+def test_tightening_the_threshold_rechecks_a_cached_clearance(tmp_path):
+    captured = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
+    first = cut(
+        captured,
+        ControlledStoryJudge(),
+        "first",
+        laya=LayaReader(_BorderlineScorer(), threshold=0.2, checkpoint_id="test-checkpoint"),
+    )
+    assert "picture-000" in carried(first)
+
+    second = cut(
+        captured,
+        ControlledStoryJudge(),
+        "second",
+        laya=LayaReader(_BorderlineScorer(), threshold=0.15, checkpoint_id="test-checkpoint"),
+    )
+
+    assert second["shareability"]["verdicts"]["picture-000"]["verdict"] == "just_us"
+    assert "picture-000" not in carried(second)
+
+
+def test_replacing_checkpoint_files_rechecks_a_cached_clearance(tmp_path, monkeypatch):
+    import sys
+
+    from immich_memories.analysis import editorial_laya_reader as laya
+    from immich_memories.config_models_editorial import EditorialConfig
+
+    archive = tmp_path / "laya.tar"
+    archive.touch()
+    checkpoint = tmp_path / "laya"
+    checkpoint.mkdir()
+    weights = checkpoint / "model.safetensors"
+    weights.write_bytes(b"clear")
+
+    class Scorer(_BorderlineScorer):
+        # WHY: replaces only the MLX boundary; the real factory fingerprints the files.
+        def __init__(self, path):
+            self.reader = (
+                _ClearingScorer()
+                if (path / "model.safetensors").read_bytes() == b"clear"
+                else _BorderlineScorer()
+            )
+
+        def probabilities(self, states, question):
+            return self.reader.probabilities(states, question)
+
+    # WHY: CI has no Apple runtime or trained model; use the checkpoint stand-in above.
+    monkeypatch.setitem(sys.modules, "laya_mlx", SimpleNamespace())
+    monkeypatch.setattr(laya, "MlxLayaScorer", Scorer)
+    config = EditorialConfig(
+        laya_audience=True, laya_checkpoint=str(archive), laya_audience_threshold=0.15
+    )
+    captured = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
+    first = cut(captured, ControlledStoryJudge(), "first", laya=laya.laya_reader_for(config))
+    assert "picture-000" in carried(first)
+    weights.write_bytes(b"holds")
+
+    second = cut(captured, ControlledStoryJudge(), "second", laya=laya.laya_reader_for(config))
+
+    assert "picture-000" not in carried(second)
 
 
 def test_a_banked_hold_is_not_lifted_by_a_later_cut_that_would_clear_it(tmp_path):
@@ -129,12 +205,17 @@ def test_a_text_hold_from_an_older_audience_prompt_is_asked_again_and_can_clear(
         cut(held, ControlledStoryJudge(), "first-cut", laya=caption_laya())
     )
     bump_audience_prompt(monkeypatch)
-    clearing = LayaReader(_ClearingScorer(), threshold=0.186)
+    clearing = LayaReader(_ClearingScorer(), threshold=0.186, checkpoint_id="test-checkpoint")
 
     later = cut(held, ControlledStoryJudge(), "second-cut", laya=clearing)
 
     assert "picture-000" in carried(later), "the new prompt is asked again and clears it"
-    again = cut(held, ControlledStoryJudge(), "third-cut", laya=caption_laya())
+    again = cut(
+        held,
+        ControlledStoryJudge(),
+        "third-cut",
+        laya=LayaReader(_ClearingScorer(), threshold=0.186, checkpoint_id="test-checkpoint"),
+    )
     assert "picture-000" in carried(again), "the new answer replaced the old hold"
 
 
