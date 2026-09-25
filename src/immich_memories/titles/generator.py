@@ -72,6 +72,9 @@ class TitleScreenConfig:
     # The memory type, for the ones whose dates cannot reveal them.
     memory_type: str | None = None
 
+    # The home's hemisphere, so a window that is exactly a season is named by it.
+    hemisphere: str | None = None
+
     # Month dividers
     show_month_dividers: bool = True
     month_divider_threshold: int = 2  # Minimum clips to show month divider
@@ -214,6 +217,7 @@ class TitleScreenGenerator:
                 person_name=person_name,
                 birthday_age=birthday_age,
                 locale=self.config.locale,
+                hemisphere=self.config.hemisphere,
             )
 
         self._log_title_generation(
