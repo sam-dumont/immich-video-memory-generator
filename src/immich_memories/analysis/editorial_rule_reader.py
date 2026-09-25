@@ -14,6 +14,7 @@ import numpy as np
 from immich_memories.analysis.editorial_clip_frames import CLIP_FRAMES_HEAD, SUBJECT_OFTEN_MISSING
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
+from immich_memories.analysis.editorial_shareability import owner_cleared_ids
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
 from immich_memories.analysis.editorial_standing_facts import carries_nothing
 from immich_memories.analysis.editorial_story_reading import (
@@ -344,7 +345,11 @@ class RuleStructureReader:
         line = self.source.annotations.get(asset_id, "")
         # An exposure hold says who may see a picture, not whether it stands. The household may
         # see it, so a family film judges it like any other; a film sent further keeps the zero.
-        exposure_zero = exposure_flagged(heads) and self.source.audience != "family"
+        exposure_zero = (
+            exposure_flagged(heads)
+            and self.source.audience != "family"
+            and asset_id not in owner_cleared_ids(self.source.shareability_flags)
+        )
         if (
             exposure_zero
             or heads.get(CLIP_FRAMES_HEAD) == SUBJECT_OFTEN_MISSING

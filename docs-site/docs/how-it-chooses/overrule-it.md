@@ -11,8 +11,8 @@ that matter in Immich before you cut. After a cut, untick what you don't want in
 tick what you do, and cut again. Tell the app who your family is and where home is. When a choice
 still puzzles you, `runs why` says which rule made it.
 
-The one thing you can't overrule is the family-viewing gate: a tick never puts back a picture the
-gate refused.
+A tick never puts back a picture the family-viewing gate refused. Clearing the picture's hold does,
+one picture at a time, after you've looked at it. **Never use** keeps a picture out for good.
 
 ## Where each lever acts
 
@@ -23,6 +23,8 @@ flowchart TD
   untick["untick in the pool, or --exclude"] --> source["never a source<br/>owner_excluded_asset_ids"]
   tick["tick in the pool, or --include"] --> req["added after the draft and polish<br/>admit_owner_required"]
   req --> gate["family-viewing gate<br/>apply_audience_gate"]
+  clear["Clear hold, or pictures clear-hold"] --> gate
+  never["Never use, or pictures never-use"] --> out["never a carrier, any cut<br/>never_auto_ids"]
   people["roles in people.yaml"] --> seat["family seat, big stories<br/>seat_in_film, _big_stories"]
   home["trips.homebase_*"] --> away["away stories<br/>editorial_home_radius"]
   gate --> film["the film"]
@@ -60,6 +62,29 @@ after a cut, what the cut did with it ([The web UI](../make/web-ui.mdx#the-media
 The CLI does the same with `generate --include ASSET_ID` and `--exclude ASSET_ID`, both repeatable.
 The web pool's ticks live in your session; **Start over** forgets them.
 
+## Clear a hold, or never use a picture
+
+Under every picture in the pool and every shot on the storyboard:
+
+- **Clear hold**, where something holds the picture: a nudity detector flagged it or its Live clip,
+  or an earlier cut read a private moment in its caption. It asks first, and shows the picture. A
+  cleared picture plays in every film, and nothing the app reads later puts the hold back.
+- **Never use**: out of every film from the next cut on, and unticked in the pool.
+- **Undo**: forget your decision.
+
+Unlike a tick, these last: they're kept with the library, not the session, and every tier reads them.
+The terminal does the same:
+
+```bash
+immich-memories pictures show 3f1c9a2e-...        # what holds it, and what you decided
+immich-memories pictures clear-hold 3f1c9a2e-...  # asks first; --yes skips the question
+immich-memories pictures never-use 3f1c9a2e-...
+immich-memories pictures undo 3f1c9a2e-...
+immich-memories pictures list                     # every decision you've made
+```
+
+More in [Family, audience and duplicates](./family-audience-duplicates.md#your-word-on-a-picture).
+
 ## Tell it who's who
 
 Roles in `people.yaml` (**Settings > People**) are what the editor reads as close family: partner or
@@ -89,11 +114,11 @@ it, and listed in the [config reference](../reference/config-reference.md) when 
 
 ## What you can't change
 
-- **A detector's hold.** Nothing in the app lifts one. It only matters for a film cut for outside the
-  household, which the app doesn't make yet.
-- **`do_not_show`.** It is a verdict of the gate, from a carrier rule or a reading of the caption,
-  and not a setting. A picture that gets it leaves the cut, and a frame of the same moment takes its
-  place when one passes.
+- **A detector's hold, in bulk.** Nothing lifts holds for you, or many at once. You clear them one
+  picture at a time.
+- **A carrier rule.** A screenshot, a document or a face close-up is refused by what it is, not by who
+  may see it, and clearing a hold doesn't change that. `do_not_show` from a caption reading is a hold,
+  and you can clear it.
 
 ## Read why
 

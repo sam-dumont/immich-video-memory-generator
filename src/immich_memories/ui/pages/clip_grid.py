@@ -12,6 +12,11 @@ from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.operations.candidate_fates import CandidateFates
 from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.paging import DEFAULT_PAGE_SIZE, render_paged
+from immich_memories.ui.pages.picture_decisions import (
+    PictureHold,
+    read_holds,
+    render_picture_decision,
+)
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
     render_thumbnail,
@@ -129,6 +134,7 @@ def _render_clip_card(
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
     fates: CandidateFates,
+    holds: dict[str, PictureHold],
 ) -> None:
     """Render a single themed clip card."""
     is_selected = clip.asset.id in state.selected_clip_ids
@@ -143,6 +149,10 @@ def _render_clip_card(
         _render_audio_categories(clip)
         _render_clip_metadata(clip)
         _render_outcome(fates.describe(clip.asset.id))
+        # A picture never used is unticked too, so the pool doesn't say both.
+        render_picture_decision(
+            clip.asset.id, holds.get(clip.asset.id), on_never=lambda: checkbox.set_value(False)
+        )
 
         # Selection checkbox
         def make_toggle_handler(asset_id: str):
@@ -166,6 +176,7 @@ def _render_photo_card(
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
     fates: CandidateFates,
+    holds: dict[str, PictureHold],
 ) -> None:
     """Render a single photo card in the list view."""
     is_selected = photo.id in state.selected_photo_ids
@@ -191,6 +202,12 @@ def _render_photo_card(
         ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
 
         _render_outcome(fates.describe(photo.id))
+        render_picture_decision(
+            photo.id,
+            holds.get(photo.id),
+            clip_id=photo.live_photo_video_id,
+            on_never=lambda: checkbox.set_value(False),
+        )
 
         def make_photo_toggle(photo_id: str):
             def toggle(e):
@@ -231,6 +248,8 @@ def _render_compact_cell(
     *,
     is_photo: bool,
     outcome: str,
+    hold: PictureHold | None,
+    clip_id: str | None = None,
 ) -> None:
     """One compact cell that toggles its own tick and redraws itself in place.
 
@@ -270,7 +289,12 @@ def _render_compact_cell(
         with holder:
             _render_outcome(outcome)
 
+    def untick() -> None:
+        if asset_id in selected_ids:
+            toggle()
+
     draw()
+    render_picture_decision(asset_id, hold, clip_id=clip_id, compact=True, on_never=untick)
 
 
 def _render_compact_photo_thumbnail(
@@ -279,6 +303,7 @@ def _render_compact_photo_thumbnail(
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
     fates: CandidateFates,
+    holds: dict[str, PictureHold],
 ) -> None:
     """Render a single compact photo thumbnail cell with selection overlay."""
     tooltip = f"Photo | {photo.file_created_at.strftime('%b %d, %Y %H:%M')}"
@@ -290,6 +315,8 @@ def _render_compact_photo_thumbnail(
         summary_container,
         is_photo=True,
         outcome=fates.describe(photo.id),
+        hold=holds.get(photo.id),
+        clip_id=photo.live_photo_video_id,
     )
 
 
@@ -310,6 +337,7 @@ def _render_compact_thumbnail(
     all_clips: list[VideoClipInfo],
     summary_container: ui.element,
     fates: CandidateFates,
+    holds: dict[str, PictureHold],
 ) -> None:
     """Render a single compact thumbnail cell with selection overlay."""
     _render_compact_cell(
@@ -320,6 +348,16 @@ def _render_compact_thumbnail(
         summary_container,
         is_photo=False,
         outcome=fates.describe(clip.asset.id),
+        hold=holds.get(clip.asset.id),
+    )
+
+
+def _holds_of(items: Sequence[GridItem]) -> dict[str, PictureHold]:
+    """What holds each picture on this page, read once for the page."""
+    assets = [item.asset if isinstance(item, VideoClipInfo) else item for item in items]
+    return read_holds(
+        [asset.id for asset in assets],
+        {asset.id: asset.live_photo_video_id for asset in assets},
     )
 
 
@@ -331,6 +369,7 @@ def _render_compact_grid(
     state = get_app_state()
     all_clips = state.clips
     fates = CandidateFates.read(state.editorial_attempt_dir)
+    holds = _holds_of(clips)
 
     with (
         ui.element("div")
@@ -338,7 +377,7 @@ def _render_compact_grid(
         .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
     ):
         for clip in clips:
-            _render_compact_thumbnail(clip, state, all_clips, summary_container, fates)
+            _render_compact_thumbnail(clip, state, all_clips, summary_container, fates, holds)
 
 
 def _render_clip_grid(
@@ -349,6 +388,7 @@ def _render_clip_grid(
     state = get_app_state()
     all_clips = state.clips
     fates = CandidateFates.read(state.editorial_attempt_dir)
+    holds = _holds_of(clips)
 
     with (
         ui.element("div")
@@ -356,7 +396,7 @@ def _render_clip_grid(
         .style("grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))")
     ):
         for clip in clips:
-            _render_clip_card(clip, state, all_clips, summary_container, fates)
+            _render_clip_card(clip, state, all_clips, summary_container, fates, holds)
 
 
 def _render_mixed_grid(
@@ -367,15 +407,16 @@ def _render_mixed_grid(
     state = get_app_state()
     all_clips = state.clips
     fates = CandidateFates.read(state.editorial_attempt_dir)
+    holds = _holds_of(items)
 
     with ui.element("div").classes(
         "media-pool-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
-                _render_clip_card(item, state, all_clips, summary_container, fates)
+                _render_clip_card(item, state, all_clips, summary_container, fates, holds)
             else:
-                _render_photo_card(item, state, all_clips, summary_container, fates)
+                _render_photo_card(item, state, all_clips, summary_container, fates, holds)
 
 
 def _render_compact_mixed_grid(
@@ -386,15 +427,18 @@ def _render_compact_mixed_grid(
     state = get_app_state()
     all_clips = state.clips
     fates = CandidateFates.read(state.editorial_attempt_dir)
+    holds = _holds_of(items)
 
     with ui.element("div").classes(
         "media-pool-grid grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"
     ):
         for item in items:
             if isinstance(item, VideoClipInfo):
-                _render_compact_thumbnail(item, state, all_clips, summary_container, fates)
+                _render_compact_thumbnail(item, state, all_clips, summary_container, fates, holds)
             else:
-                _render_compact_photo_thumbnail(item, state, all_clips, summary_container, fates)
+                _render_compact_photo_thumbnail(
+                    item, state, all_clips, summary_container, fates, holds
+                )
 
 
 def _render_paginated(

@@ -87,7 +87,9 @@ slot stays empty.
 flowchart TD
   shot["a shot of the cut<br/>AudienceGate.verdict_of"] --> rule{"carrier rule?<br/>excluded_carrier_sources"}
   rule -- yes --> dns["do_not_show"]
-  rule -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
+  rule -- no --> owner{"you cleared it?<br/>owner_cleared_unit"}
+  owner -- yes --> share["share, nothing asked"]
+  owner -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
   floor --> tier{"preparation tier<br/>editorial_shareability_tiers.audience_check_for"}
   tier -- "no_captions, or no model" --> ra["rule_audience<br/>never says share"]
   tier -- "metadata_only" --> wa["withheld_audience<br/>family_only for all"]
@@ -105,9 +107,9 @@ flowchart TD
 across a video, and on a Live Photo's clip; the `uncovered_person` head as a second opinion; and the
 exposure chain: a five-minute capture run is held whole when at least half of it and at least three
 of its captures are flagged (`editorial_exposure_chains.py`). All of these give `family_only`.
-Nothing a later reading says lifts a detector's hold, and nothing in the app lifts one either. A
-false positive costs a shot in a wider film; a false negative puts the wrong picture in front of the
-wrong people.
+Nothing a later reading says lifts a detector's hold. Only you do, one picture at a time, after
+looking at it (see [Your word on a picture](#your-word-on-a-picture)). A false positive costs a shot
+in a wider film; a false negative puts the wrong picture in front of the wrong people.
 
 **On a plain NAS** (`no_captions`, or any film with no model), the answer is `family_only` for every
 shot, with the finding that holds it. The heads can't see the private activities only a written
@@ -135,6 +137,25 @@ there, any shot a head or an exposure flag marked stays at `family_only` even wh
 **The review list.** Every run writes `review-before-sharing.private.json` in its attempt directory:
 the shots whose exposure probability sits between 0.2 and 0.5 that nothing else already holds.
 Nothing in the cut changes. The run summary prints the count, and `runs why` shows the note.
+
+## Your word on a picture
+
+Two buttons under every picture in the media pool and every shot on the storyboard, and the same two
+in the CLI (`pictures clear-hold` and `pictures never-use`):
+
+- **Clear hold** shows where something holds the picture: a detector flagged it or its Live clip, or
+  an earlier cut banked a hold on it (a caption that names a private moment, most of its capture run
+  flagged). It asks first and shows the picture. Once cleared, the gate says `share` for it without
+  asking anything, on every tier, and no banked hold or earlier refusal comes back. It doesn't lift a
+  carrier rule: a screenshot stays a screenshot.
+- **Never use** keeps the picture out of every film from the next cut on. It stays evidence that its
+  moment happened, and never plays. A tick in the pool doesn't bring it back.
+- **Undo** forgets what you decided, and the app's own holds apply again.
+
+Nothing clears a hold by itself: no reading, no model, no bulk action. A Live Photo is one picture,
+so the decision covers its clip too. The decisions are rows in the library's annotation store
+(`store/owner_decisions.py`), one per picture, so they last across runs and scopes, and the web page
+and the CLI can't overwrite each other's. `runs why ASSET_ID` prints yours last.
 
 ## Duplicates
 
