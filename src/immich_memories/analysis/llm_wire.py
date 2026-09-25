@@ -18,7 +18,7 @@ import base64
 import logging
 import re
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -26,12 +26,13 @@ from immich_memories.analysis import llm_metrics
 from immich_memories.analysis.llm_providers import (
     ANTHROPIC_VERSION,
     LOWEST_THINKING_LEVEL,
+    is_local_endpoint,
     resolved_llm_config,
 )
 from immich_memories.config_models_llm import LLMConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,10 @@ def adaptation_for(error: dict) -> str | None:
         return "max_completion_tokens"
     if "temperature" in message and ("not support" in message or "Unsupported" in message):
         return "default_temperature"
+    if "response_format" in message or "json_schema" in message:
+        return NO_RESPONSE_FORMAT
+    if "repetition_penalty" in message:
+        return NO_REPETITION_PENALTY
     # A rejected value still means the parameter exists. Removing it would
     # silently select the provider's default effort (medium on Luna), and the
     # learned adaptation would then erase even valid values on later calls.
@@ -91,7 +96,15 @@ def adaptation_for(error: dict) -> str | None:
     return None
 
 
+NO_RESPONSE_FORMAT = "no_response_format"
+NO_REPETITION_PENALTY = "no_repetition_penalty"
+
+
 def apply_adaptations(payload: dict, adaptations: set[str]) -> None:
+    if NO_RESPONSE_FORMAT in adaptations:
+        payload.pop("response_format", None)
+    if NO_REPETITION_PENALTY in adaptations:
+        payload.pop("repetition_penalty", None)
     if "no_chat_template_kwargs" in adaptations:
         payload.pop("chat_template_kwargs", None)
     if "max_completion_tokens" in adaptations and "max_tokens" in payload:
@@ -434,8 +447,9 @@ def openai_payload(
     max_tokens: int,
     images: Sequence[bytes],
     image_detail: str,
+    response_format: Mapping[str, Any] | None = None,
 ) -> dict:
-    return {
+    payload = {
         "model": config.model,
         "messages": [
             {
@@ -448,6 +462,12 @@ def openai_payload(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if response_format and config.structured_output and not images:
+        payload["response_format"] = dict(response_format)
+    # Only a server of your own takes the field; a hosted API refuses unknown fields.
+    if config.repetition_penalty is not None and is_local_endpoint(config):
+        payload["repetition_penalty"] = config.repetition_penalty
+    return payload
 
 
 def openai_headers(config: LLMConfig) -> dict[str, str]:

@@ -237,6 +237,11 @@ def _reachable_only_from_here(host: str) -> bool:
     return address.is_loopback or address.is_private or address.is_link_local
 
 
+def is_local_endpoint(config: LLMConfig) -> bool:
+    """Whether this endpoint is a server on this machine or this private network."""
+    return _reachable_only_from_here(urlsplit(config.base_url).hostname or "")
+
+
 def reader_concurrency(config: LLMConfig) -> int:
     """How many independent reader jobs this endpoint is worth asking at once."""
     if config.reader_concurrency is not None:

@@ -780,14 +780,18 @@ def test_output_packing_and_transport_budget_share_one_bounded_estimate(tmp_path
         ),
     )
     calls: list[tuple[int, int]] = []
+    shaped: list[int] = []
 
     class BudgetedRequester:
         def __call__(self, _prompt: str) -> str:
             raise AssertionError("production episode requests must carry their computed budget")
 
-        def request_with_budget(self, prompt: str, *, max_tokens: int) -> str:
+        def request_with_budget(self, prompt: str, *, max_tokens: int, response_format=None) -> str:
             aliases = tuple(int(value) for value in re.findall(r"^episode (\d+)$", prompt, re.M))
             calls.append((len(aliases), max_tokens))
+            shaped.append(
+                response_format["json_schema"]["schema"]["properties"]["episodes"]["maxItems"]
+            )
             return json.dumps(
                 {
                     "schema_version": "episode-reading-text-v1",
@@ -820,6 +824,7 @@ def test_output_packing_and_transport_budget_share_one_bounded_estimate(tmp_path
 
     assert [rows for rows, _budget in calls] == [27, 27, 27, 9]
     assert [budget for _rows, budget in calls] == [3980, 3980, 3980, 1460]
+    assert shaped == [27, 27, 27, 9]
     assert result.actual_calls == 4
     assert all(episode.reading is not None for episode in result.episodes)
 

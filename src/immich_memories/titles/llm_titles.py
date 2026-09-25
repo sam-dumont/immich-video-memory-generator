@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 
 from immich_memories.analysis.llm_query import query_llm
+from immich_memories.analysis.prose_shapes import MAP_MODES, TRIP_TYPES, title_shape
 from immich_memories.people.context import PersonPromptContext, load_people_prompt_context
 
 if TYPE_CHECKING:
@@ -29,8 +30,8 @@ logger = logging.getLogger(__name__)
 TripType = Literal["multi_base", "base_camp", "road_trip", "hiking_trail"]
 MapMode = Literal["title_only", "excursions", "overnight_stops"]
 
-_VALID_TRIP_TYPES: set[str] = {"multi_base", "base_camp", "road_trip", "hiking_trail"}
-_VALID_MAP_MODES: set[str] = {"title_only", "excursions", "overnight_stops"}
+_VALID_TRIP_TYPES: set[str] = set(TRIP_TYPES)
+_VALID_MAP_MODES: set[str] = set(MAP_MODES)
 _MAX_TITLE_LEN = 80
 _MAX_SUBTITLE_LEN = 120
 
@@ -440,6 +441,11 @@ def _occasion_prompt(
     )
 
 
+def _is_trip(memory_type: str) -> bool:
+    """Whether this memory is named by the trip prompt, which also classifies the route."""
+    return memory_type not in PEOPLE_MEMORY_TYPES and memory_type not in OCCASION_MEMORY_TYPES
+
+
 def build_title_prompt(
     memory_type: str,
     locale: str,
@@ -731,6 +737,7 @@ async def generate_title_with_llm(
             timeout_seconds=300,
             thinking=True,
             cache_path=cache_path,
+            response_format=title_shape(trip=_is_trip(memory_type)),
         )
         suggestion = _refusing_invented_names(parse_title_response(raw), prompt.facts)
         if memory_type in PEOPLE_MEMORY_TYPES or memory_type in OCCASION_MEMORY_TYPES:
