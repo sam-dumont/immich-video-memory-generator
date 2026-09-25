@@ -127,3 +127,9 @@ def test_a_finished_cut_writes_its_grey_zone_shots_at_the_version_the_run_reads(
 
     assert written == 1
     assert review_note(tmp_path, "a1") and not review_note(tmp_path, "b2")
+
+
+def test_a_shot_the_owner_cleared_has_had_its_second_look():
+    verdicts = {"a1": {"verdict": "share", "finding": "owner_cleared"}}
+
+    assert to_check(_carriers("a1"), verdicts, {"a1": 0.35}) == []

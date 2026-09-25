@@ -248,7 +248,9 @@ class AssetAnnotationFactRepository:
         )
         for asset_id, flag, evidence, source in rows:
             cleaned_source = _clean(source)
-            if "exposure" in cleaned_source.casefold():
+            # The owner's clear-hold and never-use act on the gate and the material, never on
+            # what a reader is told about the picture (store/owner_decisions.py).
+            if "exposure" in cleaned_source.casefold() or cleaned_source == "owner":
                 continue
             records[str(asset_id)].flags.append(
                 StoredFlagFact(

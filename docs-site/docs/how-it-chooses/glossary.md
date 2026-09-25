@@ -60,7 +60,8 @@ flowchart LR
 | Word | Meaning | Where |
 |---|---|---|
 | **Verdict** | `share`, `family_only` or `do_not_show`; the strictest wins, and a household film shows the first two | `editorial_shareability.py` |
-| **Detector hold** | an exposure flag on a still, a video frame or a Live clip; `family_only`, never lifted by a reading | `floors_under` |
+| **Detector hold** | an exposure flag on a still, a video frame or a Live clip; `family_only`, never lifted by a reading, only by you | `floors_under` |
+| **Your decision** | per picture: hold cleared, or never use; kept in the annotation store, read by every tier | `store/owner_decisions.py` |
 | **Exposure chain** | a capture run at least half flagged, with three or more flagged captures, held whole | `editorial_exposure_chains.py` |
 | **Laya** | an optional local model answering the audience check's activity question from the caption | `editorial_laya_reader.py` |
 | **Review list** | shots with an exposure probability between 0.2 and 0.5, listed for you; changes nothing | `review-before-sharing.private.json` |
