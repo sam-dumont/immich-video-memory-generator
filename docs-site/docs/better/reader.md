@@ -23,16 +23,14 @@ changes, with diagrams: [What a model adds](../how-it-chooses/what-a-model-adds.
   **Gemma 4 E4B** (`mlx-community/gemma-4-e4b-it-6bit` on a Mac, `google/gemma-4-E4B-it` under vLLM
   or Ollama; Apache 2.0): 5.7 GB of weights and 6.7 GB at its peak on an 8k-token read, so it fits
   a 16 GB Mac beside the 500M caption server (2.4 GB).
-- The bigger reader is optional: `mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit`, about 17 GB
-  resident, a 32 GB Mac or a 24 GB card. It writes a little more of a story; on the graded films it
-  did not make better cuts.
 
-Both are graded. Anything else that holds 32k and returns valid JSON is expected to work, and its
+It is the one graded model. A bigger one (a 30B, about 17 GB) was measured against it and did not
+make better cuts, so it is not worth the memory. Anything else that holds 32k and returns valid JSON is expected to work, and its
 quality is your own measurement.
 
 ### How the default was chosen
 
-Gemma 4 E4B against the 30B on the same four months and one year, with the same prepared store and
+Gemma 4 E4B against a 30B (Qwen3-VL-30B-A3B) on the same four months and one year, with the same prepared store and
 the same rules draft: every episode reading, account and title written by Gemma, the polish vote
 left with the 30B in both.
 
