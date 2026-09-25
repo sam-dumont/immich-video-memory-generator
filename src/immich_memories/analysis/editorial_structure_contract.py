@@ -15,6 +15,7 @@ from immich_memories.analysis.editorial_contracts import InsightEvidence
 from immich_memories.analysis.editorial_intent import EditorialIntent, build_editorial_intent
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
 from immich_memories.analysis.editorial_people import EditorialPeople
+from immich_memories.analysis.editorial_shareability import LEVELS, SHAREABLE
 from immich_memories.api.models import Asset
 from immich_memories.config_loader import Config
 from immich_memories.processing.editorial_timing import EditorialTimingPolicy
@@ -151,9 +152,8 @@ class StructurePlanningInput:
     prior_plan: Mapping[str, Any] | None = None
     prior_plan_ref: Path | None = None
     allow_live_motion: bool = True
-    audience: str = (
-        "family"  # a home video is for the household; "sendable" is the explicit stricter export
-    )
+    # The film's sharing level (`editorial_shareability.LEVELS`): who may watch it.
+    audience: str = "family"
     audience_annotations: Mapping[str, AssetAnnotationLine] = field(default_factory=dict)
     # Canonical support is private context, separate from the prompt-serialized reading.
     # A cited source need not be selectable in the current request.
@@ -185,13 +185,13 @@ class StructurePlanningInput:
         _check_contract(self.case, self.intent)
         if not isinstance(self.allow_live_motion, bool):
             raise ValueError("Live motion request must be boolean")
-        if self.audience not in {"sendable", "family"}:
+        if self.audience not in LEVELS:
             raise ValueError("unknown structure export audience")
-        if self.audience == "sendable" and not self.config.editorial.preparation.demands_models:
+        if self.audience == SHAREABLE and not self.config.editorial.preparation.demands_models:
             # Refusing outright, rather than clearing what nothing looked at. The gate
             # may only tighten, and this tier has no detector evidence to tighten on.
             raise ValueError(
-                "a sendable export needs the detector evidence the "
+                "a shareable export needs the detector evidence the "
                 f"{self.config.editorial.preparation.tier} preparation tier does not produce"
             )
 

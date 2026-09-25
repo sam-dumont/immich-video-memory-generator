@@ -39,6 +39,7 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+from immich_memories.analysis.editorial_shareability import SHAREABLE
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_lookalike import hash_pair_relation
@@ -367,7 +368,10 @@ def _select(
             answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}"
             + "|laya" * bool(ports.laya),
         ),
-        check_audience=audience_check_for(audience_tier),
+        check_audience=audience_check_for(
+            audience_tier,
+            strict_sharing=source.config.editorial.strict_sharing and source.audience == SHAREABLE,
+        ),
         chains=chain_holds_for(
             source.assets, source.audience_annotations, source.companion_detectors
         ),
@@ -482,6 +486,7 @@ def _select(
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
         gate=gate,
         frame_quality=frame_quality_of(source),
+        requested_seconds=source.case.target_seconds,
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")

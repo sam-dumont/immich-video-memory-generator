@@ -18,9 +18,15 @@ from immich_memories.ui.pages.step2_helpers import render_thumbnail
 logger = logging.getLogger(__name__)
 
 _CLEAR_WARNING = (
-    "Once cleared, every film may use it, including one shared outside the household. "
-    "Nothing the app reads later puts the hold back; Undo does."
+    "Once cleared, every film up to that level may use it. Nothing the app reads later puts "
+    "the hold back; Undo does."
 )
+# The widest film a cleared picture may play in, as the dialog offers it.
+CLEAR_LEVELS = {
+    "just-us": "Just us: only films for the household",
+    "family": "Family: family films too",
+    "anyone": "Anyone: shareable films too",
+}
 
 
 def _config():
@@ -87,9 +93,10 @@ class _DecisionView:
         self.draw()
         return True
 
-    def _clear(self) -> None:
+    def _clear(self, level: str) -> None:
         self._act(
-            partial(picture_holds.clear_hold, via="web"), "Hold cleared. The next cut may use it."
+            partial(picture_holds.clear_hold, via="web", level=level),
+            "Hold cleared. The next cut may use it.",
         )
 
     def _never(self) -> None:
@@ -154,13 +161,15 @@ def _confirm(hold: PictureHold, clear) -> None:
             ui.label("Open it in Immich first if you haven't looked at it yourself.").classes(
                 "text-sm"
             )
+        ui.label("Fine for").classes("text-sm font-semibold mt-1")
+        level = ui.radio(CLEAR_LEVELS, value="family").props("dense").classes("clear-hold-level")
         ui.label(_CLEAR_WARNING).classes("text-xs").style("color: var(--im-text-secondary)")
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             im_button("Cancel", variant="ghost", on_click=dialog.close)
 
             def confirmed() -> None:
                 dialog.close()
-                clear()
+                clear(level.value)
 
             im_button("Clear hold", variant="primary", on_click=confirmed)
     dialog.open()

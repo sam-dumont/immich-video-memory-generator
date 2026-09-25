@@ -332,7 +332,7 @@ def test_private_initial_choice_is_replaced_by_grounded_depth_without_claiming_i
     from tests.editorial_story_fixtures import ControlledStoryJudge
 
     judge = ControlledStoryJudge()
-    captured = replace(source(tmp_path, seconds=60, private_opening=True), audience="sendable")
+    captured = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
     plan = run(captured, judge)
     assert plan["carriers"]
     assert all(c["asset_id"] != "picture-000" for c in plan["carriers"])

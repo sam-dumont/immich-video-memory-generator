@@ -102,12 +102,15 @@ def test_never_use_from_the_storyboard_and_clear_a_hold_from_the_pool(
         assert owner_decisions.decisions(store, [held]) == {}, "cancel writes nothing"
 
         card.get_by_role("button", name="Clear hold").click()
+        # The dialog asks how far it may go, the family by default (#1325).
+        expect(dialog.get_by_role("radio", name="Family: family films too")).to_be_checked()
+        dialog.get_by_role("radio", name="Just us: only films for the household").click()
         dialog.get_by_role("button", name="Clear hold").click()
         expect(
-            card.get_by_text("You cleared its hold (a nudity detector flagged it).")
+            card.get_by_text("You cleared its hold for just us (a nudity detector flagged it).")
         ).to_be_visible()
         expect(card.get_by_role("button", name="Clear hold")).to_have_count(0)
-        assert owner_decisions.decisions(store, [held]) == {held: owner_decisions.CLEAR_HOLD}
+        assert owner_decisions.decisions(store, [held]) == {held: "cleared_just_us"}
         _frame(card, "1324-pool-cleared")
 
         # Ruling out a ticked picture unticks it: the pool never says both.
@@ -126,11 +129,12 @@ def test_never_use_from_the_storyboard_and_clear_a_hold_from_the_pool(
             _cli(launch_workspace, "show", held),
             _cli(launch_workspace, "undo", held),
             _cli(launch_workspace, "show", held),
-            _cli(launch_workspace, "clear-hold", held, "--yes"),
+            _cli(launch_workspace, "clear-hold", held, "--level", "anyone", "--yes"),
             _cli(launch_workspace, "never-use", held),
             _cli(launch_workspace, "show", held),
         ]
-        assert "You cleared its hold" in transcript[1]
+        assert "You cleared its hold for just us" in transcript[1]
+        assert "Cleared for anyone" in transcript[4]
         assert "Held: a nudity detector flagged it." in transcript[3]
         assert "You'll never use this picture." in transcript[6]
         evidence = _ROOT / "test-results"

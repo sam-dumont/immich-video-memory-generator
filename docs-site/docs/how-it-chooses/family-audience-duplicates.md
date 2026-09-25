@@ -6,7 +6,7 @@ title: Family, audience and duplicates
 
 Reader: power user, with a newcomer summary first.
 
-Once the draft is cut, a few passes make sure it is a film you'd show. Your partner, who is on 300
+Once the draft is cut, a few passes make sure it is a film you'd show, to the people you cut it for. Your partner, who is on 300
 pictures of the month and starred in none, gets a shot. A picture the family-viewing gate refuses
 leaves and another frame of the same moment takes its place. Two near-identical photos of the same
 sunset, or the same hiking trail filmed twice twenty minutes apart, become one. Then the finished
@@ -69,38 +69,52 @@ Setting roles takes five minutes: [Teach it your family](../get-started/who-is-w
 
 ## The family-viewing gate
 
-Every shot gets one of three verdicts, and the strictest reading wins:
+Every shot gets one of four verdicts, and the strictest reading wins:
 
 | Verdict | Meaning |
 |---|---|
 | `share` | fine for anyone |
-| `family_only` | fine for the household, held back from anything wider |
-| `do_not_show` | leaves the film |
+| `family_only` | fine for the family, held back from a shareable film |
+| `just_us` | a private moment of the household: only a just-us film plays it |
+| `do_not_show` | leaves every film |
 
-Every film the app cuts is a household film: `family_only` shots play in it, `do_not_show` shots
-leave. A shot that leaves is replaced from its own moment first, then from a moment of the same story
-the film doesn't show yet, never within five minutes of a shot of the same moment, and each
-replacement is judged by the same gate before it takes the slot. When every offer is refused, the
-slot stays empty.
+### Sharing levels
+
+Each film is cut for one of three levels. You pick it per film (**Who will watch it** in the web
+brief, `generate --sharing`), and `defaults.sharing` is the default, `family` unless you change it.
+
+| Level | Who watches | Plays |
+|---|---|---|
+| **Just us** (`just-us`) | the household | `share`, `family_only`, `just_us` |
+| **Family** (`family`, the default) | grandparents, siblings, the group chat | `share`, `family_only` |
+| **Shareable** (`shareable`) | anyone | `share` only, with `strict_sharing` |
+
+The attempt's `request` records the level, `runs show` and `runs story` print it (`Sharing: family`),
+and `runs why` reads the gate's verdicts against it.
+
+A shot that leaves is replaced from its own moment first, then from a moment of the same story the
+film doesn't show yet, never within five minutes of a shot of the same moment, and each replacement
+is judged by the same gate before it takes the slot. When every offer is refused, the slot stays
+empty.
 
 ```mermaid
 flowchart TD
   shot["a shot of the cut<br/>AudienceGate.verdict_of"] --> rule{"carrier rule?<br/>excluded_carrier_sources"}
   rule -- yes --> dns["do_not_show"]
-  rule -- no --> owner{"you cleared it?<br/>owner_cleared_unit"}
-  owner -- yes --> share["share, nothing asked"]
+  rule -- no --> owner{"you cleared it?<br/>owner_verdict"}
+  owner -- "for just us, family, anyone" --> ov["just_us, family_only or share,<br/>nothing asked"]
   owner -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
   floor --> tier{"preparation tier<br/>editorial_shareability_tiers.audience_check_for"}
-  tier -- "no_captions, or no model" --> ra["rule_audience<br/>never says share"]
+  tier -- "no_captions, or no model" --> ra["rule_audience<br/>share only on clean evidence, in a shareable film"]
   tier -- "metadata_only" --> wa["withheld_audience<br/>family_only for all"]
   tier -- "full, with a model" --> laya["Laya pre-screen, optional<br/>editorial_laya_reader"]
-  laya --> ca["activity question over the caption<br/>check_audience, audience-evidence-v17"]
+  laya --> ca["activity question over the caption<br/>check_audience, audience-evidence-v17;<br/>a household moment is just_us"]
   ra --> strict["strictest wins<br/>tighten, with banked holds"]
   wa --> strict
   ca --> strict
-  strict --> allowed{"allowed in a household film?"}
-  allowed -- "share, family_only" --> keep["plays"]
-  allowed -- "do_not_show" --> repl["replaced through the same gate, or the slot stays empty<br/>apply_gate"]
+  strict --> allowed{"allowed at this film's level?<br/>allowed(verdict, level)"}
+  allowed -- yes --> keep["plays"]
+  allowed -- no --> repl["replaced through the same gate, or the slot stays empty<br/>apply_gate"]
 ```
 
 **What every tier reads.** The `nsfw_marqo` detector on the still, on up to eight frames spread
@@ -112,27 +126,42 @@ looking at it (see [Your word on a picture](#your-word-on-a-picture)). A false p
 in a wider film; a false negative puts the wrong picture in front of the wrong people.
 
 **On a plain NAS** (`no_captions`, or any film with no model), the answer is `family_only` for every
-shot, with the finding that holds it. The heads can't see the private activities only a written
-description names, so "no detector objected" is never read as a clearance. What leaves a household
-film on a NAS is what the carrier rules catch.
+shot, with the finding that holds it: the heads can't see the private moments only a written
+description names. So a just-us and a family film on a NAS are the same film, and what leaves them
+is what the carrier rules catch. A shareable film is the one exception, under `strict_sharing` (on by
+default): a shot is `share` when its evidence is clean, which means all of these:
+- the nudity detector read every picture of it, the Live clip included, and said no;
+- `uncovered_person` didn't say yes;
+- the document head read a photograph;
+- the venue head didn't place it in a bedroom, a medical room or another private facility;
+- no flag of any kind is on it;
+- no flagged capture run surrounds it.
+
+Anything else stays `family_only` and leaves the shareable film (`clean_evidence` in
+`editorial_shareability_tiers.py`). A private moment that no detector sees and no caption names can
+still pass. That is the price of a shareable film without captions, and a caption tier closes it.
 
 **With a model and captions** (`full`), the reader answers an activity question over each shot's
-ingest caption, written at ingest by SmolVLM2 500M. It never sees the picture. Eight findings give
-`do_not_show`: breastfeeding, bathing, toileting or changing, intimate hygiene, a graphic medical
-procedure, an identifying record, sexual content, adult changing. The v17 checks
-(`audience-evidence-v17-every-finding-needs-its-activity`) hold a finding only when the caption
-states the activity: a pool or the sea is never a bath, a race bib never an identifying record. A
-flagged shot the reader called `share` gets one more question about whether anyone is uncovered,
-which can only tighten. A shot with no caption stays `family_only`.
+ingest caption, written at ingest by SmolVLM2 500M. It never sees the picture.
+- Four findings are a household's private moments and give `just_us`: breastfeeding, bathing,
+  toileting or changing, and intimate hygiene. They play in a just-us film, automatically.
+- Four give `do_not_show` and never play at any level: a graphic medical procedure, an identifying
+  record, sexual content, and an adult changing.
+
+The v17 checks (`audience-evidence-v17-every-finding-needs-its-activity`) hold a finding only when
+the caption states the activity: a pool or the sea is never a bath, a race bib never an identifying
+record. A flagged shot the reader called `share` gets one more question about whether anyone is
+uncovered, which can only tighten. A shot with no caption stays `family_only`. A detector's floor
+still applies under a household moment: a flagged bath is `just_us`, never looser.
 
 **Laya** is an optional local pre-screen for that activity question: a 0.4B model reading the compact
 caption, Apple silicon only, on the polish route. Turn it on with `advanced.editorial.laya_audience`
 after `pip install laya-mlx` and `immich-memories models fetch --laya`. A shot it leaves unanswered
 goes to the text model; detector holds apply either way.
 
-**`advanced.editorial.strict_sharing`** (on by default) is for a film cut for outside the household:
-there, any shot a head or an exposure flag marked stays at `family_only` even when the reader said
-`share`. Every cut the app makes today is a household film, so it changes nothing yet.
+**`advanced.editorial.strict_sharing`** (on by default) applies to shareable films: any shot a head
+or an exposure flag marked stays at `family_only` even when the reader said `share`. On a NAS it is
+also what allows the clean-evidence `share` above. Just-us and family films don't read it.
 
 **The review list.** Every run writes `review-before-sharing.private.json` in its attempt directory:
 the shots whose exposure probability sits between 0.2 and 0.5 that nothing else already holds.
@@ -146,9 +175,11 @@ rules:
 
 - **Clear hold** is offered where something holds the picture: a detector flagged it or its Live
   clip, or an earlier cut banked a hold (a caption that names a private moment, most of its capture
-  run flagged). A cleared unit is `share` in `AudienceGate.verdict_of` before any check runs, on every
-  tier, and no banked hold or earlier refusal comes back. A unit is cleared only when you cleared
-  every picture it shows. A carrier rule still refuses first.
+  run flagged). You clear it for a level: just us (`just_us`), family (`family_only`, the default) or
+  anyone (`share`). A cleared unit gets that verdict in `AudienceGate.verdict_of` before any check
+  runs, on every tier, and no banked hold or earlier refusal within that level comes back. A unit is
+  cleared only when you cleared every picture it shows, at the strictest of their levels. A carrier
+  rule still refuses first.
 - **Never use** writes `never_auto`: the picture stays evidence that its moment happened and is
   never a carrier. A tick doesn't bring it back.
 - **Undo** forgets the decision, and the banked holds apply again, since clearing never deleted them.
@@ -183,7 +214,8 @@ faces Immich found and then the sharper, then the earlier one. A moving frame is
 repeat of a still. A scene repeat is less certain than a hash repeat, so it leaves only when a
 replacement takes its slot or the film still reaches 85 % of its length without it. Two starred
 twins are the exception: the second leaves either way, and its slot goes to a refill when there is
-one. The record names each such pair under `collapsed_favourites`. Every
+one. The one limit: a twin never leaves unreplaced when the film would then hold fewer than 3 shots
+or under 20 % of its length, the point where it gives up and makes no film. The record names each such pair under `collapsed_favourites`. Every
 replacement passes the family-viewing gate first. The `final_duplicate_review` record lists each
 removal, the distance or cosine behind it, and who kept the slot.
 

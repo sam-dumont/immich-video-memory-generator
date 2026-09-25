@@ -158,7 +158,13 @@ defaults:
   scale_mode: "blur"             # blur | fit (black bars); used when --scale-mode is not given
   transition: "smart"            # cut, crossfade, smart, none (used when --transition is left on smart)
   transition_duration: 0.5       # 0-2 seconds
+  sharing: "family"              # just-us | family | shareable; used when --sharing is not given
 ```
+
+`sharing` is who a film is for when the run doesn't say (`generate --sharing`, or **Who will watch
+it** in the web brief). `just-us` is the household: a private moment a caption names, like a bath,
+plays too. `family` keeps those out. `shareable` plays only what nothing held back. The rules:
+[Sharing levels](../how-it-chooses/family-audience-duplicates.md#sharing-levels).
 
 Target duration and orientation are per run (`--duration`, `--orientation`, or the UI), with the
 memory type preset supplying the default duration; there is no config default for either. The
@@ -559,10 +565,12 @@ activity?) of twelve shots per request instead of one, in two row orders. Each s
 own answer, a shot either order holds is held, and a shot the replies skip is asked alone. It is off until a probe against
 the local reader shows the batched question keeps every hold the single one finds.
 
-`strict_sharing` keeps any picture a detector head or an exposure flag marked out of a film you
-share outside the family, whatever the reader's text says about it. A caption that names clothing
-used to clear an exposure flag for sharing; with this on (the default), only your own clearance on
-the picture does. Family films are unchanged. The hold is applied per film and never written to the
+`strict_sharing` keeps any picture a detector head or an exposure flag marked out of a shareable
+film, whatever the reader's text says about it. A caption that names clothing used to clear an
+exposure flag for sharing; with this on (the default), only your own clearance on the picture does.
+It is also what lets a NAS with no captions cut a shareable film at all: with it on, a picture every
+detector read as clean and nothing flagged is `share`; with it off, a NAS clears nothing. Just-us
+and family films are unchanged. The hold is applied per film and never written to the
 library's audience bank, so setting it to `false` gives the reader's own answer back at once.
 
 `laya_audience` answers the audience check's activity question with a local Laya model instead of
@@ -598,15 +606,17 @@ child-in-swimwear hold, fired on 515 of those and was right about 5. Nothing rai
 swimwear hold now: on this tier every unit stays at family viewing regardless.
 
 `metadata_only` also drops the eight heads and both detectors, so the gate loses its evidence.
-It therefore holds **every** unit to `family_only` and refuses a `sendable` export outright.
+It therefore holds **every** unit to `family_only`, and a shareable film is refused before the cut
+starts.
 Use it only on a machine that cannot run ONNX at all.
 
 Captions are banked per picture, so a `no_captions` deployment can add them later and switch
 the tier to `full` when it finishes.
 
-Every run uses the **FAMILY** audience. Ordinary family material, including a shirtless baby, bath
-time, breastfeeding or a parent holding a newborn in hospital, can be considered; graphic medical
-procedures, sexual content, exposed adult changing and identifying records are excluded.
+The sharing level decides what a caption reading refuses. Ordinary family material, including a
+shirtless baby or a parent holding a newborn in hospital, plays at every level. Bath time,
+breastfeeding, a nappy change and intimate hygiene play only in a just-us film. Graphic medical
+procedures, sexual content, exposed adult changing and identifying records never play.
 
 Preparation fills missing descriptions, public heads, detectors and pixel measurements in the
 annotation database, and skips provider calls where the facts are complete. Missing previews or

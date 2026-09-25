@@ -107,6 +107,13 @@ DO_NOT_SHOW_FINDINGS = frozenset(
     }
 )
 
+# The private moments of a household: they play in a film the household keeps to itself
+# (`just_us`) and nowhere wider. The other refused findings (a record, a procedure, sexual
+# content, an adult undressing) never play at any level.
+HOUSEHOLD_FINDINGS = frozenset(
+    {"breastfeeding_or_expressing_milk", "bathing", "toileting_or_changing", "intimate_hygiene"}
+)
+
 
 def audience_check_prompt(evidence: Mapping[str, Any], *, allow_nudity: bool = True) -> str:
     """Classify owner-defined depicted content; code owns its audience meaning."""

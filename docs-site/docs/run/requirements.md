@@ -55,9 +55,9 @@ nothing, so the NAS setup is the same editor minus that last pass.
 
 | Tier | What runs | What the family-viewing gate can do |
 |---|---|---|
-| `metadata_only` | Previews and pixel measurements. Nothing to download | Nothing looked at the pictures, so nothing is cleared: every picture stays family-only, and a `sendable` export is refused |
-| **`no_captions`** (the NAS tier) | The above, plus the DINOv2 encoder with its eight heads and the two detectors. Needs `models fetch` | Refuses what `full` refuses. Never clears a picture, because eight findings are only named by a sentence |
-| `full` | All of the above, plus one caption per picture from a 500M vision model | Everything, including clearing a picture for a `sendable` export. Needs a [caption server](../better/captions.md) |
+| `metadata_only` | Previews and pixel measurements. Nothing to download | Nothing looked at the pictures, so nothing is cleared: every picture stays family-only, and a shareable film is refused |
+| **`no_captions`** (the NAS tier) | The above, plus the DINOv2 encoder with its eight heads and the two detectors. Needs `models fetch` | Refuses what `full` refuses. In a shareable film, clears a picture every detector read as clean; the eight findings a sentence names are out of its reach |
+| `full` | All of the above, plus one caption per picture from a 500M vision model | Everything: a household moment goes to just-us films, a record out of every film. Needs a [caption server](../better/captions.md) |
 
 A cut prepares only what it can reach: the pictures the film can select, their Live Photo clips
 and the bursts around them, not the whole date window. `immich-memories prepare` reads a whole

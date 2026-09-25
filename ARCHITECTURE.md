@@ -196,12 +196,20 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   refused. **D**: a swap for a weak shot, which needs no room. The **family seat** is a separate
   thing: one picture for a close family member the draft left out, on every tier
   (`editorial_family_seat.py`).
-- **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
+- **Audience / shareability**: the family-viewing gate, judged against the film's sharing level
+  (`just_us`, `family`, `shareable`: `defaults.sharing`, `generate --sharing`, the brief's **Who will
+  watch it**, carried by `EditorialRunContext.audience` into `StructurePlanningInput.audience` and the
+  attempt request). `allowed(verdict, level)` plays up to `just_us`, `family_only` or `share`; a
+  caption reading of a household moment (bath, breastfeeding, changing, hygiene) is `just_us`
+  (`at_household_level`), and a NAS shareable film clears clean evidence
+  (`rule_audience_with_clean_share`). Flags hold first (`never_auto`, detector
   holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show` from the
   caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
   and only the owner clears a hold (`editorial_shareability*.py`): per picture, from the pool,
   the storyboard or `pictures clear-hold`, written by `store/owner_decisions.py` as `source='owner'`
-  flag rows. A cleared unit is `share` in `AudienceGate.verdict_of` before any check or banked hold,
+  flag rows. A cleared unit gets its clearance's level (`cleared` = share, `cleared_family` =
+  family_only, `cleared_just_us` = just_us; `owner_verdict`) in `AudienceGate.verdict_of` before any
+  check or banked hold,
   and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
   pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says
@@ -380,12 +388,16 @@ src/immich_memories/
 │   ├── editorial_thin_vote.py      # One closed thesis-fit vote over the whole cut, in balanced blocks,
 │   │                               # source order first, the hashed order only where it decides
 │   │                               # rows carry close family relations; a relative's only shot is held
-│   │                               # and so is a year's only shot (voice_per_partition); a year keeps one
+│   │                               # and so is a year's only shot (voice_per_partition); a year keeps one;
+│   │                               # and a story's only texture shot (editorial_shot_kinds)
+│   ├── editorial_shot_kinds.py     # Portrait or texture, off the frame/people/activity heads; the kind mix
 │   ├── editorial_thin_pages.py     # What a seat is offered: motion first, records first, the refused moment first
 │   ├── editorial_thin_short.py     # A short cut reads ≤2·⌈S/3.5⌉ unread episodes of shot-less stories;
 │   │                               # only a story whose reading records a moment gets a seat
 │   ├── editorial_thin_refill.py    # Which seats open; each picks from 12 rows first, then only the picks
-│   │                               # meet the gates, and a refused pick is picked once more
+│   │                               # meet the gates, and a refused pick is picked once more; a removal's
+│   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind;
+│   │                               # a vote-named shot's refill comes from another moment
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
 │   │                               # caption (model tier, editorial.laya_audience); only adds holds
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,
@@ -906,7 +918,6 @@ version and capabilities first); deployment files are `services/render-worker/co
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`); the pinned images ride in the Actions cache per version (`scripts/immich_gate_images.sh`, `make immich-gate-fetch`/`immich-gate-save`).
-- **Public E2E library**: `make test-e2e-public` (`tests/public_e2e/`), on demand only. Households of openly licensed pictures (`households/<name>/`: `household.yaml` script, public `manifest.csv` and `CREDITS.md`, `snapshot.lock`) are built once into a pinned Immich with ML (`build.py`: `prepare` via `sources.py`/`stamping.py` from the CommonCatalog index `index_commoncatalog.py`/`timelines.py`, then `load`, `name`, `snapshot`; docker side in `stack.py` + `docker-compose.yml`), snapshotted privately, and restored for cold film runs (`run.py`, `films.py`) judged by `judge.py` (cut invariants, capture order, clutter, person presence; metrics, contact sheets, report). Design: `docs/research/public-e2e-library.md`.
 - **Pre-commit**: Run `make ci` before committing
 
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.

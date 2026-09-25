@@ -77,7 +77,7 @@ def test_laya_holds_a_private_carrier_and_the_text_model_is_never_asked(tmp_path
 
     assert {u["asset_id"]: audience.verdict_of(u) for u in units} == {
         "a1": "share",
-        "a2": "do_not_show",
+        "a2": "just_us",  # a bath: the household only
     }
     assert not [stage for stage in judge.calls if "activity" in stage]
 

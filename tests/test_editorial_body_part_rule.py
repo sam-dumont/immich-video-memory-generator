@@ -28,7 +28,7 @@ def _reader(*, favourite=False, description=None, ticked=(), **heads):
         },
         annotations={"a": ""},
         intent=SimpleNamespace(product="month"),
-        audience="sendable",
+        audience="shareable",
         owner_required_asset_ids=frozenset(ticked),
     )
     return RuleStructureReader(source)
@@ -70,3 +70,20 @@ def test_a_favourite_or_a_ticked_body_part_shot_stands(vouched):
     reader = _reader(frame_kind="body_part_closeup", people="one", description=FEET, **vouched)
 
     assert reader.standing("a") == 2
+
+
+def _faces_never_read(**heads):
+    """A library where Immich recognised nobody: no picture's empty face list means anything."""
+    reader = _reader(**heads)
+    reader.source.assets["b"] = SimpleNamespace(is_favorite=False, people=[])
+    return reader
+
+
+def test_a_picture_with_no_caption_and_no_faces_read_is_never_a_body_part_shot():
+    assert _faces_never_read().standing("a") >= 1
+    assert _faces_never_read(people="one").standing("a") >= 1
+
+
+def test_where_faces_were_never_read_the_caption_must_name_a_body_part_and_nobody_alive():
+    assert _faces_never_read(description=FEET).standing("a") >= 1
+    assert _faces_never_read(description="Muddy boots by a door.").standing("a") == 0

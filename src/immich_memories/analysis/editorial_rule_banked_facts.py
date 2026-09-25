@@ -42,12 +42,12 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Protocol
 
-from immich_memories.analysis.editorial_shareability import allowed
+from immich_memories.analysis.editorial_shareability import OWNER_CLEARANCES, allowed
 from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
     library_refusals,
 )
-from immich_memories.store.owner_decisions import CLEAR_HOLD, decisions
+from immich_memories.store.owner_decisions import decisions
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ def open_banked_facts(
         bank_dir.parent / AUDIENCE_BANK_NAME, audience
     )
     answers = BankedAnswers(
-        refused=refused - _owner_cleared(store_path),
+        refused=refused - _owner_cleared(store_path, audience),
         representatives=representatives,
         culls=culls,
     )
@@ -166,11 +166,15 @@ def open_banked_facts(
     return answers
 
 
-def _owner_cleared(store_path: Path | None) -> frozenset[str]:
-    """What the owner cleared by hand: a refusal banked before the clearance no longer holds."""
+def _owner_cleared(store_path: Path | None, audience: str) -> frozenset[str]:
+    """What the owner cleared by hand for this level: a refusal banked before no longer holds."""
     if store_path is None:
         return frozenset()
-    return frozenset(a for a, decision in decisions(store_path).items() if decision == CLEAR_HOLD)
+    return frozenset(
+        asset_id
+        for asset_id, decision in decisions(store_path).items()
+        if decision in OWNER_CLEARANCES and allowed(OWNER_CLEARANCES[decision], audience)
+    )
 
 
 def _refused_before(attempts_dir: Path | None, *, audience: str) -> frozenset[str]:

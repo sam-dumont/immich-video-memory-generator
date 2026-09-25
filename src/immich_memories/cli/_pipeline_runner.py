@@ -175,6 +175,7 @@ def _finish_without_rendering(
         music_policy=music_policy(config=config, music=music, no_music=no_music),
         title=title,
         subtitle=subtitle,
+        sharing=config.defaults.sharing,
     )
     print_generation_preview(preview)
     progress.update(task, completed=100)
@@ -217,6 +218,7 @@ def _finish_preparation(
         f"Canvas: {output_canvas.width}x{output_canvas.height} ({output_canvas.orientation})"
         + (" — provisional until selection" if canvas_provisional else "")
     )
+    click.echo(f"Sharing: {config.defaults.sharing}")
     click.echo(f"Music: {music_policy(config=config, music=music, no_music=no_music)}")
     click.echo(f"Output (planned): {output_path}")
     click.echo(f"Upload: {'planned' if should_upload else 'disabled'}")
