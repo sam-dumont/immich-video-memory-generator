@@ -181,3 +181,26 @@ def test_the_shaping_hint_on_a_mac_says_how_pillow_finds_homebrew_fribidi(monkey
     monkeypatch.setattr(font_chain.sys, "platform", "linux")
     assert "libfribidi0" in font_chain.shaping_hint()
     assert "DYLD" not in font_chain.shaping_hint()
+
+
+@pytest.mark.parametrize(
+    ("text", "needs"),
+    [
+        ("رحلة إلى القاهرة", True),
+        ("ירושלים", True),
+        ("जयपुर यात्रा", True),
+        ("เชียงใหม่", True),
+        ("கோயம்புத்தூர்", True),
+        ("2024〜2025年の冬", False),
+        ("杭州西湖", False),
+        ("제주도 여행", False),
+        ("Crète · Κρήτη", False),
+        ("Санкт-Петербург", False),
+        ("Hội An", False),
+    ],
+)
+def test_only_scripts_that_join_reorder_or_cluster_need_shaping(text, needs):
+    # The "drawn unshaped" warning fired for a Japanese title, which draws the same either way.
+    from immich_memories.titles.font_chain import needs_shaping
+
+    assert needs_shaping(text) is needs
