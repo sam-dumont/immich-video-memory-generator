@@ -31,7 +31,7 @@ def test_citations_survive_without_changing_requests_or_eligible_carriers(tmp_pa
     captured = source(
         tmp_path, seconds=60, pictures=1 if private_only else 20, private_opening=private_only
     )
-    captured = replace(captured, audience="sendable")
+    captured = replace(captured, audience="shareable")
     cold_judge = ControlledStoryJudge()
     baseline = _plan(captured, cold_judge)
     evidence = (

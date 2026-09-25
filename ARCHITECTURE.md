@@ -196,12 +196,20 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   refused. **D**: a swap for a weak shot, which needs no room. The **family seat** is a separate
   thing: one picture for a close family member the draft left out, on every tier
   (`editorial_family_seat.py`).
-- **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
+- **Audience / shareability**: the family-viewing gate, judged against the film's sharing level
+  (`just_us`, `family`, `shareable`: `defaults.sharing`, `generate --sharing`, the brief's **Who will
+  watch it**, carried by `EditorialRunContext.audience` into `StructurePlanningInput.audience` and the
+  attempt request). `allowed(verdict, level)` plays up to `just_us`, `family_only` or `share`; a
+  caption reading of a household moment (bath, breastfeeding, changing, hygiene) is `just_us`
+  (`at_household_level`), and a NAS shareable film clears clean evidence
+  (`rule_audience_with_clean_share`). Flags hold first (`never_auto`, detector
   holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show` from the
   caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
   and only the owner clears a hold (`editorial_shareability*.py`): per picture, from the pool,
   the storyboard or `pictures clear-hold`, written by `store/owner_decisions.py` as `source='owner'`
-  flag rows. A cleared unit is `share` in `AudienceGate.verdict_of` before any check or banked hold,
+  flag rows. A cleared unit gets its clearance's level (`cleared` = share, `cleared_family` =
+  family_only, `cleared_just_us` = just_us; `owner_verdict`) in `AudienceGate.verdict_of` before any
+  check or banked hold,
   and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
   pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says

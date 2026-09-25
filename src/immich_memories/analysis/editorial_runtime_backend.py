@@ -177,6 +177,7 @@ class ProductionPostCardBackend:
         return source, {candidate.clip.asset.id for candidate in workprint.input_candidates}
 
     def _apply_runtime_policy(self, source: StructurePlanningInput) -> StructurePlanningInput:
+        source = replace(source, audience=self._context.audience)
         if self._context.render_timing is not None:
             if (
                 source.render_timing is not None

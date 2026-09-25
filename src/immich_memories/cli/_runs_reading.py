@@ -21,7 +21,7 @@ from immich_memories.operations.candidate_fates import read_trace
 from immich_memories.operations.caption_origins import caption_origin_note
 from immich_memories.operations.editorial_attempt import window_origin_note
 from immich_memories.operations.reader_words import stage_words
-from immich_memories.operations.run_index import attempt_dir_for_run
+from immich_memories.operations.run_index import attempt_dir_for_run, sharing_line
 from immich_memories.operations.storyboard import (
     Storyboard,
     read_storyboard,
@@ -153,6 +153,7 @@ def register_reading_commands(runs: click.Group) -> None:
         except RunNotFound as exc:
             print_error(str(exc))
             sys.exit(1)
+        console.print(sharing_line(attempt), highlight=False)
         console.print(storyboard_text(resolved, read_storyboard(attempt)), highlight=False)
 
     @runs.command("why")

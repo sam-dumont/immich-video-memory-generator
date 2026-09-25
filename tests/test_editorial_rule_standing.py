@@ -93,4 +93,4 @@ def test_a_family_film_judges_an_exposure_flagged_picture_like_any_other():
 
 
 def test_a_film_sent_outside_the_family_still_scores_an_exposure_flagged_picture_zero():
-    assert _flagged_reader("sendable").standing("a") == 0
+    assert _flagged_reader("shareable").standing("a") == 0

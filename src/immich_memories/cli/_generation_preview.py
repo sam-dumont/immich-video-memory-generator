@@ -30,6 +30,7 @@ class GenerationPreview:
     music_policy: str
     title: str | None = None
     subtitle: str | None = None
+    sharing: str = "family"
 
     @property
     def selected_total(self) -> int:
@@ -100,6 +101,7 @@ def print_generation_preview(preview: GenerationPreview) -> None:
     click.echo(f"Title: {preview.title or 'from the template'}")
     if preview.subtitle:
         click.echo(f"Subtitle: {preview.subtitle}")
+    click.echo(f"Sharing: {preview.sharing}")
     click.echo(f"Music: {preview.music_policy}")
     click.echo(f"Output (planned): {preview.output_path}")
     click.echo(f"Upload: {'planned' if preview.upload_intent else 'disabled'}")

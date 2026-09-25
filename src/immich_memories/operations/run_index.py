@@ -57,3 +57,22 @@ def run_id_for_attempt(attempt_dir: Path) -> str | None:
         return str(json.loads(path.read_text())["run_id"])
     except (KeyError, ValueError, TypeError):
         return None
+
+
+_LEVEL_WORDS = {"just_us": "just us", "family": "family", "shareable": "shareable"}
+
+
+def sharing_line(attempt_dir: Path | None) -> str:
+    """Who the attempt's cut was made for, in reader words; empty when there is no attempt.
+
+    A cut from before sharing levels existed was cut for the family.
+    """
+    if attempt_dir is None:
+        return ""
+    try:
+        status = json.loads((Path(attempt_dir) / "status.private.json").read_text())
+    except (OSError, ValueError):
+        status = {}
+    request = status.get("request") if isinstance(status, dict) else None
+    level = request.get("audience", "family") if isinstance(request, dict) else "family"
+    return f"Sharing: {_LEVEL_WORDS.get(level, level)}"

@@ -362,6 +362,7 @@ def _build_ui_editorial_context(
 ) -> Any:
     """Adapt immutable wizard truth to the shared production runtime contract."""
     from immich_memories.analysis.editorial_runtime import EditorialRunContext
+    from immich_memories.analysis.editorial_shareability import level_of
     from immich_memories.analysis.special_event_scope import read_special_event_admission
 
     product, date_ranges, people, full_sources = _cut_identity(state)
@@ -396,6 +397,7 @@ def _build_ui_editorial_context(
         hemisphere=state.memory_preset_params.get("hemisphere", "north"),
         render_timing=_ui_timing_policy(state, app_config),
         artifact_dir=app_config.cache.cache_path / "editorial-runs" / key,
+        audience=level_of(state.sharing or app_config.defaults.sharing),
         people=people,
         person_match=person_match,
         person_expression=_ui_person_expression(state),

@@ -62,6 +62,13 @@ class DefaultsConfig(BaseModel):
     )
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"
     transition_duration: float = Field(default=0.5, ge=0, le=2.0)
+    sharing: Literal["just-us", "family", "shareable"] = Field(
+        default="family",
+        description=(
+            "Who a film is for: 'just-us' (the household, private moments included), "
+            "'family' (the default) or 'shareable' (anyone: only pictures nothing held)"
+        ),
+    )
 
     @field_validator("scale_mode", mode="before")
     @classmethod

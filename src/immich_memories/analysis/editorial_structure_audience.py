@@ -271,17 +271,18 @@ class AudienceGate:
             }
             self.keep_hold(u["asset_id"], self.verdicts[u["asset_id"]])
             return "do_not_show"
-        if _share.owner_cleared_unit(u, self._flag_rows):
-            # The owner looked at this picture and cleared it. Nothing is asked and nothing is
-            # banked: forgetting the clearance brings every banked hold straight back.
+        owned = _share.owner_verdict(u, self._flag_rows)
+        if owned is not None:
+            # The owner looked at this picture and cleared it for a level. Nothing is asked and
+            # nothing is banked: forgetting the clearance brings every banked hold straight back.
             self.verdicts[u["asset_id"]] = {
-                "verdict": "share",
+                "verdict": owned,
                 "finding": "owner_cleared",
                 "source": _share.OWNER_SOURCE,
                 "why": "you cleared this picture's hold",
                 "evidence_key": "",
             }
-            return "share"
+            return owned
         standing = self._held_already(evidence)
         if standing is not None:
             record = {
@@ -294,7 +295,8 @@ class AudienceGate:
             self.verdicts[u["asset_id"]] = record
             return record["verdict"]
         key, record = self.check(evidence)
-        held = self._library.held(u["asset_id"])
+        record = _share.at_household_level(record)
+        held = self._household_hold(self._library.held(u["asset_id"]), record)
         if (
             held is not None
             and _share.tighten(record["verdict"], held["verdict"]) != record["verdict"]
@@ -303,10 +305,22 @@ class AudienceGate:
         self.keep_hold(u["asset_id"], record)
         # After the bank, never in it: the owner can turn strict sharing off and have the
         # reader's own answer back.
-        if self._strict_sharing and self.audience == "sendable":
+        if self._strict_sharing and self.audience == _share.SHAREABLE:
             record = _share.strict_sharing_hold(evidence, record)
         self.verdicts[u["asset_id"]] = record | {"evidence_key": key}
         return record["verdict"]
+
+    @staticmethod
+    def _household_hold(
+        held: dict[str, Any] | None, record: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """A private-activity hold banked before sharing levels named no category; the current
+        reading of the same picture, under the same prompt, says which one it was."""
+        if held is None or held.get("finding") != _share.PRIVATE_ACTIVITY:
+            return held
+        if record.get("finding") != _share.PRIVATE_ACTIVITY:
+            return held
+        return _share.at_household_level(held | {"activity": record.get("activity")})
 
     def prefetch(self, units, *, batch: int) -> None:
         """Ask the activity question of every carrier here that still needs one, `batch` a request.
@@ -323,7 +337,7 @@ class AudienceGate:
             observed_reason, evidence = self._evidence(u)
             if (
                 observed_reason
-                or _share.owner_cleared_unit(u, self._flag_rows)
+                or _share.owner_verdict(u, self._flag_rows) is not None
                 or self._held_already(evidence)
             ):
                 continue

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from immich_memories.analysis.editorial_runtime import EditorialRunContext
+from immich_memories.analysis.editorial_shareability import level_of
 from immich_memories.analysis.special_event_scope import read_special_event_admission
 from immich_memories.api.person_expression import PersonExpression
 from immich_memories.planning.auto_duration import DURATION_FROM_DURATION_FLAG
@@ -102,6 +103,7 @@ def build_editorial_context(
             transition_duration=config.defaults.transition_duration,
         ),
         artifact_dir=config.cache.cache_path / "editorial-runs" / key,
+        audience=level_of(config.defaults.sharing),
         people=tuple(person_names),
         person_match=_person_match(resolved),
         person_expression=person_expression,

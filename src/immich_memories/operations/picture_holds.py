@@ -26,7 +26,14 @@ from immich_memories.analysis.editorial_structure_audience import (
     library_bank_path,
 )
 from immich_memories.store import owner_decisions
-from immich_memories.store.owner_decisions import CLEAR_HOLD, NEVER_USE
+from immich_memories.store.owner_decisions import NEVER_USE, clearance_for, is_clearance
+
+# Whom a clearance reaches, in the words under the picture.
+_CLEARED_FOR = {
+    "cleared": "for anyone",
+    "cleared_family": "for the family",
+    "cleared_just_us": "for just us",
+}
 
 _DETECTOR = "a nudity detector flagged it"
 _CLIP = "a nudity detector flagged its motion clip"
@@ -59,8 +66,9 @@ class PictureHold:
         held = "; ".join(self.reasons)
         if self.decision == NEVER_USE:
             return "You'll never use this picture."
-        if self.decision == CLEAR_HOLD:
-            return f"You cleared its hold ({held})." if held else "You cleared its hold."
+        if is_clearance(self.decision):
+            cleared = f"You cleared its hold {_CLEARED_FOR[str(self.decision)]}"
+            return f"{cleared} ({held})." if held else f"{cleared}."
         return f"Held: {held}." if held else ""
 
 
@@ -134,9 +142,13 @@ def _producer_never_auto(store: Path, ids: list[str]) -> dict[str, str]:
     }
 
 
-def clear_hold(config: Any, asset_id: str, *, via: str, clip_id: str | None = None) -> None:
-    """The owner cleared this one picture's hold: every film may use it."""
-    owner_decisions.decide(store_of(config), asset_id, CLEAR_HOLD, via=via, clip_id=clip_id)
+def clear_hold(
+    config: Any, asset_id: str, *, via: str, level: str = "anyone", clip_id: str | None = None
+) -> None:
+    """The owner cleared this one picture's hold for a level (`anyone`, `family`, `just-us`):
+    every film up to that level may use it."""
+    decision = clearance_for(level)
+    owner_decisions.decide(store_of(config), asset_id, decision, via=via, clip_id=clip_id)
 
 
 def never_use(config: Any, asset_id: str, *, via: str, clip_id: str | None = None) -> None:
