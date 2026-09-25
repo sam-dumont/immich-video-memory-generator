@@ -1008,11 +1008,18 @@ demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 demo-fixture:  ## Export the hermetic fixture library into the Remotion demo (docs-site/remotion/src/fixture.ts)
 	uv run python scripts/export-demo-fixture.py
 
-demo-ui: demo-ui-install demo-fixture  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+.PHONY: demo-soundtrack
+demo-soundtrack:  ## Rebuild the demo's music from a bundled MIT-licensed acoustic track
+	ffmpeg -y -loglevel error \
+	  -i packages/immich-memories-music/immich_memories_music/tracks/happy/happy_acoustic_s411.opus \
+	  -filter_complex "[0:a]asplit[a][b];[a][b]acrossfade=d=3:c1=tri:c2=tri,loudnorm=I=-18:TP=-2:LRA=9[music]" \
+	  -map "[music]" -t 60 -ar 48000 -ac 2 -c:a pcm_s16le docs-site/remotion/public/demo-music.wav
+
+demo-ui: demo-ui-install demo-fixture demo-soundtrack  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
 
-# The README hero is the brief → cut → storyboard stretch of the Remotion demo
+# The homepage and README hero is the brief → cut → storyboard stretch of the Remotion demo
 # (seconds 3.4 to 15.6) and then the last 3 s, the film it made: 720 px, 10 fps,
 # 15.1 s, under 4 MB. The README loads it from GitHub Pages on every visit, so 4 MB is
 # the ceiling. The film tail is what costs: full-bleed photography runs about

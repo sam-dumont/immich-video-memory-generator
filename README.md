@@ -11,11 +11,11 @@
 **Your self-hosted [Immich](https://immich.app/) library, cut into films worth keeping: a month, a year in review, a trip with its map, one person across the years.**
 
 <p align="center">
-  <a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/trip-preview.mp4">
-    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/trip-map-flyover.jpg" alt="A finished trip film, opening on the satellite map of the route" width="720">
+  <a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/demo.mp4">
+    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Choose a memory, review its storyboard, and watch the finished film" width="720" height="405">
   </a>
   <br/>
-  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/trip-preview.mp4">▶ Play a finished film (32 s)</a> · CC0 stock pictures, <a href="tests/e2e/fixtures/library/CREDITS.md">credited here</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/">Documentation</a></sub>
+  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/demo.mp4">▶ Play the demo with music</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/demo/trip-preview.mp4">Watch a finished trip film</a> · CC0 stock pictures, <a href="tests/e2e/fixtures/library/CREDITS.md">credited here</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/">Documentation</a></sub>
 </p>
 
 It reads a period of your library, picks the pictures and videos that tell it, keeps them in the order they were taken, and renders the film with titles, maps and music.
