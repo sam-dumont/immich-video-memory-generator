@@ -300,3 +300,17 @@ def test_a_starred_twin_s_slot_may_go_to_another_starred_frame_of_its_own_moment
     survivors, _ = _review(cut, frame_quality=QUALITY.get, replacements_for=lambda _c: list(offers))
 
     assert _ids(survivors) == ["beach", "path-again"]
+
+
+def test_a_starred_twin_stays_when_leaving_would_leave_no_film():
+    """Folding twins must never take a film under the floor where it abstains altogether."""
+    cut = [
+        _carrier("path", day=4, favourite=True),
+        _carrier("path-again", day=5, favourite=True),
+        _carrier("path-third", day=6, favourite=True),
+    ]
+
+    survivors, record = _review(cut, frame_quality=QUALITY.get, film_floor=(3, 0.0))
+
+    assert len(survivors) == 3
+    assert record["collapsed_favourites"] == []

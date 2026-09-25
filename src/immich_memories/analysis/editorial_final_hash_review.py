@@ -287,8 +287,11 @@ class _Cut:
         content_floor: float,
         family_of: FamilyOf,
         admits: Admits = _admit_all,
+        film_floor: tuple[int, float] = (0, 0.0),
     ) -> None:
         self.family_of = family_of
+        self.film_floor = film_floor
+        self.shown = len(carriers)
         self.admits = admits
         self.shots = Counter(p for c in carriers for p in set(family_of(c["asset_id"])))
         self.kept_only_shots: list[str] = []
@@ -318,19 +321,28 @@ class _Cut:
             self.kept.append(carrier)
             self.kept_only_shots.append(carrier["asset_id"])
             return
-        if (
-            not refilled
-            and similarity is not None
-            and not twin
-            and self.content - _seconds(carrier) < self.content_floor
+        if not refilled and (
+            (
+                similarity is not None
+                and not twin
+                and self.content - _seconds(carrier) < self.content_floor
+            )
+            or (twin and self._below_the_film_floor(carrier))
         ):
             self.kept.append(carrier)
             return
         self.content -= _seconds(carrier)
+        if not refilled:
+            self.shown -= 1
         self.shots.subtract(set(self.family_of(carrier["asset_id"])))
         self.removals.append(removal)
         if twin:
             self.collapsed.append(removal)
+
+    def _below_the_film_floor(self, carrier: Mapping[str, Any]) -> bool:
+        """Whether this shot leaving unreplaced would leave too little for any film at all."""
+        shots, seconds = self.film_floor
+        return self.shown - 1 < shots or self.content - _seconds(carrier) < seconds
 
     def _starred_twin(self, carrier: Mapping[str, Any], keeper: str) -> bool:
         """Two starred frames of one moment: the twin leaves whatever the film's length says."""
@@ -382,6 +394,7 @@ def review_cut_by_cached_hashes(
     close_family_of: FamilyOf = _no_family,
     admits: Admits = _admit_all,
     frame_quality: FrameQuality = _no_quality,
+    film_floor: tuple[int, float] = (0, 0.0),
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Drop the frames of a finished cut that repeat one it already holds, and refill the slot.
 
@@ -405,12 +418,22 @@ def review_cut_by_cached_hashes(
     Two starred frames of one scene within ``FAVOURITE_TWIN_DAYS`` are one moment: the best
     stays (a video, then more faces and a sharper frame from ``frame_quality``, then the
     earlier), the other leaves even from a film short of its target, and both are named under
-    ``collapsed_favourites``.
+    ``collapsed_favourites``. It never leaves unreplaced when the film would fall under
+    ``film_floor`` (shots, seconds): below that the film abstains, and a starred twin is better
+    than no film.
     """
     protected = frozenset(protected_asset_ids)
     hashes, unavailable = _cached_hashes(carriers, thumbnail_hash)
     repeats = _Repeats(hashes, distance, scene_print)
-    cut = _Cut(carriers, repeats, thumbnail_hash, content_floor, close_family_of, admits)
+    cut = _Cut(
+        carriers,
+        repeats,
+        thumbnail_hash,
+        content_floor,
+        close_family_of,
+        admits,
+        film_floor=film_floor,
+    )
     only_shots = frozenset(
         c["asset_id"]
         for c in carriers
