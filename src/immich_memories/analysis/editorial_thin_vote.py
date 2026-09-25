@@ -191,6 +191,53 @@ def sole_family_shots(
     return sole
 
 
+def sole_era_shots(
+    cut: Sequence[Mapping[str, Any]], era_of: Callable[[str], str | None] | None
+) -> dict[str, str]:
+    """The shots that are the only one in the cut of their partition (a year of a lifetime film).
+
+    A film that promises every partition a voice (`voice_per_partition`) got that voice from the
+    draft; a vote alone never takes it away, the same way it never takes a close family member's
+    only shot. `era_of` maps a capture time to its partition, None for a film with no such promise.
+    """
+    if era_of is None:
+        return {}
+    shots_of: dict[str, list[str]] = {}
+    for shot in cut:
+        if (era := era_of(str(shot["taken"]))) is not None:
+            shots_of.setdefault(era, []).append(shot["asset_id"])
+    return {assets[0]: era for era, assets in shots_of.items() if len(assets) == 1}
+
+
+def keep_every_voice(
+    cut: Sequence[Mapping[str, Any]],
+    verdicts: dict[str, dict[str, Any]],
+    era_of: Callable[[str], str | None] | None,
+) -> dict[str, dict[str, Any]]:
+    """The verdicts with one shot kept in every partition whose every shot the vote named.
+
+    Two shots of one year are neither of them its only shot, so `sole_era_shots` holds neither;
+    named together, both would leave and the year would lose the voice the draft gave it. The
+    one kept is the one the vote doubted least, the earlier on a tie.
+    """
+    if era_of is None:
+        return verdicts
+    shots_of: dict[str, list[Mapping[str, Any]]] = {}
+    for shot in cut:
+        if (era := era_of(str(shot["taken"]))) is not None:
+            shots_of.setdefault(era, []).append(shot)
+    for era, shots in shots_of.items():
+        if any(verdicts[s["asset_id"]]["state"] != "bad" for s in shots):
+            continue
+        spared = min(shots, key=lambda s: (verdicts[s["asset_id"]]["named_by"], str(s["taken"])))
+        verdicts[spared["asset_id"]] |= {
+            "state": "kept",
+            "protected": True,
+            "held_by": f"the last shot of {era} in the film; the vote does not move it",
+        }
+    return verdicts
+
+
 def is_protected(shot: Mapping[str, Any]) -> bool:
     """A star the owner put on it, or a record the catalogue holds: no vote moves the shot."""
     return bool(shot.get("favourite") or shot.get("notable_record"))
@@ -200,6 +247,7 @@ def classify_fit(
     cut: Sequence[Mapping[str, Any]],
     votes: Mapping[str, tuple[int, str]],
     family_held: Mapping[str, str] | None = None,
+    era_held: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Bad, weak or kept.
 
@@ -211,28 +259,35 @@ def classify_fit(
     Everything else: an unprotected shot named by both orders is `bad` and leaves; by one order
     it is `weak` and is offered a same-story replacement whose place it gives up only once a
     candidate has passed. `family_held` maps a close family member's only shot to their relation:
-    it is held the same way.
+    it is held the same way, and so is a partition's only shot (`era_held`, shot to partition).
     """
     held = family_held or {}
+    eras = era_held or {}
     verdicts = {}
     for shot in cut:
         asset = shot["asset_id"]
         named, why = votes.get(asset, (0, ""))
-        protected = is_protected(shot) or asset in held
+        protected = is_protected(shot) or asset in held or asset in eras
         verdicts[asset] = {
             "state": _state(named, protected=protected),
             "named_by": named,
             "why": why,
             "protected": protected,
-            "held_by": _held_by(shot, held) if protected and named else "",
+            "held_by": _held_by(shot, held, eras) if protected and named else "",
             "rule": "thesis-fit vote" if named else "",
         }
     return verdicts
 
 
-def _held_by(shot: Mapping[str, Any], family_held: Mapping[str, str]) -> str:
+def _held_by(
+    shot: Mapping[str, Any], family_held: Mapping[str, str], era_held: Mapping[str, str]
+) -> str:
     if is_protected(shot):
         return HELD_BY_THE_OWNER
+    if shot["asset_id"] not in family_held:
+        return (
+            f"the only shot of {era_held[shot['asset_id']]} in the film; the vote does not move it"
+        )
     whose = _whose(family_held[shot["asset_id"]])
     return f"the only shot of {whose} in the film; the vote does not move it"
 

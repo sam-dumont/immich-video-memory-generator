@@ -53,6 +53,8 @@ from immich_memories.analysis.editorial_thin_vote import (
     CloseFamily,
     classify_fit,
     is_protected,
+    keep_every_voice,
+    sole_era_shots,
     sole_family_shots,
     vote_thesis_fit,
 )
@@ -161,6 +163,7 @@ class ThinPolish:
         protected: Sequence[str] = (),
         subject: str = "",
         close_family: CloseFamily = close_family_on,
+        era_of: Callable[[str], str | None] | None = None,
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
@@ -168,7 +171,8 @@ class ThinPolish:
         draft, and one log line and the record say why (`unread` when the read itself failed).
         `subject` is who the film is about, which the vote reads beside the account, and
         `close_family` who on a line is close family in this film: the owner's, and in a film
-        about people the subject's own as well.
+        about people the subject's own as well. `era_of` maps a capture time to the partition a
+        film promises a voice to (a year of a lifetime film), None when it promises none.
         """
         if catalogue is None or not carriers:
             return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
@@ -176,7 +180,7 @@ class ThinPolish:
         first_call = len(judge.calls)
         tier_of = {story.key: story.tier for story in catalogue.stories}
         admitted, refused = gates.admit(carriers, tier_of=tier_of, protected=protected)
-        fit = _FitQuestion(judge, catalogue, contract, line_of, subject, close_family)
+        fit = _FitQuestion(judge, catalogue, contract, line_of, subject, close_family, era_of)
         kept, verdicts, rounds = self._voted(admitted, fit)
         slots = plan_slots(
             kept,
@@ -317,12 +321,13 @@ class ThinPolish:
         newcomers = {row["asset_id"] for row in fresh}
         by_asset = {row["asset_id"]: row for row in filled}
         family = sole_family_shots(filled, fit.line_of, fit.close_family)
+        eras = sole_era_shots(filled, fit.era_of)
         votes: dict[str, tuple[int, str]] = {}
         for group in rejoined_blocks(partition, filled, newcomers, outcomes):
             block = [by_asset[asset] for asset in group]
-            block_votes, _rounds = self._ask(block, fit, family, moving=newcomers)
+            block_votes, _rounds = self._ask(block, fit, family | eras, moving=newcomers)
             votes.update(block_votes)
-        verdicts = classify_fit(fresh, votes, family)
+        verdicts = classify_fit(fresh, votes, family, eras)
         revoked = {row["asset_id"] for row in fresh if verdicts[row["asset_id"]]["state"] == "bad"}
         if not revoked:
             return filled, set()
@@ -341,8 +346,11 @@ class ThinPolish:
         self, carriers: list[dict[str, Any]], fit: _FitQuestion
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict]]:
         family = sole_family_shots(carriers, fit.line_of, fit.close_family)
-        votes, rounds = self._ask(carriers, fit, family)
-        verdicts = classify_fit(carriers, votes, family)
+        eras = sole_era_shots(carriers, fit.era_of)
+        votes, rounds = self._ask(carriers, fit, family | eras)
+        verdicts = keep_every_voice(
+            carriers, classify_fit(carriers, votes, family, eras), fit.era_of
+        )
         kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
         return kept, verdicts, rounds
 
@@ -353,11 +361,12 @@ class ThinPolish:
     def _bank_path(self) -> Path:
         return self.bank_dir / "thesis-fit.private.json"
 
-    def _ask(self, carriers, fit: _FitQuestion, family: Mapping[str, str], moving=None):
+    def _ask(self, carriers, fit: _FitQuestion, held: Mapping[str, str], moving=None):
         """The vote over these shots; with `moving`, only those shots' answers are read.
 
-        A shot the vote may not move (a star, a record, a close family member's only shot) is
-        not asked about in a second order, and a block of nothing else is not asked at all.
+        A shot the vote may not move (a star, a record, a close family member's or a year's only
+        shot) is not asked about in a second order, and a block of nothing else is not asked at
+        all.
         """
         bank = self._bank()
         story_of = {
@@ -370,7 +379,7 @@ class ThinPolish:
                 c["asset_id"]
                 for c in carriers
                 if is_protected(c)
-                or c["asset_id"] in family
+                or c["asset_id"] in held
                 or (moving is not None and c["asset_id"] not in moving)
             ],
             line_of=fit.line_of,
@@ -394,6 +403,7 @@ class _FitQuestion:
     line_of: Callable[[str], str]
     subject: str
     close_family: CloseFamily
+    era_of: Callable[[str], str | None] | None = None
 
 
 def thin_budget(draft: int, seats: int) -> int:

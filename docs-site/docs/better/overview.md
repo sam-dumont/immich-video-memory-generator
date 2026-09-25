@@ -46,7 +46,9 @@ things with it:
 - **It polishes.** It reads the finished draft in blocks of 12 shots and names the ones that add
   nothing. A shot both of its readings name leaves, one named once is offered a better replacement
   from its own story, and favourites, a close relative's only shot and a record the catalogue holds
-  stay put. It drops and refills; it never re-plans the film or adds a story. On the `full` tier it
+  stay put. So does a year's only shot in a film that gives every year a voice, and a year whose
+  every shot is named keeps one. A refill that picks a picture takes its moment's favourite instead
+  when the page has one. It drops and refills; it never re-plans the film or adds a story. On the `full` tier it
   also answers the family-viewing check's activity question (a bath, a nappy change) from each
   shot's caption.
 
