@@ -74,7 +74,7 @@ flowchart LR
 | Word | Meaning | Where |
 |---|---|---|
 | **Episode reading** | a model's answer about one episode: what happened, a representative, moments worth a record | `text_episode_reader.py` |
-| **Record** | a moment an episode reading named as worth a place of its own; protected from the vote | `catalogue_runtime.banked_notable_records` |
+| **Record** | a picture an episode reading named as the record of something that happens once (an arrival, a milestone with its occasion visible, a change you can see, text naming the occasion), judged on the episode's own lines; protected from the vote | `catalogue_runtime.banked_notable_records` |
 | **Account** | what the library says a period was about, written once from episode readings and reused | `library_catalogue.py` |
 | **Thesis** | the account's statement of what the period was, up to 150 words | `editorial_story_grouping.py` |
 | **Polish / thin layer** | the model reads the draft once, names the shots that add nothing, fills the seats | `editorial_thin_layer.py` |
