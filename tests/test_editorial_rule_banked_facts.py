@@ -199,7 +199,7 @@ def test_a_picture_an_earlier_cut_refused_for_this_audience_is_refused_again(tmp
 
 
 def test_a_refusal_cast_for_another_audience_is_not_carried_over(tmp_path):
-    _write_cut(tmp_path / "attempts", "01", audience="sendable", verdicts={"held": "family_only"})
+    _write_cut(tmp_path / "attempts", "01", audience="shareable", verdicts={"held": "family_only"})
 
     banked = _open(tmp_path, attempts_dir=tmp_path / "attempts")
 
@@ -210,7 +210,7 @@ def test_a_picture_the_library_holds_is_refused_in_any_case_of_it(tmp_path, monk
     library = AudienceBank(tmp_path / AUDIENCE_BANK_NAME, answerer="full|reader-a")
     library.hold("body", {"verdict": "family_only", "finding": "nudity_shirtless_or_underwear"})
     library.hold("bath", {"verdict": "do_not_show", "finding": "private_activity"})
-    case = {"bank_dir": tmp_path / "some-other-case", "audience": "sendable"}
+    case = {"bank_dir": tmp_path / "some-other-case", "audience": "shareable"}
 
     assert _open(tmp_path, **case).refused_for_audience("bath")
     # WHY: a release that rewrites the audience prompt retires the text model's holds.

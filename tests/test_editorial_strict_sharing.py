@@ -36,13 +36,13 @@ def test_strict_sharing_is_on_by_default():
 
 
 def test_a_flagged_picture_the_text_clears_stays_out_of_a_shared_film(tmp_path):
-    verdict = gate(tmp_path, "sendable").verdict_of(UNIT)
+    verdict = gate(tmp_path, "shareable").verdict_of(UNIT)
 
-    assert not share.allowed(verdict, "sendable")
+    assert not share.allowed(verdict, "shareable")
 
 
 def test_turning_it_off_lets_the_text_clear_the_flag_as_before(tmp_path):
-    verdict = gate(tmp_path, "sendable", strict=False).verdict_of(UNIT)
+    verdict = gate(tmp_path, "shareable", strict=False).verdict_of(UNIT)
 
     assert verdict == "share"
 
@@ -55,15 +55,15 @@ def test_a_family_film_is_unchanged(tmp_path):
 
 
 def test_the_strict_hold_is_not_banked_so_turning_it_off_later_restores_the_share(tmp_path):
-    gate(tmp_path, "sendable").verdict_of(UNIT)
+    gate(tmp_path, "shareable").verdict_of(UNIT)
 
-    assert gate(tmp_path, "sendable", strict=False).verdict_of(UNIT) == "share"
+    assert gate(tmp_path, "shareable", strict=False).verdict_of(UNIT) == "share"
 
 
 def test_an_unflagged_picture_is_shared_either_way(tmp_path):
     clean = AudienceGate(
         Judge(),
-        audience="sendable",
+        audience="shareable",
         annotations={"solo": Annotation("A landscape at sunset.")},
         flag_rows={},
         lines={"solo": "A landscape at sunset."},
@@ -82,7 +82,7 @@ def _film(tmp_path, *, strict):
     from tests.editorial_story_fixtures import ControlledStoryJudge
     from tests.test_editorial_duration_planner_integration import source
 
-    captured = replace(source(tmp_path, seconds=24, pictures=4), audience="sendable")
+    captured = replace(source(tmp_path, seconds=24, pictures=4), audience="shareable")
     captured.config.editorial.strict_sharing = strict
     marked = {
         "picture-000": (share.FlagRow("picture-000", "review", "exposure=partial", "exposure"),)

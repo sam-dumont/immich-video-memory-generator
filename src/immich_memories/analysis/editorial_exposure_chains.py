@@ -17,7 +17,7 @@ Measured on the owner's library at 5 minutes / 50 % / 3 flagged: normal months m
 66,597 were swept in. A fifteen-minute window added nothing.
 
 The rules tier holds every carrier to the family anyway, so what this changes is the
-model tier's verdicts and what a ``sendable`` export may carry.
+model tier's verdicts and what a ``shareable`` export may carry.
 """
 
 from __future__ import annotations

@@ -76,7 +76,7 @@ def test_equal_weight_occasions_keep_chronology_and_a_star_cannot_reorder_them(t
 
 def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions(tmp_path):
     captured = make_source(tmp_path)
-    # The occasion the weighing funds keeps one sendable picture; the pictures the pick
+    # The occasion the weighing funds keeps one shareable picture; the pictures the pick
     # reaches for first do not.
     private = {key for key in captured.assets if key.endswith(("-e1-p1", "-e1-p2"))}
     rows = {
@@ -91,7 +91,7 @@ def test_audience_rejections_and_occasion_fallback_cannot_reopen_full_partitions
     }
     captured = replace(
         captured,
-        audience="sendable",
+        audience="shareable",
         audience_annotations=rows,
         annotations={key: row.text for key, row in rows.items()},
     )

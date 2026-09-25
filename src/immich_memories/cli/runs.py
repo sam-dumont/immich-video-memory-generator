@@ -113,6 +113,14 @@ def _print_cut_checks(cache_dir: Path, run_id: str) -> None:
     console.print(f"Cut checks: [{style}]{count} broken promise(s)[/{style}]")
 
 
+def _print_sharing(cache_dir: Path, run_id: str) -> None:
+    from immich_memories.operations.run_index import attempt_dir_for_run, sharing_line
+
+    line = sharing_line(attempt_dir_for_run(cache_dir, run_id))
+    if line:
+        console.print(line)
+
+
 def _print_run_llm_totals(run) -> None:
     """What the run spent on the model, if it used one.
 
@@ -310,6 +318,7 @@ def register_runs_commands(main: click.Group) -> None:
 
         _print_run_details_table(run, format_duration)
         _print_cut_checks(get_config().cache.cache_path, run.run_id)
+        _print_sharing(get_config().cache.cache_path, run.run_id)
 
         if run.phases:
             _print_run_phases_table(run, format_duration)

@@ -242,6 +242,13 @@ def run_options(command: FC) -> FC:
             help="Leave this picture out of the cut (repeatable)",
         ),
         click.option(
+            "--sharing",
+            type=click.Choice(["just-us", "family", "shareable"]),
+            default=None,
+            help="Who the film is for: just-us (the household), family (default: "
+            "defaults.sharing) or shareable (anyone)",
+        ),
+        click.option(
             "--upload-to-immich",
             is_flag=True,
             default=False,
