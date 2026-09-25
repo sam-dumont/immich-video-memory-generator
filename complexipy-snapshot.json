@@ -980,9 +980,9 @@
     "functions": [
       {
         "name": "register_music_commands",
-        "complexity": 24,
+        "complexity": 17,
         "line_start": 13,
-        "line_end": 240,
+        "line_end": 164,
         "line_complexities": [
           {
             "line": 45,
@@ -1033,27 +1033,11 @@
             "complexity": 3
           },
           {
-            "line": 101,
-            "complexity": 0
-          },
-          {
-            "line": 104,
-            "complexity": 1
-          },
-          {
-            "line": 105,
-            "complexity": 1
-          },
-          {
-            "line": 108,
-            "complexity": 0
-          },
-          {
-            "line": 114,
-            "complexity": 0
-          },
-          {
             "line": 121,
+            "complexity": 0
+          },
+          {
+            "line": 125,
             "complexity": 0
           },
           {
@@ -1061,65 +1045,33 @@
             "complexity": 0
           },
           {
-            "line": 129,
-            "complexity": 0
+            "line": 142,
+            "complexity": 2
           },
           {
-            "line": 131,
+            "line": 144,
             "complexity": 1
           },
           {
-            "line": 135,
+            "line": 150,
             "complexity": 0
           },
           {
-            "line": 140,
-            "complexity": 2
-          },
-          {
-            "line": 151,
-            "complexity": 2
-          },
-          {
-            "line": 195,
+            "line": 155,
             "complexity": 0
           },
           {
-            "line": 199,
+            "line": 158,
             "complexity": 0
           },
           {
-            "line": 200,
-            "complexity": 0
-          },
-          {
-            "line": 218,
-            "complexity": 2
-          },
-          {
-            "line": 220,
-            "complexity": 1
-          },
-          {
-            "line": 226,
-            "complexity": 0
-          },
-          {
-            "line": 231,
-            "complexity": 0
-          },
-          {
-            "line": 234,
-            "complexity": 0
-          },
-          {
-            "line": 236,
+            "line": 160,
             "complexity": 1
           }
         ]
       }
     ],
-    "complexity": 24
+    "complexity": 17
   },
   {
     "path": "src/immich_memories/cli/runs.py",

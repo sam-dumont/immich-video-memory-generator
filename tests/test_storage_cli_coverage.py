@@ -978,11 +978,6 @@ class TestMusicCommandHelp:
         assert result.exit_code == 0
         assert "--mood" in result.output
 
-    def test_music_analyze_help(self):
-        result = _invoke(["music", "analyze", "--help"])
-        assert result.exit_code == 0
-        assert "VIDEO_PATH" in result.output
-
     def test_music_add_help(self):
         result = _invoke(["music", "add", "--help"])
         assert result.exit_code == 0

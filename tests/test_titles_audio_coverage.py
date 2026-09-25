@@ -2,7 +2,7 @@
 
 Covers uncovered branches in:
 - titles: generator, colors, fonts, backgrounds, rendering_service, convenience
-- audio: mixer_helpers, mood_analyzer_backends
+- audio: mixer_helpers
 - misc: filename_builder, search_service
 """
 
@@ -940,116 +940,6 @@ class TestMixAudioWith4StemDucking:
                     Path("o.wav"),
                     Path("out.mp4"),
                 )
-
-
-# ---------------------------------------------------------------------------
-# Module 2: Audio — mood_analyzer_backends.py
-# ---------------------------------------------------------------------------
-
-
-class TestOllamaAnalyzerClient:
-    """Test Ollama analyzer client lifecycle."""
-
-    def test_client_lazy_init(self):
-        from immich_memories.audio.mood_analyzer_backends import OllamaMoodAnalyzer
-
-        analyzer = OllamaMoodAnalyzer()
-        assert analyzer._client is None
-        client = analyzer.client
-        assert client is not None
-
-    @pytest.mark.asyncio
-    async def test_close_client(self):
-        from immich_memories.audio.mood_analyzer_backends import OllamaMoodAnalyzer
-
-        analyzer = OllamaMoodAnalyzer()
-        _ = analyzer.client  # Force creation
-        await analyzer.close()
-        assert analyzer._client is None
-
-    @pytest.mark.asyncio
-    async def test_is_available_returns_false_on_error(self):
-        from immich_memories.audio.mood_analyzer_backends import OllamaMoodAnalyzer
-
-        analyzer = OllamaMoodAnalyzer(base_url="http://localhost:99999")
-        mock_client = MagicMock()
-        mock_client.is_closed = False
-        mock_client.get = AsyncMock(side_effect=Exception("connection refused"))
-        analyzer._client = mock_client
-
-        # httpx.HTTPError is a subclass — should return False
-        import httpx
-
-        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
-        available = await analyzer.is_available()
-        assert not available
-
-    @pytest.mark.asyncio
-    async def test_analyze_video_no_frames_returns_default(self):
-        from immich_memories.audio.mood_analyzer_backends import OllamaMoodAnalyzer
-
-        analyzer = OllamaMoodAnalyzer()
-        # WHY: mock extract_keyframes to avoid ffmpeg dependency
-        with patch.object(analyzer, "extract_keyframes", return_value=[]):
-            mood = await analyzer.analyze_video(Path("/fake/video.mp4"))
-            assert mood.primary_mood == "calm"
-            assert mood.confidence == 0.3
-
-
-class TestOpenAIAnalyzerClient:
-    """Test the OpenAI-compatible analyzer."""
-
-    @pytest.mark.asyncio
-    async def test_analyze_video_no_frames_returns_default(self):
-        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
-
-        analyzer = OpenAICompatibleMoodAnalyzer(api_key="key")
-        with patch.object(analyzer, "extract_keyframes", return_value=[]):
-            mood = await analyzer.analyze_video(Path("/fake/video.mp4"))
-            assert mood.primary_mood == "calm"
-            assert mood.confidence == 0.3
-
-
-class TestGetMoodAnalyzer:
-    """Test the mood analyzer factory function."""
-
-    @pytest.mark.asyncio
-    async def test_openai_compatible_provider(self):
-        from immich_memories.audio.mood_analyzer_backends import (
-            OpenAICompatibleMoodAnalyzer,
-            get_mood_analyzer,
-        )
-
-        analyzer = await get_mood_analyzer(
-            provider="openai-compatible",
-            base_url="http://localhost:8080/v1",
-            model="test-model",
-            api_key="key",
-        )
-        assert isinstance(analyzer, OpenAICompatibleMoodAnalyzer)
-        assert analyzer.model == "test-model"
-
-    @pytest.mark.asyncio
-    async def test_ollama_provider_unavailable(self):
-        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
-
-        # WHY: mock is_available to avoid actual network call
-        with (
-            patch(
-                "immich_memories.audio.mood_analyzer_backends.OllamaMoodAnalyzer.is_available",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            pytest.raises(RuntimeError, match="Ollama not available"),
-        ):
-            await get_mood_analyzer(provider="ollama", model="llava")
-
-    @pytest.mark.asyncio
-    async def test_unknown_provider_raises(self):
-        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
-
-        with pytest.raises(RuntimeError, match="Unknown LLM provider"):
-            await get_mood_analyzer(provider="deepseek")
 
 
 # ---------------------------------------------------------------------------

@@ -82,75 +82,6 @@ def register_music_commands(main: click.Group) -> None:
 
         console.print(table)
 
-    @music.command("analyze")
-    @click.argument("video_path", type=click.Path(exists=True))
-    @click.option("--ollama-url", default=None, help="Ollama API URL (default: from config)")
-    @click.option("--ollama-model", default=None, help="Ollama vision model (default: from config)")
-    @click.pass_context
-    def music_analyze(
-        ctx: click.Context,
-        video_path: str,
-        ollama_url: str | None,
-        ollama_model: str | None,
-    ) -> None:
-        """Analyze a video to determine its mood for music selection."""
-        import asyncio
-
-        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
-
-        config = ctx.obj["config"]
-
-        # Use config values as defaults, allow CLI overrides
-        effective_url = ollama_url or config.llm.base_url
-        effective_model = ollama_model or config.llm.model
-
-        async def analyze():
-            analyzer = await get_mood_analyzer(
-                provider=config.llm.provider,
-                base_url=effective_url,
-                model=effective_model,
-                api_key=config.llm.api_key,
-            )
-            return await analyzer.analyze_video(Path(video_path))
-
-        console.print("[bold]Analyzing video mood...[/bold]")
-        console.print()
-
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Extracting keyframes and analyzing...", total=None)
-
-            try:
-                mood = asyncio.run(analyze())
-                progress.update(task, completed=True)
-            except Exception as e:  # WHY: CLI error display boundary
-                print_error(f"Analysis failed: {e}")
-                return
-
-        table = Table(title="Video Mood Analysis")
-        table.add_column("Attribute", style="cyan")
-        table.add_column("Value", style="green")
-
-        table.add_row("Primary Mood", mood.primary_mood)
-        if mood.secondary_mood:
-            table.add_row("Secondary Mood", mood.secondary_mood)
-        table.add_row("Energy Level", mood.energy_level)
-        table.add_row("Suggested Tempo", mood.tempo_suggestion)
-        table.add_row("Color Palette", mood.color_palette)
-        table.add_row("Genre Suggestions", ", ".join(mood.genre_suggestions))
-        table.add_row("Confidence", f"{mood.confidence:.0%}")
-
-        console.print(table)
-        console.print()
-
-        if mood.description:
-            console.print(f"[dim]Description: {mood.description}[/dim]")
-
     @music.command("add")
     @click.argument("video_path", type=click.Path(exists=True))
     @click.argument("output_path", type=click.Path())
@@ -165,11 +96,6 @@ def register_music_commands(main: click.Group) -> None:
     @click.option("--volume", "-v", type=float, default=-6.0, help="Music volume in dB")
     @click.option("--fade-in", type=float, default=2.0, help="Fade in duration in seconds")
     @click.option("--fade-out", type=float, default=3.0, help="Fade out duration in seconds")
-    @click.option(
-        "--analyze-frames",
-        is_flag=True,
-        help="Send video frames to the configured LLM for mood when --mood is absent",
-    )
     @click.pass_context
     def music_add(
         ctx: click.Context,
@@ -181,11 +107,11 @@ def register_music_commands(main: click.Group) -> None:
         volume: float,
         fade_in: float,
         fade_out: float,
-        analyze_frames: bool,
     ) -> None:
         """Add background music to a video with automatic ducking.
 
-        If no music file is provided, automatically selects music based on video mood.
+        Without a music file, picks a track from your library by --mood (calm when
+        absent). No frame of the video is sent to any model.
         Music volume is automatically lowered when speech/sounds are detected.
         """
         import asyncio
@@ -207,8 +133,6 @@ def register_music_commands(main: click.Group) -> None:
                 fade_out=fade_out,
                 music_volume_db=volume,
                 auto_select=music is None,
-                analyze_frames=analyze_frames,
-                llm_config=config.llm,
             )
 
         console.print("[bold]Adding Music to Video[/bold]")
@@ -218,7 +142,7 @@ def register_music_commands(main: click.Group) -> None:
         if music:
             console.print(f"Music: {music}")
         else:
-            console.print("Music: [dim]Auto-select based on video mood[/dim]")
+            console.print(f"Music: [dim]Auto-select, mood {mood or 'calm'}[/dim]")
         console.print()
 
         from rich.progress import Progress, SpinnerColumn, TextColumn

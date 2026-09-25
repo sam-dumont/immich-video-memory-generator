@@ -212,9 +212,12 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   bank under their own answerer.
 - **Pictures are read once**: a model looks at a picture only at ingest (the caption server, the
   heads, the detectors). No film-time stage sends a picture to any model, on any tier; the reader
-  is text only. `refuse_pictures` in `tests/test_editorial_source_route_integration.py` wraps the
-  one dispatch every model request passes through and fails on any request carrying a picture;
-  `tests/test_editorial_demanded_previews.py` holds the production route to that, cold and warm.
+  is text only, and so is music: the mood comes from the cut's thesis, story titles and ingest
+  captions (`audio/text_mood.py`), else the clips' own mood, else `calm`. `refuse_pictures` in
+  `tests/no_pictures.py` wraps the one dispatch every model request passes through and fails on
+  any request carrying a picture; `tests/test_editorial_demanded_previews.py` holds the production
+  route to that, cold and warm, and `tests/test_audio_no_pictures.py` holds the music path to it
+  and fails any `images=` argument in `audio/`, `processing/`, `titles/` or the music command.
 - **Exposure chain**: a capture run at least half flagged by the exposure head, with at least three
   flagged captures, is held whole (`editorial_exposure_chains.py`).
 
@@ -494,7 +497,7 @@ src/immich_memories/
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
 │   ├── clip_caption.py         # The per-clip date/place caption: text and geometry, no decoding
 │   ├── caption_image.py        # Captions drawtext cannot draw (non-Latin scripts), rendered with the title fonts
-│   ├── frame_sampling.py       # One cached still-frame sampler for mood, title colours and previews
+│   ├── frame_sampling.py       # One cached still-frame sampler for title colours and previews
 │   ├── playback_keyframes.py   # A playback's index and a few keyframes by byte range, decoded from a sparse copy
 │   ├── frame_preview.py        # Frame extraction for previews
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
@@ -510,8 +513,7 @@ src/immich_memories/
 │   ├── mixer.py                # Audio mixing & ducking
 │   ├── mixer_class.py          # AudioMixer class
 │   ├── mixer_helpers.py        # Mixing helper functions
-│   ├── mood_analyzer.py        # Mood detection for music matching
-│   ├── mood_analyzer_backends.py # Mood analysis backends
+│   ├── mood_analyzer.py        # Music mood vocabulary + VideoMood (no picture reads; mood is text_mood's)
 │   ├── music_generator.py      # AI music generation orchestrator
 │   ├── music_generator_client.py # Music generation client
 │   ├── music_generator_models.py # Music generation data models
