@@ -90,6 +90,11 @@ make notices-check
 # Check docker-compose.yml parses alone in an empty directory (the curl-one-file path)
 make compose-check
 
+# Public E2E library (on demand only, never on a PR; needs Docker + FFmpeg)
+make public-e2e-index                       # index CommonCatalog CC BY metadata (maintainer)
+make public-e2e-build HOUSEHOLD=dog-owner   # build a household once into a private snapshot
+make test-e2e-public HOUSEHOLD=dog-owner    # restore it, run its films, judge them (TIER=rules|model)
+
 # Every workflow job outside integration.yml skips in the private GPU mirror (part of make lint)
 make workflow-guard
 
@@ -208,6 +213,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 | Extras | CI + local | `make test-extras` | Only paths the torch family unlocks (`-m extras`) | torch/demucs/face |
 | Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
 | Integration | GPU runner | `make test-integration` | Real FFmpeg assembly, Immich reads, pipeline | FFmpeg + Immich |
+| Public E2E | Local / GPU runner, on demand | `make test-e2e-public` | Restored public household snapshot, real films, invariants + metrics + sheets | Docker + FFmpeg + snapshot |
 
 **Coverage targets:**
 - Core (non-UI): **60%** — enforced by `fail_under = 55` (unit) + GPU runner integration pushes higher
