@@ -10,9 +10,8 @@
 #   docker build -f docker/Dockerfile.inference --build-arg DEVICE=cuda \
 #     --build-arg APP_VERSION=X.Y.Z -t ghcr.io/…/inference:X.Y.Z-cuda .
 #
-# Nothing is baked but the head bundle, which is 2.2 MB and ours. The encoder,
-# the detector snapshots and (later) the caption weights are fetched into
-# /cache at first use, digest-verified, exactly as immich populates model-cache.
+# CUDA includes every small-model weight and the caption runtime. CPU keeps
+# the smaller image and fetches weights into /cache when downloads are enabled.
 
 ARG DEVICE=cpu
 # WHY digests: a mutable tag is a supply-chain hole, and the app image pins the
@@ -22,6 +21,9 @@ ARG PYTHON_BASE=python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b86
 # built against.
 ARG CUDA_BASE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04@sha256:ac55d124da4882b497f732d8dfd9a702d5447a5f29d08d56da6f64f0a1eb34bc
 
+ARG CAPTION_RUNTIME=ghcr.io/ggml-org/llama.cpp:server-cuda-b10920@sha256:6b4e57594fbb8fb1111bfe64a470570586bb4649a1d38647680a4ec3ed159695
+
+FROM ${CAPTION_RUNTIME} AS caption-runtime
 
 # ─── builders ────────────────────────────────────────────────────────────────
 FROM ${PYTHON_BASE} AS builder-cpu
@@ -43,18 +45,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 # The device extra locks a CUDA 12 / cuDNN 9-compatible runtime.
 ENV INFERENCE_EXTRA=editorial-cuda
-# Every CUDA kernel compiled in this image is built for these architectures.
-# Measured cause: the stock llama.cpp CUDA image carries cubins for sm_86,
-# sm_89 and sm_120a only and ships everything else as PTX, so a Turing card
-# compiled 858 modules on its first request — 31.3 s against 0.94 s warm, with
-# a JIT cache that dies with the container. A service that unloads on idle pays
-# that on every reload. `61` is the commonest old home-server card (P40s are
-# bought for cheap VRAM), `75` covers T4/T1000, `86` and `89` the current home
-# and datacentre generations, `120` the RTX 50 series; the virtual entries keep
-# PTX for anything unlisted, which then pays one JIT per process and still
-# runs. The ONNX seats do not have this problem — 0.0 MB of JIT cache and a
-# 0.42 s first inference on the same card — so this is llama.cpp packaging.
-ENV CMAKE_CUDA_ARCHITECTURES="61-real;75-real;86-real;89-real;120-real;50-virtual;70-virtual;80-virtual;90-virtual;120-virtual"
 
 
 FROM builder-${DEVICE} AS builder
@@ -99,17 +89,39 @@ RUN pip install --no-cache-dir --require-hashes -r /deps-hashes.txt && \
     pip check
 
 
+FROM builder AS bundled-cuda-models
+RUN python -m immich_memories.model_bundle /opt/immich-models
+
+
 # ─── runtime ─────────────────────────────────────────────────────────────────
 FROM ${PYTHON_BASE} AS prod-cpu
+ENV IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface
 
 
 FROM ${CUDA_BASE} AS prod-cuda
 # The virtual environment copied below refers to its interpreter by path, and
 # the CUDA images ship none. Same base as the builder, so same interpreter.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
+    python3 ffmpeg libgomp1 \
     && rm -rf /var/lib/apt/lists/*
-# The safety net for cards the architecture list above does not cover: keep the
+COPY --from=bundled-cuda-models /opt/immich-models /opt/immich-models
+COPY --from=caption-runtime /app /opt/llama
+COPY docker/licenses/llama.cpp.LICENSE /opt/llama/LICENSE
+COPY docker/captioner-bundled.sh /usr/local/bin/immich-memories-captioner
+RUN chmod 755 /usr/local/bin/immich-memories-captioner
+ENV LD_LIBRARY_PATH=/opt/llama:/usr/local/cuda/lib64
+ENV IMMICH_MEMORIES_INFERENCE_ENCODER=/opt/immich-models/dinov2-small.onnx
+ENV IMMICH_MEMORIES_INFERENCE_MARQO_ONNX=/opt/immich-models/nsfw-marqo-384.onnx
+ENV IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/opt/immich-models/huggingface
+ENV IMMICH_MEMORIES_INFERENCE_PROVIDER=cuda
+ENV IMMICH_MEMORIES_TRIAGE__ENCODER=/opt/immich-models/dinov2-small.onnx
+ENV IMMICH_MEMORIES_TRIAGE__PROVIDER=cuda
+ENV IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX=/opt/immich-models/nsfw-marqo-384.onnx
+ENV IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR=/opt/immich-models/huggingface
+ENV IMMICH_MEMORIES_EDITORIAL__LAYA_CHECKPOINT=/opt/immich-models/laya
+ENV IMMICH_MEMORIES_EDITORIAL__LAYA_AUDIENCE_THRESHOLD=0.185
+ENV HF_HUB_OFFLINE=1
+# The pinned caption runtime can JIT for older cards: keep the
 # driver's JIT cache on the model-cache volume so it outlives the container,
 # bounded at 512 MB because an unbounded cache on a NAS or a shared node is how
 # a disk-pressure eviction happens. Inert on the cpu variant, so it is set here.
@@ -142,6 +154,7 @@ COPY --from=builder /opt/venv /opt/venv
 # is what makes a fact computed here indistinguishable from one computed in
 # process. It travels as source on PYTHONPATH.
 COPY services/inference /app/services/inference
+COPY THIRD_PARTY_NOTICES /usr/share/licenses/immich-memories/THIRD_PARTY_NOTICES
 
 # UID/GID 1000 on purpose: it matches the app image, the first Linux user on
 # most home servers, and the shipped Kubernetes manifests (runAsUser: 1000).
@@ -163,11 +176,6 @@ ENV PYTHONPATH=/app/services/inference
 ENV IMMICH_MEMORIES_INFERENCE_HOST=0.0.0.0
 ENV IMMICH_MEMORIES_INFERENCE_PORT=8092
 ENV IMMICH_MEMORIES_INFERENCE_CACHE_DIR=/cache
-# The detector snapshots belong on the same volume as everything else fetched,
-# or a restart re-downloads them and `allow_model_downloads: false` can never
-# mean what it says. Outside a container the service keeps the app's default,
-# which is the Hugging Face cache, so this is the image's business.
-ENV IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface
 
 USER immich
 
@@ -175,6 +183,6 @@ EXPOSE 8092
 
 # No curl in either base; python is right there.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8092/ping')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8092/health')" || exit 1
 
 CMD ["python", "-m", "immich_memories_inference"]

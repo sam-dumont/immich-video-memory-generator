@@ -125,7 +125,28 @@ already allows the app egress on 8092.
 
 ### A cold cache volume
 
-A fresh PVC is empty, which is fine. Both overlays set `ALLOW_MODEL_DOWNLOADS=true`, and the
+The CUDA image bundles DINOv2, the context heads, Marqo, Docling, Laya ONNX and the SmolVLM2
+caption model and projector. Its weights live in `/opt/immich-models`, outside the writable
+cache mount. Downloads are unnecessary at startup; the image sets `HF_HUB_OFFLINE=1`.
+The app's CLI can use the same image, with the bundled paths already configured.
+
+The caption server is a second process using the same image and layers:
+
+```bash
+image=ghcr.io/sam-dumont/immich-video-memory-generator/inference:latest-cuda
+docker run --rm --gpus all -p 127.0.0.1:8094:8092 \
+  -v immich-memories-model-cache:/cache \
+  "$image" immich-memories-captioner
+```
+
+Point `advanced.editorial.preparation.caption_base_url` at `http://localhost:8094/v1` when
+running the app on the host. Between containers, use the caption container's hostname and
+port 8092. The caption runtime is pinned by image digest; older NVIDIA cards may compile
+kernels on their first request. Its bounded JIT cache stays on `/cache` across restarts.
+Laya runs in the app process; the `/facts` service serves the image classifiers.
+
+The CPU image keeps its smaller download. A fresh PVC is empty, which is fine. Both overlays
+set `ALLOW_MODEL_DOWNLOADS=true`, and the CPU
 service then fetches what it is missing on first use: the pinned DINOv2 export (88 MB), the pinned
 Marqo export (22.5 MB) and the Docling snapshot. The ONNX exports are checked against the same
 SHA-256 `immich-memories models fetch` pins, the Docling snapshot by Hugging Face revision. Only

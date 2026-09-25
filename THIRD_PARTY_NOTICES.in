@@ -60,6 +60,25 @@ Laya audience pre-screen (fine-tuned from convaiinnovations/laya-typed-decisions
     the manifest and from the next checkpoint.
   Runtime: laya-mlx (Apache-2.0, https://github.com/mizorewww/laya-mlx),
     installed separately on Apple silicon
+  Portable export: laya-audience-onnx-90420ef3.tar.gz, float32 ONNX,
+    sha256 90420ef38a5af3184bfbf9c3d5cdd030f1acac91d6dd911942d11b36e6c07c1a.
+    Bundled in the CUDA image with LICENSE, NOTICE and ATTRIBUTION.csv.
+
+SmolVLM2-500M-Video-Instruct (HuggingFaceTB, GGUF export by ggml-org)
+  Role: the CUDA image's caption model and image projector
+  Artifact: Q8_0 GGUFs at revision ccd7aae53bcb1997355c2f094959e72b3642ce17
+    of ggml-org/SmolVLM2-500M-Video-Instruct-GGUF; digests in pinned_models.py
+  License: Apache-2.0 (full text also in the bundled Laya LICENSE)
+  Copyright: Hugging Face and contributors
+  URL: https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF
+
+llama.cpp (CUDA caption runtime)
+  Role: serves the bundled SmolVLM2 caption model
+  Artifact: server-cuda-b10920, revision eafe15a5e3d87dd68ae33acf6a7cbd9415a0ac5e
+    image sha256 6b4e57594fbb8fb1111bfe64a470570586bb4649a1d38647680a4ec3ed159695
+  License: MIT, reproduced at /opt/llama/LICENSE in the CUDA image
+  Copyright: 2023-2026 The ggml authors
+  URL: https://github.com/ggml-org/llama.cpp
 
 Marqo NSFW image detector (Marqo/nsfw-image-detection-384)
   Role: the sensitive-content detector behind the family-viewing gate
