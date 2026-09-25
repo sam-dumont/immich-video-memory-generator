@@ -545,6 +545,7 @@ src/immich_memories/
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── text_layout.py          # Where the two text blocks sit, and the gate that refuses an overlap
+│   ├── line_breaking.py        # Where a title breaks into lines: balanced, inside the frame, CJK-aware
 │   ├── letter_case.py          # Capitals the way each script sets them, for titles and captions
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)

@@ -91,6 +91,10 @@ def shrink_sizes(title_size: int, subtitle_size: int, frame_height: int) -> tupl
     return smaller
 
 
+MAX_TITLE_LINES = 3
+"""Most lines a title may wrap to before its font shrinks instead."""
+
+
 def stack_text_blocks(
     title: str,
     subtitle: str | None,
@@ -99,24 +103,35 @@ def stack_text_blocks(
     frame_height: int,
     count_lines: Callable[[str, int], int],
     gap_ratio: float = DEFAULT_GAP_RATIO,
+    fits: Callable[[str, int], bool] | None = None,
 ) -> TextStack:
     """Place the title above the subtitle, the pair centred on the frame.
 
     ``count_lines`` measures a string the way the caller will draw it, so the
-    layout sees the real line counts. A pair taller than the frame's safe
-    height shrinks both fonts a step at a time and re-wraps, down to the
-    smallest size still worth reading.
+    layout sees the real line counts, and ``fits`` says whether every wrapped
+    line is inside the frame. A pair taller than the frame's safe height, a
+    title over ``MAX_TITLE_LINES`` lines, or a line wider than the frame (one
+    long word, a script written without spaces) shrinks both fonts a step at
+    a time and re-wraps, down to the smallest size still worth reading.
     """
-    if not subtitle:
-        lines = count_lines(title, title_size)
-        return TextStack(title_size, subtitle_size, lines, 0, 0.0, 0.0)
-
     safe_height = safe_text_height(frame_height)
+
+    def settled(stack: TextStack) -> bool:
+        return (
+            stack.bottom - stack.top <= safe_height
+            and stack.title_lines <= MAX_TITLE_LINES
+            and (fits is None or fits(title, stack.title_size))
+            and (fits is None or not subtitle or fits(subtitle, stack.subtitle_size))
+        )
+
     stack = _stack_at(title, subtitle, title_size, subtitle_size, count_lines, gap_ratio)
-    for _ in range(_MAX_SHRINK_STEPS):
-        if stack.bottom - stack.top <= safe_height:
+    for _ in range(_MAX_SHRINK_STEPS * 2):
+        if settled(stack):
             break
-        smaller = shrink_sizes(stack.title_size, stack.subtitle_size, frame_height)
+        # WHY the title size twice without a subtitle: an unused subtitle size
+        # must not stop the title shrinking.
+        paired = stack.subtitle_size if subtitle else stack.title_size
+        smaller = shrink_sizes(stack.title_size, paired, frame_height)
         if smaller is None:
             break
         stack = _stack_at(title, subtitle, smaller[0], smaller[1], count_lines, gap_ratio)
@@ -125,13 +140,15 @@ def stack_text_blocks(
 
 def _stack_at(
     title: str,
-    subtitle: str,
+    subtitle: str | None,
     title_size: int,
     subtitle_size: int,
     count_lines: Callable[[str, int], int],
     gap_ratio: float,
 ) -> TextStack:
     title_lines = count_lines(title, title_size)
+    if not subtitle:
+        return TextStack(title_size, subtitle_size, title_lines, 0, 0.0, 0.0)
     subtitle_lines = count_lines(subtitle, subtitle_size)
     gap = gap_ratio * title_size
     title_height = block_height(title_lines, title_size)
