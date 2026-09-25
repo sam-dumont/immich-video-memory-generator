@@ -72,6 +72,7 @@ from immich_memories.analysis.editorial_structure_finishing import (
     seat_again_after_review,
     trim_to_timing,
 )
+from immich_memories.analysis.editorial_structure_lines import strangers_only
 from immich_memories.analysis.editorial_structure_material import (
     Material,
     Wall,
@@ -638,6 +639,7 @@ def _story_selection(
         ),
         trips=trips,
         looks_alike=looks_alike,
+        strangers_only=strangers_only(source.assets, source.audience_annotations),
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
         near_home=_near_home_test(source, wall),
         banked=banked,

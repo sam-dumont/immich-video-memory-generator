@@ -86,3 +86,25 @@ def test_a_model_tier_picture_the_captioner_left_bare_still_shows_its_named_face
 
     assert ports.rules is None, "a model tier, with no rules reader anywhere"
     assert all(material.text.shows_life(u) for units in material.units.values() for u in units)
+
+
+def test_only_a_named_visible_person_is_someone_the_library_knows():
+    from immich_memories.analysis.editorial_structure_lines import strangers_only
+
+    named = SimpleNamespace(id="p1", name="someone", is_hidden=False)
+    unnamed = SimpleNamespace(id="p2", name="", is_hidden=False)
+    hidden = SimpleNamespace(id="p3", name="someone else", is_hidden=True)
+    assets = {
+        "known": SimpleNamespace(id="known", people=[named], faces=[]),
+        "unnamed": SimpleNamespace(id="unnamed", people=[unnamed], faces=[]),
+        "hidden": SimpleNamespace(id="hidden", people=[hidden], faces=[]),
+        "crowd": SimpleNamespace(id="crowd", people=[], faces=[]),
+        "view": SimpleNamespace(id="view", people=[], faces=[]),
+    }
+    heads = {"crowd": _heads(people="crowd"), "view": _heads(people="none")}
+
+    stranger = strangers_only(assets, heads)
+
+    assert [a for a in assets if stranger(a)] == ["unnamed", "hidden", "crowd"]
+    no_names = {k: v for k, v in assets.items() if k != "known"}
+    assert not any(strangers_only(no_names, heads)(a) for a in no_names)

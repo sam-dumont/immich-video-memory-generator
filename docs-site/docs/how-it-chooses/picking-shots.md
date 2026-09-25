@@ -60,6 +60,13 @@ On a story with more moments than `max(6, 3 × its shots)`, the moments offered 
 first: starred ones, then moving ones, then lively ones, and it reaches for a few more moving
 moments if the list filled up with stills. Below that size every moment is offered.
 
+**Strangers come last.** A moment whose people are all strangers to your library (faces nobody
+named, hidden people, or people only the `people` head saw) is not "lively" for that sort, and when
+the draft picks a story's moments without a model it takes them after every other moment of the
+story: stars, then the rest spread over the story's span, then the strangers. So a frame of the crowd
+at a race loses its one slot to a frame of the same day with someone you named in it. A moment with
+no people at all (a view, a place) is not demoted, and a library that names nobody keeps its order.
+
 ## What a frame must pass
 
 **Free.** Not already a shot, and not a picture the carrier rules keep as evidence only

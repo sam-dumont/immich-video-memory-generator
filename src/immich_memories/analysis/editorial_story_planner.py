@@ -490,6 +490,7 @@ def select_story_first(
     rules=None,
     trips: FilmTrips | None = None,
     looks_alike: PairLooksAlike | None = None,
+    strangers_only: Callable[[str], bool] = lambda _asset: False,
     film_span: tuple[date, date] | None = None,
     near_home: Callable[[str], bool | None] | None = None,
     banked: BankedFacts = NO_BANKED_FACTS,
@@ -657,6 +658,7 @@ def select_story_first(
         lookalike=LookAlikeCheck(looks_alike, slots=slots),
         places=places,
         place_of=place_of,
+        strangers_only=strangers_only,
     )
     admission.run()
     record("story-places", places.record())
