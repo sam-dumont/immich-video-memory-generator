@@ -540,14 +540,14 @@ def test_company_improvement_only_takes_a_fresh_relation_that_stands(tmp_path, w
 def test_the_audience_reads_the_finished_cut_not_every_candidate(tmp_path):
     class RefusingJudge(StoryJudge):
         """Holds back one named picture whenever the audience gate reads it. Adult changing
-        with no undressing described stays in the family, so a sendable film refuses it."""
+        with no undressing described stays in the family, so a shareable film refuses it."""
 
         def answer(self, stage, prompt):
             if stage.startswith("shareability-") and "outing 1, view 2" in prompt:
                 return json.dumps({"finding": "adult_changing", "why": "Changing clothes"})
             return super().answer(stage, prompt)
 
-    plan = run(replace(make_source(tmp_path), audience="sendable"), RefusingJudge())
+    plan = run(replace(make_source(tmp_path), audience="shareable"), RefusingJudge())
 
     refused = [row["asset_id"] for row in plan["shareability"]["tightened"]]
     assert refused == ["o1-p2"]

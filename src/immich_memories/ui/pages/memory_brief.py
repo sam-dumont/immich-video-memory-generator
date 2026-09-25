@@ -63,6 +63,24 @@ _POOL_SWITCHES = (
 )
 
 
+SHARING_LABELS: dict[str, str] = {
+    "just-us": "Just us",
+    "family": "Family",
+    "shareable": "Shareable",
+}
+_SHARING_LINES = {
+    "just-us": "The household. Private moments a caption names, like a bath, play too.",
+    "family": "Grandparents, siblings, the group chat. Private moments stay out.",
+    "shareable": "Anyone. Only pictures nothing held back: no detector flag, no private moment.",
+}
+
+
+def chosen_sharing(state: AppState) -> str:
+    """The level the next cut is for: the brief's choice, else the config's default."""
+    default = state.config.defaults.sharing if state.config else "family"
+    return state.sharing or default
+
+
 def begin_cut(state: AppState) -> str | None:
     """Arm a cut from the brief, or say why it cannot start.
 
@@ -74,6 +92,12 @@ def begin_cut(state: AppState) -> str | None:
         if state.memory_type == MemoryType.ALBUM:
             return "Pick an album first"
         return "Pick a memory type and a valid period first"
+    if state.config is not None:
+        from immich_memories.analysis.editorial_shareability_tiers import sharing_refusal
+
+        refusal = sharing_refusal(state.config, chosen_sharing(state))
+        if refusal:
+            return refusal
     if not arm_cut(state, before=state.reset_clips):
         return CUT_ALREADY_RUNNING
     return None
@@ -105,6 +129,20 @@ def _render_type_select(state: AppState, params: ui.column) -> None:
         on_change=on_change,
     ).classes("w-72")
     fill(state.memory_type)
+
+
+def _render_sharing(state: AppState) -> None:
+    level = chosen_sharing(state)
+    select = ui.select(options=SHARING_LABELS, label="Who will watch it", value=level)
+    select.classes("w-72")
+    line = ui.label(_SHARING_LINES[level]).classes("text-sm sharing-line")
+    line.style("color: var(--im-text-secondary)")
+
+    def on_change(e) -> None:
+        state.sharing = e.value
+        line.set_text(_SHARING_LINES[e.value])
+
+    select.on_value_change(on_change)
 
 
 def _render_pool_switches(state: AppState) -> None:
@@ -160,6 +198,9 @@ def render_brief(state: AppState) -> None:
 
     im_section_header("How long", icon="timer")
     render_duration_line(state)
+
+    im_section_header("Who will watch it", icon="group")
+    _render_sharing(state)
 
     _render_advanced(state)
     im_separator()

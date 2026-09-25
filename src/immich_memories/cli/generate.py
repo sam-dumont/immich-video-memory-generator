@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from immich_memories.analysis.editorial_shareability_tiers import sharing_refusal
 from immich_memories.analysis.live_photo_pipeline import drop_live_photo_components
 from immich_memories.cli._asset_fetch import fetch_photos, fetch_videos
 from immich_memories.cli._date_resolution import (
@@ -111,6 +112,7 @@ def register_generate_commands(main: click.Group) -> None:
         trace_selection: Path | None,
         include_asset: tuple[str, ...],
         exclude_asset: tuple[str, ...],
+        sharing: str | None,
         upload_to_immich: bool,
         album: str | None,
         from_album: str | None,
@@ -166,6 +168,13 @@ def register_generate_commands(main: click.Group) -> None:
             config_container=config.output.format,
             format_override=output_format,
         )
+
+        if sharing:
+            config.defaults.sharing = sharing
+        refusal = sharing_refusal(config)
+        if refusal:
+            print_error(refusal)
+            raise SystemExit(1)
 
         # CLI quality flag overrides config
         if quality:

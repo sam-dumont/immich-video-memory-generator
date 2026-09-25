@@ -111,7 +111,7 @@ def test_a_place_the_caption_names_without_anyone_in_it_still_stands():
 # -- the rules reader -----------------------------------------------------------------------------
 
 
-def _reader(*, favourite=False, line="", description=None, audience="sendable", **heads):
+def _reader(*, favourite=False, line="", description=None, audience="shareable", **heads):
     source = SimpleNamespace(
         assets={"a": SimpleNamespace(is_favorite=favourite, people=())},
         audience_annotations={

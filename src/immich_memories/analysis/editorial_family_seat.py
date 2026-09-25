@@ -20,6 +20,7 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+from immich_memories.analysis.editorial_shareability import SHAREABLE
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
 from immich_memories.analysis.editorial_story_replies import close_family_on, film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingGate
@@ -201,7 +202,7 @@ def film_refusal(
 
     def refused(asset: str) -> bool:
         heads = source.audience_annotations.get(asset)
-        shared_hold = source.audience != "family" and exposure_flagged(
+        shared_hold = source.audience == SHAREABLE and exposure_flagged(
             dict(heads.heads) if heads else {}
         )
         return asset in excluded or withheld(asset) or shared_hold

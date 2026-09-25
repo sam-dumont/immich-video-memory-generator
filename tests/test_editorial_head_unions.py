@@ -21,7 +21,7 @@ from immich_memories.analysis.editorial_shareability_audience import exposure_fl
 from immich_memories.analysis.editorial_source_gate import screen_document_rejections
 
 
-def reader(*, favourite=False, people=(), product="month", line="", audience="sendable", **heads):
+def reader(*, favourite=False, people=(), product="month", line="", audience="shareable", **heads):
     source = SimpleNamespace(
         assets={"a": SimpleNamespace(is_favorite=favourite, people=people)},
         audience_annotations={"a": SimpleNamespace(heads=tuple(heads.items()))},

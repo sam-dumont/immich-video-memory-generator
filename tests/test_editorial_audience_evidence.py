@@ -84,7 +84,7 @@ def test_active_surgery_has_its_own_final_activity_category():
     actual = share.check_audience(judge, item, "test")
     assert actual["verdict"] == "do_not_show"
     assert not share.allowed(actual["verdict"], "family")
-    assert not share.allowed(actual["verdict"], "sendable")
+    assert not share.allowed(actual["verdict"], "shareable")
     assert actual["finding"] == "private_activity"
     assert actual["activity"]["finding"] == "graphic_medical_procedure"
     assert actual["exposure"] is None

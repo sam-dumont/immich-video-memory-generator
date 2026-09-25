@@ -76,7 +76,7 @@ def test_a_carrier_either_order_holds_is_held(tmp_path, holding):
     audience.prefetch(units, batch=12)
     verdicts = {unit["asset_id"]: audience.verdict_of(unit) for unit in units}
 
-    assert verdicts["a05"] == "do_not_show"
+    assert verdicts["a05"] == "just_us"  # a bath: the household only
     assert all("batch" in stage for stage in judge.calls)
 
 
@@ -101,7 +101,7 @@ def test_a_carrier_the_batch_did_not_answer_is_asked_alone(tmp_path):
     audience.prefetch(units, batch=12)
     verdicts = {unit["asset_id"]: audience.verdict_of(unit) for unit in units}
 
-    assert verdicts["a04"] == "do_not_show"
+    assert verdicts["a04"] == "just_us"  # a bath: the household only
     assert [stage for stage in judge.calls if "batch" not in stage] == ["shareability-03-activity"]
 
 
@@ -123,7 +123,7 @@ def test_a_carrier_a_detector_already_refuses_for_this_audience_is_not_asked(tmp
     lines["a01"] += " | nsfw=yes"
     judge = CountingJudge()
     audience = gate(tmp_path, judge, lines)
-    audience.audience = "sendable"
+    audience.audience = "shareable"
 
     audience.prefetch(units, batch=12)
     verdicts = {unit["asset_id"]: audience.verdict_of(unit) for unit in units}

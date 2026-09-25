@@ -287,6 +287,26 @@ class TestRunsWhy:
         assert "in the cut at 0:03, 2024-06-09, story: Lunch in the garden" in result.output
 
 
+class TestRunsShow:
+    def test_it_names_the_sharing_level_the_cut_was_made_for(self, cut):
+        config, attempt = cut
+        (attempt / "status.private.json").write_text(
+            json.dumps({"request": {"audience": "just_us"}})
+        )
+
+        result = _invoke(config, ["runs", "show", RUN_ID])
+
+        assert result.exit_code == 0, result.output
+        assert "Sharing: just us" in result.output
+
+    def test_a_run_from_before_levels_was_a_family_film(self, cut):
+        config, _ = cut
+
+        result = _invoke(config, ["runs", "show", RUN_ID])
+
+        assert "Sharing: family" in result.output
+
+
 class TestTraceRoundTrip:
     def test_a_trace_read_back_from_its_file_tells_the_same_story(self):
         original = _trace()

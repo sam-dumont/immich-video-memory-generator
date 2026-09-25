@@ -64,7 +64,7 @@ def rule_audience(_judge: Any, evidence: Mapping[str, Any], _stage: str) -> dict
     "no detector objected" is not a clearance, and the gate may only ever tighten.
 
     A unit with nothing against it therefore stays `family_only` and says why. To earn a
-    `sendable` export, run the tier that does the reading.
+    `shareable` export, run the tier that does the reading.
     """
     result: dict[str, Any] = {
         "policy": RULE_AUDIENCE_POLICY,
@@ -90,6 +90,61 @@ def rule_audience(_judge: Any, evidence: Mapping[str, Any], _stage: str) -> dict
     }
 
 
+CLEAN_EVIDENCE_POLICY = "audience-rules-v2-clean-evidence-under-strict-sharing"
+# A room a picture can be private in whatever is in frame; the rules reader keeps the same set.
+_PRIVATE_VENUES = frozenset({"bedroom", "medical", "private_facility"})
+_PHOTOGRAPH = "photograph"
+
+
+def _clean_heads(heads: Mapping[str, str]) -> bool:
+    """Every head that could object read this frame and none did."""
+    return (
+        heads.get("nsfw_marqo") == "no"
+        and heads.get("uncovered_person", "no") == "no"
+        and heads.get("doc_docling", _PHOTOGRAPH) == _PHOTOGRAPH
+        and heads.get("venue") not in _PRIVATE_VENUES
+    )
+
+
+def clean_evidence(evidence: Mapping[str, Any]) -> bool:
+    """Nothing marked any picture of this unit, and the nudity detector read every one of them.
+
+    A picture nothing looked at is not clean: an unread member, a Live clip whose detector row
+    is missing a head, any flag at all or a flagged capture run keeps it in the family.
+    """
+    members = evidence.get("members", ())
+    return (
+        bool(members)
+        and all(_clean_heads(member.get("detectors", {})) for member in members)
+        and all(_clean_heads(heads) for heads in evidence.get("companion_detectors", ()))
+        and not _flag_rows(evidence)
+        and not evidence.get("exposure_chain")
+        and not evidence.get("companion_body_warnings")
+    )
+
+
+def rule_audience_with_clean_share(
+    judge: Any, evidence: Mapping[str, Any], stage: str
+) -> dict[str, Any]:
+    """The rules check for a film shared outside the household, with strict sharing on.
+
+    Where every head that could object read the unit and none did, and nothing flagged it,
+    the unit is `share`: strict sharing already keeps out anything a head or a flag marked, so
+    what is left is what no detector saw anything in. A private moment only a caption would
+    name stays possible here; that is the price of a shareable film with no captions, and the
+    reason a model tier, when there is one, still reads the captions first.
+    """
+    result = rule_audience(judge, evidence, stage)
+    if result["finding"] != "unread_private_activity" or not clean_evidence(evidence):
+        return result
+    return result | {
+        "policy": CLEAN_EVIDENCE_POLICY,
+        "verdict": "share",
+        "finding": "clean_evidence",
+        "why": "every detector read it and none objected, and nothing flagged it",
+    }
+
+
 def withheld_audience(_judge: Any, _evidence: Mapping[str, Any], _stage: str) -> dict[str, Any]:
     """Family viewing for every unit, because nothing in this tier looked at the picture."""
     return {
@@ -104,10 +159,31 @@ def withheld_audience(_judge: Any, _evidence: Mapping[str, Any], _stage: str) ->
     }
 
 
-def audience_check_for(tier: str) -> AudienceCheck:
-    """The check this preparation tier may use; anything unrecognised gets the strictest."""
+def audience_check_for(tier: str, *, strict_sharing: bool = False) -> AudienceCheck:
+    """The check this preparation tier may use; anything unrecognised gets the strictest.
+
+    `strict_sharing` is set for a shareable film under `editorial.strict_sharing`: then the
+    rules tier may clear a unit on clean evidence alone.
+    """
     if tier == "full":
         return check_audience
     if tier == "no_captions":
-        return rule_audience
+        return rule_audience_with_clean_share if strict_sharing else rule_audience
     return withheld_audience
+
+
+def sharing_refusal(config: Any, level: str | None = None) -> str | None:
+    """Why this install can't cut a shareable film, before the cut starts; None when it can.
+
+    Every tier with the detectors can: a NAS clears what they read as clean. `metadata_only`
+    ran none of them, so nothing it holds can ever be cleared, and the film would be empty.
+    """
+    chosen = level or config.defaults.sharing
+    if chosen != "shareable" or config.editorial.preparation.demands_models:
+        return None
+    return (
+        "A shareable film needs the detectors, and this install prepares at the "
+        f"{config.editorial.preparation.tier} tier, which runs none. Set "
+        "advanced.editorial.preparation.tier to no_captions (and run `immich-memories models "
+        "fetch`), or cut a family film."
+    )

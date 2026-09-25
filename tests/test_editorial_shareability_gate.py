@@ -80,13 +80,13 @@ def test_the_strictest_verdict_wins_and_nothing_known_means_share():
 @pytest.mark.parametrize(
     "verdict,audience,expected",
     [
-        ("share", "sendable", True),
+        ("share", "shareable", True),
         ("family_only", "family", True),
-        ("family_only", "sendable", False),
+        ("family_only", "shareable", False),
         ("do_not_show", "family", False),
     ],
 )
-def test_a_sendable_export_keeps_only_share(verdict, audience, expected):
+def test_a_shareable_export_keeps_only_share(verdict, audience, expected):
     assert share.allowed(verdict, audience) is expected
 
 
@@ -150,7 +150,7 @@ def test_a_refused_carrier_is_replaced_from_its_own_anchor_and_the_film_stays_ch
         carriers,
         {"early": "family_only", "also-refused": "do_not_show", "clean": "share", "late": "share"},
         pools,
-        audience="sendable",
+        audience="shareable",
     )
 
     assert [unit["asset_id"] for unit in kept] == ["clean", "late"]
@@ -262,7 +262,7 @@ def test_a_carrier_already_in_the_film_is_never_reused_as_its_own_replacement():
         carriers,
         {"refused": "family_only", "kept": "share", "fresh": "share"},
         pools,
-        audience="sendable",
+        audience="shareable",
     )
 
     assert [unit["asset_id"] for unit in kept] == ["fresh", "kept"]

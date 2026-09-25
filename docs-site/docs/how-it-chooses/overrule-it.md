@@ -60,6 +60,18 @@ after a cut, what the cut did with it ([The web UI](../make/web-ui.mdx#the-media
 The CLI does the same with `generate --include ASSET_ID` and `--exclude ASSET_ID`, both repeatable.
 The web pool's ticks live in your session; **Start over** forgets them.
 
+## Pick who it's for
+
+Each film is cut for one sharing level: **Who will watch it** in the brief, `generate --sharing`, and
+`defaults.sharing` for the rest (`family` unless you change it).
+
+- **Just us**: the household. A bath or a nappy change the caption names plays too.
+- **Family**: the default. Those private moments stay out; everything the family may see plays.
+- **Shareable**: anyone. Only what nothing held back plays: no detector flag, no private moment, and
+  on a NAS nothing the detectors didn't read as clean.
+
+Details: [Sharing levels](./family-audience-duplicates.md#sharing-levels).
+
 ## Tell it who's who
 
 Roles in `people.yaml` (**Settings > People**) are what the editor reads as close family: partner or
@@ -89,8 +101,7 @@ it, and listed in the [config reference](../reference/config-reference.md) when 
 
 ## What you can't change
 
-- **A detector's hold.** Nothing in the app lifts one. It only matters for a film cut for outside the
-  household, which the app doesn't make yet.
+- **A detector's hold.** Nothing in the app lifts one. It only matters for a shareable film.
 - **`do_not_show`.** It is a verdict of the gate, from a carrier rule or a reading of the caption,
   and not a setting. A picture that gets it leaves the cut, and a frame of the same moment takes its
   place when one passes.

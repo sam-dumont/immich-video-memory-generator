@@ -26,7 +26,7 @@ flowchart LR
 | Add-on | What it buys | What it needs | What leaves the box |
 |---|---|---|---|
 | [A reader](./reader.md) | Prose (what happened in each episode, an account of the period, the title, the music's mood) and a polish of the draft | A text model with a 32k context: local (about 17 GB resident for the graded 30B at 4-bit) or a hosted API key | The candidates' annotation lines, people and place names included, to the model. Never a picture |
-| [Captions](./captions.md) | One sentence under every picture. The reader reads it, and only a caption lets the family-viewing check clear a picture for a `sendable` export | A 500M vision model behind any OpenAI-compatible server, 1 to 2 GB | A 400 px tile of each picture, once, to your caption server |
+| [Captions](./captions.md) | One sentence under every picture. The reader reads it, and a caption lets the family-viewing check see the private moments no detector does, before a picture goes into a shareable film | A 500M vision model behind any OpenAI-compatible server, 1 to 2 GB | A 400 px tile of each picture, once, to your caption server |
 | [Inference on a GPU box](./inference.md) | The encoder, its eight heads and the two detectors on a card or a bigger CPU | A second machine, CPU or NVIDIA | A preview of each picture, once, to your service |
 | [A render worker](./gpu-render.md) | The encode on a GPU box instead of the NAS | An NVIDIA box running the same app version | The chosen cut and your Immich key; the worker fetches the originals itself |
 | [Generated music](./music.md) | An original track per film instead of a bundled one | ACE-Step on a Mac or an NVIDIA box (7 to 29 GB free for its weights), or a MusicGen server | A text prompt (mood, tempo, length) to your music server |

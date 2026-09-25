@@ -11,8 +11,7 @@ Reader: power user. The newcomer's version is [Your first film](../../get-starte
 It works on a plain NAS with nothing leaving the box; a GPU or a model makes it better. It prepares only the pictures
 the film can reach (the ones selection can pick, their Live Photo clips and the bursts around them), never the
 whole library, and banks what it measured, so a second cut over the same period is mostly the render. For a
-whole period ahead of time, use [`prepare`](./prepare.md). The audience is always "family": it is part of the
-request, not a setting.
+whole period ahead of time, use [`prepare`](./prepare.md).
 
 Without `--duration` the length comes from the material the period holds, and the run prints what decided it:
 see [how long a film runs](../memory-types.mdx#how-long-a-film-runs). With `--duration`, selection budgets the
@@ -39,6 +38,19 @@ Opening titles name the people or the occasion, never the query that produced th
 configured, the model names a people or occasion film; `--llm-title` extends that to trips,
 `--no-llm-title` pins the template, and `--title` and `--subtitle` override all of it. `runs show` says which
 source the title came from. See [titles](../titles-maps-music.md#where-the-title-came-from).
+
+`--sharing` says who the film is for, and defaults to `defaults.sharing` (`family`):
+
+```bash
+immich-memories generate --memory-type monthly_highlights --year 2024 --month 6 --sharing just-us
+immich-memories generate --memory-type monthly_highlights --year 2024 --month 6 --sharing shareable
+```
+
+`just-us` plays the household's private moments a caption names (a bath, a nappy change) as well,
+`family` keeps them out, and `shareable` plays only what nothing held back. The planned-run summary
+and `runs show` print the level. A shareable film needs the detectors, so on `metadata_only` it is
+refused before anything is fetched. The rules:
+[Sharing levels](../../how-it-chooses/family-audience-duplicates.md#sharing-levels).
 
 Two root options go before `generate`: `-v` (or `--log-level DEBUG`) for verbose logs, and
 `--preset fast` for the CPU-only profile on every knob you did not set.

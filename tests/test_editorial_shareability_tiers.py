@@ -113,7 +113,7 @@ def test_the_tier_with_no_detectors_never_says_share():
     assert result["verdict"] == "family_only"
     assert result["finding"] == "no_content_evidence"
     assert share.allowed(result["verdict"], "family")
-    assert not share.allowed(result["verdict"], "sendable")
+    assert not share.allowed(result["verdict"], "shareable")
 
 
 def test_each_tier_gets_its_own_check_and_an_unknown_one_gets_the_strictest():
@@ -123,7 +123,7 @@ def test_each_tier_gets_its_own_check_and_an_unknown_one_gets_the_strictest():
     assert audience_check_for("something-a-later-schema-adds") is withheld_audience
 
 
-def test_a_sendable_export_is_refused_outright_when_nothing_looked_at_the_pictures(tmp_path):
+def test_a_shareable_export_is_refused_outright_when_nothing_looked_at_the_pictures(tmp_path):
     """Not "share, because nothing objected" -- the tier has no evidence to clear anything with."""
     from dataclasses import replace
 
@@ -134,9 +134,9 @@ def test_a_sendable_export_is_refused_outright_when_nothing_looked_at_the_pictur
     metadata_only = Config()
     metadata_only.editorial.preparation.tier = "metadata_only"
 
-    assert replace(source, audience="sendable").audience == "sendable"
-    with pytest.raises(ValueError, match="sendable export needs the detector evidence"):
-        replace(source, audience="sendable", config=metadata_only)
+    assert replace(source, audience="shareable").audience == "shareable"
+    with pytest.raises(ValueError, match="shareable export needs the detector evidence"):
+        replace(source, audience="shareable", config=metadata_only)
     assert replace(source, audience="family", config=metadata_only).audience == "family"
 
 

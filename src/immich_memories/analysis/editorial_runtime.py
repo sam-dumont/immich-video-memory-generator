@@ -118,6 +118,8 @@ class EditorialRunContext:
     render_timing: EditorialTimingPolicy | None = None
     hemisphere: Literal["north", "south"] = "north"
     window_origin: str | None = None  # why a window nobody typed starts where it does
+    # The film's sharing level: just_us, family or shareable (`editorial_shareability.LEVELS`).
+    audience: str = "family"
 
     def __post_init__(self) -> None:
         """Canonicalize exact windows while preserving every intentional gap."""
@@ -308,7 +310,7 @@ class RuntimeEditorialPlanner:
             "product": context.product,
             "target_seconds": context.target_seconds,
             "duration_source": context.duration_source,
-            "audience": "family",
+            "audience": context.audience,
             "hemisphere": context.hemisphere,
             "date_ranges": [[r.start.isoformat(), r.end.isoformat()] for r in context.case_ranges],
             "requested_assets": [_asset(source).id for source in sources],

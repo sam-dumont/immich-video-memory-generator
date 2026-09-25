@@ -9,7 +9,7 @@ Two layers, in this order, both text-only:
    ``flag='cleared'``) lifts the exclusion. No model is asked.
 2. Tighten-only check. Every selected carrier is put to the reader once, on its line and
    its flags (including the exposure-source flags the editorial line hides): ``share``,
-   ``family_only`` or ``do_not_show``. Verdicts combine to the strictest; a sendable export keeps
+   ``family_only`` or ``do_not_show``. Verdicts combine to the strictest; a shareable export keeps
    only ``share``. A refused carrier is replaced from the same anchor's shareable pool or its slot
    is dropped. Never a refill from another anchor.
 
@@ -31,6 +31,7 @@ from typing import Any
 from immich_memories.analysis.annotation_line_fields import content_of
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.analysis.editorial_shareability_audience import (
+    HOUSEHOLD_FINDINGS,
     _clean,
     _exposure_flag,
     _parse_exposure_verdict,
@@ -47,7 +48,24 @@ NEVER_AUTO = "never_auto"
 REVIEW = "review"
 OWNER_SOURCE = "owner"
 OWNER_CLEARED = "cleared"
-VERDICTS = ("share", "family_only", "do_not_show")  # loosest to strictest
+# Loosest to strictest. `just_us` is a private moment of the household: it plays only in a
+# film the household keeps to itself.
+VERDICTS = ("share", "family_only", "just_us", "do_not_show")
+# The sharing levels a film is cut for, widest audience last, and the strictest verdict each
+# one plays.
+JUST_US, FAMILY, SHAREABLE = "just_us", "family", "shareable"
+LEVELS = (JUST_US, FAMILY, SHAREABLE)
+_PLAYS_UP_TO = {JUST_US: "just_us", FAMILY: "family_only", SHAREABLE: "share"}
+
+
+def level_of(value: str) -> str:
+    """The sharing level a config value or a flag names (`just-us` is `just_us`)."""
+    level = value.strip().replace("-", "_")
+    if level not in LEVELS:
+        raise ValueError(f"unknown sharing level {value!r}: pick just-us, family or shareable")
+    return level
+
+
 PROMPT_VERSION = "shareability-check-v5-family-milestones-and-private-content"
 AUDIENCE_PROMPT_VERSION = "audience-evidence-v17-every-finding-needs-its-activity"
 AUDIENCE_CHECK_POLICY_VERSION = "all-captioned-carrier-members-v1"
@@ -539,6 +557,26 @@ def partition_units(
     return kept, excluded
 
 
+PRIVATE_ACTIVITY = "private_activity"
+
+
+def at_household_level(record: dict[str, Any]) -> dict[str, Any]:
+    """A caption reading that names a household's private moment keeps it to the household.
+
+    The reader's categories stay the prompt's; which films a category plays in is decided here,
+    so an answer banked before sharing levels existed reads the same way as a fresh one.
+    """
+    activity = record.get("activity")
+    if (
+        record.get("verdict") == "do_not_show"
+        and record.get("finding") == PRIVATE_ACTIVITY
+        and isinstance(activity, Mapping)
+        and activity.get("finding") in HOUSEHOLD_FINDINGS
+    ):
+        return record | {"verdict": "just_us"}
+    return record
+
+
 def tighten(*verdicts: str | None) -> str:
     """The strictest of the given verdicts; nothing known means 'share'."""
     known = [v for v in verdicts if v in VERDICTS]
@@ -547,12 +585,11 @@ def tighten(*verdicts: str | None) -> str:
     return max(known, key=VERDICTS.index)
 
 
-def allowed(verdict: str, audience: str = "family") -> bool:
-    if verdict == "share":
-        return True
-    if verdict == "family_only":
-        return audience == "family"
-    return False
+def allowed(verdict: str, audience: str = FAMILY) -> bool:
+    """Whether a shot with this verdict plays in a film cut for this sharing level."""
+    if verdict not in VERDICTS or audience not in _PLAYS_UP_TO:
+        return False
+    return VERDICTS.index(verdict) <= VERDICTS.index(_PLAYS_UP_TO[audience])
 
 
 def _first_shareable(

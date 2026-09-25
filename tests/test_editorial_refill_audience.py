@@ -40,7 +40,7 @@ def _gate(tmp_path, *, exposed: set[str]) -> AudienceGate:
     }
     return AudienceGate(
         CountingJudge(),
-        audience="sendable",
+        audience="shareable",
         annotations=annotations,
         flag_rows={},
         lines=lines,
