@@ -1,6 +1,6 @@
 # A public test library: households built once, restored for every run
 
-Status: design approved 2026-09-25, household 1 in progress. Epic #1327, sub-issues #1328 to #1334.
+Status: design approved 2026-09-25; household 1 built and run the same day. Epic #1327, sub-issues #1328 to #1334.
 
 ## Why
 
@@ -33,27 +33,30 @@ The dataset card says `license: cc-by-4.0` and each row carries its own `license
 photographer), `datetaken`, `latitude`/`longitude`, `capturedevice`, `usertags`,
 `title`, raw `exif` and the Flickr `downloadurl`.
 
-Probe (2026-09-25, 80 random shards, 157,324 rows, 33 s):
+The full metadata index (built 2026-09-25 by `make public-e2e-index`): 14,581,672 rows,
+115,172 photographers, 1.7 GB of parquet, about 27 minutes at 12 parallel reads. Each shard
+is resolved once to its CDN address: reading through the Hub's `/resolve` endpoint hits its
+limit of 5,000 resolver calls per five minutes within the first few hundred shards.
 
 - Metadata is cheap. One shard holds 5.5 GB of JPEG and 12 MB of metadata, of which
-  9 MB is raw EXIF. Reading the metadata columns only takes 2.5 s per shard, so the
-  whole 14.6M-row index is about 30 min at 12 parallel reads and about 1.5 GB without
-  EXIF. The image bytes average about 1 MB per picture.
-- 54% of rows are geotagged.
+  9 MB is raw EXIF (not indexed). The image bytes average about 1 MB per picture; the
+  build fetches Flickr's 1024 px rendition instead (about 200 KB).
+- 41.5% of rows are geotagged.
 - Capture years: 2007 to 2013 hold 95% of rows. The dates are shifted forward (below).
-- Photographers extrapolated from the sample (scale ×92.7, so these are rough):
+- Photographers, counted on the full index (capture years 2000 to 2014):
 
 | Timeline shape | Photographers |
 | --- | --- |
-| ≥500 photos over ≥3 years | ~3,100 (1,435 mostly geotagged) |
-| ≥1,500 photos over ≥3 years | ~1,470 (758 mostly geotagged) |
-| ≥3,000 photos over ≥3 years | ~715 (419 mostly geotagged) |
+| ≥500 photos over ≥3 years | 4,369 (2,139 mostly geotagged) |
+| ≥1,500 photos over ≥3 years | 1,448 (824 mostly geotagged) |
+| ≥3,000 photos over ≥3 years | 645 (402 mostly geotagged) |
 
-Among the ≥1,500-photo photographers, with at least 300 photos tagged or titled
-with the theme: dog 21, horse 9, wedding 46 (many are wedding pros, not households),
-kids/family 42 to 45, cycling/running 46, travel 143, cat 9, 365/self-portrait 7.
-So each theme has from a handful to a hundred-plus candidate timelines. That is enough to pick one
-good household per theme by eye, and not enough to be careless.
+With the theme in at least 300 tags or titles, among the ≥1,500-photo photographers:
+dog 12, horse 10, cycling/running 47, family/wedding 83 (many wedding pros, not
+households), travel 149. With at least 100, among the ≥500-photo ones: dog 66, horse 49,
+cycling 160, family 378, travel 492. So each theme has from ten to a few hundred
+candidate timelines: enough to pick one good household per theme by eye, and not enough
+to be careless.
 
 **Wikimedia Commons video**. CommonCatalog has no video. Commons search hits for
 `filetype:video` by licence (CC0 / CC BY 4.0 / CC BY 2.0): dog 12/42/30, horse
@@ -173,32 +176,35 @@ file they show, and stay local unless they are adults-and-scenery only.
 
 ## Build once
 
-`make public-e2e-build HOUSEHOLD=dog-owner` (maintainer machine, not CI):
+`make public-e2e-build HOUSEHOLD=dog-owner` (maintainer machine, not CI). Steps, as built
+for household 1 (`tests/public_e2e/build.py`, `--steps prepare,load,name,snapshot`):
 
-1. **Index** (once, shared with #1154): scan CommonCatalog metadata columns into
-   a local parquet index (~30 min, ~1.5 GB).
-2. **Pick**: candidate timelines per theme from the index (photo count, year span,
-   geotag share, tag density, gaps). The maintainer picks one by eye on a sheet of
-   one picture per episode, then marks the drop list (private scenes, anything a reviewer would not want in a film).
-3. **Fetch**: the picked rows' JPEGs (~2 GB, minutes), then the Commons videos and
-   CC0 fill. Each licence is checked on the file, and sha256 is recorded.
-4. **Stamp**: date shift, home snap, EXIF, clutter, Live pairs, then the manifest and
-   `CREDITS.md`.
-5. **Load**: a pinned Immich **with** the ML container (server v3.2.2 and ML image
-   pinned by digest) on docker volumes, not tmpfs. Upload, then wait for every queue:
-   metadata, reverse geocoding (Immich's bundled GeoNames, no network), thumbnails,
-   smart search, face detection, facial recognition. On a Mac in Docker on CPU, 2,000
-   pictures should take 20 to 40 minutes. The build reports the real figure.
-6. **Name**: for each cast member, find the clusters holding their seed pictures'
-   faces, merge them, name the person, set the feature face, and hide the rest as
-   strangers. Annotated identities get their boxes. Favourites and albums follow the
-   script.
-7. **Relate**: write `people.yaml` with `confirmed:` relations (partner, parent,
-   grandparent, friend) and the household's `config.yaml` (rules tier, this Immich
-   only).
-8. **Snapshot**: `pg_dumpall` of the Immich database (gzip), plus a tar.zst of `/data`
-   (library, thumbs, encoded-video, profile), split into parts of 1.9 GiB or less.
-   Write sizes and hashes into `snapshot.lock`, then upload to the private release.
+1. **Index** (once, shared with #1154): `make public-e2e-index` scans CommonCatalog's
+   metadata columns into a local parquet index (27 min, 1.7 GB, measured).
+2. **Pick**: `python -m tests.public_e2e.timelines rank --theme dog` lists candidate
+   timelines; `... sheet --uid <uid>` draws one picture per episode to pick by eye.
+   Videos are picked the same way from Commons searches (`python -m
+   tests.public_e2e.sources "beach waves"`) and listed by page id in `household.yaml`:
+   a keyword search returns research-paper supplements, ads and cartoons next to
+   home footage, so nothing is taken unseen.
+3. **Prepare**: fetch the timeline at Flickr's 1024 px rendition (no API key), shift the
+   dates, snap home, write EXIF (camera, time, GPS), render the clutter layer, re-encode
+   the videos to H.264 with their scripted time and place, drop byte-identical files (a
+   photographer's double uploads, which Immich would merge), and write `manifest.csv`
+   and `CREDITS.md`.
+4. **Load**: a pinned Immich with the ML container (server and ML v3.2.2 by digest) on
+   docker volumes; upload; wait for every queue; run facial recognition twice more for
+   the faces the first pass deferred.
+5. **Name**: `--steps clusters` lists the biggest face clusters with a few pictures each;
+   the maintainer names them by eye and writes a few seed pictures per person into
+   `household.yaml`. Naming then takes, per person, the cluster most of their seeds
+   share. It survives a rebuild: household 1's cluster ids all changed between two
+   builds and every person was found again from 5 or 6 of 6 seeds. Unnamed clusters stay
+   as they are, like strangers in a real library.
+6. **Snapshot**: the product's own `people scan` writes `people.yaml` and its evidence
+   graph, the script's relations are confirmed into it, then `pg_dumpall` (gzip) and a
+   tar of `/data` split into parts of 1.9 GiB or less. `snapshot.lock` records sizes,
+   hashes, image digests and counts; the parts go to a private release on the CI mirror.
 
 The snapshot pins the Immich version. Restoring a v3.2.2 snapshot into a newer server
 runs Immich's own migrations, which is itself a test. A rebuild is needed only when
@@ -208,24 +214,86 @@ the manifest, the ML image or the cast changes.
 
 `make test-e2e-public HOUSEHOLD=dog-owner [TIER=rules|model] [FILMS=...]`:
 
-1. **Fetch** the parts named in `snapshot.lock` into a local cache (first run only)
-   and verify the sha256s.
-2. **Restore**: start Postgres, then `psql` the dump. Untar `/data` into a fresh
-   volume, then start the server **without** ML (NAS-like). The restored DB already
-   holds faces, embeddings and places. Target: under 3 minutes.
-3. **Run** each film in `household.yaml` (two months, one year, one trip, one person
-   film, plus a lifetime film for small households) with a fresh app HOME, so every
-   run is cold and its time is measured. The rules tier always runs. The model tier
-   runs only when an endpoint is configured.
-4. **Judge** (below), write `report/<household>/<run>/index.html`, and fail on any hard
-   invariant.
+1. **Fetch** the parts named in `snapshot.lock` into a local cache (first run only,
+   `gh release download` from the private mirror) and verify the sha256s.
+2. **Restore**: fresh volumes, Postgres, `psql` of the dump, the library untarred into
+   its volume, then the server **without** ML (NAS-like). The restored DB already holds
+   faces, embeddings and places. Household 1: 87 s.
+3. **Run** each film in `household.yaml` with a fresh app home, so every film is cold
+   and its time is measured. The rules tier mirrors a NAS install (`no_captions`
+   preparation, rules reader). A film can declare `expect: no_film` when the right
+   outcome is no film at all.
+4. **Judge** (below), write `runs/<stamp>-<tier>/index.html` in the maintainer's work
+   folder, and exit 1 on any hard failure.
 5. **Tear down** unless `PUBLIC_E2E_KEEP=1`.
 
-It runs locally and on the GPU runner through a `workflow_dispatch` suite on the
-private mirror, on demand only. It never runs on every PR or on public CI minutes.
-Open question: the GPU runner is an ARC pod. If it has no Docker daemon, the same
-flow runs as a Kubernetes Job with Immich deployed in a scratch namespace. The build
-of household 1 settles this.
+It runs locally and, on demand only, on the GPU runner. It never runs on every PR or on
+public CI minutes.
+
+## Hosting: a shared test Immich (owner, 2026-09-25)
+
+The owner wants the households to live in a second Immich in the home cluster: seven
+users, one per household, each with its own API key, sharing the family instance's ML.
+
+- **A separate instance, never the family one.** It keeps the blast radius and the
+  biometric data of public people away from the family library. It has its own
+  Postgres, Valkey and library PVC; its server points `IMMICH_MACHINE_LEARNING_URL` at the
+  family `immich-ml` service (stateless).
+- **Internal only.** A MetalLB address on the couronne pool (10.2.254.58 was free on
+  2026-09-25), no ingress, certificate or DNS.
+- **Draft manifests**: [`public-e2e/immich-test.tf`](public-e2e/immich-test.tf), written
+  in `50-internal-services/immich.tf`'s patterns for the owner to copy into
+  rancher-cluster and apply. Server, Postgres and Valkey are pinned to the Immich Gate's
+  digests. No secret is needed by Terraform: users and keys are created through the
+  Immich API.
+- **One command after `terraform apply`**: `make public-e2e-provision` (to be written,
+  see below) would sign up the admin on a fresh instance, create the seven users, upload
+  each built household into its user (Immich skips files it already holds, so a re-run
+  only fills gaps), wait for faces, clustering and places, name the cast, write each
+  household's people file, and keep one API key per user in a local secrets file
+  outside the repository (mode 0600). Re-running it is safe.
+- **Scoped keys.** A film run reads, it never writes (upload is off). The per-household
+  key carries only `asset.read`, `asset.view`, `asset.download`, `asset.statistics`,
+  `album.read`, `face.read`, `person.read`, `person.statistics`, `tag.read`,
+  `timeline.read` and `user.read`: every endpoint `generate` calls, mapped through
+  Immich v3.2.2's OpenAPI permissions. Uploading and naming use a temporary full key per
+  user that provisioning deletes at the end.
+- **Reproducibility stays.** The per-household snapshot (above) remains the portable
+  artifact: anyone can restore it locally or in CI without the cluster. A `pg_dump` plus
+  library export of the shared instance can be added the same way once it exists.
+- **Runner.** `make test-e2e-public TARGET=test-immich` would skip the restore and point
+  each household's films at its user's key from the secrets file.
+
+## Household 1, as built (2026-09-25)
+
+`dog-owner`: one Flickr photographer's CC BY timeline (a couple in a coastal city, a
+chocolate labrador, two cats, friends, a wedding, ball games, long trips abroad),
+June 2005 to December 2009, shifted +12 years to August 2017 to December 2021.
+
+| | |
+| --- | --- |
+| Library | 3,093 files: 2,691 photos, 24 Commons videos, 378 clutter files (screenshots 135, bursts 81, documents 54, blurred 54, dark 54); 13 double uploads dropped; 80% geotagged; home snapped to 32.725, -117.175 |
+| Licences | CC BY 2.0 (the photographer) and CC0 / CC BY 2.0 to 4.0 (videos); `CREDITS.md` has 24 creators |
+| Faces | 111 clusters; six named (two partners, three friends, the partner's parent) from 6 seed pictures each; the biggest unnamed clusters are strangers, including a convention panel |
+| Build | prepare 7 min (first fetch), load 29 min (69 s upload, 28 min ML on 8 CPUs in Colima) |
+| Snapshot | 1.13 GB: `db.sql.gz` 35.6 MB, library 1.10 GB; private release `public-e2e-dog-owner-20260925` on the CI mirror (upload 1 min 52 s) |
+| Restore | 87 to 115 s |
+
+First full rules-tier run, every film cold, all six passing the hard checks:
+
+| Film | Shots | Film | Wall | Notes |
+| --- | --- | --- | --- | --- |
+| month 2018-08 (220 pictures) | 13 | 57 s | 193 s | 9 of 13 favourites; ends on the trip |
+| month 2019-04 | 13 | 57 s | 185 s | one burst frame kept in place of its source |
+| month 2019-02 (3 pictures of a floor being laid) | none, as expected | | 4 s | the CLI exits 1 with an ERROR line for an honest empty month |
+| year 2019 | 152 | 9 min 8 s | 938 s | 46 days; one video of 24 borrowed ones |
+| trip, Christmas 2019 abroad | 36 | 2 min 18 s | 169 s | the visit to the partner's parent, 9 days |
+| person, Kim 2018 | 50 | 3 min 26 s | 218 s | every shot has Kim |
+
+Total: about 30 minutes for a restore plus six cold films on the M-series Mac. Soft
+findings for the owner, not failures: the months are short against their material (13
+shots from 220 pictures), and borrowed videos with none of the cast in them rarely make a
+cut.
 
 ## Judging
 
@@ -260,12 +328,12 @@ reasons, and the credits of every picture shown.
 
 | Item | Once | Per run |
 | --- | --- | --- |
-| Metadata index | ~30 min, ~1.5 GB download | none |
-| Household build, compute | ~1 h (fetch + Immich ML on CPU) | none |
+| Metadata index | 27 min, 1.7 GB (measured) | none |
+| Household build, compute | household 1: 36 min (7 min fetch and stamp, 29 min Immich ML on 8 CPUs) | none |
 | Household build, maintainer time | 1 to 2 h picking and dropping by eye, then ~30 min per film for the golden review | none |
-| Storage | 1.5 to 2.5 GB per household; ~11 GB for all seven | cache on the runner volume |
-| Restore | none | ~3 min |
-| Films, rules tier | none | ~20 to 30 min per household (estimated from the NAS measurements of 09-24: a cold month took 2.5 to 5 min and a cold year 46 min on a much larger library; to be measured) |
+| Storage | household 1: 1.13 GB (1024 px photos); ~8 GB for all seven at that rate | cache on the maintainer machine or runner volume |
+| Restore | none | 87 to 115 s (household 1) |
+| Films, rules tier | none | household 1: 28.5 min for six cold films (measured 2026-09-25) |
 | Films, model tier | none | hosted readers: cents per film (EUR 0.02 to 0.12 per render measured earlier); local: GPU time only |
 | Money | EUR 0 | EUR 0 on the rules tier |
 
