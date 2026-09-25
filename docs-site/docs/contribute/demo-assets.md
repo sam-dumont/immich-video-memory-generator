@@ -28,12 +28,13 @@ about different things, so do not reconcile them by editing one.
 
 | Command (repo root) | Produces |
 |---|---|
-| `make demo-ui` | `docs-site/static/demo/demo.mp4`, 1,496 video frames at 30 fps (49.92 s including audio), 1920×1080 H.264; it ends on the film the product made |
+| `make demo-ui` | `docs-site/static/demo/demo.mp4`, 1,436 video frames at 30 fps (about 48 s), 1920×1080 H.264; it ends on the film the product made |
 | `make demo-hero` | `docs-site/static/img/demo-hero.gif`, seconds 3.4 to 15.6 of `demo.mp4` (brief, cut, storyboard) then its last 3 s (the film), 720 px, 10 fps, 15.1 s, under 4 MB, the README hero |
 | `make demo-cli` | `docs-site/remotion/public/cli-demo.mp4`, VHS recording the real CLI: `scripts/demo-cli-hermetic.py` runs `generate`, `runs story` and `runs why` against the hermetic fakes from `tests/e2e` (`make demo-cli-run` plays the same session without recording) |
 | `make demo-output` | `docs-site/remotion/public/output-preview.mp4` and `output-frame.jpg`, cut on the hermetic launch |
 | `make demo-output-trip` | `docs-site/static/demo/trip-preview.mp4` and `docs-site/static/img/trip-map-flyover.jpg`, the fixture's lake week cut as a trip memory and the still of its map fly-over, both played by the trip memory page. Needs the network: the satellite tiles come from ArcGIS World Imagery and the trip's name from Nominatim, and neither has an offline stand-in |
-| `make demo-music` | ACE-Step candidates for `docs-site/remotion/public/demo-music.wav` |
+| `make demo-soundtrack` | `docs-site/remotion/public/demo-music.wav`, crossfaded and normalised from a bundled acoustic track; also runs with `make demo-ui` |
+| `make demo-music` | Optional ACE-Step candidates under `docs-site/static/demo/music-candidates/` |
 | `make screenshots` | the light and dark screenshots under `docs-site/static/img/screenshots/` |
 | `make demo-ui-dev` | Remotion Studio for a live preview |
 
@@ -46,6 +47,15 @@ then `make demo-output` and `make demo-output-trip`, then `make demo-cli`, then 
 first, exporting the fixture's cut and first pool page into `docs-site/remotion/src/fixture.ts`),
 then `make demo-hero`. The hero GIF is served from the
 docs site, so it reaches the README on the next docs deploy, not on the next push.
+
+The soundtrack uses `happy_acoustic_s411.opus` from the project's bundled music package, under
+the same MIT licence (see `packages/immich-memories-music/LICENSE-MUSIC`). The recipe crossfades
+two copies over three seconds, normalises to -18 LUFS with a -2 dB true-peak ceiling, and leaves
+the fade-in and fade-out to Remotion. It needs no model, API key or media download.
+
+The homepage and README show the hero GIF and link to the full demo with sound. The homepage
+uses a still screenshot when the browser requests reduced motion. The finished trip film remains
+available beside the demo.
 
 The scenes live in `docs-site/remotion/src/scenes/`. When a page name or a button changes in the
 app, the scene changes with it: `tests/e2e/test_demo_assets.py` pins the button labels the demo

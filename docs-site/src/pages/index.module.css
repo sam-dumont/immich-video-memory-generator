@@ -89,6 +89,7 @@
 .heroScreenshot {
   display: block;
   width: 100%;
+  height: auto;
   border-radius: 10px;
   box-shadow: var(--im-shadow-md);
   border: 1px solid var(--im-border);
@@ -108,7 +109,7 @@
 
 .quickstartGrid {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 2.5rem;
   align-items: start;
 }
@@ -359,7 +360,7 @@
   }
 
   .quickstartGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .showcaseGrid {
@@ -374,11 +375,27 @@
 
 @media screen and (max-width: 576px) {
   .hero {
-    padding: 3rem 0 2.5rem;
+    padding: 1.5rem 0 2rem;
+  }
+
+  .heroInner {
+    gap: 1.5rem;
   }
 
   .heroTitle {
     font-size: 1.8rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .quickstart,
+  .showcase,
+  .values,
+  .finalCta {
+    padding: 2.5rem 0;
   }
 
   .valuesGrid {
