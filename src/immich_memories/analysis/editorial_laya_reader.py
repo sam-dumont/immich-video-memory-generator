@@ -15,6 +15,7 @@ observations the vision reader may have added.
 from __future__ import annotations
 
 import json
+import logging
 import tarfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -44,6 +45,8 @@ AUDIENCE_QUESTION = {
     "criteria": AUDIENCE_FINDINGS,
 }
 _NUDITY = "nudity_shirtless_or_underwear"
+
+logger = logging.getLogger(__name__)
 
 
 class LayaScorer(Protocol):
@@ -166,15 +169,21 @@ def unpack_checkpoint(archive: Path, destination: Path) -> Path:
 
 
 def laya_reader_for(editorial_config) -> LayaReader | None:
-    """The configured Laya reader, or None when it is off."""
+    """The configured Laya reader, or None when it is off or cannot run here.
+
+    A tier that turns Laya on still cuts without it: the heads and the rules answer the sharing
+    question alone, and one line says what is missing.
+    """
     if not editorial_config.laya_audience:
         return None
     archive = editorial_config.laya_checkpoint_path
     if not archive.exists():
-        raise ValueError(
-            f"editorial.laya_audience is on but {archive} is missing: "
-            "run `immich-memories models fetch --laya`"
+        logger.warning(
+            "Laya is on but %s is missing, so the heads and rules decide sharing alone: "
+            "run `immich-memories models fetch`",
+            archive,
         )
+        return None
     checkpoint = (
         archive if archive.is_dir() else unpack_checkpoint(archive, archive.with_suffix(""))
     )
@@ -184,4 +193,12 @@ def laya_reader_for(editorial_config) -> LayaReader | None:
         return LayaReader(
             OnnxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold
         )
+    try:
+        import laya_mlx  # type: ignore[import-not-found,import-untyped,unused-ignore]  # noqa: F401
+    except ImportError:
+        logger.warning(
+            "Laya is on but laya-mlx is not installed, so the heads and rules decide sharing "
+            "alone: `pip install laya-mlx` (Apple silicon)"
+        )
+        return None
     return LayaReader(MlxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold)

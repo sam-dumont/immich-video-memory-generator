@@ -13,12 +13,29 @@ from immich_memories.config_models_llm import LLMConfig
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["nas", "gpu"])
+async def test_music_uses_the_local_mood_on_tiers_without_an_llm(tmp_path, tier):
+    from immich_memories.audio.text_mood import mood_for_cut
+
+    config = Config(tier=tier, llm={"base_url": "http://reader.test", "model": "saved-reader"})
+    config.cache.directory = str(tmp_path / "cache")
+    (tmp_path / "plan.private.json").write_text(json.dumps({"story": {"thesis": "A fair"}}))
+    # WHY: the HTTP boundary must stay unused even when an old endpoint remains configured.
+    with patch("httpx.AsyncClient.post", side_effect=AssertionError("Unexpected LLM call")) as post:
+        choice = await mood_for_cut(config, tmp_path, (), fallback_mood="playful")
+
+    post.assert_not_called()
+    assert choice.mood.primary_mood == "playful"
+
+
+@pytest.mark.asyncio
 async def test_cut_text_answers_once_and_is_reused_without_images(tmp_path):
     from immich_memories.audio.text_mood import mood_for_cut
 
-    config = Config()
-    config.llm.model = "text-reader"
-    config.llm.provider = "ollama"
+    config = Config(
+        tier="full",
+        llm={"base_url": "http://localhost:11434", "model": "text-reader", "provider": "ollama"},
+    )
     config.cache.directory = str(tmp_path / "cache")
     config.cache.cache_path.mkdir()
     from immich_memories.store.editorial_preparation import initialize
@@ -102,9 +119,10 @@ def test_bundled_selection_uses_the_cut_mood_and_leaves_clip_facts_alone(tmp_pat
     from immich_memories.generate_music import resolve_music
     from immich_memories.processing.assembly_config import AssemblyClip
 
-    config = Config()
-    config.llm.model = "text-reader"
-    config.llm.provider = "ollama"
+    config = Config(
+        tier="full",
+        llm={"base_url": "http://localhost:11434", "model": "text-reader", "provider": "ollama"},
+    )
     config.cache.directory = str(tmp_path / "cache")
     config.ace_step.enabled = config.musicgen.enabled = False
     attempt = tmp_path / "attempt"
@@ -180,9 +198,11 @@ async def test_standalone_mixer_does_not_contact_a_vision_model_by_default(tmp_p
 async def test_an_invalid_mood_is_not_banked_or_retried_with_pictures(tmp_path):
     from immich_memories.audio.text_mood import mood_for_cut
 
-    config = Config()
+    config = Config(
+        tier="full",
+        llm=LLMConfig(base_url="http://localhost:11434", provider="ollama", model="reader"),
+    )
     config.cache.directory = str(tmp_path / "cache")
-    config.llm = LLMConfig(provider="ollama", model="reader")
     (tmp_path / "plan.private.json").write_text(json.dumps({"story": {"thesis": "A fair"}}))
     answers = [
         {

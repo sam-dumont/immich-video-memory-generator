@@ -22,9 +22,7 @@ _RANGE = DateRange(start=datetime(2025, 7, 1), end=datetime(2025, 7, 14))
 
 
 def _config_with_llm() -> Config:
-    config = Config()
-    config.llm.model = "some-model"
-    return config
+    return Config(tier="full", llm={"base_url": "http://llm.test/v1", "model": "some-model"})
 
 
 def _answers(title: str = "Ada and her grandparents", subtitle: str | None = None):
@@ -316,6 +314,24 @@ def test_the_flag_carries_the_clip_descriptions_into_the_ask() -> None:
     assert seen["clip_descriptions"] == ["children running through a sprinkler"]
     assert seen["person_names"] == ["Ada Example"]
     assert seen["duration_days"] == 13
+
+
+def test_a_tier_without_an_llm_never_asks_for_a_title() -> None:
+    """gpu and nas call no LLM, even with a model left in the file and the flag on."""
+    asked = []
+    title, _subtitle, _source = resolve_cli_title(
+        enabled=True,
+        title_override=None,
+        clips=[make_clip("clip-1")],
+        config=Config(tier="gpu", llm={"base_url": "http://llm.test/v1", "model": "m"}),
+        memory_type="multi_person",
+        date_range=_RANGE,
+        person_names=["Ada Example"],
+        ask=lambda **kwargs: asked.append(kwargs),
+    )
+
+    assert title is None
+    assert asked == []
 
 
 def test_a_missing_reader_leaves_the_template_alone() -> None:

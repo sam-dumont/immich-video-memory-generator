@@ -58,7 +58,7 @@ class TestPreflightLLMCheck:
         mock_client.post.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        config = Config()
+        config = Config(tier="full", llm={"base_url": "http://llm:8080/v1", "model": "m"})
         config.llm.provider = "openai-compatible"
         config.llm.base_url = "http://localhost:8080/v1"
         config.llm.model = "test-model"
@@ -89,7 +89,7 @@ class TestPreflightLLMCheck:
         mock_client.get.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        config = Config()
+        config = Config(tier="full", llm={"base_url": "http://llm:8080/v1", "model": "m"})
         config.llm.provider = "ollama"
         config.llm.base_url = "http://localhost:11434"
         config.llm.model = "llava"
@@ -114,7 +114,7 @@ class TestPreflightLLMCheck:
         mock_client.post.side_effect = httpx.ConnectError("Connection refused")
         mock_client_cls.return_value = mock_client
 
-        config = Config()
+        config = Config(tier="full", llm={"base_url": "http://llm:8080/v1", "model": "m"})
         config.llm.provider = "openai-compatible"
         config.llm.base_url = "http://localhost:8080/v1"
         config.llm.model = "test"

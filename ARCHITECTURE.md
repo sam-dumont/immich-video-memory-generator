@@ -144,12 +144,11 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   (`triage/bundled_heads/public-8heads-v4.npz`, `editorial_preparation_heads.py`). Beside them sit
   two detectors, `nsfw_marqo` (exposure) and `doc_docling` (documents)
   (`editorial_preparation_detectors.py`).
-- **Tiers**: two separate knobs. `editorial.reader` is `rules` or `model` (`auto` means rules when
-  `llm.model` is blank); rules is the NAS path, a whole film from dates, places, people and
-  preparation facts with no model called. `editorial.preparation.tier` is `full` (captions, heads,
-  detectors), `no_captions` (heads and detectors, the default with no model configured) or
-  `metadata_only` (nothing looks at pixels, so every shot is held to the family)
-  (`config_models_editorial*.py`, `editorial_shareability_tiers.py`).
+- **Tiers**: `tier` selects `nas` (CPU heads and detectors), `gpu` (adds captions and Laya),
+  or `full` (adds an explicitly configured prose LLM). NAS and GPU always use the rules reader.
+  Advanced preparation can be reduced to `no_captions` (heads and detectors) or `metadata_only`
+  (nothing looks at pixels, so every shot is held to the family). Sharing never asks the prose
+  LLM (`config_tiers.py`, `config_models_editorial*.py`, `editorial_shareability_tiers.py`).
 - **Reach**: the pictures a film can actually select (for a person film, the ones that person is
   in), plus their Live Photo siblings and capture runs. Only those get prepared; the rest of the
   window is read as Immich metadata (`editorial_film_reach.py`).
@@ -764,6 +763,7 @@ src/immich_memories/
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
 ├── config_presets.py           # Named presets (`preset: fast`) that fill several knobs at once
+├── config_tiers.py             # The product tier (nas/gpu/full): reader, preparation tier, Laya
 ├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
 ├── config_models_analysis.py   # Source admission and the expected seconds per clip
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
@@ -878,12 +878,18 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 
 Config is organized in 3 tiers (see `config_loader.py`):
 
-- **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `network`, `photos`
+- **Tier 1** (top-level YAML): `tier`, `preset`, `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `network`, `photos`
 - **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`, `inference`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
 Both flat and nested YAML formats are accepted.
+
+These YAML tiers are not the product `tier` (`config_tiers.py`): `nas` (inexpensive CPU classifiers), `gpu`
+(every light model, no LLM) or `full` (plus an LLM, whose endpoint it requires). The product
+tier sets defaults for `editorial.reader`, `editorial.preparation.tier` and `editorial.laya_audience`.
+Explicit preparation choices win, but NAS and GPU always force the rules reader. `save_yaml`
+omits unchanged tier defaults and preserves choices edited after loading.
 
 The tiers are a YAML layout, not a code layout. The section models are grouped by
 domain across the `config_models*.py` modules (resources, analysis, render,

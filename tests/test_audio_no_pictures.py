@@ -101,9 +101,10 @@ async def test_the_cut_mood_reaches_the_reader_as_text_only(tmp_path, monkeypatc
     from immich_memories.audio.text_mood import mood_for_cut
 
     sent = refuse_pictures(monkeypatch)
-    config = Config()
-    config.llm.model = "reader"
-    config.llm.provider = "ollama"
+    config = Config(
+        tier="full",
+        llm={"base_url": "http://localhost:11434", "model": "reader", "provider": "ollama"},
+    )
     config.cache.directory = str(tmp_path / "cache")
     (tmp_path / "plan.private.json").write_text(json.dumps({"story": {"thesis": "A fair"}}))
     response = httpx.Response(

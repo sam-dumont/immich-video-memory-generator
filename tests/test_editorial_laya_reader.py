@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import tarfile
 
-import pytest
 from click.testing import CliRunner
 
 from immich_memories.analysis.annotation_lines import AssetAnnotationLine
@@ -120,11 +120,29 @@ def test_a_carrier_with_no_caption_is_left_to_the_text_model():
     assert LayaReader(StubScorer(), threshold=0.1).activity_answers({"k": ([""], True)}) == {}
 
 
-def test_laya_is_off_by_default_and_names_the_fetch_when_the_checkpoint_is_missing(tmp_path):
+def test_laya_is_off_by_default_and_a_missing_checkpoint_degrades_naming_the_fetch(
+    tmp_path, caplog
+):
     assert laya_reader_for(EditorialConfig()) is None
     config = EditorialConfig(laya_audience=True, laya_checkpoint=str(tmp_path / "absent.tar"))
-    with pytest.raises(ValueError, match="models fetch --laya"):
-        laya_reader_for(config)
+
+    assert laya_reader_for(config) is None
+    assert "models fetch" in caplog.text
+
+
+def test_a_missing_laya_runtime_degrades_naming_the_install(monkeypatch, tmp_path, caplog):
+    archive = tmp_path / "laya.tar"
+    with tarfile.open(archive, "w") as bundle:
+        info = tarfile.TarInfo("model.safetensors")
+        info.size = 1
+        bundle.addfile(info, io.BytesIO(b"x"))
+    # WHY: stands in for an install without laya-mlx, which CI never has anyway.
+    monkeypatch.setitem(sys.modules, "laya_mlx", None)
+
+    assert (
+        laya_reader_for(EditorialConfig(laya_audience=True, laya_checkpoint=str(archive))) is None
+    )
+    assert "laya-mlx" in caplog.text
 
 
 def test_the_checkpoint_archive_is_unpacked_once(tmp_path):
@@ -155,9 +173,8 @@ def test_a_checkpoint_member_that_climbs_out_of_its_folder_is_not_written(tmp_pa
     assert not (tmp_path / "escaped.txt").exists()
 
 
-def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path):
+def _fetch_models(monkeypatch, tmp_path, editorial, *flags):
     from immich_memories.cli import models_cmd
-    from immich_memories.pinned_models import LAYA_AUDIENCE, LAYA_MAX_BYTES
 
     fetched = []
 
@@ -169,7 +186,7 @@ def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path
     monkeypatch.setattr(models_cmd, "fetch_pinned_model", fake_fetch)
     config = type("C", (), {})()
     config.triage = type("T", (), {"encoder_url": "u", "encoder_path": tmp_path / "e"})()
-    config.editorial = EditorialConfig(laya_checkpoint=str(tmp_path / "laya.tar"))
+    config.editorial = editorial
     import click
 
     @click.group()
@@ -178,12 +195,34 @@ def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path
         ctx.obj = {"config": config}
 
     models_cmd.register_models_commands(cli)
-    result = CliRunner().invoke(cli, ["models", "fetch", "--no-detectors", "--laya"])
-
+    result = CliRunner().invoke(cli, ["models", "fetch", "--no-detectors", *flags])
     assert result.exit_code == 0, result.output
+    return fetched
+
+
+def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path):
+    from immich_memories.pinned_models import LAYA_AUDIENCE, LAYA_MAX_BYTES
+
+    editorial = EditorialConfig(laya_checkpoint=str(tmp_path / "laya.tar"))
+    fetched = _fetch_models(monkeypatch, tmp_path, editorial, "--laya")
+
     laya = next(call for call in fetched if call["sha256"] == LAYA_AUDIENCE.sha256)
     assert laya["destination"] == tmp_path / "laya.tar"
     assert laya["max_bytes"] == LAYA_MAX_BYTES
+
+
+def test_models_fetch_on_a_tier_with_laya_fetches_it_unasked(monkeypatch, tmp_path):
+    from immich_memories.pinned_models import LAYA_AUDIENCE
+
+    on = EditorialConfig(laya_audience=True, laya_checkpoint=str(tmp_path / "laya.tar"))
+    off = EditorialConfig(laya_checkpoint=str(tmp_path / "laya.tar"))
+
+    assert any(
+        c["sha256"] == LAYA_AUDIENCE.sha256 for c in _fetch_models(monkeypatch, tmp_path, on)
+    )
+    assert not any(
+        c["sha256"] == LAYA_AUDIENCE.sha256 for c in _fetch_models(monkeypatch, tmp_path, off)
+    )
 
 
 def _fake_laya_mlx(monkeypatch):
