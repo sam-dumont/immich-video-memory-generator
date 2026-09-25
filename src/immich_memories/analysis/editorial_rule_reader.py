@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from operator import itemgetter
 from statistics import median
@@ -15,7 +15,7 @@ from immich_memories.analysis.editorial_clip_frames import CLIP_FRAMES_HEAD, SUB
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
-from immich_memories.analysis.editorial_standing_facts import carries_nothing
+from immich_memories.analysis.editorial_standing_facts import carries_nothing, face_evidence
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     StoryEpisode,
@@ -64,6 +64,7 @@ class NoModelJudge:
 class RuleStructureReader:
     def __init__(self, source) -> None:
         self.source = source
+        self._face: Callable[[str], bool | None] | None = None
 
     def worthiness(self, wall, near_home):
         assets = self.source.assets
@@ -335,6 +336,11 @@ class RuleStructureReader:
         record(result.as_record())
         return result
 
+    def _face_on(self, asset_id: str) -> bool | None:
+        if self._face is None:
+            self._face = face_evidence(self.source.assets)
+        return self._face(asset_id)
+
     def standing(self, asset_id: str) -> int:
         asset = self.source.assets[asset_id]
         if asset.is_favorite:
@@ -348,7 +354,9 @@ class RuleStructureReader:
         if (
             exposure_zero
             or heads.get(CLIP_FRAMES_HEAD) == SUBJECT_OFTEN_MISSING
-            or carries_nothing(heads, line, getattr(record, "description", None))
+            or carries_nothing(
+                heads, line, getattr(record, "description", None), face=self._face_on(asset_id)
+            )
         ):
             return 0
         if self.source.intent.product == "album":
