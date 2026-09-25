@@ -87,3 +87,54 @@ def test_the_run_records_what_each_place_was_allowed(tmp_path):
     scope = next(s for s in places["scopes"] if s["scope"] == "")
     assert scope["places"]["Churchtown, Farland"] < scope["allowance"]
     assert scope["places"]["Churchtown, Farland"] > scope["places"]["Harbour, Farland"]
+
+
+def _starred_building(tmp_path, *, stops_people=()):
+    """The two days inside the building are starred; the stops hold what the owner gave them."""
+    inside = [
+        Day(
+            date(2030, 7, 1) + timedelta(days=n),
+            f"Inside the building, day {n + 1}",
+            CHURCH,
+            6,
+            starred=True,
+        )
+        for n in range(2)
+    ]
+    elsewhere = [
+        Day(
+            date(2030, 7, 3) + timedelta(days=n),
+            f"A day at stop {n + 1}",
+            where,
+            3,
+            people=stops_people,
+        )
+        for n, where in enumerate(STOPS)
+    ]
+    return _trip(tmp_path, [*inside, *elsewhere])
+
+
+def _unvouched(carrier):
+    return not carrier["favourite"] and carrier["kind"] != "video"
+
+
+def test_a_picture_nothing_vouches_for_never_takes_a_starred_pictures_slot(tmp_path):
+    source = _starred_building(tmp_path)
+
+    plan = run(source, _judge())
+
+    places = json.loads(
+        (source.artifact_dir / "derived-decisions" / "story-places.private.json").read_text()
+    )
+    kept = {c["asset_id"] for c in plan["carriers"]}
+    refused = {row["asset_id"] for row in places["refused_for_their_place"]}
+    assert refused, "the bound must have refused a starred picture for the case to be asked"
+    waiting = refused - kept
+    assert not (waiting and [c for c in plan["carriers"] if _unvouched(c)])
+
+
+def test_the_place_bound_still_holds_against_pictures_of_known_people(tmp_path):
+    plan = run(_starred_building(tmp_path, stops_people=("Robin",)), _judge())
+
+    inside = _at(plan, "Churchtown")
+    assert 0 < len(inside) < len(plan["carriers"]) / 2

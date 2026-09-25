@@ -54,6 +54,11 @@ class PlaceShares:
     def took(self, story_key: str, place: str) -> None:
         self._held[self._key(story_key, place)] += 1
 
+    def gave_back(self, story_key: str, place: str) -> None:
+        key = self._key(story_key, place)
+        if self._held[key] > 0:
+            self._held[key] -= 1
+
     def refused(self, story_key: str, place: str, asset: str) -> None:
         scope, _place = self._key(story_key, place)
         self.crowded.append({"scope": scope, "place": place, "asset_id": asset})

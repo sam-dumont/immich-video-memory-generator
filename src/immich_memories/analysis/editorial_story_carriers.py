@@ -124,8 +124,10 @@ class CarrierAdmission:
         lookalike: LookAlikeCheck | None = None,
         places: PlaceShares | None = None,
         place_of: Callable[[str], str] = lambda _asset: "",
+        vouched: Callable[[Mapping[str, Any]], bool] = lambda _carrier: True,
     ) -> None:
         self._judge = judge
+        self._vouched = vouched
         self._mechanical_picks = mechanical_picks
         self.lookalike = lookalike or LookAlikeCheck(None, slots=slots)
         self.places = places or PlaceShares({}, {})
@@ -150,6 +152,7 @@ class CarrierAdmission:
         self.chosen_by_story: dict[str, list[str]] = {s["key"]: [] for s in stories}
         self.pass_records: list[dict] = []
         self.kept_without_standing: list[str] = []
+        self.displaced: list[dict] = []
         self.failed_standing: list[str] = []
         self.editorially_closed: set[tuple[str, str | None]] = set()
         self._taken: set[str] = set()
@@ -549,10 +552,68 @@ class CarrierAdmission:
         if self.lookalike.available:
             for index, s in enumerate(self.stories, 1):
                 self._deepen_moments(index, s)
+        self._favourites_before_the_unvouched()
         self.lookalike.readmit(lambda: len(self.carriers) < self.slots)
         self.calls["failed_standing"] = len(self.failed_standing)
         self.calls["kept_without_standing"] = len(self.kept_without_standing)
         self.carriers.sort(key=itemgetter("taken"))
+
+    # -- the owner's star over a picture nothing vouches for ---------------------------
+
+    def _favourites_before_the_unvouched(self) -> None:
+        """A starred picture the place bound refused comes back before a picture nothing
+        vouches for keeps the slot it freed.
+
+        The bound is about proportions; the star is the owner's own judgement, and a picture
+        with no star, no recorded video and no person Immich knows has nothing to set against
+        it. Pictures that are vouched for keep the bound's variety.
+        """
+        waiting = self.lookalike.waiting_for_their_place(
+            lambda asset: bool(self._unit_by_asset.get(asset, (None, {}))[1].get("favourite"))
+        )
+        for row in waiting:
+            victim = self._weakest_unvouched()
+            if victim is None:
+                return
+            self._release(victim)
+            if not self.lookalike.readmit_one(row):
+                self._restore(victim)
+
+    def _weakest_unvouched(self) -> dict | None:
+        stories = Counter(c["story_episode"] for c in self.carriers)
+        order = {id(c): i for i, c in enumerate(self.carriers)}
+        unvouched = [
+            c
+            for c in self.carriers
+            if not self._vouched(c) and c["asset_id"] not in self.kept_without_standing
+        ]
+        # A story keeps its only picture while another story can give one up; inside that,
+        # the weakest standing goes first, and the latest admitted before an earlier one.
+        return min(
+            unvouched,
+            key=lambda c: (
+                stories[c["story_episode"]] == 1,
+                c.get("standing") or 0,
+                -order[id(c)],
+            ),
+            default=None,
+        )
+
+    def _release(self, carrier: dict) -> None:
+        asset = carrier["asset_id"]
+        self.carriers.remove(carrier)
+        self._taken.discard(asset)
+        self.chosen_by_story[carrier["story_episode"]].remove(carrier["depicted_moment"])
+        self.places.gave_back(carrier["story_episode"], self._place_of(asset))
+        self.displaced.append(carrier)
+
+    def _restore(self, carrier: dict) -> None:
+        asset = carrier["asset_id"]
+        self.displaced.remove(carrier)
+        self.carriers.append(carrier)
+        self._taken.add(asset)
+        self.chosen_by_story[carrier["story_episode"]].append(carrier["depicted_moment"])
+        self.places.took(carrier["story_episode"], self._place_of(asset))
 
     # -- depth inside moments ---------------------------------------------------------
 

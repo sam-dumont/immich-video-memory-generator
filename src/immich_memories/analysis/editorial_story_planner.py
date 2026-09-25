@@ -490,6 +490,7 @@ def select_story_first(
     rules=None,
     trips: FilmTrips | None = None,
     looks_alike: PairLooksAlike | None = None,
+    vouched: Callable[[Mapping[str, Any]], bool] = lambda _carrier: True,
     film_span: tuple[date, date] | None = None,
     near_home: Callable[[str], bool | None] | None = None,
     banked: BankedFacts = NO_BANKED_FACTS,
@@ -657,6 +658,7 @@ def select_story_first(
         lookalike=LookAlikeCheck(looks_alike, slots=slots),
         places=places,
         place_of=place_of,
+        vouched=vouched,
     )
     admission.run()
     record("story-places", places.record())
@@ -681,6 +683,8 @@ def select_story_first(
             "lookalike": admission.lookalike.record(),
             "failed_standing": admission.failed_standing,
             "kept_without_standing": admission.kept_without_standing,
+            # Pictures nothing vouched for that gave their slot back to a starred picture.
+            "displaced_for_a_favourite": [c["asset_id"] for c in admission.displaced],
             "editorially_closed": [
                 {"story": s, "partition": p}
                 for s, p in sorted(admission.editorially_closed, key=str)

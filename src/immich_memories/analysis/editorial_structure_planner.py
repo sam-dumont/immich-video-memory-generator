@@ -90,7 +90,10 @@ from immich_memories.analysis.editorial_structure_record import (
     shave_content_duration,
 )
 from immich_memories.analysis.editorial_thin_step import polish_the_draft, shows_life
-from immich_memories.analysis.editorial_unvouched_filler import filler_evidence
+from immich_memories.analysis.editorial_unvouched_filler import (
+    filler_evidence,
+    owner_vouches_for,
+)
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -638,6 +641,7 @@ def _story_selection(
         ),
         trips=trips,
         looks_alike=looks_alike,
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
         near_home=_near_home_test(source, wall),
         banked=banked,
