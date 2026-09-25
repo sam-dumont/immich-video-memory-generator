@@ -1,0 +1,59 @@
+# Household 1, the dog owner: a couple, their chocolate labrador, two cats, a home by
+# the sea, friends' dinners, ball games, a wedding and long trips abroad. Borrowed from
+# one Flickr photographer's CC BY timeline (CommonCatalog). The names, the dates (+12
+# years) and the home point are a script, not facts about the photographs.
+name: dog-owner
+summary: A couple and their dog in a coastal city, four and a half years of walks, dinners and trips.
+owner: Robin
+source:
+  uid: "85979850@N00"
+  first_day: 2005-06-01
+  last_day: 2009-12-31
+  max_pictures: 3000
+date_shift_years: 12
+seed: 7
+# Borrowed Commons clips (page ids), picked by eye from searches for dog, puppy, cat,
+# beach waves, kayak, fireworks and birthday party: home-video-like footage only.
+videos: [10794688, 42839309, 134327184, 47052929, 192907275, 50351953, 104927568, 122407381,
+         27167984, 75383110, 84309421, 64952012, 85224292, 85691731, 97411267, 44907045,
+         20301970, 83680173, 69509231, 33217029, 184586968, 60746363, 62022471, 151820434]
+# Seeds: pictures of each person, picked by eye from their face cluster (build step
+# `clusters`); naming takes the cluster most of them share. Adults get made-up names.
+cast:
+  - name: Robin
+    seeds: [1458457577, 2189476347, 245207199, 278790652, 3571600362, 4105679855]
+  - name: Kim
+    seeds: [1459326422, 240160124, 278793662, 3212260664, 3570806959, 465900042]
+  - name: Alex
+    seeds: [165009687, 2443947999, 334986187, 335002836, 472038070, 472091655]
+  - name: Jo
+    seeds: [1387315992, 183079869, 334979503, 470753314, 472054208, 473253065]
+  - name: Lee
+    seeds: [2443923053, 2443946439, 2444747590, 2444759464, 2444768906, 4319584328]
+  - name: Pat
+    seeds: [1245588842, 1245589300, 1245589642, 2186879206, 2217190899, 2217234461]
+relations:
+  - [Kim, partner-of, Robin]
+  - [Pat, parent-of, Kim]
+  - [Alex, friend-of, Robin]
+  - [Jo, friend-of, Kim]
+  - [Lee, friend-of, Kim]
+drop: []
+# Dates are the household's (shifted): the densest month, a month with a trip, a thin
+# month (3 pictures), a whole year, the long Christmas trip abroad, a person film.
+films:
+  - id: month-2018-08
+    args: [--memory-type, monthly_highlights, --year, "2018", --month, "8"]
+  - id: month-2019-04
+    args: [--memory-type, monthly_highlights, --year, "2019", --month, "4"]
+  # Three pictures of laying a floor: no indicator, so the right cut is none (09-23 ruling:
+  # short beats a guess).
+  - id: month-2019-02-thin
+    args: [--memory-type, monthly_highlights, --year, "2019", --month, "2"]
+    expect: no_film
+  - id: year-2019
+    args: [--memory-type, year_in_review, --year, "2019"]
+  - id: trip-christmas-2019
+    args: [--memory-type, trip, --year, "2019", --near-date, "2019-12-24"]
+  - id: person-kim-2018
+    args: [--memory-type, person_spotlight, --person, Kim, --year, "2018"]

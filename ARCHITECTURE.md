@@ -905,6 +905,7 @@ version and capabilities first); deployment files are `services/render-worker/co
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`); the pinned images ride in the Actions cache per version (`scripts/immich_gate_images.sh`, `make immich-gate-fetch`/`immich-gate-save`).
+- **Public E2E library**: `make test-e2e-public` (`tests/public_e2e/`), on demand only. Households of openly licensed pictures (`households/<name>/`: `household.yaml` script, public `manifest.csv` and `CREDITS.md`, `snapshot.lock`) are built once into a pinned Immich with ML (`build.py`: `prepare` via `sources.py`/`stamping.py` from the CommonCatalog index `index_commoncatalog.py`/`timelines.py`, then `load`, `name`, `snapshot`; docker side in `stack.py` + `docker-compose.yml`), snapshotted privately, and restored for cold film runs (`run.py`, `films.py`) judged by `judge.py` (cut invariants, capture order, clutter, person presence; metrics, contact sheets, report). Design: `docs/research/public-e2e-library.md`.
 - **Pre-commit**: Run `make ci` before committing
 
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.
