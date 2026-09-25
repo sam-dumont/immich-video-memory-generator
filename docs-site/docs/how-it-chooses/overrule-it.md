@@ -40,7 +40,9 @@ A favourite is the strongest signal you can give, and it costs nothing. What a s
 - its story counts as present, so it gets at least a `minor` weight; three favourites make it `major`;
 - the duplicate review keeps it over a look-alike you didn't star, and two favourites are the same
   scene only on the same day;
-- the model's vote never removes it, and a polish refill picks it first inside its moment.
+- the model's vote never removes it, and a polish refill picks it first inside its moment;
+- a shot nothing vouches for never takes its place: not when the place bound refuses it, not in the
+  trim.
 
 What it doesn't guarantee: a place in the film. The gate, the five-minute spacing and the length
 still apply.

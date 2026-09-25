@@ -53,6 +53,8 @@ class Day:
     company: str = ""
     # The known people tagged on every picture of the day, by the name `people` gives facts for.
     people: tuple[str, ...] = ()
+    # Whether the owner starred every picture of the day.
+    starred: bool = False
 
 
 def known_person(
@@ -84,7 +86,9 @@ def trip_days(start: date, count: int, *, where=SEASIDE, moments: int = 2) -> li
     ]
 
 
-def _asset(asset_id: str, taken: datetime, where, people: tuple[str, ...] = ()) -> Asset:
+def _asset(
+    asset_id: str, taken: datetime, where, people: tuple[str, ...] = (), *, starred: bool = False
+) -> Asset:
     exif = (
         ExifInfo(latitude=where[0], longitude=where[1], city=where[2], country=where[3])
         if where
@@ -99,6 +103,7 @@ def _asset(asset_id: str, taken: datetime, where, people: tuple[str, ...] = ()) 
         originalFileName=f"{asset_id}.jpg",
         exifInfo=exif,
         people=[Person(id=f"person-{name}", name=name) for name in people],
+        isFavorite=starred,
     )
 
 
@@ -109,7 +114,7 @@ def _candidate(asset: Asset) -> EditorialCandidate:
         media_kind="photo",
         live_photo_stitch_member_ids=(),
         rendering_family_id=None,
-        favourite=False,
+        favourite=asset.is_favorite,
         source=asset,
         shippable_duration=0,
         grounded_annotations=(),
@@ -142,7 +147,11 @@ def film_source(
                     + picture_gap * picture
                 )
                 asset = _asset(
-                    f"d{day_index:03d}-m{moment}-p{picture}", taken, spec.where, spec.people
+                    f"d{day_index:03d}-m{moment}-p{picture}",
+                    taken,
+                    spec.where,
+                    spec.people,
+                    starred=spec.starred,
                 )
                 description = f"A clothed person during {spec.activity.lower()}, moment {moment} view {picture}."
                 place = f" | at {spec.where[2]}, {spec.where[3]}" if spec.where else ""
