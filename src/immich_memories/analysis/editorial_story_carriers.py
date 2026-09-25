@@ -642,8 +642,8 @@ class CarrierAdmission:
         Ranked by capture facts alone, position says little, and a picture that cannot carry
         a frame at all must not spend one of the moment's three rungs: an eight-picture
         moment was shipping two frames with five usable ones left behind. The spares that
-        remain are offered furthest first in capture time from the frames of the moment
-        already in the cut.
+        remain keep favourites first, then spread in capture time from the frames of the
+        moment already in the cut.
         """
         choices = self.choices_of[s["key"]]
         if not self._mechanical_picks:
@@ -662,7 +662,10 @@ class CarrierAdmission:
             kept = [row["taken"] for row in self.carriers if row["depicted_moment"] == c.key]
             spare = sorted(
                 (a for a in good if a not in carried),
-                key=lambda a: -_seconds_apart(self._unit_by_asset[a][1]["taken"], kept),
+                key=lambda a: (
+                    not self._unit_by_asset[a][1].get("favourite"),
+                    -_seconds_apart(self._unit_by_asset[a][1]["taken"], kept),
+                ),
             )
             members = [*(a for a in good if a in carried), *spare]
             offerable.append(replace(c, primary=members[0], alternatives=members[1:]))
