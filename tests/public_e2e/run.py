@@ -82,30 +82,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tier", choices=["rules", "model"], default="rules")
     parser.add_argument("--films", default="")
     parser.add_argument("--keep", action="store_true")
+    parser.add_argument("--target", choices=["snapshot", "test-immich"], default="snapshot")
     args = parser.parse_args(argv)
     source = household_dir(args.household)
     household = Household.load(source / "household.yaml")
     lock = yaml.safe_load((source / "snapshot.lock").read_text())
     work = household_work(household.name)
-    parts = snapshot_parts(lock, work / "snapshot")
-    stack = Stack(f"public-e2e-run-{household.name}", RUN_PORT)
-    started = time.monotonic()
-    api_key = restore(stack, parts)
-    restore_seconds = round(time.monotonic() - started, 1)
-    print(f"restored {household.name} in {restore_seconds:.0f}s", flush=True)
-    out = work / "runs" / f"{datetime.now():%Y%m%dT%H%M%S}-{args.tier}"
+    stack: Stack | None = None
+    if args.target == "test-immich":
+        # The shared test Immich: no restore, the household's own user and scoped key.
+        from tests.public_e2e.provision import load_secrets
+
+        store = load_secrets()
+        entry = store.get("households", {}).get(household.name, {})
+        if not entry.get("api_key") or not entry.get("people_file"):
+            raise SystemExit(f"{household.name} is not provisioned: run make public-e2e-provision")
+        url, api_key, people = store["url"], entry["api_key"], Path(entry["people_file"])
+        restore_seconds = 0.0
+    else:
+        parts = snapshot_parts(lock, work / "snapshot")
+        stack = Stack(f"public-e2e-run-{household.name}", RUN_PORT)
+        started = time.monotonic()
+        api_key = restore(stack, parts)
+        url, people = stack.url, work / "snapshot" / "people.yaml"
+        restore_seconds = round(time.monotonic() - started, 1)
+        print(f"restored {household.name} in {restore_seconds:.0f}s", flush=True)
+    out = work / "runs" / f"{datetime.now():%Y%m%dT%H%M%S}-{args.tier}-{args.target}"
     out.mkdir(parents=True)
     home_json = out / "home.json"
     home_json.write_text(json.dumps(lock.get("home")))
     wanted = set(filter(None, args.films.split(",")))
     films = [f for f in household.films if not wanted or f.id in wanted]
-    admin = Admin(stack.url, api_key)
+    admin = Admin(url, api_key)
     library = Library.read(admin, read_manifest(source / "manifest.csv"), household)
     verdicts = []
     for film in films:
-        run = run_film(
-            film, out, stack.url, api_key, home_json, work / "snapshot" / "people.yaml", args.tier
-        )
+        run = run_film(film, out, url, api_key, home_json, people, args.tier)
         verdict = judge_film(run, library, source)
         contact_sheet(verdict, admin, out / "sheets" / f"{film.id}.jpg")
         verdicts.append(verdict)
@@ -114,14 +126,14 @@ def main(argv: list[str] | None = None) -> int:
             f"{verdict.metrics.get('shots', 0)} shots {'; '.join(verdict.hard)}",
             flush=True,
         )
-    runs = sorted(p for p in (work / "runs").glob(f"*-{args.tier}") if p != out)
+    runs = sorted(p for p in (work / "runs").glob(f"*-{args.tier}-{args.target}") if p != out)
     previous_file = runs[-1] / "results.json" if runs else None
     previous = (
         json.loads(previous_file.read_text()) if previous_file and previous_file.exists() else None
     )
     page = write_report(out, household, args.tier, verdicts, library, previous, restore_seconds)
     print(f"report: {page}")
-    if not args.keep:
+    if stack is not None and not args.keep:
         stack.down(volumes=True)
     return 1 if any(v.hard for v in verdicts) else 0
 

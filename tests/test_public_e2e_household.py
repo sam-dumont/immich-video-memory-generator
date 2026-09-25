@@ -136,3 +136,21 @@ def test_a_burst_twin_kept_beside_its_source_counts_as_a_repeat():
     assert metrics["repeats"] == 1
     assert metrics["burst_frames"] == 1
     assert metrics["per_person"] == {"Kim": 1}
+
+
+def test_shared_settings_replace_only_what_they_name():
+    from tests.public_e2e.stack import merged
+
+    base = {
+        "machineLearning": {"clip": {"enabled": True, "modelName": "ViT-B-32__openai"}},
+        "server": {"externalDomain": "https://example.invalid"},
+    }
+    overlay = {"machineLearning": {"clip": {"modelName": "ViT-L-14-quickgelu__dfn2b"}}}
+
+    out = merged(base, overlay)
+
+    assert out["machineLearning"]["clip"] == {
+        "enabled": True,
+        "modelName": "ViT-L-14-quickgelu__dfn2b",
+    }
+    assert out["server"] == base["server"]

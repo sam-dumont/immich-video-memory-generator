@@ -8,6 +8,7 @@ bug must show up in a film, not in the setup.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -30,6 +31,41 @@ IMAGES = {
 }
 POSTGRES_IMAGE = "ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23"
 TAR_IMAGE = "docker.io/library/alpine:3.20"
+# The family Immich's settings that shape a library (ML models and thresholds, previews,
+# transcoding, metadata, geocoding, jobs), so every public E2E Immich reads a household
+# the way the owner's library is read. The shared ML pod then also holds one of each model.
+SETTINGS_FILE = Path(__file__).parent / "immich-settings.json"
+# Settings whose change makes existing ML results stale, and the job that redoes them.
+MODEL_JOBS = {
+    ("facialRecognition", "modelName"): "faceDetection",
+    ("clip", "modelName"): "smartSearch",
+    ("ocr", "modelName"): "ocr",
+}
+
+
+def shared_settings() -> dict[str, Any]:
+    settings = json.loads(SETTINGS_FILE.read_text())
+    settings.pop("_comment", None)
+    return settings
+
+
+def merged(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """`base` with every key `overlay` names replaced, nested dictionaries merged."""
+    out = dict(base)
+    for key, value in overlay.items():
+        out[key] = (
+            merged(out[key], value)
+            if isinstance(value, dict) and isinstance(out.get(key), dict)
+            else value
+        )
+    return out
+
+
+def model_names(config: dict[str, Any]) -> dict[str, str]:
+    ml = config["machineLearning"]
+    return {job: ml[section][field] for (section, field), job in MODEL_JOBS.items()}
+
+
 # Immich's documented restore swaps this line so the dump's functions resolve.
 _SEARCH_PATH_FIX = (
     "s/SELECT pg_catalog.set_config('search_path', '', false);/"
@@ -202,6 +238,12 @@ class Admin:
 
     def wait_for_queues(self, timeout: float) -> None:
         self.seeder.wait_for_queues(timeout)
+
+    def apply_shared_settings(self) -> dict[str, str]:
+        """Apply `immich-settings.json`; return the ML models in force, by the job they feed."""
+        config = merged(self.call("GET", "/system-config"), shared_settings())
+        self.call("PUT", "/system-config", json=config)
+        return model_names(config)
 
     def upload(self, path: Path, taken_at: str, *, favourite: bool) -> str:
         fields = {"fileCreatedAt": taken_at, "fileModifiedAt": taken_at}

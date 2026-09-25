@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: workflow-guard docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full test-e2e-public public-e2e-build public-e2e-index screenshots demo-output demo-output-trip diagrams capability-matrix
+.PHONY: workflow-guard docs-voice notices notices-check help install dev dev-ci dev-test run preflight parity docs-cli-check docs-config-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell compose-check file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint privacy-gate pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full test-e2e-public public-e2e-build public-e2e-index public-e2e-provision screenshots demo-output demo-output-trip diagrams capability-matrix
 
 # Default target
 help:
@@ -336,16 +336,20 @@ test-immich-gate:  ## Real Immich in Docker + CC0 fixture library + gate tests (
 HOUSEHOLD ?= dog-owner
 TIER ?= rules
 FILMS ?=
+TARGET ?= snapshot
 
-.PHONY: public-e2e-index public-e2e-build test-e2e-public
+.PHONY: public-e2e-index public-e2e-build public-e2e-provision test-e2e-public
 public-e2e-index:  ## Index CommonCatalog CC BY metadata (~15 min, ~1.5 GB, maintainer only)
 	uv run --with duckdb python -m tests.public_e2e.index_commoncatalog
 
 public-e2e-build:  ## Build HOUSEHOLD once into an Immich snapshot (maintainer only, ~1 h)
 	uv run --with duckdb python -m tests.public_e2e.build $(HOUSEHOLD)
 
-test-e2e-public:  ## Restore HOUSEHOLD's snapshot, run its films (TIER=rules|model, FILMS=a,b), judge them
-	uv run python -m tests.public_e2e.run $(HOUSEHOLD) --tier $(TIER) $(if $(FILMS),--films $(FILMS)) $(if $(PUBLIC_E2E_KEEP),--keep)
+public-e2e-provision:  ## Users, scoped keys and built households on the shared test Immich (PUBLIC_E2E_IMMICH_URL; safe to re-run)
+	uv run --with duckdb python -m tests.public_e2e.provision $(if $(ONLY),--only $(ONLY))
+
+test-e2e-public:  ## Run HOUSEHOLD's films (TARGET=snapshot|test-immich, TIER=rules|model, FILMS=a,b) and judge them
+	uv run python -m tests.public_e2e.run $(HOUSEHOLD) --tier $(TIER) --target $(TARGET) $(if $(FILMS),--films $(FILMS)) $(if $(PUBLIC_E2E_KEEP),--keep)
 
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth

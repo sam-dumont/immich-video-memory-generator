@@ -1,0 +1,154 @@
+{
+ "_comment": "The family Immich's settings that shape what a library holds (ML models and thresholds, previews, video transcoding, metadata, geocoding, job concurrency, storage layout), exported 2026-09-25. Applied to every public E2E Immich so households are read the way the owner's library is. Left out: domain, logins, OAuth, mail, templates, backups, library scans, map, theme, ML URL. Hardware transcoding is off: test hosts have no GPU.",
+ "machineLearning": {
+  "clip": {
+   "enabled": true,
+   "modelName": "ViT-L-14-quickgelu__dfn2b"
+  },
+  "duplicateDetection": {
+   "enabled": true,
+   "maxDistance": 0.01
+  },
+  "enabled": true,
+  "facialRecognition": {
+   "enabled": true,
+   "maxDistance": 0.4,
+   "minFaces": 3,
+   "minScore": 0.6,
+   "modelName": "antelopev2"
+  },
+  "ocr": {
+   "enabled": true,
+   "maxResolution": 768,
+   "minDetectionScore": 0.5,
+   "minRecognitionScore": 0.8,
+   "modelName": "PP-OCRv5_mobile"
+  }
+ },
+ "image": {
+  "colorspace": "p3",
+  "extractEmbedded": false,
+  "fullsize": {
+   "enabled": false,
+   "format": "jpeg",
+   "progressive": false,
+   "quality": 80
+  },
+  "preview": {
+   "format": "jpeg",
+   "progressive": false,
+   "quality": 80,
+   "size": 1440
+  },
+  "thumbnail": {
+   "format": "webp",
+   "progressive": false,
+   "quality": 80,
+   "size": 480
+  }
+ },
+ "ffmpeg": {
+  "accel": "disabled",
+  "accelDecode": false,
+  "acceptedAudioCodecs": [
+   "aac",
+   "mp3",
+   "opus"
+  ],
+  "acceptedContainers": [
+   "mov",
+   "ogg",
+   "webm"
+  ],
+  "acceptedVideoCodecs": [
+   "h264"
+  ],
+  "bframes": -1,
+  "cqMode": "auto",
+  "crf": 23,
+  "gopSize": 0,
+  "maxBitrate": "0",
+  "preset": "ultrafast",
+  "realtime": {
+   "enabled": false,
+   "resolutions": [
+    480,
+    720,
+    1080
+   ],
+   "videoCodecs": [
+    "h264",
+    "hevc"
+   ]
+  },
+  "refs": 0,
+  "targetAudioCodec": "aac",
+  "targetResolution": "1080",
+  "targetVideoCodec": "h264",
+  "temporalAQ": true,
+  "threads": 0,
+  "tonemap": "hable",
+  "transcode": "optimal",
+  "twoPass": false
+ },
+ "metadata": {
+  "faces": {
+   "import": true
+  }
+ },
+ "reverseGeocoding": {
+  "enabled": true
+ },
+ "job": {
+  "backgroundTask": {
+   "concurrency": 5
+  },
+  "editor": {
+   "concurrency": 2
+  },
+  "faceDetection": {
+   "concurrency": 5
+  },
+  "integrityCheck": {
+   "concurrency": 1
+  },
+  "library": {
+   "concurrency": 20
+  },
+  "metadataExtraction": {
+   "concurrency": 100
+  },
+  "migration": {
+   "concurrency": 10
+  },
+  "notifications": {
+   "concurrency": 5
+  },
+  "ocr": {
+   "concurrency": 1
+  },
+  "search": {
+   "concurrency": 5
+  },
+  "sidecar": {
+   "concurrency": 10
+  },
+  "smartSearch": {
+   "concurrency": 5
+  },
+  "thumbnailGeneration": {
+   "concurrency": 40
+  },
+  "videoConversion": {
+   "concurrency": 4
+  },
+  "workflow": {
+   "concurrency": 5
+  }
+ },
+ "storageTemplate": {
+  "enabled": true,
+  "hashVerificationEnabled": true,
+  "template": "{{y}}/{{MM}}/{{dd}}/{{HH}}_{{mm}}_{{ss}}-{{filename}}"
+ }
+}

@@ -278,6 +278,7 @@ def load(household: Household) -> dict:
     stack.fresh()
     api_key = admin_api_key(stack.url)
     admin = Admin(stack.url, api_key)
+    admin.apply_shared_settings()
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(6) as pool:
@@ -346,27 +347,37 @@ def clusters(household: Household, top: int = 12) -> list[dict]:
 
 
 def name_cast(admin: Admin, household: Household, asset_of: dict[str, str]) -> dict[str, dict]:
-    """Name each cast member's face cluster: the one that shows up in most of their seeds.
+    """Name each cast member's face cluster, then merge in the clusters they were split into.
 
-    Seeds are pictures picked by eye from that person's cluster in an earlier load; a vote
-    over every face in them survives a cluster id changing between builds and a seed that
-    also shows somebody else.
+    The name goes to the cluster most of the member's seeds share (seeds are pictures
+    picked by eye from that person's cluster in an earlier load); that survives cluster
+    ids changing between builds and a seed that also shows somebody else. A seed showing
+    exactly one face proves that face's cluster is the person too, so those clusters are
+    merged in, the way a user merges a split person in Immich.
     """
     named: dict[str, dict] = {}
     for member in household.cast:
         votes: Counter[str] = Counter()
+        certain: set[str] = set()
         for photoid in member.seeds:
             asset = asset_of.get(f"cc-{photoid}")
             faces = admin.faces(asset) if asset else []
-            votes.update({str(f["person"]["id"]) for f in faces if f.get("person")})
+            clusters = {str(f["person"]["id"]) for f in faces if f.get("person")}
+            votes.update(clusters)
+            if len(faces) == 1 and clusters:
+                certain |= clusters
         if not votes:
             named[member.name] = {"person_id": None, "seeds_matched": 0}
             continue
         person, matched = votes.most_common(1)[0]
+        split = sorted(certain - {person})
+        if split:
+            admin.call("POST", f"/people/{person}/merge", json={"ids": split})
         admin.call("PUT", f"/people/{person}", json={"name": member.name})
         named[member.name] = {
             "person_id": person,
             "seeds_matched": f"{matched}/{len(member.seeds)}",
+            "merged": len(split),
             "assets": len(admin.person_assets(person)),
         }
     return named

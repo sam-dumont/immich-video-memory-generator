@@ -241,28 +241,41 @@ users, one per household, each with its own API key, sharing the family instance
   family `immich-ml` service (stateless).
 - **Internal only.** A MetalLB address on the couronne pool (10.2.254.58 was free on
   2026-09-25), no ingress, certificate or DNS.
-- **Draft manifests**: [`public-e2e/immich-test.tf`](public-e2e/immich-test.tf), written
-  in `50-internal-services/immich.tf`'s patterns for the owner to copy into
-  rancher-cluster and apply. Server, Postgres and Valkey are pinned to the Immich Gate's
-  digests. No secret is needed by Terraform: users and keys are created through the
-  Immich API.
-- **One command after `terraform apply`**: `make public-e2e-provision` (to be written,
-  see below) would sign up the admin on a fresh instance, create the seven users, upload
-  each built household into its user (Immich skips files it already holds, so a re-run
-  only fills gaps), wait for faces, clustering and places, name the cast, write each
-  household's people file, and keep one API key per user in a local secrets file
-  outside the repository (mode 0600). Re-running it is safe.
+- **Manifests**: `50-internal-services/immich-test.tf` in rancher-cluster (applied
+  2026-09-25, commit c92825e), from the draft kept here as
+  [`public-e2e/immich-test.tf`](public-e2e/immich-test.tf). Server, Postgres and Valkey
+  are pinned to the Immich Gate's digests; the family ML runs v3.1.0 against the v3.2.2
+  test server (owner: fine). Terraform needs no secret.
+- **One command after `terraform apply`**:
+
+      make public-e2e-provision PUBLIC_E2E_IMMICH_URL=http://10.2.254.58:2283 [ONLY=dog-owner]
+
+  It signs up the admin on a fresh instance, creates the seven users, keeps one scoped
+  key per user, and for every household built on this machine uploads the roll into its
+  user (Immich answers a file it already holds as a duplicate, so a re-run only fills
+  gaps), waits for faces, clustering and places, names the cast, and writes the
+  household's people file. URL, logins and keys go to
+  `~/.immich-memories-public-e2e/test-immich.secrets.yaml` (mode 0600, outside the repo;
+  `PUBLIC_E2E_SECRETS` moves it). Re-running it is safe.
+- **The owner's settings.** `tests/public_e2e/immich-settings.json` is the family
+  Immich's own settings export, cut down to what shapes a library: the ML models and
+  thresholds (CLIP `ViT-L-14-quickgelu__dfn2b`, faces `antelopev2`, OCR, duplicate
+  detection), previews, transcoding (hardware acceleration off), metadata, geocoding,
+  job concurrency and storage layout. Local builds and provisioning apply it, so a
+  household is read the way the owner's library is, and the shared ML pod holds one
+  model of each kind instead of two (two face models plus CLIP and OCR ran its 8 GB GPU
+  out of memory on 2026-09-25). When a model changes, provisioning re-runs that ML job
+  over every picture, because results from two models cannot be compared.
 - **Scoped keys.** A film run reads, it never writes (upload is off). The per-household
   key carries only `asset.read`, `asset.view`, `asset.download`, `asset.statistics`,
   `album.read`, `face.read`, `person.read`, `person.statistics`, `tag.read`,
   `timeline.read` and `user.read`: every endpoint `generate` calls, mapped through
   Immich v3.2.2's OpenAPI permissions. Uploading and naming use a temporary full key per
-  user that provisioning deletes at the end.
-- **Reproducibility stays.** The per-household snapshot (above) remains the portable
-  artifact: anyone can restore it locally or in CI without the cluster. A `pg_dump` plus
-  library export of the shared instance can be added the same way once it exists.
-- **Runner.** `make test-e2e-public TARGET=test-immich` would skip the restore and point
-  each household's films at its user's key from the secrets file.
+  user, deleted at the end.
+- **Runner.** `make test-e2e-public HOUSEHOLD=dog-owner TARGET=test-immich` skips the
+  restore and runs the films with the household's scoped key and people file.
+- **Reproducibility stays.** The per-household snapshot remains the portable artifact:
+  anyone can restore it locally or in CI without the cluster.
 
 ## Household 1, as built (2026-09-25)
 
