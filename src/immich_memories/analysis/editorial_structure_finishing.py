@@ -21,6 +21,7 @@ from immich_memories.analysis.editorial_completion import (
     RetainedMotion,
 )
 from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
+from immich_memories.analysis.editorial_intent_validation import MIN_CARRIERS, MIN_CONTENT_SHARE
 from immich_memories.analysis.editorial_source_route import retire_unprojectable
 from immich_memories.analysis.editorial_story_planner import alternatives_pool
 from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
@@ -177,6 +178,7 @@ def final_duplicate_review(
     close_family_of: Callable[[str], Collection[str]] = lambda _asset: (),
     gate: AudienceGate | None = None,
     frame_quality: Callable[[str], tuple[int, float] | None] = lambda _asset: None,
+    requested_seconds: float = 0.0,
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward.
@@ -202,6 +204,8 @@ def final_duplicate_review(
         close_family_of=close_family_of,
         admits=_admitted_by(gate),
         frame_quality=frame_quality,
+        # Folding starred twins never takes a film under the floor where it abstains.
+        film_floor=(MIN_CARRIERS, MIN_CONTENT_SHARE * requested_seconds),
         # A scene repeat nothing replaces leaves only while the film still reaches its target
         # within the shortfall the owner accepts: a film short of material keeps it.
         content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
