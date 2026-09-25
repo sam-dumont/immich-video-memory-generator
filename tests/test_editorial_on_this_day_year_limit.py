@@ -224,8 +224,8 @@ def test_model_chooses_event_and_picture_before_acquisition_and_warm_is_exact(tm
     assert sum(row["granted"] for row in plan["story"]["episodes"]) == 3
     assert not any(c["stage"].startswith("moment-inventory") for c in judge.calls)
     assert len([c for c in judge.calls if c["stage"].startswith("story-pick-")]) >= 3
-    # Equal descriptions may reuse an audience verdict; no unused event is read.
-    assert 1 <= len([c for c in judge.calls if c["stage"].startswith("shareability-")]) <= 3
+    # The sharing question never goes to an LLM.
+    assert not any(c["stage"].startswith("shareability-") for c in judge.calls)
     assert not any(c["stage"].startswith("assembly-contributions") for c in judge.calls)
     assert plan["intent_report"]["violations"] == []
     warm_judge = AnnualStoryJudge(judge.bank, require_hits=True)

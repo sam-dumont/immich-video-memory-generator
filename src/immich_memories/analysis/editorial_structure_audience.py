@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
-from immich_memories.analysis.editorial_audience_batch import ask_activity_batches
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.locked_file import file_lock
@@ -294,6 +293,7 @@ class AudienceGate:
             self.keep_hold(u["asset_id"], record)
             self.verdicts[u["asset_id"]] = record
             return record["verdict"]
+        self._read_locally([u])
         key, record = self.check(evidence)
         record = _share.at_household_level(record)
         held = self._household_hold(self._library.held(u["asset_id"]), record)
@@ -323,16 +323,19 @@ class AudienceGate:
         return _share.at_household_level(held | {"activity": record.get("activity")})
 
     def prefetch(self, units, *, batch: int) -> None:
-        """Ask the activity question of every carrier here that still needs one, `batch` a request.
+        """Let the local reader answer every carrier here that still needs an answer, together.
 
-        A carrier a rule, a detector's floor or a banked answer already decides is not sent. The
-        answers wait in the gate, and `verdict_of` reads each carrier exactly as before, asking alone any carrier the batch left unanswered. Only the full check has
-        an activity question to batch; any other check is left as it is.
+        A carrier a rule, a detector's floor or a banked answer already decides is not read. The
+        answers wait in the gate, and `verdict_of` reads each carrier exactly as before; what the
+        local reader leaves unanswered gets the heads and rules. Nothing is ever sent to an LLM.
         """
-        if batch < 2 or self._check_audience is not _share.check_audience:
+        if batch >= 2:
+            self._read_locally(units)
+
+    def _read_locally(self, units) -> None:
+        if self._activity_reader is None:
             return
-        pending: dict[str, tuple[dict[str, Any], bool]] = {}
-        captions: dict[str, list[str]] = {}
+        pending: dict[str, tuple[list[str], bool]] = {}
         for u in units:
             observed_reason, evidence = self._evidence(u)
             if (
@@ -346,28 +349,9 @@ class AudienceGate:
                 continue
             allow_nudity = _share.activity_question(evidence)
             if allow_nudity is not None:
-                pending[key] = (evidence, allow_nudity)
-                if self._activity_reader is not None:
-                    captions[key] = self._compact_captions(u)
-        pending = self._read_locally(pending, captions)
-        first_call = len(self._judge.calls)
-        self._answered.update(ask_activity_batches(self._judge, pending, size=batch))
-        self.requests += len(self._judge.calls) - first_call
-
-    def _read_locally(
-        self,
-        pending: dict[str, tuple[dict[str, Any], bool]],
-        captions: Mapping[str, Sequence[str]],
-    ) -> dict[str, tuple[dict[str, Any], bool]]:
-        """Let the local reader answer from the compact captions it was trained on; return what
-        it left for the text model."""
-        if self._activity_reader is None or not pending:
-            return pending
-        read = self._activity_reader(
-            {k: (captions[k], allow) for k, (_e, allow) in pending.items()}
-        )
-        self._answered.update(read)
-        return {k: v for k, v in pending.items() if k not in read}
+                pending[key] = (self._compact_captions(u), allow_nudity)
+        if pending:
+            self._answered.update(self._activity_reader(pending))
 
     def _compact_captions(self, u) -> list[str]:
         """The preparation seat's caption of each member of this carrier."""

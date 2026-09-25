@@ -9,6 +9,7 @@ from immich_memories.analysis.editorial_contracts import InsightEvidence
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from tests.editorial_story_fixtures import ControlledStoryJudge
+from tests.editorial_thin_fixtures import caption_laya
 from tests.test_editorial_duration_planner_integration import (
     asked_again,
     semantic_plan,
@@ -16,12 +17,13 @@ from tests.test_editorial_duration_planner_integration import (
 )
 
 
-def _plan(captured, judge):
+def _plan(captured, judge, *, laya=None):
     return plan_structure(
         captured,
         StructurePlannerPorts(
             judge=judge,
             thumbnail_hash=lambda _: None,
+            laya=laya,
         ),
     )
 
@@ -32,8 +34,9 @@ def test_citations_survive_without_changing_requests_or_eligible_carriers(tmp_pa
         tmp_path, seconds=60, pictures=1 if private_only else 20, private_opening=private_only
     )
     captured = replace(captured, audience="shareable")
+    laya = caption_laya()
     cold_judge = ControlledStoryJudge()
-    baseline = _plan(captured, cold_judge)
+    baseline = _plan(captured, cold_judge, laya=laya)
     evidence = (
         InsightEvidence(
             "Prior context, not an eligible picture",
@@ -44,7 +47,7 @@ def test_citations_survive_without_changing_requests_or_eligible_carriers(tmp_pa
     )
     with_evidence = replace(captured, period_evidence=evidence)
     warm_judge = ControlledStoryJudge(cold_judge.bank, require_hits=True)
-    revised = _plan(with_evidence, warm_judge)
+    revised = _plan(with_evidence, warm_judge, laya=laya)
 
     assert with_evidence.assets == captured.assets
     assert with_evidence.moment_asset_ids == captured.moment_asset_ids

@@ -103,16 +103,6 @@ class EditorialConfig(BaseModel):
         ),
     )
 
-    thin_batched_audience: bool = Field(
-        default=False,
-        description=(
-            "Ask the thin layer's audience question of twelve carriers per request, in two row "
-            "orders, instead of one carrier per request. Every carrier gets its own answer, one "
-            "either order holds is held, and one the replies skip is asked alone. Off until a "
-            "probe on the local reader shows batching keeps every hold"
-        ),
-    )
-
     strict_sharing: bool = Field(
         default=True,
         description=(
@@ -153,10 +143,10 @@ class EditorialConfig(BaseModel):
     laya_audience: bool = Field(
         default=False,
         description=(
-            "Answer the audience check's activity question with the local Laya model instead of "
-            "the text model (Apple silicon; `pip install laya-mlx`, then `models fetch --laya`). "
-            "It reads the compact caption. Detector and rule holds still apply and are "
-            "never lifted"
+            "Answer the audience check's activity question with the local Laya model from the "
+            "compact caption (Apple silicon; `pip install laya-mlx`, then `models fetch --laya`). "
+            "Detector and rule holds still apply and are never lifted; without it the heads and "
+            "rules decide. The question never goes to an LLM"
         ),
     )
     laya_checkpoint: str = Field(

@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+from immich_memories.analysis.editorial_laya_reader import LayaReader
+from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_standing_facts import carries_nothing
 from immich_memories.analysis.editorial_story_standing import StandingGate
 from immich_memories.analysis.editorial_structure_audience import AudienceBank, AudienceGate
@@ -56,6 +58,38 @@ class CountingJudge:
         raise AssertionError(f"the thin layer asked an unexpected question: {stage}")
 
 
+class _CaptionScorer:
+    """# WHY: replaces the trained Laya checkpoint (an MLX model, not installed in CI). A
+    caption naming the fixtures' private marker (any caption with "bath" in it, which covers
+    every private caption these tests use) scores as a bathing hold; everything else scores as
+    ordinary. Counts every batch it was asked to score, so a test can see how often Laya ran."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.states: list[str] = []
+
+    def probabilities(self, states, question):
+        self.calls += 1
+        self.states += list(states)
+        names = list(question["criteria"])
+        return [
+            [
+                1.0 if name == ("bathing" if "bath" in state.lower() else "none") else 0.0
+                for name in names
+            ]
+            for state in states
+        ]
+
+
+def caption_laya() -> LayaReader:
+    """A Laya reader for these fixtures: holds any caption naming a bath, reads everything else
+    as ordinary. `reader.scorer` exposes the stub, so a test can count what Laya was asked."""
+    scorer = _CaptionScorer()
+    reader = LayaReader(scorer, threshold=0.186)
+    reader.scorer = scorer
+    return reader
+
+
 def frame_heads(line: str) -> dict[str, str]:
     """What the frame head reads for a fixture shot."""
     return {"frame_kind": "accidental_or_blurred_frame"} if UNSTEADY in line else {}
@@ -81,6 +115,7 @@ class Film:
 
     def __init__(self) -> None:
         self.lines: dict[str, str] = {}
+        self.captions: dict[str, str] = {}
         self.units: dict[str, dict] = {}
         self.pool: dict[str, list[dict]] = {}
         self.tiers: dict[str, str] = {}
@@ -90,6 +125,7 @@ class Film:
     def shot(self, asset, story, when, caption, *, kind="still", favourite=False):
         taken = when.strftime("%Y-%m-%dT%H:%M:%S")
         self.lines[asset] = f"{taken[:16]} | {caption}"
+        self.captions[asset] = caption
         row = {
             "asset_id": asset,
             "story_episode": story,
@@ -157,14 +193,21 @@ def polish(
         unit_by_asset={asset: ("fam", row) for asset, row in film.units.items()},
         pictures_of={key: len(rows) for key, rows in film.pool.items()},
     )
+    laya = caption_laya()
     audience = AudienceGate(
         judge,
         audience="family",
-        annotations={},
+        annotations={
+            asset: SimpleNamespace(description=caption, heads=())
+            for asset, caption in film.captions.items()
+        },
         flag_rows={},
         lines=film.lines,
         bank_path=tmp_path / "shareability.private.json",
-        library=AudienceBank(tmp_path / "audience-verdicts.private.json", answerer="full|model-a"),
+        library=AudienceBank(tmp_path / "audience-verdicts.private.json", answerer="full|laya"),
+        # The sharing question never reaches the judge: Laya reads the caption instead.
+        check_audience=audience_check_for("full", local_reader=True),
+        activity_reader=laya.activity_answers,
     )
     drafted = {row["asset_id"] for row in film.draft}
     cut = ThinPolish(bank_dir=tmp_path, short=short).polish(
