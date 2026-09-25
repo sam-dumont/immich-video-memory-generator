@@ -43,6 +43,28 @@ def motion_first(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def favourite_of_its_moment(
+    pick: Mapping[str, Any], page: Sequence[Mapping[str, Any]], taken: set[str]
+) -> Mapping[str, Any]:
+    """The picked row, or the favourite of its moment when the page offers one.
+
+    The page can lead with a recorded picture, and the picker reads rows, not moments; neither
+    may seat a non-favourite over the favourite the owner starred in that same moment, which the
+    draft never does. The gates then judge the favourite exactly as they would have the pick.
+    """
+    moment = pick.get("moment")
+    if pick.get("favourite") or not moment:
+        return pick
+    return next(
+        (
+            row
+            for row in page
+            if row.get("moment") == moment and row.get("favourite") and row["asset_id"] not in taken
+        ),
+        pick,
+    )
+
+
 def records_first(
     rows: Sequence[Mapping[str, Any]], record_of: Callable[[str], str]
 ) -> list[dict[str, Any]]:

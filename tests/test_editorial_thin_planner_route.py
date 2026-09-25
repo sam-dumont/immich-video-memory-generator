@@ -148,3 +148,41 @@ def test_a_period_that_cannot_be_read_ships_the_no_model_cut_and_says_so(tmp_pat
         c["asset_id"] for c in nas_plan["carriers"]
     ]
     assert (source.artifact_dir / "derived-decisions/unvouched-filler.private.json").is_file()
+
+
+class NamesEverything(PolishJudge):
+    """# WHY: a thesis-fit vote that names every shot in both orders, the worst the model can do."""
+
+    def answer(self, stage, prompt):
+        if stage.startswith("thesis-fit-"):
+            named = re.findall(r"^(P\d+): ", prompt, re.MULTILINE)
+            return json.dumps({"weak": dict.fromkeys(named, "adds nothing")})
+        return super().answer(stage, prompt)
+
+
+def test_a_film_that_promises_every_partition_a_voice_keeps_it_through_the_polish(tmp_path):
+    """Lifetime films (09-24): the vote took a year's only shot, and both shots of another."""
+    from dataclasses import replace
+
+    from immich_memories.analysis.editorial_intent import IntentPartition
+
+    weeks = tuple(
+        IntentPartition(f"week-{n}", date(2030, 5, 1 + 7 * n), date(2030, 5, 7 + 7 * n), True)
+        for n in range(4)
+    )
+    source = film(tmp_path)
+    source = replace(
+        source, intent=replace(source.intent, partitions=weeks, voice_per_partition=True)
+    )
+
+    def week_of(asset: str) -> str | None:
+        part = source.intent.partition_for(source.assets[asset].file_created_at.date())
+        return part.key if part else None
+
+    plan = run(source, NamesEverything(), account=ACCOUNT)
+
+    audit = audit_of(source)
+    voiced_by_the_draft = {week_of(asset) for asset in audit["verdicts"]} - {None}
+    assert voiced_by_the_draft <= {week_of(c["asset_id"]) for c in plan["carriers"]}
+    assert any("of week-" in verdict["held_by"] for verdict in audit["verdicts"].values())
+    assert any(c.get("review_stage") == "thin-polish" for c in plan["cut_carriers"])

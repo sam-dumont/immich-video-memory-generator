@@ -24,6 +24,7 @@ from immich_memories.analysis.editorial_structure_budget import (
 from immich_memories.analysis.editorial_thin_catalogue import ThinCatalogue
 from immich_memories.analysis.editorial_thin_gates import GateRefusal, ThinGates
 from immich_memories.analysis.editorial_thin_pages import (
+    favourite_of_its_moment,
     gate_refill_page,
     motion_first,
     newcomer_stories,
@@ -287,6 +288,7 @@ class ThinRefill:
             page = [unit for unit in slots[index].page if unit["asset_id"] not in taken]
             pick = self._choose(slots[index], page[:PAGE_ROWS])
             if pick is not None:
+                pick = favourite_of_its_moment(pick, page, taken)
                 taken.add(pick["asset_id"])
                 picks[index] = pick
         return picks

@@ -8,6 +8,9 @@ never happened.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
+
 from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_replies import film_close_family
@@ -59,7 +62,7 @@ def polish_the_draft(
     except PeriodUnread as exc:
         catalogue, unread = None, str(exc)
     run.polished = catalogue is not None and bool(carriers)
-    return ports.thin.polish(
+    polished = ports.thin.polish(
         carriers,
         judge=ports.judge,
         gates=ThinGates(
@@ -81,4 +84,21 @@ def polish_the_draft(
         protected=source.owner_required_asset_ids,
         subject=source.intent.subject or "",
         close_family=film_close_family(source),
+        era_of=_partition_of(source.intent) if source.intent.voice_per_partition else None,
     )
+    # Recorded like any pass's removals, so the finished-cut check can name the polish.
+    kept = {row["asset_id"] for row in polished}
+    run.cut_carriers.extend(
+        dict(row) | {"reason": "The model polish took it out", "review_stage": "thin-polish"}
+        for row in carriers
+        if row["asset_id"] not in kept
+    )
+    return polished
+
+
+def _partition_of(intent) -> Callable[[str], str | None]:
+    def partition_of(taken: str) -> str | None:
+        part = intent.partition_for(datetime.fromisoformat(taken).date())
+        return part.key if part is not None else None
+
+    return partition_of
