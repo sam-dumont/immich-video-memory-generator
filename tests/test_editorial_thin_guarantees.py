@@ -271,3 +271,25 @@ def test_two_removals_in_a_story_with_one_picture_left_both_refill_from_the_pool
 
     assert sorted(newcomers) == ["near", "spare"]
     assert {slot["outcome"] for slot in record["slots"]} == {"seated"}
+
+
+def test_a_removals_page_offers_only_pictures_that_stand(tmp_path):
+    """April 2021 (09-25): two removals' seats ended 'refused by standing', each pick and its
+    second try refused by the facts, while their pages held pictures that stand. Standing is
+    read from facts and costs no call, so a page offers only rows that stand."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, UNSTEADY, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    for n in range(3):
+        film.shot(f"blur{n}", "S001", START + timedelta(hours=3 + n), f"{UNSTEADY} {n}")
+    film.shot("fine", "S001", START + timedelta(hours=9), "people in the garden")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert newcomers == ["fine"]
+    assert [slot["outcome"] for slot in record["slots"]] == ["seated"]

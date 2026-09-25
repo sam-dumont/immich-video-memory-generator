@@ -333,10 +333,10 @@ class ThinRefill:
     ) -> tuple[list[dict[str, Any]], list[ThinSlot]]:
         """The cut these seats leave, and what happened in each one.
 
-        Every seat picks first, and the gates are asked about the chosen rows only: a page is a
-        whole story, and on the measured year putting every page to the standing gate cost 174
-        requests for 24 picks. A seat whose choice the standing gate refuses picks once more
-        from the same page. The chosen rows that stand are then put to the audience gate together.
+        Every seat picks first, from the first rows of its page the standing facts keep (they
+        ask nothing), and the model-backed gates are asked about the chosen rows only: a page
+        is a whole story. A seat whose choice the standing gate refuses picks once more from
+        the same page. The chosen rows that stand are then put to the audience gate together.
         """
         current = [dict(row) for row in cut]
         taken = {row["asset_id"] for row in current}
@@ -370,6 +370,22 @@ class ThinRefill:
             )
         return current, outcomes
 
+    def _standing_rows(self, slot: ThinSlot, taken: set[str]) -> list[dict[str, Any]]:
+        """The first rows of the seat's page nobody has taken that the standing facts keep.
+
+        Standing is read from the facts the draft used and asks nothing, so a seat is never
+        offered a picture the gate would refuse the moment it is picked.
+        """
+        rows: list[dict[str, Any]] = []
+        free = [unit for unit in slot.offered if unit["asset_id"] not in taken]
+        for start in range(0, len(free), PAGE_ROWS):
+            chunk = free[start : start + PAGE_ROWS]
+            self.gates.settle(chunk, self.tier_of)
+            rows.extend(unit for unit in chunk if self.gates.stands_alone(unit, self.tier_of))
+            if len(rows) >= PAGE_ROWS:
+                break
+        return rows[:PAGE_ROWS]
+
     def _chosen_again(
         self, slot: ThinSlot, current: Sequence[Mapping[str, Any]], taken: set[str]
     ) -> tuple[Mapping[str, Any] | None, GateRefusal | None]:
@@ -378,8 +394,8 @@ class ThinRefill:
         A seat a removal opened is how the film keeps its length, so it is not given up while
         its page still holds a picture nobody has taken.
         """
-        page = [unit for unit in slot.offered if unit["asset_id"] not in taken]
-        pick = self._choose(slot, page[:PAGE_ROWS])
+        page = self._standing_rows(slot, taken)
+        pick = self._choose(slot, page)
         if pick is None:
             return None, None
         pick = favourite_of_its_moment(pick, page, taken)
@@ -415,8 +431,8 @@ class ThinRefill:
         """One pick per pending seat, from the first rows of its page nobody has taken."""
         picks = {}
         for index in pending:
-            page = [unit for unit in slots[index].offered if unit["asset_id"] not in taken]
-            pick = self._choose(slots[index], page[:PAGE_ROWS])
+            page = self._standing_rows(slots[index], taken)
+            pick = self._choose(slots[index], page)
             if pick is not None:
                 pick = favourite_of_its_moment(pick, page, taken)
                 taken.add(pick["asset_id"])
