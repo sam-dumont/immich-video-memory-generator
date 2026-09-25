@@ -182,7 +182,7 @@ def test_a_special_day_is_told_what_the_catalogue_called_it(tmp_path):
 
     assert "an afternoon at a themed bowling alley" in prompt
     assert "2025-12-21: Brussels(6)" in prompt
-    assert "Chypre" in prompt  # the place-name-language rule travels with it
+    assert "the name French gives that same place" in prompt  # the place-language rule
 
 
 def test_an_album_memory_is_told_the_name_somebody_typed(tmp_path):

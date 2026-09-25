@@ -576,22 +576,57 @@ def _calendar_words() -> frozenset[str]:
     return frozenset(words)
 
 
+@lru_cache(maxsize=1)
+def _one_word_places() -> dict[str, frozenset[str]]:
+    """Countries, islands and regions named in one word, in every film language.
+
+    Folded word -> the places it names (a CLDR code or an English area name),
+    so "Chypre", "Cyprus" and "Кипр" are one place and "Chypre" is not "type".
+    """
+    from immich_memories.i18n import SUPPORTED_LOCALES, babel_locale
+    from immich_memories.place_names import area_name_groups
+
+    groups: dict[str, set[str]] = {k: set(v) for k, v in area_name_groups().items()}
+    for code in SUPPORTED_LOCALES:
+        for territory, name in babel_locale(code).territories.items():
+            if territory.isalpha():  # "150" is Europe, "001" the world: not a place visited
+                groups.setdefault(territory, set()).add(name)
+    places: dict[str, set[str]] = {}
+    for key, names in groups.items():
+        for name in names:
+            if len(words := _name_words(name)) == 1:
+                places.setdefault(words[0].casefold(), set()).add(key)
+    return {word: frozenset(keys) for word, keys in places.items()}
+
+
+def _names_a_fact(word: str, known: set[str]) -> bool:
+    """Whether `word` is a name the facts carry: the same place, or close in spelling."""
+    places = _one_word_places().get(word.casefold())
+    if places is None:
+        return _is_a_known_name(word, known)
+    return any(places & _one_word_places().get(name, frozenset()) for name in known)
+
+
 def invented_name(line: str, facts: str) -> str | None:
     """The first name this line uses that the facts do not, if it uses one.
 
     A capitalised word past the first is a proper noun in the languages the
-    title screens speak; the first word is capitalised by orthography alone and
-    proves nothing either way. So this catches an invented name, not invention:
-    a reworded fact passes, a festival nobody recorded does not.
+    title screens speak. The first word is capitalised by orthography alone, so
+    it counts only when it is a country, island or region's whole name. A place
+    passes only when the facts name that same place, in any language. So this
+    catches an invented name, not invention: a reworded fact passes, a festival
+    or a country nobody recorded does not.
     """
     known = {word.casefold() for word in _name_words(facts)}
+    words = _name_words(line)
+    named = [word for word in words[1:] if word[:1].isupper()]
+    if words and words[0].casefold() in _one_word_places():
+        named.insert(0, words[0])
     return next(
         (
             word
-            for word in _name_words(line)[1:]
-            if word[:1].isupper()
-            and word.casefold() not in _calendar_words()
-            and not _is_a_known_name(word, known)
+            for word in named
+            if word.casefold() not in _calendar_words() and not _names_a_fact(word, known)
         ),
         None,
     )
