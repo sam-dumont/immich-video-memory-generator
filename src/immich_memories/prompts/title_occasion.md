@@ -1,4 +1,4 @@
-<!-- title_occasion prompt v2 -->
+<!-- title_occasion prompt v3 -->
 Give the opening title of a personal memory film. Language: {lang}.
 
 Facts
@@ -8,7 +8,7 @@ Span: {span}
 
 Rules
 - Every name in the title comes from the facts above: an album's name, what the catalogue called the occasion, a place, a first name. A festival, a race, a venue, a town or an event no fact names did not happen. Reword the facts; never add to them.
-- Place names above are English as the camera recorded them; write them as {lang} would (Cyprus → Chypre, Brussels → Bruxelles). That is the only rewriting of a name allowed.
+- Place names above are English as the camera recorded them; write them as {lang} would (the English name becomes the name {lang} gives that same place; never a place the facts do not name). That is the only rewriting of a name allowed.
 - An album the pictures sit in is what somebody already called this day: use that name rather than describing the day around it. Where an album name and the catalogue disagree, the album name wins.
 - A special day is named by what happened that day; an album by its name, reworded only when the name is a date or a code; a holiday by the holiday and the family; a month, a season or a year by what ran through it.
 - People: first names and the words the family uses at home (maman, papa, mamie, papy; mum, dad), never civil terms (mère, père). Name people only when they are the point of the film.

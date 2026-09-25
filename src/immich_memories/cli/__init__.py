@@ -154,6 +154,7 @@ from immich_memories.cli.hardware_cmd import register_hardware_commands  # noqa:
 from immich_memories.cli.models_cmd import register_models_commands  # noqa: E402
 from immich_memories.cli.music_cmd import register_music_commands  # noqa: E402
 from immich_memories.cli.people_cmd import register_people_commands  # noqa: E402
+from immich_memories.cli.pictures_cmd import register_pictures_commands  # noqa: E402
 from immich_memories.cli.prepare_cmd import register_prepare_commands  # noqa: E402
 from immich_memories.cli.runs import register_runs_commands  # noqa: E402
 from immich_memories.cli.scheduler_cmd import register_scheduler_commands  # noqa: E402
@@ -166,6 +167,7 @@ register_hardware_commands(main)
 register_titles_commands(main)
 register_music_commands(main)
 register_runs_commands(main)
+register_pictures_commands(main)
 register_scheduler_commands(main)
 register_special_day_commands(main)
 register_people_commands(main)

@@ -10,11 +10,14 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from babel import Locale
+from babel.dates import format_date, format_skeleton
+
 from immich_memories.i18n import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
+    babel_locale,
     detect_system_locale,
-    get_month_name,
     get_weekday_name,
 )
 from immich_memories.processing.caption_image import (
@@ -108,14 +111,34 @@ def captions_for_timeline(
     return captions
 
 
+# Scripts that write a date without spaces, weekday after the day ("14日木曜日").
+_CJK = frozenset({"ja", "zh-Hans", "ko"})
+
+
+def _date_locale(locale_code: str) -> Locale:
+    # WHY en_GB: Babel's "en" is American ("August 10"); the captions have
+    # always said "10 August", and a changed English caption was not asked for.
+    return Locale.parse("en_GB") if locale_code == "en" else babel_locale(locale_code)
+
+
 def _worded(taken: date | None, same_month: bool, same_year: bool, locale_code: str) -> str:
+    """The date the way the film's language writes it (CLDR), from the day up to what is new."""
     if taken is None:
         return ""
+    where = _date_locale(locale_code)
     if same_month:
+        if locale_code in _CJK:
+            return _plain_spaces(format_skeleton("EEEEd", taken, locale=where))
         return f"{get_weekday_name(taken.weekday(), locale_code)} {taken.day}"
     if same_year:
-        return f"{taken.day} {get_month_name(taken.month, locale_code)}"
-    return f"{taken.day} {get_month_name(taken.month, locale_code)} {taken.year}"
+        return _plain_spaces(format_skeleton("MMMMd", taken, locale=where))
+    return _plain_spaces(format_date(taken, format="long", locale=where))
+
+
+def _plain_spaces(text: str) -> str:
+    # WHY: CLDR puts no-break spaces in dates ("2025\u202fг."); the caption
+    # face has no glyph for them, and a caption never wraps anyway.
+    return text.replace("\u202f", " ").replace("\xa0", " ")
 
 
 def _parsed_date(clip: Any) -> date | None:

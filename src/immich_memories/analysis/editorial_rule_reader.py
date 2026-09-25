@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from operator import itemgetter
 from statistics import median
@@ -14,8 +14,13 @@ import numpy as np
 from immich_memories.analysis.editorial_clip_frames import CLIP_FRAMES_HEAD, SUBJECT_OFTEN_MISSING
 from immich_memories.analysis.editorial_home_radius import home_of, near_home_of
 from immich_memories.analysis.editorial_rule_episodes import RULES_VERSION
+from immich_memories.analysis.editorial_shareability import owner_cleared_ids
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
-from immich_memories.analysis.editorial_standing_facts import carries_nothing
+from immich_memories.analysis.editorial_standing_facts import (
+    carries_nothing,
+    face_evidence,
+    shows_only_a_body_part,
+)
 from immich_memories.analysis.editorial_story_reading import (
     PeriodStory,
     StoryEpisode,
@@ -64,6 +69,7 @@ class NoModelJudge:
 class RuleStructureReader:
     def __init__(self, source) -> None:
         self.source = source
+        self._face: Callable[[str], bool | None] | None = None
 
     def worthiness(self, wall, near_home):
         assets = self.source.assets
@@ -335,20 +341,32 @@ class RuleStructureReader:
         record(result.as_record())
         return result
 
+    def _face_on(self, asset_id: str) -> bool | None:
+        if self._face is None:
+            self._face = face_evidence(self.source.assets)
+        return self._face(asset_id)
+
     def standing(self, asset_id: str) -> int:
         asset = self.source.assets[asset_id]
-        if asset.is_favorite:
+        if asset.is_favorite or asset_id in self.source.owner_required_asset_ids:
             return 2
         record = self.source.audience_annotations.get(asset_id)
         heads = dict(record.heads) if record else {}
         line = self.source.annotations.get(asset_id, "")
+        description = getattr(record, "description", None)
+        if shows_only_a_body_part(heads, description, face=self._face_on(asset_id)):
+            return 0
         # An exposure hold says who may see a picture, not whether it stands. The household may
         # see it, so a family film judges it like any other; a film sent further keeps the zero.
-        exposure_zero = exposure_flagged(heads) and self.source.audience != "family"
+        exposure_zero = (
+            exposure_flagged(heads)
+            and self.source.audience != "family"
+            and asset_id not in owner_cleared_ids(self.source.shareability_flags)
+        )
         if (
             exposure_zero
             or heads.get(CLIP_FRAMES_HEAD) == SUBJECT_OFTEN_MISSING
-            or carries_nothing(heads, line, getattr(record, "description", None))
+            or carries_nothing(heads, line, description, face=self._face_on(asset_id))
         ):
             return 0
         if self.source.intent.product == "album":

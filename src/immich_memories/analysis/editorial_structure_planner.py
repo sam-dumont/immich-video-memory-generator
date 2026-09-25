@@ -66,12 +66,14 @@ from immich_memories.analysis.editorial_structure_finishing import (
     apply_audience_gate,
     drop_filler_nothing_vouches_for,
     final_duplicate_review,
+    frame_quality_of,
     held_by_gate,
     replacement_offers,
     resolve_motion_and_timing,
     seat_again_after_review,
     trim_to_timing,
 )
+from immich_memories.analysis.editorial_structure_lines import strangers_only
 from immich_memories.analysis.editorial_structure_material import (
     Material,
     Wall,
@@ -90,7 +92,10 @@ from immich_memories.analysis.editorial_structure_record import (
     shave_content_duration,
 )
 from immich_memories.analysis.editorial_thin_step import polish_the_draft, shows_life
-from immich_memories.analysis.editorial_unvouched_filler import filler_evidence
+from immich_memories.analysis.editorial_unvouched_filler import (
+    filler_evidence,
+    owner_vouches_for,
+)
 from immich_memories.analysis.subject_framing import framing_visibility
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
@@ -476,6 +481,7 @@ def _select(
         owner_required=source.owner_required_asset_ids,
         close_family_of=lambda asset_id: close_of(selection.lines.get(asset_id, "")),
         gate=gate,
+        frame_quality=frame_quality_of(source),
     )
     run.selection_stages["after_final_duplicate_review"] = len(run.carriers)
     announce_count(len(run.carriers), "after the duplicate review")
@@ -638,6 +644,8 @@ def _story_selection(
         ),
         trips=trips,
         looks_alike=looks_alike,
+        strangers_only=strangers_only(source.assets, source.audience_annotations),
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
         film_span=(source.case.ranges[0].start.date(), source.case.ranges[-1].end.date()),
         near_home=_near_home_test(source, wall),
         banked=banked,

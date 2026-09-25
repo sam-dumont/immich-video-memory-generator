@@ -175,8 +175,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   `editorial_carrier_eligibility.py`). A carrier is a shot before it is rendered.
 - **Standing**: does a picture stand by itself, and may it serve as context inside its story.
   Answered on every tier from the facts, never asked of a model (`editorial_standing_facts.py`: two
-  points tables, heads alone or heads plus the ingest caption; a caption naming a person or an
-  animal is never refused), and applied by `StandingGate` (`editorial_story_standing.py`).
+  points tables, heads alone or heads plus the ingest caption; a caption naming an animal, or a
+  person Immich found a face for, is never refused; `face_evidence` reads the faces), and applied
+  by `StandingGate` (`editorial_story_standing.py`).
 - **Look-alike / scene print**: a story's next picture is kept only if it adds to the ones already
   kept (`editorial_story_lookalike.py`). The final review drops repeats by perceptual hash and by
   scene print, the pooled DINOv2 vector of a preview, which catches the same scene in another
@@ -198,7 +199,11 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 - **Audience / shareability**: the family-viewing gate. Flags hold first (`never_auto`, detector
   holds, exposure chains), then a reader answers `share`, `family_only` or `do_not_show` from the
   caption, heads and flags ingest banked. The strictest answer wins, the gate only ever tightens,
-  and only the owner clears a hold (`editorial_shareability*.py`). In a film shared outside the
+  and only the owner clears a hold (`editorial_shareability*.py`): per picture, from the pool,
+  the storyboard or `pictures clear-hold`, written by `store/owner_decisions.py` as `source='owner'`
+  flag rows. A cleared unit is `share` in `AudienceGate.verdict_of` before any check or banked hold,
+  and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
+  pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says
   (`editorial.strict_sharing`, on by default; applied per film, never banked). On the model tier
   the activity question (a bath, a nappy change, ...) may be answered by **Laya**, a local 0.4B
@@ -360,7 +365,7 @@ src/immich_memories/
 │   ├── editorial_rule_reader.py    # Rules for worthiness, grouping and standing; shared allocation
 │   ├── editorial_rule_banked_facts.py # What a model already answered, read by the draft that asks nothing
 │   ├── editorial_story_standing.py # StandingGate: does a picture stand by itself, and may it serve as context
-│   ├── editorial_standing_facts.py # Standing from facts, no model: heads (+ caption words), living subjects never refused
+│   ├── editorial_standing_facts.py # Standing from facts, no model: heads (+ caption words), faces and animals never refused
 │   ├── editorial_final_hash_review.py # The final duplicate review every cut runs: cached preview hashes, then scene prints across stories
 │   ├── editorial_scene_prints.py   # CachedScenePrints: a preview's pooled DINOv2 pack, banked, for the scene half of that review
 │   ├── editorial_family_seat.py    # A close family member with no shot gets one seat, after the draft, on every tier
@@ -549,6 +554,7 @@ src/immich_memories/
 │   ├── kernel_particles.py     # ParticleField: bokeh drift / fireworks physics
 │   ├── kernel_text.py          # TitleTextRenderer: SDF + PIL text compositing
 │   ├── text_layout.py          # Where the two text blocks sit, and the gate that refuses an overlap
+│   ├── line_breaking.py        # Where a title breaks into lines: balanced, inside the frame, CJK-aware
 │   ├── letter_case.py          # Capitals the way each script sets them, for titles and captions
 │   ├── kernel_blur.py          # AnimatedBlur: quarter-res deblur Gaussian, held while it stands
 │   ├── gpu_kernel_backend.py   # The only `import quadrants as ti` in the tree (behind the probe)
@@ -589,6 +595,7 @@ src/immich_memories/
 │   ├── cache_cmd.py            # `cache stats/export/import/backup`
 │   ├── titles.py               # `titles test`, `titles fonts`
 │   ├── runs.py                 # `runs list/show/story/why/stats/storage/delete`
+│   ├── pictures_cmd.py         # `pictures show/clear-hold/never-use/undo/list`: the owner's word on one picture
 │   ├── music_cmd.py            # `music search/analyze/add`
 │   ├── hardware_cmd.py         # `hardware` info display
 │   ├── _helpers.py             # Shared console/print utilities
@@ -627,6 +634,7 @@ src/immich_memories/
 │       ├── memory_run.py           # The cut that outlives its page: install check, arm, poll, cancel, recover;
 │       │                           # a refused or failed cut lands in AppState.cut_failure, the brief's red card
 │       ├── memory_storyboard.py    # The storyboard tab: the cut in the order it plays
+│       ├── picture_decisions.py    # Clear hold / Never use / Undo under a pool picture or a storyboard shot
 │       ├── cut_progress_view.py    # A cut in progress: its pictures, the bar, the stage lines
 │       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
 │       ├── memory_story_data.py    # The only UI reader of plan.private.json -> frozen StoryView
@@ -685,6 +693,8 @@ src/immich_memories/
 │   │                           # with what produced it (question, keyframes, admitting residual)
 │   ├── library_overviews.py    # Read-only: the library's own account of a period, written by cataloguing
 │   ├── library_catalogue.py    # The only writer of that table: content-addressed period accounts
+│   ├── owner_decisions.py      # The only writer of the owner's per-picture decisions (clear hold,
+│   │                           # never use): `source='owner'` rows in `flags`, one per picture
 │   ├── cut_measurements.py     # What a cut measures and banks: a Live Photo's motion residual, a
 │                               # clip's speech regions and a Live burst's companion clock offsets,
 │                               # keyed the same way (a missing row is "not measured", never
@@ -730,6 +740,7 @@ src/immich_memories/
 │   ├── cut_progress.py         # Where a run is, as one record the page and the terminal both read
 │   ├── run_index.py            # A run id resolved to its attempt directory, for both surfaces
 │   ├── candidate_fates.py       # Saved pool outcomes + decision-log reader shared with runs why
+│   ├── picture_holds.py         # What holds a picture + the owner's decision, for the pool, storyboard and CLI
 │   ├── caption_origins.py      # One picture's caption origin, and the run's distinct-origin line
 │   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
 │   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
@@ -898,6 +909,7 @@ version and capabilities first); deployment files are `services/render-worker/co
 - **Tests**: `tests/` directory, run with `make test`
 - **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Real-Immich gate**: `make test-immich-gate` (`tests/integration/immich_gate/`: compose file, `seed.py`, `media.py`) runs on every PR against Immich v2 and v3 in Docker (`.github/workflows/immich-gate.yml`, required check `Immich Gate`); the pinned images ride in the Actions cache per version (`scripts/immich_gate_images.sh`, `make immich-gate-fetch`/`immich-gate-save`).
+- **Public E2E library**: `make test-e2e-public` (`tests/public_e2e/`), on demand only. Households of openly licensed pictures (`households/<name>/`: `household.yaml` script, public `manifest.csv` and `CREDITS.md`, `snapshot.lock`) are built once into a pinned Immich with ML (`build.py`: `prepare` via `sources.py`/`stamping.py` from the CommonCatalog index `index_commoncatalog.py`/`timelines.py`, then `load`, `name`, `snapshot`; docker side in `stack.py` + `docker-compose.yml`), snapshotted privately, and restored for cold film runs (`run.py`, `films.py`) judged by `judge.py` (cut invariants, capture order, clutter, person presence; metrics, contact sheets, report). Design: `docs/research/public-e2e-library.md`.
 - **Pre-commit**: Run `make ci` before committing
 
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.

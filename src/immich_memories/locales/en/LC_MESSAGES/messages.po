@@ -39,7 +39,7 @@ msgid "title.season_year"
 msgstr "{season} {year}"
 
 msgid "title.season_year_span"
-msgstr "{season} {start_year}-{end_year}"
+msgstr "{season} {start_year}–{end_year_short}"
 
 msgid "title.on_this_day"
 msgstr "{month} {day}"

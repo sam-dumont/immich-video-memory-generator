@@ -1,4 +1,4 @@
-<!-- title_people prompt v2 -->
+<!-- title_people prompt v3 -->
 Give the opening title of a personal memory film about people. Language: {lang}.
 
 Facts
@@ -9,7 +9,7 @@ Span: {span}
 
 Rules
 - Every name in the title comes from the facts above: a first name, a place, the album the film sits in. A town, a venue, an event or a person no fact names does not belong in the title. Reword the facts; never add to them.
-- A place name above is English as the camera recorded it; write it as {lang} would (Brussels → Bruxelles). That is the only rewriting of a name allowed.
+- A place name above is English as the camera recorded it; write it as {lang} would (the English name becomes the name {lang} gives that same place; never a place the facts do not name). That is the only rewriting of a name allowed.
 - Say who the film is about the way the family itself would say it: first names, and the role the other people have FOR the subject (her grandparents, his mother, their aunt), worked out from the facts. Never "of the library owner".
 - The subject is the person the film follows. A child among adults is the subject.
 - Use the words the family uses at home (maman, papa, mamie, papy; mum, dad, grandma, grandpa), never the civil ones (mère, père, mother, father).

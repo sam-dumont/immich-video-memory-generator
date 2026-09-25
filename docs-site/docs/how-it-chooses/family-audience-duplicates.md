@@ -87,7 +87,9 @@ slot stays empty.
 flowchart TD
   shot["a shot of the cut<br/>AudienceGate.verdict_of"] --> rule{"carrier rule?<br/>excluded_carrier_sources"}
   rule -- yes --> dns["do_not_show"]
-  rule -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
+  rule -- no --> owner{"you cleared it?<br/>owner_cleared_unit"}
+  owner -- yes --> share["share, nothing asked"]
+  owner -- no --> floor["detector holds<br/>floors_under: nsfw_marqo on the still, its frames,<br/>its Live clip; uncovered_person; exposure chain"]
   floor --> tier{"preparation tier<br/>editorial_shareability_tiers.audience_check_for"}
   tier -- "no_captions, or no model" --> ra["rule_audience<br/>never says share"]
   tier -- "metadata_only" --> wa["withheld_audience<br/>family_only for all"]
@@ -105,9 +107,9 @@ flowchart TD
 across a video, and on a Live Photo's clip; the `uncovered_person` head as a second opinion; and the
 exposure chain: a five-minute capture run is held whole when at least half of it and at least three
 of its captures are flagged (`editorial_exposure_chains.py`). All of these give `family_only`.
-Nothing a later reading says lifts a detector's hold, and nothing in the app lifts one either. A
-false positive costs a shot in a wider film; a false negative puts the wrong picture in front of the
-wrong people.
+Nothing a later reading says lifts a detector's hold. Only you do, one picture at a time, after
+looking at it (see [Your word on a picture](#your-word-on-a-picture)). A false positive costs a shot
+in a wider film; a false negative puts the wrong picture in front of the wrong people.
 
 **On a plain NAS** (`no_captions`, or any film with no model), the answer is `family_only` for every
 shot, with the finding that holds it. The heads can't see the private activities only a written
@@ -136,6 +138,27 @@ there, any shot a head or an exposure flag marked stays at `family_only` even wh
 the shots whose exposure probability sits between 0.2 and 0.5 that nothing else already holds.
 Nothing in the cut changes. The run summary prints the count, and `runs why` shows the note.
 
+## Your word on a picture
+
+You answer a hold per picture, in the media pool, on the storyboard or with `pictures` in the CLI.
+The walkthrough with screenshots is on [Overrule it](./overrule-it.md#your-word-on-a-picture). The
+rules:
+
+- **Clear hold** is offered where something holds the picture: a detector flagged it or its Live
+  clip, or an earlier cut banked a hold (a caption that names a private moment, most of its capture
+  run flagged). A cleared unit is `share` in `AudienceGate.verdict_of` before any check runs, on every
+  tier, and no banked hold or earlier refusal comes back. A unit is cleared only when you cleared
+  every picture it shows. A carrier rule still refuses first.
+- **Never use** writes `never_auto`: the picture stays evidence that its moment happened and is
+  never a carrier. A tick doesn't bring it back.
+- **Undo** forgets the decision, and the banked holds apply again, since clearing never deleted them.
+
+Nothing clears a hold by itself: no reading, no model, no bulk action. The decisions are
+`source='owner'` rows in the library's annotation store (`store/owner_decisions.py`), one per
+picture, so they last across runs and scopes and the web page and the CLI can't overwrite each
+other's. They stay off the line a reader sees, so a decision re-asks no reading. `runs why ASSET_ID`
+prints yours last.
+
 ## Duplicates
 
 Sameness is decided in three places, from what ingest banked (the preview hash and the scene print).
@@ -151,12 +174,16 @@ No tier asks a model to compare two pictures.
    - a scene print (the pooled DINOv2 vector of the preview, banked in `scene-prints.sqlite`) at a
      cosine of 0.65 or more, within 14 days, across stories. That catches the same trail at dusk
      shot twice from different spots, which hashes as strangers. Two favourites are the same scene
-     only on the same day.
+     only within 2 days of each other: the same pose in the same place on consecutive days is one
+     moment you starred twice, and further apart it is two moments.
 
 Which frame stays: one you ticked, then the favourite, then the one that moves (a video before a Live
-Photo), then a close family member's only shot, then the earlier one. A moving frame is never a
+Photo), then a close family member's only shot, then (between two favourites) the one with more
+faces Immich found and then the sharper, then the earlier one. A moving frame is never a
 repeat of a still. A scene repeat is less certain than a hash repeat, so it leaves only when a
-replacement takes its slot or the film still reaches 85 % of its length without it. Every
+replacement takes its slot or the film still reaches 85 % of its length without it. Two starred
+twins are the exception: the second leaves either way, and its slot goes to a refill when there is
+one. The record names each such pair under `collapsed_favourites`. Every
 replacement passes the family-viewing gate first. The `final_duplicate_review` record lists each
 removal, the distance or cosine behind it, and who kept the slot.
 
@@ -166,7 +193,8 @@ Each pass keeps its promise when it runs, and a later pass can undo it without k
 the last pass the cut is read once against all of them (`editorial_cut_invariants.py`):
 
 1. every close family member the seat owes a shot has one, or the seat recorded why not;
-2. no non-favourite carries a moment whose favourite could have carried it;
+2. no non-favourite carries a moment whose favourite could have carried it (a favourite folded into
+   its starred twin counts as shown by the twin);
 3. in a film split into years or ranges, every one with a story has a shot;
 4. a Live Photo whose clip measured at least 1.5 with its subject in frame plays as motion;
 5. nothing a carrier rule or the gate refuses, and nothing the gate never judged, is in the cut;

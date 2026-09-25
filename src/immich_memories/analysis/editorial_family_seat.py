@@ -20,6 +20,7 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     withheld_by_bank,
 )
 from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+from immich_memories.analysis.editorial_shareability import owner_cleared_ids
 from immich_memories.analysis.editorial_shareability_audience import exposure_flagged
 from immich_memories.analysis.editorial_story_replies import close_family_on, film_close_family
 from immich_memories.analysis.editorial_story_standing import StandingGate
@@ -199,10 +200,14 @@ def film_refusal(
     """Whether this film refuses a picture as a carrier: a carrier rule, a banked refusal, or
     (for a film shared beyond the family) the exposure head's hold."""
 
+    cleared = owner_cleared_ids(source.shareability_flags)
+
     def refused(asset: str) -> bool:
         heads = source.audience_annotations.get(asset)
-        shared_hold = source.audience != "family" and exposure_flagged(
-            dict(heads.heads) if heads else {}
+        shared_hold = (
+            source.audience != "family"
+            and exposure_flagged(dict(heads.heads) if heads else {})
+            and asset not in cleared
         )
         return asset in excluded or withheld(asset) or shared_hold
 

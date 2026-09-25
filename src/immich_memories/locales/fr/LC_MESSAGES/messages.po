@@ -36,10 +36,10 @@ msgid "title.month_year"
 msgstr "{month} {year}"
 
 msgid "title.month_range_same_year"
-msgstr "{start_month} à {end_month} {year}"
+msgstr "De {start_month_lc} à {end_month_lc} {year}"
 
 msgid "title.month_range_different_year"
-msgstr "{start_month} {start_year} à {end_month} {end_year}"
+msgstr "De {start_month_lc} {start_year} à {end_month_lc} {end_year}"
 
 msgid "title.season_year"
 msgstr "{season} {year}"

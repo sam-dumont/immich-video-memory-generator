@@ -1,0 +1,70 @@
+# The Immich a public household is built in and restored into (`make public-e2e-build`,
+# `make test-e2e-public`).
+#
+# The gate's stack (tests/integration/immich_gate) plus the machine-learning container
+# and named volumes instead of tmpfs: a household's library and database have to
+# outlive the containers so they can be snapshotted. The Makefile pins every image by
+# digest and names the compose project after the household, so each household gets its
+# own volumes. Machine learning runs only at build time (profile `ml`); a restored
+# household already holds its faces and embeddings, the way a NAS without ML reads it.
+name: public-e2e
+
+services:
+  immich-server:
+    image: ${PUBLIC_E2E_SERVER_IMAGE:?set by the Makefile}
+    environment:
+      DB_HOSTNAME: database
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: redis
+      IMMICH_MACHINE_LEARNING_ENABLED: ${PUBLIC_E2E_ML:-false}
+      IMMICH_MACHINE_LEARNING_URL: http://immich-machine-learning:3003
+      IMMICH_IGNORE_MOUNT_CHECK_ERRORS: "true"
+      TZ: UTC
+    volumes:
+      - library:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    ports:
+      - "${PUBLIC_E2E_PORT:-2298}:2283"
+
+  immich-machine-learning:
+    profiles: [ml]
+    image: ${PUBLIC_E2E_ML_IMAGE:?set by the Makefile}
+    volumes:
+      - model-cache:/cache
+
+  redis:
+    image: ${PUBLIC_E2E_VALKEY_IMAGE:?set by the Makefile}
+    healthcheck:
+      test: redis-cli ping || exit 1
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    command: -c shared_preload_libraries=vchord.so -c config_file=/var/lib/postgresql/data/postgresql.conf
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - database:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d immich"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+volumes:
+  library:
+  database:
+  model-cache:

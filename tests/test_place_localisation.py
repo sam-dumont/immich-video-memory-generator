@@ -350,3 +350,11 @@ class TestGeocodingReachesTheCut:
         captioned = prepare_location_captions(self._params(tmp_path, True), [self._clip()])
 
         assert captioned[0].caption_location_name == "Nicosie, Chypre"
+
+
+def test_a_chinese_or_japanese_caption_place_takes_its_own_comma():
+    from immich_memories.i18n_places import place_label
+
+    assert place_label("Tokyo", "Japan", "ja") == "Tokyo、日本"
+    assert place_label("Hangzhou", "China", "zh-Hans") == "Hangzhou，中国"
+    assert place_label("Seoul", "South Korea", "ko") == "Seoul, 대한민국"

@@ -5,6 +5,8 @@ them (the preview hash and the scene print) and never sends a pair's pixels to a
 capable the configured reader is.
 """
 
+from dataclasses import replace
+
 import numpy as np
 
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
@@ -102,3 +104,35 @@ def test_the_finished_film_drops_a_scene_it_already_shows_when_it_has_room(tmp_p
     assert [row["asset_id"] for row in review["removals"]] == ["picture-001"]
     assert review["scene"]["pairs_compared"] > 0
     assert "picture-001" not in [c["asset_id"] for c in plan["carriers"]]
+
+
+def test_two_starred_frames_of_one_scene_leave_one_and_the_cut_record_names_the_pair(tmp_path):
+    """The owner's rule: near-identical favourites a short time apart are one moment."""
+    captured = source(tmp_path, seconds=12, pictures=4)
+    for asset_id in ("picture-000", "picture-001"):
+        captured.assets[asset_id].is_favorite = True
+    # The later frame is the sharper: it is the one the film keeps.
+    captured = replace(
+        captured, pixel_facts={"picture-000": (100.0, 120.0), "picture-001": (400.0, 120.0)}
+    )
+    prints = {
+        "picture-000": np.array([1.0, 0.0, 0.0]),
+        "picture-001": np.array([0.95, 0.3, 0.0]),
+        "picture-002": np.array([0.0, 1.0, 0.0]),
+        "picture-003": np.array([0.0, 0.0, 1.0]),
+    }
+
+    plan = plan_structure(
+        captured,
+        StructurePlannerPorts(
+            judge=ControlledStoryJudge(),
+            thumbnail_hash=_distinct_preview,
+            scene_print=prints.get,
+        ),
+    ).plan
+
+    collapsed = plan["final_duplicate_review"]["collapsed_favourites"]
+    assert [(row["asset_id"], row["keeper"]) for row in collapsed] == [
+        ("picture-000", "picture-001")
+    ]
+    assert "picture-001" in [c["asset_id"] for c in plan["carriers"]]

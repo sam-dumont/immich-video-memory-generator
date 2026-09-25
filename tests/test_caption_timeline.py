@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.clip_caption import captions_for_timeline
 
@@ -152,8 +154,31 @@ class TestDateWordingFollowsTheSpan:
         juin, aout = captions_for_timeline(
             [_clip("2025-06-21"), _clip("2025-08-10")], locale_code="fr"
         )
-        assert juin.date == "21 Juin"
-        assert aout.date == "10 Août"
+        assert juin.date == "21 juin"
+        assert aout.date == "10 août"
+
+    @pytest.mark.parametrize(
+        ("locale", "day_month", "full"),
+        [
+            ("de", "10. August", "10. August 2025"),
+            ("es", "10 de agosto", "10 de agosto de 2025"),
+            ("pl", "10 sierpnia", "10 sierpnia 2025"),
+            ("ru", "10 августа", "10 августа 2025 г."),
+            ("ja", "8月10日", "2025年8月10日"),
+            ("zh-Hans", "8月10日", "2025年8月10日"),
+            ("ko", "8월 10일", "2025년 8월 10일"),
+        ],
+    )
+    def test_a_date_is_written_the_way_its_language_writes_it(self, locale, day_month, full):
+        # "14 8月" and "14 Sierpień" were the English word order with the local month.
+        _, within_year = captions_for_timeline(
+            [_clip("2025-06-21"), _clip("2025-08-10")], locale_code=locale
+        )
+        _, across_years = captions_for_timeline(
+            [_clip("2024-06-21"), _clip("2025-08-10")], locale_code=locale
+        )
+
+        assert (within_year.date, across_years.date) == (day_month, full)
 
 
 class TestCaptionFilters:
@@ -270,3 +295,9 @@ class TestCaptionsOutsideTheCaptionFont:
 
         assert latin.startswith("drawtext=")
         assert hebrew.startswith("null[date_frame]")
+
+
+def test_a_japanese_weekday_follows_its_day():
+    captions = captions_for_timeline([_clip("2025-08-10")], locale_code="ja")
+
+    assert captions[0].date == "10日日曜日"
