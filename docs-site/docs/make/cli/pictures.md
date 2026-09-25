@@ -3,6 +3,8 @@ sidebar_position: 6
 title: pictures
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # pictures
 
 Reader: power user.
@@ -13,6 +15,29 @@ place, so either one sees what the other did. Every tier reads it in every later
 the [CLI reference](../../reference/cli-reference.md#pictures).
 
 The asset id is the one `runs why`, `runs story` and Immich show.
+
+```bash
+$ immich-memories pictures show trip-swim-02
+Held: a nudity detector flagged it.
+
+$ immich-memories pictures clear-hold trip-swim-02
+Held: a nudity detector flagged it.
+Once cleared, every film may use it, and nothing the app reads later puts the
+hold back. `pictures undo` does.
+Clear the hold on trip-swim-02? [y/N]: y
+✓ Cleared: trip-swim-02 can play in the next cut.
+
+$ immich-memories pictures never-use home-rain-window-01
+✓ home-rain-window-01 won't be in any film from the next cut on.
+
+$ immich-memories pictures list
+home-rain-window-01  never use
+trip-swim-02  hold cleared
+```
+
+The same picture in the media pool, after that `clear-hold`:
+
+<ThemedScreenshot name="pictures-pool-cleared" alt="The pool card of the cleared picture: 'You cleared its hold (a nudity detector flagged it).'" />
 
 ## pictures show
 
@@ -54,4 +79,4 @@ immich-memories pictures list                # every picture you cleared or rule
 ```
 
 A Live Photo is one picture: a decision on its still covers its clip too. Why these rules:
-[Family, audience and duplicates](../../how-it-chooses/family-audience-duplicates.md#your-word-on-a-picture).
+[Your word on a picture](../../how-it-chooses/overrule-it.md#your-word-on-a-picture).

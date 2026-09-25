@@ -22,11 +22,12 @@ pytestmark = pytest.mark.e2e
 _ROOT = Path(__file__).resolve().parents[2]
 
 
-def _store(launch_workspace) -> Path:
+def store_of(launch_workspace) -> Path:
     return launch_workspace.cache_dir / "annotations.sqlite"
 
 
-def _flag_by_the_detector(store: Path, asset_id: str) -> None:
+def flag_by_the_detector(store: Path, asset_id: str) -> None:
+    """Bank a nudity-detector `yes` for one stock picture, as ingest would."""
     owner_decisions.forget(store, "nobody")  # the store and its schema
     version = Config().editorial.head_versions["nsfw_marqo"]
     with sqlite3.connect(store) as connection:
@@ -69,11 +70,11 @@ def _cli(launch_workspace, *args: str) -> str:
 def test_never_use_from_the_storyboard_and_clear_a_hold_from_the_pool(
     page: Page, launch_app_url: str, launch_workspace
 ) -> None:
-    store = _store(launch_workspace)
+    store = store_of(launch_workspace)
     shot = CARRIERS[0].asset_id
     left_out = next(picture for picture in LIBRARY if picture not in CARRIERS)
     held = left_out.asset_id
-    _flag_by_the_detector(store, held)
+    flag_by_the_detector(store, held)
     try:
         _brief_for_june(page, launch_app_url)
         page.get_by_role("button", name="Cut", exact=True).click()

@@ -140,22 +140,24 @@ Nothing in the cut changes. The run summary prints the count, and `runs why` sho
 
 ## Your word on a picture
 
-Two buttons under every picture in the media pool and every shot on the storyboard, and the same two
-in the CLI (`pictures clear-hold` and `pictures never-use`):
+You answer a hold per picture, in the media pool, on the storyboard or with `pictures` in the CLI.
+The walkthrough with screenshots is on [Overrule it](./overrule-it.md#your-word-on-a-picture). The
+rules:
 
-- **Clear hold** shows where something holds the picture: a detector flagged it or its Live clip, or
-  an earlier cut banked a hold on it (a caption that names a private moment, most of its capture run
-  flagged). It asks first and shows the picture. Once cleared, the gate says `share` for it without
-  asking anything, on every tier, and no banked hold or earlier refusal comes back. It doesn't lift a
-  carrier rule: a screenshot stays a screenshot.
-- **Never use** keeps the picture out of every film from the next cut on. It stays evidence that its
-  moment happened, and never plays. A tick in the pool doesn't bring it back.
-- **Undo** forgets what you decided, and the app's own holds apply again.
+- **Clear hold** is offered where something holds the picture: a detector flagged it or its Live
+  clip, or an earlier cut banked a hold (a caption that names a private moment, most of its capture
+  run flagged). A cleared unit is `share` in `AudienceGate.verdict_of` before any check runs, on every
+  tier, and no banked hold or earlier refusal comes back. A unit is cleared only when you cleared
+  every picture it shows. A carrier rule still refuses first.
+- **Never use** writes `never_auto`: the picture stays evidence that its moment happened and is
+  never a carrier. A tick doesn't bring it back.
+- **Undo** forgets the decision, and the banked holds apply again, since clearing never deleted them.
 
-Nothing clears a hold by itself: no reading, no model, no bulk action. A Live Photo is one picture,
-so the decision covers its clip too. The decisions are rows in the library's annotation store
-(`store/owner_decisions.py`), one per picture, so they last across runs and scopes, and the web page
-and the CLI can't overwrite each other's. `runs why ASSET_ID` prints yours last.
+Nothing clears a hold by itself: no reading, no model, no bulk action. The decisions are
+`source='owner'` rows in the library's annotation store (`store/owner_decisions.py`), one per
+picture, so they last across runs and scopes and the web page and the CLI can't overwrite each
+other's. They stay off the line a reader sees, so a decision re-asks no reading. `runs why ASSET_ID`
+prints yours last.
 
 ## Duplicates
 
