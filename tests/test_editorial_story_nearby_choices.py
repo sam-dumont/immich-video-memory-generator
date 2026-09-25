@@ -8,6 +8,7 @@ from datetime import timedelta
 import pytest
 
 from tests.editorial_story_fixtures import ControlledStoryJudge
+from tests.editorial_thin_fixtures import caption_laya
 from tests.test_editorial_duration_planner_integration import run
 from tests.test_editorial_story_first_planner import make_source
 
@@ -62,7 +63,8 @@ def test_later_company_picture_reaches_pick_without_creating_duplicate_depth(tmp
 
 @pytest.mark.parametrize("favourite,held", [(True, False), (False, True)])
 def test_nearby_comparison_preserves_favourites_and_audience_holds(tmp_path, favourite, held):
-    plan = run(nearby_source(tmp_path, favourite=favourite, held=held), CompanyJudge())
+    laya = caption_laya() if held else None
+    plan = run(nearby_source(tmp_path, favourite=favourite, held=held), CompanyJudge(), laya=laya)
     selected = {c["asset_id"] for c in plan["carriers"]}
     if favourite:
         assert selected == {"o0-p0", "o1-p0"}  # existing starred capture-group narrowing

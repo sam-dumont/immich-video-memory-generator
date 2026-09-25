@@ -494,7 +494,6 @@ triage hook: they load, they validate, they do nothing.
 editorial:
   reader: auto                  # auto | model | rules; `tier` sets it unless you do
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
-  thin_batched_audience: false   # ask the thin layer's audience question of 12 carriers per request
   strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   laya_audience: false           # Laya answers the audience activity question; `tier` sets it
@@ -586,24 +585,21 @@ several windows has no single account, and plans the film with the story-first p
 library is never left without a film. `false` makes the model plan
 the whole film even when an account exists.
 
-`thin_batched_audience` asks the thin layer's audience question (does this shot show a private
-activity?) of twelve shots per request instead of one, in two row orders. Each shot still gets its
-own answer, a shot either order holds is held, and a shot the replies skip is asked alone. It is off until a probe against
-the local reader shows the batched question keeps every hold the single one finds.
-
 `strict_sharing` keeps any picture a detector head or an exposure flag marked out of a shareable
-film, whatever the reader's text says about it. A caption that names clothing used to clear an
-exposure flag for sharing; with this on (the default), only your own clearance on the picture does.
+film. Only your own clearance on the picture can lift a detector or exposure hold.
 It is also what lets a NAS with no captions cut a shareable film at all: with it on, a picture every
 detector read as clean and nothing flagged is `share`; with it off, a NAS clears nothing. Just-us
-and family films are unchanged. The hold is applied per film and never written to the
-library's audience bank, so setting it to `false` gives the reader's own answer back at once.
+and family films are unchanged. Turning it off does not let a caption clear an exposure flag.
 
-`laya_audience` answers the audience check's activity question with a local Laya model instead of
-the text model. `tier: gpu` and `tier: full` turn it on and `immich-memories models fetch` then
-downloads it; Apple silicon only in this version, with `pip install laya-mlx`. Without either, the
-run says so in one line and carries on without it. It reads the compact caption and adds holds; detector and rule holds still apply and
-are never lifted. See [Add a reader](../better/reader.md#the-laya-audience-pre-screen).
+`laya_audience` answers the sharing question with a local Laya model:
+`tier: gpu` and `tier: full` turn it on, and `immich-memories models fetch` downloads it.
+This version needs Apple silicon and `pip install laya-mlx`. A missing checkpoint or runtime
+is reported, and the run continues with the conservative rules fallback.
+It reads the compact caption and adds holds; detector and rule holds still apply and
+are never lifted. It works with the rules reader as well as the prose reader. A captioned shot
+without a Laya answer stays held to the family. Sharing never calls an LLM, including exposure
+checks and missing-answer fallbacks. The former `thin_batched_audience` option is removed.
+See [Add a reader](../better/reader.md#the-laya-audience-pre-screen).
 
 Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
 plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,

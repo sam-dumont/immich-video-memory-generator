@@ -212,11 +212,13 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
   pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says
-  (`editorial.strict_sharing`, on by default; applied per film, never banked). On the model tier
-  the activity question (a bath, a nappy change, ...) may be answered by **Laya**, a local 0.4B
-  text classifier over the compact caption, instead of the reader (`editorial_laya_reader.py`,
-  `editorial.laya_audience`, off by default, Apple Silicon): it only adds holds, and its answers
-  bank under their own answerer.
+  (`editorial.strict_sharing`, on by default; applied per film, never banked). The activity question is answered only by **Laya**, a local 0.4B
+  text classifier over the compact ingest caption (`editorial_laya_reader.py`,
+  `editorial.laya_audience`, off by default, Apple Silicon). The rules route runs it too when
+  captions are prepared. Sharing never asks a prose LLM: detector/exposure flags hold without
+  further review, and an unanswered caption stays with the family. Answer banks distinguish
+  Laya from the rules check. `editorial_shareability_tiers.py` selects this policy independently
+  of whether the film uses prose or polish.
 - **Pictures are read once**: a model looks at a picture only at ingest (the caption server, the
   heads, the detectors). No film-time stage sends a picture to any model, on any tier; the reader
   is text only, and so is music: the mood comes from the cut's thesis, story titles and ingest
@@ -402,10 +404,8 @@ src/immich_memories/
 │   │                               # a vote-named shot's refill comes from another moment
 │   ├── editorial_laya_onnx.py      # Portable Laya tokenizer and batched ONNX scorer (CUDA or CPU).
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
-│   │                               # caption (model tier, editorial.laya_audience); only adds holds
-│   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,
-│   │                               # one answer each; either order's hold holds
-│   │                               # (advanced.editorial.thin_batched_audience, off by default)
+│   │                               # caption (gpu/full tiers, editorial.laya_audience); the sharing
+│   │                               # question never goes to an LLM: what Laya leaves, heads + rules decide
 │   ├── library_catalogue.py    # The account of a month/year (or a multi-year window: one per year
 │   │                           # plus one over them), written over banked episode readings
 │   │                           # (plus the no-model facts of episodes a cut did not read), keyed by

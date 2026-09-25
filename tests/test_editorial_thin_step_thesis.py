@@ -26,7 +26,7 @@ class Thin:
 def _polish(story, catalogue):
     records = {}
     source = SimpleNamespace(
-        config=SimpleNamespace(editorial=SimpleNamespace(thin_batched_audience=False)),
+        config=SimpleNamespace(editorial=SimpleNamespace()),
         audience="family",
         owner_required_asset_ids=(),
         intent=SimpleNamespace(subject="", voice_per_partition=False),

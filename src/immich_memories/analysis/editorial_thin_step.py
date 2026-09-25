@@ -12,7 +12,6 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 
-from immich_memories.analysis.editorial_audience_batch import AUDIENCE_BATCH_SIZE
 from immich_memories.analysis.editorial_shot_kinds import shot_kind
 from immich_memories.analysis.editorial_story_candidates import story_candidates
 from immich_memories.analysis.editorial_story_replies import film_close_family
@@ -79,9 +78,8 @@ def polish_the_draft(
             thumbnail_hash=ports.thumbnail_hash,
             scene_print=ports.scene_print,
             audience_name=source.audience,
-            audience_batch=AUDIENCE_BATCH_SIZE
-            if source.config.editorial.thin_batched_audience or ports.laya
-            else 0,
+            # Laya reads a draft's shots together; without it there is nothing to batch.
+            audience_batch=16 if ports.laya else 0,
         ),
         catalogue=catalogue,
         unread=unread,

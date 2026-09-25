@@ -119,12 +119,12 @@ second failure the rules draft ships with the passes a no-model film gets, and t
 
 ## The Laya audience pre-screen
 
-On Apple Silicon, one question the reader asks of every shot on the `full` tier can be answered
-locally instead: does the caption describe a bath, a nappy change, breastfeeding or one of the other
+On Apple Silicon, Laya answers the sharing question locally: does the caption describe
+a bath, a nappy change, breastfeeding or one of the other
 private activities a family film holds back. Laya is a 0.4B text classifier (Apache-2.0),
 fine-tuned on captions of public CC BY photographs whose authors are credited in the archive. It
-reads the same caption, in about 14 ms a shot where the reader takes seconds. It is off by
-default.
+reads the ingest caption, in about 14 ms a shot. It works with the rules reader and the prose
+reader when preparation produces captions. It is off by default.
 
 ```bash
 pip install laya-mlx                         # Apple Silicon only
@@ -139,7 +139,8 @@ advanced:
 
 It only adds holds. The detector holds (the sensitive-content detector and the uncovered-person
 head) apply first and are never lifted, its findings go through the same support checks as the
-reader's, and a shot it doesn't answer goes to the reader. The threshold,
+reader's, and a shot it doesn't answer stays held to the family. Sharing never asks the prose
+LLM, including when Laya is absent or a detector flags exposure. The threshold,
 `laya_audience_threshold: 0.186`, is the lowest that kept every hold of its public calibration
 split. Its known gap: a travel or administrative document (a boarding pass, an invoice) can slip
 through, since few such captions were in its training data. The detectors stay the floor either way.

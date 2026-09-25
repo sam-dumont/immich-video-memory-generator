@@ -1,18 +1,9 @@
-"""Which audience check a preparation tier is entitled to, and why a reduced tier gets less.
+"""Sharing uses the evidence each preparation tier produced, never a prose LLM.
 
-The gate may only ever tighten, so each tier answers with the evidence it actually prepared:
-
-* **full** keeps the model check. Captions exist, so the reader can be asked what a picture
-  depicts and the exposure review can run.
-* **no_captions** keeps the same detector evidence -- ``nsfw_marqo`` and the exposure-source
-  flags -- and reads it with rules instead of sentences. Without
-  this the model check refuses every uncaptioned member as ``unavailable_evidence``, which
-  holds a whole cut to the family for want of a producer the tier deliberately did not run.
-  It matches the model check on what it refuses and, like the tier below, never clears:
-  eight findings are named only by a description, so a head seeing nothing is not a
-  clearance. What it adds is a finding that says the description was absent.
-* **metadata_only** prepared nothing that looked at the picture, so it holds every unit to the
-  family and never says ``share``. "Nothing objected" is not a clearance when nothing looked.
+The captioned tier asks Laya and holds unanswered pictures to the family. The no-captions
+tier uses detector heads and flags; only its strict-sharing policy can clear clean evidence.
+The metadata-only tier has no content evidence and never clears a picture for public sharing.
+Detector and owner holds apply on every tier.
 """
 
 from __future__ import annotations
@@ -158,17 +149,48 @@ def withheld_audience(_judge: Any, _evidence: Mapping[str, Any], _stage: str) ->
     }
 
 
-def audience_check_for(tier: str, *, strict_sharing: bool = False) -> AudienceCheck:
+class _NoLLM:
+    """The judge the local check hands on: the sharing question never goes to an LLM."""
+
+    calls: tuple[()] = ()
+
+    def ask(self, stage: str, _prompt: str, max_tokens: int) -> str:
+        raise RuntimeError(f"{stage}: the sharing question never goes to an LLM")
+
+
+def local_reader_audience(rules: AudienceCheck) -> Callable[..., dict[str, Any]]:
+    """The captioned check, with the activity question answered by the local reader (Laya).
+
+    A carrier the local reader answered is read from its captions exactly as a reader's reply
+    would be, and every detector floor still applies. A carrier it did not answer, or one a
+    head or flag already marks, gets the rules check: nothing here ever asks an LLM.
+    """
+
+    def check(
+        _judge: Any, evidence: Mapping[str, Any], stage: str, *, activity_answer: str | None = None
+    ) -> dict[str, Any]:
+        if activity_answer is None or _hold(evidence):
+            return rules(_judge, evidence, stage)
+        return check_audience(_NoLLM(), evidence, stage, activity_answer=activity_answer)
+
+    return check
+
+
+def audience_check_for(
+    tier: str, *, strict_sharing: bool = False, local_reader: bool = False
+) -> Callable[..., dict[str, Any]]:
     """The check this preparation tier may use; anything unrecognised gets the strictest.
 
     `strict_sharing` is set for a shareable film under `editorial.strict_sharing`: then the
-    rules tier may clear a unit on clean evidence alone.
+    no-captions rules may clear a unit on clean evidence alone. `local_reader` says Laya answers the
+    activity question from the captions, which only the `full` tier writes. No tier asks an LLM:
+    without a Laya answer, the captioned tier stays held to the family.
     """
+    if tier not in ("full", "no_captions"):
+        return withheld_audience
     if tier == "full":
-        return check_audience
-    if tier == "no_captions":
-        return rule_audience_with_clean_share if strict_sharing else rule_audience
-    return withheld_audience
+        return local_reader_audience(rule_audience) if local_reader else rule_audience
+    return rule_audience_with_clean_share if strict_sharing else rule_audience
 
 
 def sharing_refusal(config: Any, level: str | None = None) -> str | None:

@@ -1,79 +1,110 @@
-"""An audience verdict is asked once per library, and a hold outlives every later answer."""
+"""An audience verdict is read once per library, and a hold outlives every later answer.
+
+Laya, not a judge, answers the sharing question now (#1212): the properties below are the
+same ones the library bank always guaranteed, observed through what Laya was asked instead of
+through a judge's call log.
+"""
 
 from dataclasses import replace
 
 from immich_memories.analysis import editorial_shareability as share
+from immich_memories.analysis.editorial_laya_reader import LayaReader
+from immich_memories.analysis.editorial_structure_audience import AudienceBank
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
-from immich_memories.config_loader import Config
 from tests.editorial_story_fixtures import ControlledStoryJudge
+from tests.editorial_thin_fixtures import caption_laya
 from tests.test_editorial_duration_planner_integration import source
 
 
-def cut(captured, judge, name):
+def cut(captured, judge, name, *, laya=None):
     """One cut in its own attempt folder, beside the same library banks, as a new run makes."""
     return plan_structure(
         replace(captured, artifact_dir=captured.bank_dir.parent / name),
-        StructurePlannerPorts(judge=judge, thumbnail_hash=lambda _: None),
+        StructurePlannerPorts(judge=judge, thumbnail_hash=lambda _: None, laya=laya),
     ).plan
-
-
-def audience_questions(judge):
-    return [row["stage"] for row in judge.calls if row["stage"].startswith("shareability-")]
-
-
-def test_a_second_cut_over_the_same_pictures_asks_no_audience_question_it_answered(tmp_path):
-    captured = source(tmp_path, seconds=60)
-    first, second = ControlledStoryJudge(), ControlledStoryJudge()
-
-    first_plan = cut(captured, first, "first-cut")
-    second_plan = cut(captured, second, "second-cut")
-
-    assert audience_questions(first), "the first cut had to ask"
-    assert audience_questions(second) == []
-    assert second_plan["carriers"] == first_plan["carriers"]
 
 
 def carried(plan):
     return {row["asset_id"] for row in plan["carriers"]}
 
 
+def test_rules_cut_reads_laya_without_an_llm_or_a_polish_step(tmp_path):
+    from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
+
+    captured = replace(
+        source(tmp_path, seconds=60, private_opening=True),
+        owner_required_asset_ids=("picture-000",),
+    )
+    laya = caption_laya()
+    judge = NoModelJudge()
+
+    plan = plan_structure(
+        captured,
+        StructurePlannerPorts(
+            judge=judge,
+            rules=RuleStructureReader(captured),
+            laya=laya,
+            thumbnail_hash=lambda _: None,
+        ),
+    ).plan
+
+    assert any("bathtub" in caption for caption in laya.scorer.states)
+    assert plan["shareability"]["verdicts"]["picture-000"]["verdict"] == "just_us"
+    assert "picture-000" not in carried(plan)
+    assert not judge.calls
+
+
+def test_a_second_cut_over_the_same_pictures_reads_no_caption_it_already_answered(tmp_path):
+    captured = source(tmp_path, seconds=60)
+    first_laya, second_laya = caption_laya(), caption_laya()
+
+    first_plan = cut(captured, ControlledStoryJudge(), "first-cut", laya=first_laya)
+    second_plan = cut(captured, ControlledStoryJudge(), "second-cut", laya=second_laya)
+
+    assert first_laya.scorer.calls, "the first cut had to read the captions"
+    assert second_laya.scorer.calls == 0, "the library bank already answered every one"
+    assert second_plan["carriers"] == first_plan["carriers"]
+
+
 def test_a_banked_hold_is_not_lifted_by_a_later_cut_that_would_clear_it(tmp_path):
     # The first cut reads a bath and refuses it for a shareable film. The second reads the same
-    # picture as ordinary furniture moving: new evidence, a new question, and a clear answer.
+    # picture as ordinary furniture moving: new evidence, a new reading, and a clear answer.
     held = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
     cleared = replace(source(tmp_path, seconds=60), audience="shareable")
     elsewhere = replace(cleared, bank_dir=tmp_path / "other-library" / "banks")
 
-    assert "picture-000" not in carried(cut(held, ControlledStoryJudge(), "first-cut"))
-    assert "picture-000" in carried(cut(elsewhere, ControlledStoryJudge(), "fresh-library"))
-    later = cut(cleared, ControlledStoryJudge(), "second-cut")
+    assert "picture-000" not in carried(
+        cut(held, ControlledStoryJudge(), "first-cut", laya=caption_laya())
+    )
+    assert "picture-000" in carried(
+        cut(elsewhere, ControlledStoryJudge(), "fresh-library", laya=caption_laya())
+    )
+    later = cut(cleared, ControlledStoryJudge(), "second-cut", laya=caption_laya())
 
     assert "picture-000" not in carried(later)
     assert later["shareability"]["verdicts"]["picture-000"]["verdict"] != "share"
 
 
 def test_an_answer_another_reader_gave_is_asked_again(tmp_path):
-    captured = source(tmp_path, seconds=60)
-    other_reader = replace(
-        captured,
-        config=Config(llm={"model": "another-reader"}, editorial={"preparation": {"tier": "full"}}),
+    """The per-evidence-key cache is scoped to who answered: Laya and the rules reader at the
+    same evidence key never read each other's row, so switching readers reads fresh."""
+    evidence = share.evidence_for_unit(
+        {"asset_id": "picture-000", "members": ["picture-000"]},
+        {},
+        {},
+        {"picture-000": "2020-05-02T08:00:00 | A person is bathing in a bathtub."},
     )
-    cut(captured, ControlledStoryJudge(), "first-cut")
-    judge = ControlledStoryJudge()
+    key = share.audience_check_key(evidence)
+    path = tmp_path / "bank.json"
+    laya_bank = AudienceBank(path, answerer="full|laya")
+    laya_bank.keep(
+        key, {"parsed": True, "verdict": "just_us", "finding": "private_activity", "activity": {}}
+    )
 
-    cut(other_reader, judge, "second-cut")
+    rules_bank = AudienceBank(path, answerer="full|rules")
 
-    assert audience_questions(judge), "a bank written for one reader answers only for that one"
-
-
-class ClearingJudge(ControlledStoryJudge):
-    """A newer audience prompt that reads every picture as ordinary."""
-
-    def answer(self, stage, prompt):
-        if stage.startswith("shareability-"):
-            return '{"finding": "none", "why": "Ordinary clothed activity"}'
-        return super().answer(stage, prompt)
+    assert rules_bank.answer(key) is None, "a bank written for one reader answers only for that one"
 
 
 def bump_audience_prompt(monkeypatch):
@@ -81,19 +112,29 @@ def bump_audience_prompt(monkeypatch):
     monkeypatch.setattr(share, "AUDIENCE_PROMPT_VERSION", share.AUDIENCE_PROMPT_VERSION + "-next")
 
 
-def test_a_text_model_hold_from_an_older_audience_prompt_is_asked_again_and_can_clear(
+class _ClearingScorer:
+    """# WHY: replaces Laya (an MLX checkpoint, not installed in CI) with a stand-in for a
+    checkpoint retrained under a newer prompt: it reads every caption as ordinary."""
+
+    def probabilities(self, states, question):
+        names = list(question["criteria"])
+        return [[1.0 if name == "none" else 0.0 for name in names] for _ in states]
+
+
+def test_a_text_hold_from_an_older_audience_prompt_is_asked_again_and_can_clear(
     tmp_path, monkeypatch
 ):
     held = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
-    assert "picture-000" not in carried(cut(held, ControlledStoryJudge(), "first-cut"))
+    assert "picture-000" not in carried(
+        cut(held, ControlledStoryJudge(), "first-cut", laya=caption_laya())
+    )
     bump_audience_prompt(monkeypatch)
-    judge = ClearingJudge()
+    clearing = LayaReader(_ClearingScorer(), threshold=0.186)
 
-    later = cut(held, judge, "second-cut")
+    later = cut(held, ControlledStoryJudge(), "second-cut", laya=clearing)
 
-    assert audience_questions(judge), "the new prompt asks again"
-    assert "picture-000" in carried(later)
-    again = cut(held, ControlledStoryJudge(), "third-cut")
+    assert "picture-000" in carried(later), "the new prompt is asked again and clears it"
+    again = cut(held, ControlledStoryJudge(), "third-cut", laya=caption_laya())
     assert "picture-000" in carried(again), "the new answer replaced the old hold"
 
 
@@ -117,7 +158,7 @@ def test_a_body_hold_an_older_library_banked_stays(tmp_path, monkeypatch):
     )
     bump_audience_prompt(monkeypatch)
 
-    later = cut(held, ClearingJudge(), "second-cut")
+    later = cut(held, ControlledStoryJudge(), "second-cut")
 
     assert "picture-000" not in carried(later)
 

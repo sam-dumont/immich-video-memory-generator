@@ -112,25 +112,6 @@ NO_BANKED_FACTS = BankedAnswers(frozenset(), {}, frozenset())
 """A library nothing has read yet: every question comes back unanswered."""
 
 
-def configured_text_identity(llm_config: Any) -> str:
-    """The reader this install is configured with, named the way a vote bank names it.
-
-    A no-model run still has the configuration of whatever model read this library before, and
-    that name is half of every banked answer's key. Without it nothing can be read back, which
-    is the honest outcome for an install that has never had a reader.
-    """
-    if llm_config is None:
-        return ""
-    from immich_memories.analysis.llm_providers import resolved_llm_config
-    from immich_memories.analysis.llm_text_identity import text_model_identity
-
-    try:
-        return text_model_identity(resolved_llm_config(llm_config), thinking=False)
-    except (AttributeError, KeyError, TypeError, ValueError) as exc:
-        logger.debug("No configured reader identity (%s): banked answers stay closed", exc)
-        return ""
-
-
 def open_banked_facts(
     *,
     bank_dir: Path,
