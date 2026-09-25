@@ -20,7 +20,9 @@ class TripsConfig(BaseModel):
     )
     min_distance_km: float = Field(default=50, ge=1, description="Min km from home to count")
     min_duration_days: int = Field(default=2, ge=1, description="Min days to qualify as a trip")
-    max_gap_days: int = Field(default=2, ge=1, description="Max gap before splitting trips")
+    max_gap_days: int = Field(
+        default=2, ge=1, description="Max calendar-day gap before splitting trips"
+    )
 
     @property
     def hemisphere(self) -> str | None:
