@@ -384,7 +384,7 @@ start on a host whose dialect you do not know. `true` and `false` still parse, a
 pictures is a measured runaway. Measured on the live endpoint, a thinking call ran 30-134 s where
 the same model answered in 4-7 s without it, and needs a 4000-token ceiling to finish.
 
-The `openai` preset sends `reasoning_effort: none` for `gpt-5.6-luna` and its dated snapshots
+The `openai` preset sends `reasoning_effort: none` for `gpt-5.6-luna`, `gpt-6-luna` and their dated snapshots
 on non-thinking calls. Older GPT-5 models keep `minimal`. An explicit setting wins over the preset.
 A provider that rejects a reasoning value reports that error; it does not silently remove the
 control and fall back to default reasoning. Only rejection of the parameter itself permits that
