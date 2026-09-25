@@ -372,7 +372,8 @@ playwright-install:  ## Install Playwright browsers for E2E tests
 
 e2e:  ## Run required fake-service contracts and real hermetic browser render
 	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py \
-		tests/e2e/test_memory_page.py tests/e2e/test_picture_decisions.py tests/e2e/test_sharing_levels.py tests/e2e/test_people_page.py tests/e2e/test_automation_pages.py -v \
+		tests/e2e/test_memory_page.py tests/e2e/test_picture_decisions.py tests/e2e/test_sharing_levels.py \
+		tests/e2e/test_people_page.py tests/e2e/test_automation_pages.py tests/e2e/test_ui_languages.py -v \
 		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
@@ -491,13 +492,14 @@ dead-code:
 	#   @register_preset          puts the function in a preset dict
 	#   @*.command / @*.group     Click registers the callback on a group
 	#   @ui.page / @app.middleware NiceGUI/Starlette register the route
+	#   @LocalizedPage            ui.page subclass with per-request language
 	#   @field_validator, @model_validator, @field_serializer
 	#                             pydantic runs these off the schema, never by name
 	# --ignore-names model_config: pydantic reads the ConfigDict class attribute
 	# off the model; nothing in src/ is meant to name it.
 	uvx vulture src/ $(SERVICE_TREES) vulture-whitelist.py --min-confidence 60 \
 		--ignore-names "model_config" \
-		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@app.middleware,@app.get,@app.post,@field_validator,@model_validator,@field_serializer"
+		--ignore-decorators "@register_preset,@*.command,@*.group,@ui.page,@LocalizedPage,@app.middleware,@app.get,@app.post,@field_validator,@model_validator,@field_serializer"
 
 # Security lint (Bandit)
 security-lint:
@@ -955,6 +957,10 @@ notices-check:  ## Fail when THIRD_PARTY_NOTICES is stale against uv.lock
 
 docs-install:
 	cd docs-site && npm ci
+
+.PHONY: ui-catalogues
+ui-catalogues:  ## Extract UI labels and update the per-language PO files
+	uv run python scripts/update-ui-catalogues.py
 
 docs-dev:
 	cd docs-site && npm start

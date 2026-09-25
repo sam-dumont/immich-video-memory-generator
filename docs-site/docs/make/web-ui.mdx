@@ -18,6 +18,24 @@ and **Settings**. Options and Export open from the cut itself.
 Screenshots on this page come from a hermetic run over the CC0 fixture library
 (`tests/e2e/fixtures/library`, credits in its `CREDITS.md`), never a real library.
 
+## Interface and film languages
+
+The interface follows your browser's preferred supported language. **Interface language** in
+the sidebar, or on the sign-in page, overrides it for that browser. Choose **Automatic (browser)**
+to return to detection. Another browser keeps its own choice.
+
+The interface supports English, French, Dutch, German, Spanish, Italian, Brazilian Portuguese,
+European Portuguese, Polish, Swedish, Russian, Japanese, Simplified Chinese and Korean. Missing
+translations fall back to English. The translations are AI-drafted and welcome corrections.
+
+Immich keeps its language choice in its own browser storage; its user-preferences API does not
+expose that choice. This app therefore uses the browser's language preference rather than
+reading an Immich setting it cannot access.
+
+**Film language**, under **Generation Options > Title**, is separate. Changing the interface
+does not change your film's titles or captions. Saved prose, library names, configuration keys
+and technical logs keep their original text.
+
 <ThemedScreenshot name="memory-brief" alt="The brief: memory type, its parameters and the duration line" />
 
 ## The brief

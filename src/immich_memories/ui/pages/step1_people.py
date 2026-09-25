@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from nicegui import ui
 
 from immich_memories.memory_types.registry import MemoryType
+from immich_memories.ui.i18n import N_, tr, tr_options
 
 if TYPE_CHECKING:
     from immich_memories.api.models import Person
@@ -28,12 +29,12 @@ ApplyPreset = Callable[[MemoryType], None]
 
 # What several names mean, in the words the brief uses on every card that can
 # carry more than one. The keys are the `person_match` the fetch reads.
-PERSON_MATCH_LABELS = {"and": "Together", "or": "Any of these people"}
+PERSON_MATCH_LABELS = {"and": N_("Together"), "or": N_("Any of these people")}
 
 # The disclosure the Boolean condition lives behind. Picking people and saying
 # what several of them mean is the whole plain path; quoted names, AND, OR and
 # parentheses are the override, and they wait to be asked for (#887).
-PEOPLE_CONDITION_PANEL = "Advanced people condition"
+PEOPLE_CONDITION_PANEL = N_("Advanced people condition")
 
 # The cards that render the shared picker. The two person memory types are
 # absent because they collect their people as part of *being* those memories
@@ -93,30 +94,33 @@ def _render_grouped_condition(
             return
         expression = state.person_expression
         message.set_text(
-            f"Active condition: {expression.display_label}" if expression is not None else ""
+            tr("Active condition: {display_label}", display_label=expression.display_label)
+            if expression is not None
+            else ""
         )
         apply(memory_type)
 
     # The disclosure opens on a condition that is already in play: a filter the
     # page will not show is a filter nobody can undo.
     with ui.expansion(
-        PEOPLE_CONDITION_PANEL,
+        tr(PEOPLE_CONDITION_PANEL),
         icon="tune",
         value=bool(saved or state.person_expression_error),
     ).classes("w-full mt-2"):
         field = ui.input(
-            label="Grouped people condition (optional)",
+            label=tr("Grouped people condition (optional)"),
             value=saved,
-            placeholder='("Person A" OR "Person B") AND "Person C"',
+            placeholder=tr('("Person A" OR "Person B") AND "Person C"'),
             on_change=on_condition,
         ).classes("w-full")
         ui.label(
-            "Use quoted names, AND, OR and parentheses. AND requires the people in the same "
-            "photo or video, not separate pictures from the same event. "
-            "Changing the people picker replaces this condition."
+            tr(
+                "Use quoted names, AND, OR and parentheses. AND requires the people in the same photo or video, not separate pictures from the same event. Changing the people picker replaces this condition."
+            )
         ).classes("text-xs")
         message = ui.label(
-            state.person_expression_error or (f"Active condition: {saved}" if saved else "")
+            state.person_expression_error
+            or (tr("Active condition: {display_label}", display_label=saved) if saved else "")
         )
 
     def clear_field() -> None:
@@ -162,19 +166,20 @@ def render_person_picker(state: AppState, memory_type: MemoryType, apply: ApplyP
     with ui.row().classes("gap-4 items-end flex-wrap"):
         ui.select(
             options=list(by_name),
-            label="Only with (optional)",
+            label=tr("Only with (optional)"),
             value=saved,
             on_change=on_people,
             multiple=True,
         ).props("use-chips").classes("w-64 mt-2").tooltip(
-            "Narrow this memory to these people, the same as --person on the CLI."
+            tr("Narrow this memory to these people, the same as --person on the CLI.")
         )
         match_toggle = (
-            ui.toggle(PERSON_MATCH_LABELS, value=saved_match, on_change=on_match)
+            ui.toggle(tr_options(PERSON_MATCH_LABELS), value=saved_match, on_change=on_match)
             .classes("mt-2")
             .tooltip(
-                "Together keeps only the moments holding everyone named. Any of "
-                "these people keeps a moment holding any one of them."
+                tr(
+                    "Together keeps only the moments holding everyone named. Any of these people keeps a moment holding any one of them."
+                )
             )
         )
     # One name is not a choice between the two, so the toggle waits for a second.
@@ -240,9 +245,12 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
             state.memory_preset_params["year"] = 0 if e.value == "All Time" else int(e.value)
             apply(MemoryType.PERSON_SPOTLIGHT)
 
-        ui.select(options=year_list, label="Year", value=current_label, on_change=on_year).classes(
-            "w-36"
-        )
+        ui.select(
+            options={year: tr("All Time") if year == "All Time" else year for year in year_list},
+            label=tr("Year"),
+            value=current_label,
+            on_change=on_year,
+        ).classes("w-36")
 
         saved_person_id = state.memory_preset_params.get("person_id")
         current_name = next((name for name, p in by_name.items() if p.id == saved_person_id), None)
@@ -261,7 +269,7 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
 
         ui.select(
             options=list(by_name),
-            label="Person",
+            label=tr("Person"),
             value=current_name,
             on_change=on_person,
         ).classes("w-48")
@@ -273,7 +281,7 @@ def render_person_spotlight_params(state: AppState, apply: ApplyPreset) -> None:
     selected_person = by_name[current_name] if current_name else None
     anchored = _anchor_on(state, selected_person)
     ui.checkbox(
-        "Birthday to birthday",
+        tr("Birthday to birthday"),
         value=bool(state.memory_preset_params.get("use_birthday")),
         on_change=on_birthday_toggle,
     ).classes("mt-2").props("" if anchored else "disable").tooltip(
@@ -299,9 +307,12 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
             state.memory_preset_params["year"] = 0 if e.value == "All Time" else int(e.value)
             apply(MemoryType.MULTI_PERSON)
 
-        ui.select(options=year_list, label="Year", value=current_label, on_change=on_year).classes(
-            "w-36"
-        )
+        ui.select(
+            options={year: tr("All Time") if year == "All Time" else year for year in year_list},
+            label=tr("Year"),
+            value=current_label,
+            on_change=on_year,
+        ).classes("w-36")
 
         saved_names = state.memory_preset_params.get("person_names") or []
 
@@ -316,7 +327,7 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
 
         ui.select(
             options=list(by_name),
-            label="People (select 2+)",
+            label=tr("People (select 2+)"),
             value=[name for name in saved_names if name in by_name],
             on_change=on_people,
             multiple=True,
@@ -332,7 +343,7 @@ def render_multi_person_params(state: AppState, apply: ApplyPreset) -> None:
             apply(MemoryType.MULTI_PERSON)
 
         ui.toggle(
-            PERSON_MATCH_LABELS,
+            tr_options(PERSON_MATCH_LABELS),
             value=saved_match,
             on_change=on_match,
         ).classes("mt-1")

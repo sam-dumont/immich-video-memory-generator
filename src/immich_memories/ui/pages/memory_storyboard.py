@@ -18,6 +18,7 @@ from immich_memories.operations.storyboard import (
     storyboard_from_plan,
 )
 from immich_memories.ui.components import im_badge, im_card, im_section_header
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.picture_decisions import (
     PictureHold,
     read_holds,
@@ -75,7 +76,7 @@ def _render_shot(shot: Shot, hold: PictureHold | None) -> None:
                         "text-sm font-semibold storyboard-day" if shot.new_day else "text-sm"
                     ).style("color: var(--im-text)")
                     im_badge(shot.kind_label, variant="analysis" if shot.motion else "info")
-                    ui.label(f"{shot.seconds:g} s").classes("text-xs").style(
+                    ui.label(tr("{seconds:g} s", seconds=shot.seconds)).classes("text-xs").style(
                         "color: var(--im-text-secondary)"
                     )
                 with ui.row().classes("items-center gap-2 flex-wrap"):
@@ -96,7 +97,7 @@ def render_storyboard(
 ) -> None:
     """The cut as it will play: chapters, days and pictures in order, each with the owner's
     clear-hold and never-use buttons."""
-    im_section_header("The storyboard", icon="view_timeline")
+    im_section_header(tr("The storyboard"), icon="view_timeline")
     if show_thesis:
         ui.label(board.thesis or "The editor left no thesis for this cut.").classes(
             "text-lg"
@@ -106,9 +107,9 @@ def render_storyboard(
     if warning:
         ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
     im_section_header(board.summary_label, icon="movie")
-    ui.label("Titles and transitions make up the rest of the film.").classes("text-xs mb-2").style(
-        "color: var(--im-text-secondary)"
-    )
+    ui.label(tr("Titles and transitions make up the rest of the film.")).classes(
+        "text-xs mb-2"
+    ).style("color: var(--im-text-secondary)")
     holds = read_holds(shot.asset_id for shot in board.shots)
     for shot in board.shots:
         if shot.chapter:

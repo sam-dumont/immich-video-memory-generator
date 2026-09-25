@@ -23,6 +23,7 @@ from collections.abc import Callable, Sequence
 from nicegui import ui
 
 from immich_memories.operations.cut_progress import StageUpdate
+from immich_memories.ui.i18n import tr
 
 STRIP_SLOTS = 12
 STRIP_THUMBNAIL_PX = 96
@@ -160,7 +161,14 @@ class StageBar:
             return
         self._bar.value = fraction
         self._caption.set_text(
-            f"{progress.label} {progress.done or 0:,} of {progress.total or 0:,}"
+            (
+                tr(
+                    "{label} {value:,} of {value2:,}",
+                    label=progress.label,
+                    value=progress.done or 0,
+                    value2=progress.total or 0,
+                )
+            )
             + (f" · {progress.remaining_label}" if progress.remaining_label else "")
         )
         self._visible(True)
@@ -177,7 +185,7 @@ class StageLog:
     def __init__(self, lines: list[str]) -> None:
         self._lines = lines
         self._labels: deque[ui.label] = deque()
-        with ui.expansion("Details", icon="list").classes("w-full mb-2"):
+        with ui.expansion(tr("Details"), icon="list").classes("w-full mb-2"):
             self._body = ui.column().classes("gap-0 w-full")
         for line in lines:
             self._draw(line)

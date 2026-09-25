@@ -1,0 +1,1800 @@
+# Immich Memories interface translations.
+# AI-drafted; native-speaker review welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: Immich Memories UI VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh_Hans\n"
+"Language-Team: zh_Hans <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: pages/memory.py:162
+msgid " Cut again runs it once more."
+msgstr " “重新剪辑”会再次运行剪辑。"
+
+#: pages/settings_config.py:127
+#, python-brace-format
+msgid " Preset '{preset}' is active and fills the knobs you have not set."
+msgstr " 预设“{preset}”已启用，会补全尚未设置的选项。"
+
+#: pages/step1_people.py:113
+msgid "(\"Person A\" OR \"Person B\") AND \"Person C\""
+msgstr "(\"人物 A\" OR \"人物 B\") AND \"人物 C\""
+
+#: pages/step4_export.py:120
+#, python-brace-format
+msgid "+ {value} more"
+msgstr "另有 {value} 项"
+
+#: pages/step3_options.py:239
+msgid "1080p"
+msgstr "1080p"
+
+#: pages/memory_duration.py:17
+msgid "30 s plus 10 s per active day, from the media once it is loaded"
+msgstr "加载媒体后计算：30 秒加上每个活跃日 10 秒"
+
+#: pages/memory_duration.py:21
+msgid "30 s plus 6 s per active hour of the day"
+msgstr "30 秒加上当天每个活跃小时 6 秒"
+
+#: pages/step3_options.py:239
+msgid "4K"
+msgstr "4K"
+
+#: pages/step3_options.py:239
+msgid "720p"
+msgstr "720p"
+
+#: pages/memory_run.py:101
+msgid "A cut is already running; wait for it, or cancel it first"
+msgstr "已有剪辑正在运行，请等待完成或先取消"
+
+#: pages/step4_export.py:62
+#, python-brace-format
+msgid ""
+"A generation started at {started} is still running (run {run_id}). This page checks every few"
+" seconds and shows the video when it finishes."
+msgstr "于 {started} 开始的生成仍在运行（任务 {run_id}）。此页面会定期检查，并在完成后显示视频。"
+
+#: pages/step3_options.py:371
+msgid "AI Generated"
+msgstr "AI 生成"
+
+#: pages/step3_options.py:166
+msgid "AI will generate music based on the mood of your video clips"
+msgstr "AI 将根据视频片段的氛围生成音乐"
+
+#: pages/step1_config.py:69
+msgid "API Key"
+msgstr "API 密钥"
+
+#: pages/memory_brief.py:63
+msgid "Accept Forwarded Media"
+msgstr "接受收到的媒体"
+
+#: pages/settings_config.py:165
+msgid "Actions"
+msgstr "操作"
+
+#: pages/settings_config.py:162
+msgid "Active Configuration"
+msgstr "当前配置"
+
+#: pages/step1_people.py:97 pages/step1_people.py:123
+#, python-brace-format
+msgid "Active condition: {display_label}"
+msgstr "当前条件：{display_label}"
+
+#: pages/settings_config.py:122
+msgid "Active config from ~/.immich-memories/config.yaml with env overrides. API keys are redacted."
+msgstr "使用 ~/.immich-memories/config.yaml 中的配置，环境变量优先。API 密钥已隐藏。"
+
+#: pages/settings_people.py:516
+msgid "Add a relationship"
+msgstr "添加关系"
+
+#: pages/step3_options.py:318
+msgid "Add date overlay"
+msgstr "显示日期"
+
+#: pages/settings_people.py:504
+msgid "Add person"
+msgstr "添加人物"
+
+#: pages/settings_people.py:405
+msgid "Add relationship"
+msgstr "添加关系"
+
+#: pages/settings_people.py:483
+msgid "Add someone"
+msgstr "添加人物"
+
+#: pages/settings_people.py:168
+msgid "Add someone not in Immich"
+msgstr "添加 Immich 中没有的人物"
+
+#: pages/settings_people.py:498
+#, python-brace-format
+msgid "Added {value}"
+msgstr "已添加 {value}"
+
+#: pages/memory_brief.py:170
+msgid "Advanced"
+msgstr "高级"
+
+#: pages/step3_options.py:265
+msgid "Advanced options"
+msgstr "高级选项"
+
+#: pages/step1_people.py:37
+msgid "Advanced people condition"
+msgstr "高级人物条件"
+
+#: pages/memory_brief.py:37 pages/step1_presets.py:290
+msgid "Album"
+msgstr "相册"
+
+#: pages/_step4_upload.py:65
+msgid "Album name"
+msgstr "相册名称"
+
+#: pages/step1_people.py:249 pages/step1_people.py:311
+msgid "All Time"
+msgstr "所有年份"
+
+#: pages/step1_config.py:219
+msgid "All people"
+msgstr "所有人物"
+
+#: pages/step1_cache.py:124
+msgid "Analysis cache"
+msgstr "分析缓存"
+
+#: pages/step1_presets.py:579
+msgid ""
+"Anniversaries first, then the rest. A scheduled run only proposes a day on its anniversary; "
+"here you can pick any day the catalogue holds."
+msgstr "先列出纪念日，再列出其他日期。定时任务只会在纪念日当天推荐该日期；这里可以选择目录中的任何一天。"
+
+#: pages/step1_people.py:32
+msgid "Any of these people"
+msgstr "其中任意人物"
+
+#: pages/memory_brief.py:80
+msgid "Anyone. Only pictures nothing held back: no detector flag, no private moment."
+msgstr "任何人。仅使用未受限制的画面：没有检测标记，也没有私密时刻。"
+
+#: pages/picture_decisions.py:28
+msgid "Anyone: shareable films too"
+msgstr "任何人：也可用于可分享影片"
+
+#: pages/clip_review.py:403
+msgid "Apply"
+msgstr "应用"
+
+#: pages/memory_duration.py:30
+msgid "Auto"
+msgstr "自动"
+
+#: pages/step3_options.py:272
+msgid "Auto (detect from clips)"
+msgstr "自动（根据片段检测）"
+
+#: pages/step3_options.py:239
+msgid "Auto (match clips)"
+msgstr "自动（与片段一致）"
+
+#: pages/memory_duration.py:68
+msgid "Auto duration"
+msgstr "自动时长"
+
+#: i18n.py:101
+msgid "Automatic (browser)"
+msgstr "自动（浏览器）"
+
+#: pages/suggestions.py:90
+msgid "Automatic upload to Immich is enabled."
+msgstr "已启用自动上传到 Immich。"
+
+#: pages/suggestions.py:92
+msgid "Automatic upload to Immich is off."
+msgstr "已关闭自动上传到 Immich。"
+
+#: pages/step1_presets.py:62
+msgid "Automatically uses today's date across previous years"
+msgstr "自动使用往年今天的日期"
+
+#: pages/step4_export.py:236
+msgid "Back to Generation Options"
+msgstr "返回生成选项"
+
+#: pages/runs.py:21
+msgid "Back to runs"
+msgstr "返回任务列表"
+
+#: pages/step2_review.py:84 pages/step2_review.py:104 pages/step2_review.py:287
+msgid "Back to the brief"
+msgstr "返回创作设置"
+
+#: pages/step2_review.py:290
+msgid "Back to the cut"
+msgstr "返回剪辑"
+
+#: pages/clip_review.py:429 pages/clip_review.py:462 pages/step3_options.py:436
+#: pages/step4_export.py:139
+msgid "Back to the media pool"
+msgstr "返回媒体库"
+
+#: pages/step3_options.py:385
+msgid "Background music"
+msgstr "背景音乐"
+
+#: pages/step1_tabs.py:25
+msgid "Birthday"
+msgstr "生日"
+
+#: pages/step1_people.py:284
+msgid "Birthday to birthday"
+msgstr "从生日到生日"
+
+#: pages/step3_options.py:49
+msgid "Blur background"
+msgstr "模糊背景"
+
+#: pages/_step3_music_preview.py:67
+msgid "Building mood timeline..."
+msgstr "正在构建音乐时间线..."
+
+#: pages/step3_options.py:369
+msgid "Bundled"
+msgstr "内置"
+
+#: app.py:135
+msgid "Cache"
+msgstr "缓存"
+
+#: app.py:308 pages/step1_cache.py:76
+msgid "Cache Management"
+msgstr "缓存管理"
+
+#: pages/step1_tabs.py:82
+msgid "Calendar Year"
+msgstr "自然年"
+
+#: pages/_step4_generate.py:386 pages/memory_run.py:411 pages/picture_decisions.py:176
+#: pages/settings_people.py:503 pages/settings_people.py:545
+msgid "Cancel"
+msgstr "取消"
+
+#: pages/_step4_generate.py:74
+msgid "Cancel requested — stopping after current phase..."
+msgstr "已请求取消，将在当前阶段结束后停止..."
+
+#: pages/memory_run.py:409
+msgid "Cancelling after the current stage..."
+msgstr "将在当前步骤结束后取消..."
+
+#: pages/_step4_generate.py:72
+msgid "Cancelling..."
+msgstr "正在取消..."
+
+#: pages/suggestions.py:195
+msgid "Candidate key"
+msgstr "候选项标识"
+
+#: pages/step3_options.py:327
+msgid "Caption clips with their place"
+msgstr "在片段上显示地点"
+
+#: pages/memory.py:113
+msgid "Change the brief"
+msgstr "修改创作设置"
+
+#: pages/suggestions.py:199
+msgid "Check eligibility"
+msgstr "检查是否符合条件"
+
+#: pages/step4_export.py:75
+msgid "Check the server log, then generate again."
+msgstr "请检查服务器日志，然后重新生成。"
+
+#: pages/settings_people.py:537
+msgid "Choose a relationship and a person"
+msgstr "请选择关系和人物"
+
+#: pages/step1_cache.py:67
+msgid "Clear"
+msgstr "清除"
+
+#: pages/step1_cache.py:211
+msgid "Clear all caches"
+msgstr "清除所有缓存"
+
+#: pages/picture_decisions.py:133 pages/picture_decisions.py:182
+msgid "Clear hold"
+msgstr "解除限制"
+
+#: pages/picture_decisions.py:156
+msgid "Clear this picture's hold?"
+msgstr "解除这张图片的限制？"
+
+#: pages/step1_cache.py:205
+#, python-brace-format
+msgid "Cleared all caches ({total} items)"
+msgstr "已清除所有缓存（{total} 项）"
+
+#: pages/step1_cache.py:121
+#, python-brace-format
+msgid "Cleared {count} analysis entries"
+msgstr "已清除 {count} 条分析记录"
+
+#: pages/step1_cache.py:164
+#, python-brace-format
+msgid "Cleared {count} cached thumbnails"
+msgstr "已清除 {count} 张缓存缩略图"
+
+#: pages/step1_cache.py:141
+#, python-brace-format
+msgid "Cleared {count} cached videos"
+msgstr "已清除 {count} 个缓存视频"
+
+#: pages/step1_cache.py:175
+#, python-brace-format
+msgid "Cleared {count} preview files"
+msgstr "已清除 {count} 个预览文件"
+
+#: pages/step3_options.py:414 pages/step4_export.py:155
+msgid "Clips"
+msgstr "片段"
+
+#: pages/clip_pipeline.py:71
+msgid "Clips Planned"
+msgstr "计划片段"
+
+#: pages/step2_review.py:229
+msgid "Compact grid view"
+msgstr "紧凑网格视图"
+
+#: pages/_step4_generate.py:120
+msgid "Complete!"
+msgstr "已完成！"
+
+#: pages/settings_config.py:178
+#, python-brace-format
+msgid "Config file: {config_path}"
+msgstr "配置文件：{config_path}"
+
+#: app.py:133 app.py:272
+msgid "Configuration"
+msgstr "配置"
+
+#: pages/settings_config.py:170
+msgid "Configuration reloaded from disk"
+msgstr "已从磁盘重新加载配置"
+
+#: pages/step1_config.py:172
+msgid "Configuration saved!"
+msgstr "配置已保存！"
+
+#: pages/settings_people.py:546
+msgid "Confirm relationship"
+msgstr "确认关系"
+
+#: pages/step1_presets.py:241
+msgid "Connect to Immich first to choose an album."
+msgstr "请先连接 Immich，再选择相册。"
+
+#: pages/step1_presets.py:353
+msgid "Connect to Immich first to detect trips."
+msgstr "请先连接 Immich，再检测旅行。"
+
+#: pages/memory_brief.py:196
+msgid ""
+"Connect to your Immich server to continue. Enter your server URL and API key above, then "
+"click 'Test Connection'."
+msgstr "请连接 Immich 服务器以继续。在上方输入服务器地址和 API 密钥，然后点击“测试连接”。"
+
+#: pages/step1_config.py:53 pages/step1_config.py:110 pages/step1_config.py:120
+#, python-brace-format
+msgid "Connected as: {name}"
+msgstr "已连接，用户：{name}"
+
+#: pages/memory_run.py:454 pages/step2_loading.py:319
+msgid "Connecting to Immich..."
+msgstr "正在连接 Immich..."
+
+#: pages/step1_config.py:127
+#, python-brace-format
+msgid "Connection failed: {value}"
+msgstr "连接失败：{value}"
+
+#: pages/step1_presets.py:268
+#, python-brace-format
+msgid "Could not list albums: {exc}"
+msgstr "无法列出相册：{exc}"
+
+#: pages/step1_presets.py:323
+msgid "Could not load photo years. Showing the previously loaded years."
+msgstr "无法加载照片年份。将显示先前已加载的年份。"
+
+#: pages/suggestions.py:174
+#, python-brace-format
+msgid "Could not load suggestions: {value}"
+msgstr "无法加载建议：{value}"
+
+#: pages/memory_run.py:461
+#, python-brace-format
+msgid "Could not re-load media: {value}"
+msgstr "无法重新加载媒体：{value}"
+
+#: pages/step3_options.py:302
+msgid "Crossfade"
+msgstr "交叉淡化"
+
+#: pages/settings_people.py:139
+msgid "Curation"
+msgstr "整理"
+
+#: pages/step1_config.py:263
+msgid "Custom Range"
+msgstr "自定义时间范围"
+
+#: pages/memory_brief.py:47
+msgid "Custom date range"
+msgstr "自定义时间范围"
+
+#: pages/clip_review.py:394
+msgid "Custom seconds"
+msgstr "自定义秒数"
+
+#: pages/memory_brief.py:219 pages/step2_review.py:154
+msgid "Cut"
+msgstr "剪辑"
+
+#: pages/memory.py:110 pages/step2_review.py:144
+msgid "Cut again"
+msgstr "重新剪辑"
+
+#: pages/memory_run.py:399
+msgid "Cutting the memory..."
+msgstr "正在剪辑回忆..."
+
+#: theme.py:322
+msgid "Dark"
+msgstr "深色"
+
+#: app.py:99
+msgid "Demo mode"
+msgstr "演示模式"
+
+#: pages/step2_review.py:233
+msgid "Detailed list view"
+msgstr "详细列表视图"
+
+#: pages/cut_progress_view.py:188 pages/memory_story.py:58
+msgid "Details"
+msgstr "详情"
+
+#: pages/step1_presets.py:362
+msgid "Detecting trips from GPS data..."
+msgstr "正在根据 GPS 数据检测旅行..."
+
+#: pages/clip_review.py:369
+msgid "Difference"
+msgstr "差异"
+
+#: pages/suggestions.py:165
+#, python-brace-format
+msgid "Discovery failed: {error}"
+msgstr "搜索失败：{error}"
+
+#: pages/memory_run.py:66 pages/step2_loading.py:378
+msgid "Done"
+msgstr "完成"
+
+#: pages/runs.py:71
+msgid "Download child output"
+msgstr "下载关联输出"
+
+#: pages/memory_brief.py:67
+msgid "Drop SDR video from the pool"
+msgstr "排除 SDR 视频"
+
+#: pages/step1_config.py:262 pages/step1_tabs.py:105
+msgid "Duration"
+msgstr "时长"
+
+#: pages/memory_run.py:65
+msgid "Editing"
+msgstr "剪辑"
+
+#: pages/memory_run.py:431
+#, python-brace-format
+msgid "Elapsed: {value}"
+msgstr "已用时间：{value}"
+
+#: pages/step1_tabs.py:182
+msgid "End date"
+msgstr "结束日期"
+
+#: pages/step1_config.py:132
+#, python-brace-format
+msgid "Error: {value}"
+msgstr "错误：{value}"
+
+#: pages/clip_pipeline.py:84
+#, python-brace-format
+msgid "Errors ({error_count})"
+msgstr "错误（{error_count}）"
+
+#: pages/memory.py:96
+msgid "Export"
+msgstr "导出"
+
+#: pages/step2_loading.py:336
+#, python-brace-format
+msgid "Failed to load videos: {value}"
+msgstr "加载视频失败：{value}"
+
+#: pages/_step3_music_preview.py:124
+#, python-brace-format
+msgid "Failed: {value}"
+msgstr "失败：{value}"
+
+#: pages/memory_brief.py:73
+msgid "Family"
+msgstr "家人"
+
+#: pages/picture_decisions.py:27
+msgid "Family: family films too"
+msgstr "家人：也可用于家庭影片"
+
+#: pages/step3_options.py:81
+msgid ""
+"Fast (NAS) preset is active: 1080p H.264 with the fast encoder preset, static title "
+"backgrounds, no speech analysis, fewer photos, favorites-first analysis. Set with `preset: "
+"fast` in config.yaml or IMMICH_MEMORIES_PRESET=fast; the choices below still win for this "
+"run."
+msgstr ""
+"已启用快速 NAS 预设：1080p H.264、快速编码、静态标题背景、不分析语音、较少照片、优先分析收藏内容。通过 config.yaml 中的 `preset: fast` 或 "
+"IMMICH_MEMORIES_PRESET=fast 设置；本次运行以下方选择为准。"
+
+#: pages/step2_loading.py:252
+msgid "Fetching photos..."
+msgstr "正在获取照片..."
+
+#: pages/_step3_music_preview.py:232
+msgid "Film language"
+msgstr "影片语言"
+
+#: pages/film_length.py:73 pages/film_length.py:83
+msgid "Film length"
+msgstr "影片时长"
+
+#: pages/clip_review.py:503
+#, python-brace-format
+msgid "Final Duration: {value}"
+msgstr "最终时长：{value}"
+
+#: pages/settings_people.py:263
+msgid "Find a name"
+msgstr "搜索姓名"
+
+#: pages/memory_run.py:62
+msgid "Finding media"
+msgstr "正在查找媒体"
+
+#: pages/picture_decisions.py:168
+msgid "Fine for"
+msgstr "允许用于"
+
+#: pages/clip_review.py:168
+msgid "First 5s"
+msgstr "前 5 秒"
+
+#: pages/step4_export.py:159
+msgid "Format"
+msgstr "格式"
+
+#: pages/step1_presets.py:407
+#, python-brace-format
+msgid "Found {count} trip(s):"
+msgstr "找到 {count} 次旅行："
+
+#: pages/step1_tabs.py:85
+msgid "From Birthday"
+msgstr "从生日开始"
+
+#: pages/clip_review.py:204
+msgid "Full clip"
+msgstr "完整片段"
+
+#: pages/settings_people.py:489
+msgid "Full name"
+msgstr "全名"
+
+#: pages/_step3_music_preview.py:275
+msgid "Generate Music"
+msgstr "生成音乐"
+
+#: pages/step4_export.py:225
+msgid "Generate Video"
+msgstr "生成视频"
+
+#: pages/_step3_music_preview.py:288
+msgid "Generate music now to preview before rendering your video"
+msgstr "立即生成音乐，在渲染视频前试听"
+
+#: pages/_step3_music_preview.py:146
+msgid "Generated Music"
+msgstr "已生成的音乐"
+
+#: pages/_step3_music_preview.py:99
+msgid "Generating music..."
+msgstr "正在生成音乐..."
+
+#: app.py:243
+msgid "Generation Options"
+msgstr "生成选项"
+
+#: pages/memory_brief.py:78
+msgid "Grandparents, siblings, the group chat. Private moments stay out."
+msgstr "祖父母、兄弟姐妹、群聊。排除私密时刻。"
+
+#: pages/step1_people.py:111
+msgid "Grouped people condition (optional)"
+msgstr "组合人物条件（可选）"
+
+#: pages/memory_brief.py:67
+msgid "HDR clips only"
+msgstr "仅 HDR 片段"
+
+#: pages/step3_options.py:303
+msgid "Hard cut"
+msgstr "直接切换"
+
+#: pages/step1_presets.py:178
+msgid "Hemisphere"
+msgstr "半球"
+
+#: pages/picture_decisions.py:101
+msgid "Hold cleared. The next cut may use it."
+msgstr "限制已解除。下次剪辑可以使用此图片。"
+
+#: pages/memory_brief.py:39 pages/step1_presets.py:82
+msgid "Holiday"
+msgstr "节日"
+
+#: pages/memory_brief.py:210
+msgid "How long"
+msgstr "多长时间"
+
+#: pages/step1_config.py:39
+msgid "Immich Connection"
+msgstr "Immich 连接"
+
+#: pages/step1_config.py:37
+#, python-brace-format
+msgid "Immich Connection: {name}"
+msgstr "Immich 连接：{name}"
+
+#: pages/step1_config.py:61
+msgid "Immich Server URL"
+msgstr "Immich 服务器地址"
+
+#: pages/_step4_generate.py:663 pages/step4_export.py:42
+#, python-brace-format
+msgid "Immich delivery: {delivery_label}"
+msgstr "上传到 Immich：{delivery_label}"
+
+#: pages/runs.py:39
+#, python-brace-format
+msgid "Immich delivery: {value}"
+msgstr "上传到 Immich：{value}"
+
+#: pages/clip_grid.py:170 pages/clip_grid.py:224
+msgid "Include"
+msgstr "包含"
+
+#: pages/memory_brief.py:58
+msgid "Include Live Photos"
+msgstr "包含 Live Photos"
+
+#: pages/memory_brief.py:53
+msgid "Include Photos"
+msgstr "包含照片"
+
+#: pages/clip_review.py:308
+msgid "Include in compilation"
+msgstr "加入合辑"
+
+#: i18n.py:109
+msgid "Interface language"
+msgstr "界面语言"
+
+#: pages/step1_config.py:209
+#, python-brace-format
+msgid "Invalid date range: {e}"
+msgstr "日期范围无效：{e}"
+
+#: pages/login.py:77
+msgid "Invalid username or password"
+msgstr "用户名或密码错误"
+
+#: pages/picture_decisions.py:107
+msgid "It won't be in any film from the next cut on."
+msgstr "从下次剪辑起，此图片不会出现在任何影片中。"
+
+#: pages/memory_brief.py:72
+msgid "Just us"
+msgstr "仅自己家"
+
+#: pages/picture_decisions.py:26
+msgid "Just us: only films for the household"
+msgstr "仅自己家：仅限家庭内部影片"
+
+#: pages/memory_brief.py:65
+msgid "Keep WhatsApp and other received media in the pool for this memory"
+msgstr "为本次回忆保留 WhatsApp 和其他收到的媒体"
+
+#: pages/step3_options.py:336
+msgid "Keep intermediate files"
+msgstr "保留中间文件"
+
+#: pages/step3_options.py:273
+msgid "Landscape (16:9)"
+msgstr "横屏（16:9）"
+
+#: pages/clip_review.py:180
+msgid "Last 5s"
+msgstr "后 5 秒"
+
+#: pages/film_length.py:89
+#, python-brace-format
+msgid "Length: {duration}"
+msgstr "时长：{duration}"
+
+#: pages/step3_options.py:50
+msgid "Letterbox (black bars)"
+msgstr "黑边"
+
+#: theme.py:320
+msgid "Light"
+msgstr "浅色"
+
+#: pages/step1_presets.py:248
+msgid "Loading albums..."
+msgstr "正在加载相册..."
+
+#: pages/memory_run.py:63
+msgid "Loading thumbnails"
+msgstr "正在加载缩略图"
+
+#: pages/step2_loading.py:313
+msgid "Loading videos..."
+msgstr "正在加载视频..."
+
+#: pages/suggestions.py:157
+msgid "Looking through the library…"
+msgstr "正在浏览媒体库…"
+
+#: pages/memory_duration.py:30
+msgid "Manual"
+msgstr "手动"
+
+#: pages/runs.py:83
+msgid "Manual and automatic runs, including failures. Open a run to read its cut and timings."
+msgstr "手动和自动任务，包括失败任务。打开任务可查看剪辑和耗时。"
+
+#: pages/_step3_music_preview.py:171
+#, python-brace-format
+msgid "Map: {title_suggestion_map_mode}"
+msgstr "地图：{title_suggestion_map_mode}"
+
+#: pages/clip_pipeline.py:66
+msgid "Media Eligible"
+msgstr "符合条件的媒体"
+
+#: app.py:74 app.py:207
+msgid "Media pool"
+msgstr "媒体库"
+
+#: pages/_step4_upload.py:65
+msgid "Memories"
+msgstr "回忆"
+
+#: pages/suggestions.py:86
+msgid "Memories automation would make next, using the same rules as auto suggest."
+msgstr "自动化接下来会创建的回忆，规则与 auto suggest 相同。"
+
+#: app.py:71 app.py:195
+msgid "Memory"
+msgstr "回忆"
+
+#: pages/memory_brief.py:134
+msgid "Memory type"
+msgstr "回忆类型"
+
+#: pages/clip_review.py:192
+msgid "Middle 5s"
+msgstr "中间 5 秒"
+
+#: pages/step1_presets.py:214
+msgid "Month"
+msgstr "月份"
+
+#: pages/memory_brief.py:35
+msgid "Monthly Highlights"
+msgstr "月度精选"
+
+#: pages/step1_tabs.py:116
+msgid "Months"
+msgstr "个月"
+
+#: pages/_step3_music_preview.py:148
+#, python-brace-format
+msgid "Mood: {mood_text}"
+msgstr "氛围：{mood_text}"
+
+#: pages/step1_presets.py:96
+msgid "Most recent year"
+msgstr "最近年份"
+
+#: pages/memory_brief.py:34
+msgid "Multi-Person"
+msgstr "多人"
+
+#: pages/step3_options.py:361 pages/step3_options.py:417
+msgid "Music"
+msgstr "音乐"
+
+#: pages/_step3_music_preview.py:120
+msgid "Music generated successfully!"
+msgstr "音乐生成成功！"
+
+#: pages/_step3_music_preview.py:115
+msgid "Music generated!"
+msgstr "音乐已生成！"
+
+#: pages/_step3_music_preview.py:126
+#, python-brace-format
+msgid "Music generation failed: {value}"
+msgstr "音乐生成失败：{value}"
+
+#: pages/step3_options.py:120
+msgid "Music volume:"
+msgstr "音乐音量："
+
+#: pages/step1_people.py:174
+msgid "Narrow this memory to these people, the same as --person on the CLI."
+msgstr "将回忆限定为这些人物，与命令行的 --person 相同。"
+
+#: pages/picture_decisions.py:136
+msgid "Never use"
+msgstr "永不使用"
+
+#: pages/settings_people.py:285
+msgid "Next"
+msgstr "下一页"
+
+#: pages/runs.py:127
+msgid "Next runs"
+msgstr "后续任务"
+
+#: pages/clip_review.py:433
+msgid "Next: Generation Options"
+msgstr "下一步：生成选项"
+
+#: pages/step3_options.py:439
+msgid "Next: Preview & Export"
+msgstr "下一步：预览与导出"
+
+#: pages/step1_presets.py:276
+msgid "No albums with any assets in them yet."
+msgstr "还没有包含媒体的相册。"
+
+#: pages/runs.py:73
+msgid "No child output was retained for this run."
+msgstr "此任务未保留关联输出。"
+
+#: pages/step4_export.py:132
+msgid "No clips selected. Go back to select clips."
+msgstr "未选择片段。请返回选择。"
+
+#: pages/suggestions.py:168
+msgid "No eligible suggestions right now."
+msgstr "暂无符合条件的建议。"
+
+#: pages/settings_people.py:251
+msgid ""
+"No people file yet. Rescan the library to build one — it reads every named person's count and"
+" month curve, and looks at no pixels."
+msgstr "尚无人物文件。请重新扫描媒体库：读取每位已命名人物的数量和月度曲线，不分析图片像素。"
+
+#: pages/runs.py:105
+msgid "No runs match this view. Make a memory from Memory or Suggestions."
+msgstr "没有符合筛选条件的任务。请从“回忆”或“建议”创建回忆。"
+
+#: pages/runs.py:62
+msgid "No saved cut is available for this run."
+msgstr "此任务没有已保存的剪辑。"
+
+#: pages/suggestions.py:212
+msgid "No suggestions were rejected by variety or failure backoff."
+msgstr "没有因多样性或失败后等待而被跳过的建议。"
+
+#: pages/step1_presets.py:402
+msgid "No trips detected for this year."
+msgstr "未检测到这一年的旅行。"
+
+#: pages/clip_review.py:454
+msgid "No video clips in the cut; there is nothing to trim."
+msgstr "剪辑中没有视频片段，无需裁剪。"
+
+#: pages/step2_review.py:98
+msgid "No videos found for the selected criteria."
+msgstr "未找到符合条件的视频。"
+
+#: pages/settings_people.py:478
+msgid "No, they are not"
+msgstr "不，不是"
+
+#: pages/step3_options.py:304 pages/step3_options.py:365
+msgid "None"
+msgstr "无"
+
+#: pages/settings_people.py:389
+msgid "Notes"
+msgstr "备注"
+
+#: pages/settings_people.py:409
+msgid "Nothing recorded yet."
+msgstr "尚无记录。"
+
+#: pages/settings_people.py:212
+msgid "Nothing to curate — no twins and no split records."
+msgstr "无需整理：没有重复项或分散记录。"
+
+#: pages/memory_brief.py:36
+msgid "On This Day"
+msgstr "历史上的今天"
+
+#: pages/picture_decisions.py:22
+msgid ""
+"Once cleared, every film up to that level may use it. Nothing the app reads later puts the "
+"hold back; Undo does."
+msgstr "解除限制后，不高于所选级别的影片都可以使用此图片。后续分析不会重新施加限制；“撤销”可以恢复。"
+
+#: pages/settings_people.py:521
+msgid "One answer updates both people. Confirmed relationships are never replaced by a scan."
+msgstr "一次回答会更新双方。扫描不会替换已确认的关系。"
+
+#: pages/step1_presets.py:114
+msgid "One window around the holiday in each year, most recent first."
+msgstr "每年节日前后的一段时间，按年份从近到远排列。"
+
+#: pages/step1_people.py:169
+msgid "Only with (optional)"
+msgstr "仅包含（可选）"
+
+#: pages/picture_decisions.py:165
+msgid "Open it in Immich first if you haven't looked at it yourself."
+msgstr "如果还没亲自看过，请先在 Immich 中打开图片。"
+
+#: pages/suggestions.py:146
+msgid "Open run"
+msgstr "打开任务"
+
+#: pages/memory_brief.py:180
+msgid "Open the media pool"
+msgstr "打开媒体库"
+
+#: pages/settings_people.py:233
+#, python-brace-format
+msgid "Open {name} in Immich"
+msgstr "在 Immich 中打开 {name}"
+
+#: pages/step3_options.py:278
+msgid "Orientation"
+msgstr "方向"
+
+#: pages/step4_export.py:165
+msgid "Output"
+msgstr "输出"
+
+#: pages/step3_options.py:253
+msgid "Output Format"
+msgstr "输出格式"
+
+#: pages/step3_options.py:228
+msgid "Output Settings"
+msgstr "输出设置"
+
+#: pages/step4_export.py:194
+msgid "Output filename"
+msgstr "输出文件名"
+
+#: pages/_step4_generate.py:118
+#, python-brace-format
+msgid "Output: {name}"
+msgstr "输出：{name}"
+
+#: pages/login.py:50
+msgid "Password"
+msgstr "密码"
+
+#: app.py:134 app.py:291
+msgid "People"
+msgstr "人物"
+
+#: pages/step1_people.py:330
+msgid "People (select 2+)"
+msgstr "人物（至少选择 2 位）"
+
+#: pages/settings_people.py:530 pages/step1_config.py:224 pages/step1_people.py:272
+msgid "Person"
+msgstr "人物"
+
+#: pages/step1_config.py:217
+msgid "Person Filter"
+msgstr "人物筛选"
+
+#: pages/memory_brief.py:33
+msgid "Person Spotlight"
+msgstr "人物特辑"
+
+#: pages/clip_grid.py:193
+msgid "Photo"
+msgstr "照片"
+
+#: pages/step4_export.py:157
+msgid "Photo Pool"
+msgstr "可用照片"
+
+#: pages/step3_options.py:188
+msgid "Photo duration (seconds)"
+msgstr "照片时长（秒）"
+
+#: pages/step2_loading.py:461
+#, python-brace-format
+msgid "Photo thumbnails: {value}/{count}"
+msgstr "照片缩略图：{value}/{count}"
+
+#: pages/memory_brief.py:55
+msgid "Photographs join the pool as stills the editor can hold"
+msgstr "照片作为静态画面加入媒体库，剪辑时可以停留展示"
+
+#: pages/step3_options.py:183
+#, python-brace-format
+msgid "Photos enabled ({photos_count} found)"
+msgstr "已启用照片（找到 {photos_count} 张）"
+
+#: pages/step1_presets.py:585
+msgid "Pick a day"
+msgstr "选择一天"
+
+#: pages/memory_brief.py:101
+msgid "Pick a memory type and a valid period first"
+msgstr "请先选择回忆类型和有效时间范围"
+
+#: pages/memory_brief.py:100
+msgid "Pick an album first"
+msgstr "请先选择相册"
+
+#: pages/clip_review.py:447
+msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
+msgstr "选择每段视频展示的秒数并预览。静态照片无需裁剪。"
+
+#: pages/film_length.py:71
+msgid "Pictures & video"
+msgstr "照片与视频"
+
+#: pages/clip_pipeline.py:56
+#, python-brace-format
+msgid "Pipeline complete! Planned {planned_count} clips from {eligible_count} eligible media items."
+msgstr "处理完成！从 {eligible_count} 个符合条件的媒体中规划了 {planned_count} 个片段。"
+
+#: pages/step1_config.py:157
+msgid "Please enter both URL and API key"
+msgstr "请输入服务器地址和 API 密钥"
+
+#: pages/clip_review.py:426
+msgid "Please select at least one clip"
+msgstr "请至少选择一个片段"
+
+#: pages/memory_brief.py:172
+msgid "Pool"
+msgstr "候选媒体"
+
+#: pages/step3_options.py:274
+msgid "Portrait (9:16)"
+msgstr "竖屏（9:16）"
+
+#: pages/memory_run.py:68
+msgid "Preparing the cut"
+msgstr "正在准备剪辑"
+
+#: pages/clip_review.py:164
+msgid "Preview"
+msgstr "预览"
+
+#: app.py:255
+msgid "Preview & Export"
+msgstr "预览与导出"
+
+#: pages/step1_cache.py:178
+msgid "Preview cache"
+msgstr "预览缓存"
+
+#: pages/settings_people.py:282
+msgid "Previous"
+msgstr "上一页"
+
+#: pages/runs.py:121
+msgid "Previous runs"
+msgstr "先前任务"
+
+#: pages/memory_run.py:467
+msgid "Re-load media to export"
+msgstr "重新加载媒体以导出"
+
+#: pages/runs.py:55
+msgid "Read the cut"
+msgstr "查看剪辑"
+
+#: pages/settings_people.py:153
+msgid "Reading the library…"
+msgstr "正在读取媒体库…"
+
+#: pages/memory_run.py:64
+msgid "Reading the pictures"
+msgstr "正在读取图片"
+
+#: pages/runs.py:132
+msgid "Refresh runs"
+msgstr "刷新任务"
+
+#: pages/suggestions.py:95
+msgid "Refresh suggestions"
+msgstr "刷新建议"
+
+#: pages/_step3_music_preview.py:246
+msgid "Regenerate"
+msgstr "重新生成"
+
+#: pages/_step3_music_preview.py:275
+msgid "Regenerate Music"
+msgstr "重新生成音乐"
+
+#: pages/settings_people.py:541
+msgid "Relationship confirmed"
+msgstr "关系已确认"
+
+#: pages/settings_people.py:437
+msgid "Relationship removed"
+msgstr "关系已移除"
+
+#: pages/settings_people.py:400
+msgid "Relationships"
+msgstr "关系"
+
+#: pages/settings_config.py:174
+msgid "Reload from Disk"
+msgstr "从磁盘重新加载"
+
+#: pages/clip_review.py:431
+msgid "Reload the pool"
+msgstr "重新加载媒体"
+
+#: pages/settings_people.py:442
+msgid "Remove this relationship"
+msgstr "移除此关系"
+
+#: pages/settings_people.py:165
+msgid "Rescan the library"
+msgstr "重新扫描媒体库"
+
+#: pages/step3_options.py:241 pages/step3_options.py:416
+msgid "Resolution"
+msgstr "分辨率"
+
+#: pages/step4_export.py:33
+msgid "Result"
+msgstr "结果"
+
+#: pages/memory.py:104
+msgid "Review the pool"
+msgstr "检查媒体"
+
+#: pages/settings_people.py:378
+msgid "Role (suggestions; type your own)"
+msgstr "角色（可选建议或自行输入）"
+
+#: pages/clip_review.py:251
+msgid "Rotation"
+msgstr "旋转"
+
+#: pages/runs.py:23
+msgid "Run not found. It may have been removed."
+msgstr "未找到任务，可能已被移除。"
+
+#: pages/suggestions.py:203
+msgid "Run this suggestion"
+msgstr "运行此建议"
+
+#: pages/suggestions.py:88
+msgid "Running a suggestion creates a video on the server. "
+msgstr "运行建议会在服务器上创建视频。"
+
+#: pages/suggestions.py:137
+#, python-brace-format
+msgid "Running on the server: {phase}. It continues if you leave this page."
+msgstr "正在服务器上运行：{phase}。离开此页面后仍会继续。"
+
+#: app.py:73 app.py:219
+msgid "Runs"
+msgstr "任务"
+
+#: pages/step1_config.py:140
+msgid "Save Config"
+msgstr "保存配置"
+
+#: pages/step1_config.py:72
+msgid "Saved - type a new key to replace it"
+msgstr "已保存，输入新密钥可替换"
+
+#: pages/runs.py:38 pages/step4_export.py:34
+#, python-brace-format
+msgid "Saved to: {output_path}"
+msgstr "已保存至：{output_path}"
+
+#: pages/_step4_generate.py:650
+#, python-brace-format
+msgid "Saved to: {result_path} ({file_size})"
+msgstr "已保存至：{result_path}（{file_size}）"
+
+#: pages/step3_options.py:289
+msgid "Scaling Mode"
+msgstr "缩放模式"
+
+#: pages/memory_brief.py:32 pages/step1_presets.py:165
+msgid "Season"
+msgstr "季节"
+
+#: pages/step3_options.py:134
+msgid "Select a music file:"
+msgstr "选择音乐文件："
+
+#: pages/step1_presets.py:431
+msgid "Select a trip"
+msgstr "选择旅行"
+
+#: pages/step3_options.py:150
+msgid "Select music file"
+msgstr "选择音乐文件"
+
+#: pages/clip_review.py:239
+msgid "Select range"
+msgstr "选择时间范围"
+
+#: pages/clip_review.py:354
+msgid "Selected Clips"
+msgstr "已选片段"
+
+#: pages/step3_options.py:157
+#, python-brace-format
+msgid "Selected: {value}"
+msgstr "已选择：{value}"
+
+#: pages/step2_review.py:79
+msgid "Session expired — please reconfigure. The server restarted and lost your settings."
+msgstr "会话已过期，请重新配置。服务器重启后丢失了你的设置。"
+
+#: pages/clip_review.py:391
+msgid "Set all to first 5s"
+msgstr "全部使用前 5 秒"
+
+#: pages/clip_review.py:392
+msgid "Set all to middle 5s"
+msgstr "全部使用中间 5 秒"
+
+#: app.py:75
+msgid "Settings"
+msgstr "设置"
+
+#: pages/memory_brief.py:74
+msgid "Shareable"
+msgstr "可分享"
+
+#: pages/memory_brief.py:143
+msgid "Sharing"
+msgstr "分享范围"
+
+#: pages/login.py:80
+msgid "Sign in"
+msgstr "登录"
+
+#: app.py:113
+msgid "Sign out"
+msgstr "退出登录"
+
+#: pages/step3_options.py:301
+msgid "Smart (mix of fades & cuts)"
+msgstr "智能（混合淡化与切换）"
+
+#: pages/step3_options.py:275
+msgid "Square (1:1)"
+msgstr "正方形（1:1）"
+
+#: pages/step4_export.py:242
+msgid "Start New Project"
+msgstr "新建项目"
+
+#: pages/step1_tabs.py:162
+msgid "Start date"
+msgstr "开始日期"
+
+#: pages/step2_review.py:152
+msgid "Start over"
+msgstr "重新开始"
+
+#: pages/step1_tabs.py:128
+msgid "Starting from"
+msgstr "从此日期开始"
+
+#: pages/_step4_generate.py:378
+msgid "Starting..."
+msgstr "正在启动..."
+
+#: pages/runs.py:98
+msgid "Status"
+msgstr "状态"
+
+#: pages/memory.py:128
+msgid "Story"
+msgstr "故事"
+
+#: pages/memory_story.py:61
+msgid "Story weight"
+msgstr "故事权重"
+
+#: pages/memory.py:127
+msgid "Storyboard"
+msgstr "分镜"
+
+#: pages/_step3_music_preview.py:212
+msgid "Subtitle"
+msgstr "副标题"
+
+#: app.py:72 app.py:231
+msgid "Suggestions"
+msgstr "建议"
+
+#: pages/step3_options.py:399 pages/step4_export.py:146
+msgid "Summary"
+msgstr "摘要"
+
+#: pages/memory_brief.py:40
+msgid "Surprise me"
+msgstr "给我惊喜"
+
+#: theme.py:321
+msgid "System"
+msgstr "跟随系统"
+
+#: pages/clip_review.py:366
+msgid "Target"
+msgstr "目标"
+
+#: pages/memory_duration.py:89
+msgid "Target duration (min)"
+msgstr "目标时长（分钟）"
+
+#: pages/step1_config.py:137
+msgid "Test Connection"
+msgstr "测试连接"
+
+#: pages/step1_config.py:89
+msgid "Testing connection..."
+msgstr "正在测试连接..."
+
+#: pages/picture_decisions.py:89
+msgid "That didn't save. Try again, or use `pictures` in the CLI."
+msgstr "保存失败。请重试，或在命令行使用 `pictures`。"
+
+#: pages/step3_options.py:143
+msgid "That file is not an MP3, M4A or WAV"
+msgstr "此文件不是 MP3、M4A 或 WAV"
+
+#: pages/memory.py:123 pages/memory_story.py:96
+msgid "The editor left no thesis for this cut."
+msgstr "此剪辑没有留下主题说明。"
+
+#: pages/memory_brief.py:60
+msgid "The editor may play a Live Photo's motion when it earns it"
+msgstr "当动态画面有所贡献时，剪辑可使用 Live Photo 的运动部分"
+
+#: pages/_step4_upload.py:74
+msgid "The generated video will be uploaded to your Immich instance and added to the specified album."
+msgstr "生成的视频将上传到你的 Immich 实例，并加入指定相册。"
+
+#: pages/memory_brief.py:77
+msgid "The household. Private moments a caption names, like a bath, play too."
+msgstr "家庭内部。也包含描述中提到的私密时刻，例如洗澡。"
+
+#: pages/memory.py:160
+#, python-brace-format
+msgid "The last cut ended as {status}."
+msgstr "上次剪辑以 {status} 状态结束。"
+
+#: pages/memory.py:44
+msgid "The last cut failed; the server log has the reason."
+msgstr "上次剪辑失败，原因见服务器日志。"
+
+#: pages/memory.py:46
+msgid "The last cut stopped without a result."
+msgstr "上次剪辑停止，未产生结果。"
+
+#: pages/memory.py:43
+msgid "The last cut was cancelled before it finished."
+msgstr "上次剪辑在完成前被取消。"
+
+#: pages/memory.py:45
+msgid "The last cut was interrupted: the process that ran it is gone."
+msgstr "上次剪辑已中断：运行它的进程已不存在。"
+
+#: pages/memory_brief.py:176
+msgid ""
+"The media pool and the excerpt editor have their own page: exclude what may never be cut, and"
+" trim what was."
+msgstr "媒体库和片段编辑器有独立页面：排除绝不能出现的内容，并调整已选片段。"
+
+#: pages/step2_review.py:253
+#, python-brace-format
+msgid "The pool{value}"
+msgstr "媒体库{value}"
+
+#: pages/settings_people.py:142
+msgid "The roster"
+msgstr "人物列表"
+
+#: pages/settings_people.py:158
+#, python-brace-format
+msgid "The scan could not finish: {exc}"
+msgstr "扫描未能完成：{exc}"
+
+#: pages/memory_story.py:94
+msgid "The story"
+msgstr "故事"
+
+#: pages/memory_storyboard.py:100
+msgid "The storyboard"
+msgstr "分镜"
+
+#: pages/memory_duration.py:69
+msgid "The type decides the length; turn off to set an exact target"
+msgstr "类型决定时长；关闭后可设置精确目标"
+
+#: pages/memory.py:172
+msgid "This cut finished while the page was away. Re-load its media to export it."
+msgstr "此剪辑在你离开期间完成。重新加载媒体后即可导出。"
+
+#: pages/step1_cache.py:167
+msgid "Thumbnail cache"
+msgstr "缩略图缓存"
+
+#: pages/step2_loading.py:415
+#, python-brace-format
+msgid "Thumbnails: {value}/{count}"
+msgstr "缩略图：{value}/{count}"
+
+#: pages/clip_pipeline.py:76
+msgid "Time Elapsed"
+msgstr "已用时间"
+
+#: pages/_step3_music_preview.py:197 pages/step3_options.py:350
+msgid "Title"
+msgstr "标题"
+
+#: pages/memory_storyboard.py:110
+msgid "Titles and transitions make up the rest of the film."
+msgstr "标题和转场构成影片的其余部分。"
+
+#: pages/step1_people.py:32
+msgid "Together"
+msgstr "同时出现"
+
+#: pages/step1_people.py:181
+msgid ""
+"Together keeps only the moments holding everyone named. Any of these people keeps a moment "
+"holding any one of them."
+msgstr "“同时出现”仅保留所有指定人物同框的时刻。“其中任意人物”保留至少一位指定人物出现的时刻。"
+
+#: pages/login.py:64
+msgid "Too many failed attempts. Try again later."
+msgstr "失败次数过多，请稍后再试。"
+
+#: pages/clip_review.py:361
+msgid "Total Duration"
+msgstr "总时长"
+
+#: pages/step3_options.py:307
+msgid "Transition Style"
+msgstr "转场样式"
+
+#: pages/clip_review.py:445 pages/step2_review.py:147
+msgid "Trim the video clips"
+msgstr "裁剪视频片段"
+
+#: pages/memory_brief.py:38
+msgid "Trip"
+msgstr "旅行"
+
+#: pages/step1_presets.py:394
+#, python-brace-format
+msgid "Trip detection failed: {exc}"
+msgstr "旅行检测失败：{exc}"
+
+#: pages/_step3_music_preview.py:164
+#, python-brace-format
+msgid "Trip: {title_suggestion_trip_type}"
+msgstr "旅行：{title_suggestion_trip_type}"
+
+#: pages/login.py:35
+msgid "Turn your photo library into video memories"
+msgstr "将照片库变成视频回忆"
+
+#: pages/picture_decisions.py:138
+msgid "Undo"
+msgstr "撤销"
+
+#: pages/step1_tabs.py:117
+msgid "Unit"
+msgstr "单位"
+
+#: pages/_step4_upload.py:62
+msgid "Upload after generation"
+msgstr "生成后上传"
+
+#: pages/step3_options.py:365
+msgid "Upload file"
+msgstr "上传文件"
+
+#: pages/_step4_upload.py:116
+#, python-brace-format
+msgid "Uploaded to Immich! Album: {upload_album}"
+msgstr "已上传到 Immich！相册：{upload_album}"
+
+#: pages/step3_options.py:147
+#, python-brace-format
+msgid "Uploaded: {name}"
+msgstr "已上传：{name}"
+
+#: pages/_step4_upload.py:103
+msgid "Uploading to Immich..."
+msgstr "正在上传到 Immich..."
+
+#: pages/step1_people.py:118
+msgid ""
+"Use quoted names, AND, OR and parentheses. AND requires the people in the same photo or "
+"video, not separate pictures from the same event. Changing the people picker replaces this "
+"condition."
+msgstr "使用带引号的姓名、AND、OR 和括号。AND 要求这些人物出现在同一张照片或同一段视频中，而非同一事件的不同图片里。更改人物选择会替换此条件。"
+
+#: pages/settings_people.py:486
+msgid ""
+"Use this for someone who is not face-tagged in Immich. You can connect them to the family "
+"immediately afterwards."
+msgstr "用于在 Immich 中没有人脸标记的人物。随后即可建立其与家人的关系。"
+
+#: pages/login.py:48
+msgid "Username"
+msgstr "用户名"
+
+#: pages/step1_config.py:245
+#, python-brace-format
+msgid "Using {name}'s birthday: {value}"
+msgstr "使用 {name} 的生日：{value}"
+
+#: pages/step1_cache.py:144
+msgid "Video cache"
+msgstr "视频缓存"
+
+#: pages/_step4_generate.py:631
+msgid "Video generated successfully!"
+msgstr "视频生成成功！"
+
+#: pages/memory_brief.py:204
+msgid "What is it about"
+msgstr "主题是什么"
+
+#: pages/settings_people.py:134
+msgid ""
+"Who the library thinks is in it, read from counts and month curves alone. Everything the scan"
+" inferred is recomputed each time you rescan; everything you confirm here is yours and is "
+"never overwritten."
+msgstr "仅根据数量和月度曲线推断媒体库中的人物。每次扫描都会重新计算推断；你确认的信息不会被覆盖。"
+
+#: pages/memory_brief.py:213
+msgid "Who will watch it"
+msgstr "谁会观看"
+
+#: pages/suggestions.py:209
+msgid "Why other suggestions were skipped"
+msgstr "其他建议为何被跳过"
+
+#: pages/step4_export.py:197
+#, python-brace-format
+msgid "Will be saved to: {value}"
+msgstr "将保存至：{value}"
+
+#: pages/step1_config.py:261 pages/step1_people.py:250 pages/step1_people.py:312
+#: pages/step1_presets.py:133 pages/step1_presets.py:154 pages/step1_presets.py:203
+#: pages/step1_presets.py:443 pages/step1_tabs.py:67
+msgid "Year"
+msgstr "年份"
+
+#: pages/memory_brief.py:31
+msgid "Year in Review"
+msgstr "年度回顾"
+
+#: pages/step1_tabs.py:80
+msgid "Year type"
+msgstr "年份类型"
+
+#: pages/step1_tabs.py:116
+msgid "Years"
+msgstr "年"
+
+#: pages/step1_presets.py:109
+msgid "Years to span"
+msgstr "跨越年数"
+
+#: pages/settings_people.py:475
+msgid "Yes, that is right"
+msgstr "是，正确"
+
+#: pages/login.py:92
+msgid "You will be redirected to your identity provider"
+msgstr "即将跳转到身份验证服务"
+
+#: pages/picture_decisions.py:114
+msgid "Your decision is gone; the app's own holds apply again."
+msgstr "你的决定已撤销，应用自身的限制将重新生效。"
+
+#: pages/_step4_generate.py:643
+msgid "Your memory video is ready!"
+msgstr "你的回忆视频已就绪！"
+
+#: pages/memory_duration.py:22
+msgid "about 10 minutes per year of range, shorter if the media cannot fill it"
+msgstr "每年约 10 分钟，媒体不足时缩短"
+
+#: pages/runs.py:87
+msgid "all"
+msgstr "全部"
+
+#: pages/runs.py:91
+msgid "cancelled"
+msgstr "已取消"
+
+#: pages/runs.py:88
+msgid "completed"
+msgstr "已完成"
+
+#: pages/settings_people.py:433
+msgid "confirmed"
+msgstr "已确认"
+
+#: pages/settings_people.py:337
+msgid "counts unreliable"
+msgstr "数量不可靠"
+
+#: pages/_step3_music_preview.py:214
+msgid "e.g. June – August 2025"
+msgstr "例如：2025 年 6 月至 8 月"
+
+#: pages/_step3_music_preview.py:199
+msgid "e.g. Summer in Saxony"
+msgstr "例如：萨克森的夏天"
+
+#: pages/settings_people.py:352
+msgid "edit in Immich"
+msgstr "在 Immich 中编辑"
+
+#: pages/runs.py:89
+msgid "failed"
+msgstr "失败"
+
+#: pages/runs.py:92
+msgid "interrupted"
+msgstr "已中断"
+
+#: pages/settings_people.py:527
+msgid "is…"
+msgstr "是…"
+
+#: pages/step1_presets.py:177
+msgid "north"
+msgstr "北半球"
+
+#: pages/runs.py:90
+msgid "running"
+msgstr "运行中"
+
+#: pages/step1_presets.py:177
+msgid "south"
+msgstr "南半球"
+
+#: pages/memory_duration.py:24
+msgid "the type's default length, shorter if the media cannot fill it"
+msgstr "此类型的默认时长，媒体不足时缩短"
+
+#: pages/runs.py:32
+#, python-brace-format
+msgid "{clips_selected} pictures selected · {total_duration_seconds:.1f}s recorded run time"
+msgstr "已选择 {clips_selected} 张画面 · 录制时长 {total_duration_seconds:.1f} 秒"
+
+#: pages/memory_story.py:109
+#, python-brace-format
+msgid "{count} stories, {carrier_count} pictures"
+msgstr "{count} 个故事，{carrier_count} 张画面"
+
+#: pages/runs.py:114
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end}"
+msgstr "{date_range_start} 至 {date_range_end}"
+
+#: pages/suggestions.py:188
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end} · {asset_count} pictures · {value}"
+msgstr "{date_range_start} 至 {date_range_end} · {asset_count} 张画面 · {value}"
+
+#: pages/step1_config.py:203
+#, python-brace-format
+msgid "{description} ({days} days)"
+msgstr "{description}（{days} 天）"
+
+#: pages/settings_people.py:160
+#, python-brace-format
+msgid "{found} people in {path}"
+msgstr "{path} 中有 {found} 位人物"
+
+#: pages/cut_progress_view.py:166
+#, python-brace-format
+msgid "{label} {value:,} of {value2:,}"
+msgstr "{label} {value:,} / {value2:,}"
+
+#: pages/settings_people.py:466
+#, python-brace-format
+msgid "{name} and {target_name}: {value}"
+msgstr "{name} 与 {target_name}：{value}"
+
+#: pages/step4_export.py:103
+#, python-brace-format
+msgid "{photos_count} Photos Available (auto-selected at generation)"
+msgstr "{photos_count} 张可用照片（生成时自动选择）"
+
+#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#, python-brace-format
+msgid "{seconds:g} s"
+msgstr "{seconds:g} 秒"
+
+#: pages/settings_config.py:147
+#, python-brace-format
+msgid "{title}  ({n_keys} keys)"
+msgstr "{title}（{n_keys} 个配置项）"
+
+#: pages/runs.py:45
+#, python-brace-format
+msgid "{value}: {duration_seconds:.1f}s"
+msgstr "{value}：{duration_seconds:.1f} 秒"
+

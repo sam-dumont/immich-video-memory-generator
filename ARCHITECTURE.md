@@ -627,6 +627,7 @@ src/immich_memories/
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing
+│   ├── i18n.py                 # Per-browser UI locale, translated labels, Quasar language
 │   ├── auth.py                 # Auth middleware, credential verification, session helpers
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
 │   ├── health_api.py           # GET /health, /health/live, /health/ready — probe payloads + snapshot cache
@@ -792,7 +793,7 @@ src/immich_memories/
 ├── place_names.py              # Offline island boxes and short island/region names
 ├── place_name_translations.py  # Island and region names for the languages whose titles take no preposition
 ├── place_phrases/              # Per-language trip-title place phrases, one module per language; none = no preposition
-├── locales/                    # gettext catalogues for the fourteen film languages
+├── locales/                    # Fourteen languages: messages.po for films, ui.po for the interface
 ├── preflight.py                # Dependency checks
 ├── preflight_network.py        # One row per outside host the config allows; silent when none
 ├── preflight_render.py         # Authenticated worker version and render capability check

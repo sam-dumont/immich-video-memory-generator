@@ -18,6 +18,7 @@ from immich_memories.timeperiod import (
     from_period,
 )
 from immich_memories.ui.components import im_button, im_section_header
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.step1_tabs import (
     _render_custom_tab,
@@ -33,7 +34,9 @@ def render_immich_connection(state) -> None:
     """The connection as a collapsible panel: open until connected, one line after."""
     is_connected = bool(state.connected_user)
     header_text = (
-        f"Immich Connection: {state.connected_user}" if is_connected else "Immich Connection"
+        tr("Immich Connection: {name}", name=state.connected_user)
+        if is_connected
+        else tr("Immich Connection")
     )
 
     with ui.expansion(header_text, icon="cloud", value=not is_connected).classes("w-full"):
@@ -47,13 +50,15 @@ def render_immich_connection(state) -> None:
                 .style("background: rgba(16,185,129,0.1)"),
             ):
                 ui.icon("check_circle").style("color: var(--im-success)")
-                ui.label(f"Connected as: {state.connected_user}").style("color: var(--im-success)")
+                ui.label(tr("Connected as: {name}", name=state.connected_user)).style(
+                    "color: var(--im-success)"
+                )
 
         # URL and API key inputs
         state.immich_url_entry = state.immich_url
         with ui.row().classes("w-full gap-4"):
             ui.input(
-                "Immich Server URL",
+                tr("Immich Server URL"),
                 placeholder="https://photos.example.com",
             ).classes("flex-1").bind_value(state, "immich_url_entry")
 
@@ -61,10 +66,12 @@ def render_immich_connection(state) -> None:
             # key would send it to every browser that loads this page --
             # `password=True` masks it on screen, it does not withhold it.
             ui.input(
-                "API Key",
+                tr("API Key"),
                 password=True,
                 password_toggle_button=True,
-                placeholder="Saved - type a new key to replace it" if state.immich_api_key else "",
+                placeholder=tr("Saved - type a new key to replace it")
+                if state.immich_api_key
+                else "",
             ).classes("flex-1").bind_value(state, "api_key_entry")
 
         # Connection buttons
@@ -79,7 +86,7 @@ def render_immich_connection(state) -> None:
                     status_label.style("color: var(--im-error)")
                     return
 
-                status_label.set_text("Testing connection...")
+                status_label.set_text(tr("Testing connection..."))
                 status_label.style("color: var(--im-text-secondary)")
 
                 def do_connect():
@@ -100,7 +107,7 @@ def render_immich_connection(state) -> None:
                     state.people = people
                     state.years = years
 
-                    status_label.set_text(f"Connected as: {state.connected_user}")
+                    status_label.set_text(tr("Connected as: {name}", name=state.connected_user))
                     status_label.style("color: var(--im-success)")
                     connection_status_container.clear()
                     with (
@@ -110,21 +117,27 @@ def render_immich_connection(state) -> None:
                         .style("background: rgba(16,185,129,0.1)"),
                     ):
                         ui.icon("check_circle").style("color: var(--im-success)")
-                        ui.label(f"Connected as: {state.connected_user}").style(
+                        ui.label(tr("Connected as: {name}", name=state.connected_user)).style(
                             "color: var(--im-success)"
                         )
                     ui.navigate.to("/")
 
                 except ImmichAPIError as e:
-                    status_label.set_text(f"Connection failed: {sanitize_error_message(str(e))}")
+                    status_label.set_text(
+                        tr("Connection failed: {value}", value=sanitize_error_message(str(e)))
+                    )
                     status_label.style("color: var(--im-error)")
                 except Exception as e:  # WHY: UI graceful degradation
-                    status_label.set_text(f"Error: {sanitize_error_message(str(e))}")
+                    status_label.set_text(
+                        tr("Error: {value}", value=sanitize_error_message(str(e)))
+                    )
                     status_label.style("color: var(--im-error)")
 
-            im_button("Test Connection", variant="secondary", on_click=test_connection, icon="wifi")
             im_button(
-                "Save Config",
+                tr("Test Connection"), variant="secondary", on_click=test_connection, icon="wifi"
+            )
+            im_button(
+                tr("Save Config"),
                 variant="secondary",
                 on_click=lambda: _save_connection(state),
                 icon="save",
@@ -141,7 +154,7 @@ def _connection_problem(state) -> str | None:
     if refusal:
         return refusal
     if not state.immich_url or not state.immich_api_key:
-        return "Please enter both URL and API key"
+        return tr("Please enter both URL and API key")
     return None
 
 
@@ -156,7 +169,7 @@ def _save_connection(state) -> None:
     config_path = get_config_path()
     config.save_yaml(config_path)
     set_config(config, path=config_path)
-    ui.notify("Configuration saved!", type="positive")
+    ui.notify(tr("Configuration saved!"), type="positive")
 
 
 def _compute_date_range(state):
@@ -186,12 +199,14 @@ def _make_date_range_updater(state, date_range_label) -> Callable[[], None]:
                 date_range_label.set_text("")
                 return
             state.date_ranges = [dr]
-            date_range_label.set_text(f"{dr.description} ({dr.days} days)")
+            date_range_label.set_text(
+                tr("{description} ({days} days)", description=dr.description, days=dr.days)
+            )
             if state.duration_mode == "auto":
                 # About ten minutes per year of range; an override on the brief stands.
                 state.target_duration = max(1, min(60, round(dr.days / 365 * 10)))
         except Exception as e:  # WHY: UI graceful degradation
-            date_range_label.set_text(f"Invalid date range: {e}")
+            date_range_label.set_text(tr("Invalid date range: {e}", e=e))
             date_range_label.style("color: var(--im-error); background: rgba(239,68,68,0.1)")
 
     return update
@@ -199,14 +214,14 @@ def _make_date_range_updater(state, date_range_label) -> Callable[[], None]:
 
 def _render_person_filter(state, update_fn) -> None:
     """Render the custom range's single-person filter."""
-    im_section_header("Person Filter", icon="person")
+    im_section_header(tr("Person Filter"), icon="person")
     named_people = [p for p in state.people if p.name]
-    person_options = {"all": "All people"}
+    person_options = {"all": tr("All people")}
     for p in named_people:
         person_options[p.id] = p.name
 
     with ui.row().classes("w-full gap-4 items-end"):
-        person_select = ui.select(options=person_options, label="Person", value="all").classes(
+        person_select = ui.select(options=person_options, label=tr("Person"), value="all").classes(
             "w-64"
         )
 
@@ -226,7 +241,11 @@ def _render_person_filter(state, update_fn) -> None:
                 state.birthday = selected.birth_date.date()
                 state.year_type = "birthday"
                 ui.notify(
-                    f"Using {selected.name}'s birthday: {state.birthday.strftime('%B %d, %Y')}",
+                    tr(
+                        "Using {name}'s birthday: {value}",
+                        name=selected.name,
+                        value=state.birthday.strftime("%B %d, %Y"),
+                    ),
                     type="info",
                 )
                 update_fn()
@@ -239,9 +258,9 @@ def render_custom_range(state) -> None:
     _tab_mode_map = {"Year": "year", "Duration": "period", "Custom Range": "custom"}
 
     with ui.tabs().classes("w-full") as tabs:
-        year_tab = ui.tab("Year")
-        duration_tab = ui.tab("Duration")
-        custom_tab = ui.tab("Custom Range")
+        year_tab = ui.tab("Year", label=tr("Year"))
+        duration_tab = ui.tab("Duration", label=tr("Duration"))
+        custom_tab = ui.tab("Custom Range", label=tr("Custom Range"))
 
     _updater: list = [lambda: None]
 

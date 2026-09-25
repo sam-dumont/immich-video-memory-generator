@@ -7,32 +7,33 @@ from typing import TYPE_CHECKING
 from nicegui import ui
 
 from immich_memories.memory_types.registry import MemoryType
+from immich_memories.ui.i18n import N_, tr
 
 if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
 # What Auto resolves to before a cut has a pool. Once it has one, every type is fitted
 # to it the way the CLI fits its discovery, and the line says what set the length.
-_TRIP_NOTE = "30 s plus 10 s per active day, from the media once it is loaded"
+_TRIP_NOTE = N_("30 s plus 10 s per active day, from the media once it is loaded")
 _AUTO_NOTES: dict[str, str] = {
     MemoryType.TRIP.value: _TRIP_NOTE,
     MemoryType.ALBUM.value: _TRIP_NOTE,
-    MemoryType.SPECIAL_DAY.value: "30 s plus 6 s per active hour of the day",
-    "custom": "about 10 minutes per year of range, shorter if the media cannot fill it",
+    MemoryType.SPECIAL_DAY.value: N_("30 s plus 6 s per active hour of the day"),
+    "custom": N_("about 10 minutes per year of range, shorter if the media cannot fill it"),
 }
-_DEFAULT_NOTE = "the type's default length, shorter if the media cannot fill it"
+_DEFAULT_NOTE = N_("the type's default length, shorter if the media cannot fill it")
 
 
 def duration_label(state: AppState) -> str:
     """One line: the mode and the exact runtime it resolves to."""
     minutes, seconds = divmod(round(state.target_duration_seconds), 60)
-    mode = "Auto" if state.duration_mode == "auto" else "Manual"
+    mode = tr("Auto") if state.duration_mode == "auto" else tr("Manual")
     return f"{mode} · {minutes}m {seconds:02d}s"
 
 
 def auto_duration_note(memory_type: str | None) -> str:
     """Where an Auto duration comes from for this memory type."""
-    return _AUTO_NOTES.get(memory_type or "", _DEFAULT_NOTE)
+    return tr(_AUTO_NOTES.get(memory_type or "", _DEFAULT_NOTE))
 
 
 def auto_duration_explanation(state: AppState) -> str:
@@ -64,8 +65,8 @@ def set_auto(state: AppState) -> None:
 def render_duration_line(state: AppState) -> None:
     """A switch, then either the resolved runtime or the override field."""
     with ui.row().classes("w-full items-center gap-4 flex-wrap"):
-        switch = ui.switch("Auto duration", value=state.duration_mode == "auto").tooltip(
-            "The type decides the length; turn off to set an exact target"
+        switch = ui.switch(tr("Auto duration"), value=state.duration_mode == "auto").tooltip(
+            tr("The type decides the length; turn off to set an exact target")
         )
         detail = ui.row().classes("items-center gap-3")
 
@@ -85,7 +86,7 @@ def render_duration_line(state: AppState) -> None:
                     )
                 else:
                     ui.number(
-                        "Target duration (min)",
+                        tr("Target duration (min)"),
                         value=state.target_duration,
                         min=0.25,
                         max=60,

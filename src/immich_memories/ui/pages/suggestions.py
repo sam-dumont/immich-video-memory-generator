@@ -15,6 +15,7 @@ from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.security import sanitize_error_message
 from immich_memories.tracking import RunDatabase
 from immich_memories.ui.components import im_card
+from immich_memories.ui.i18n import tr
 
 # What the attempt history records for a run somebody started from this page, so
 # `auto status` and /health tell a browser click apart from the nightly wake.
@@ -82,16 +83,16 @@ class SuggestionsPage:
 
     def __init__(self, config) -> None:
         self.config = config
-        ui.label("Memories automation would make next, using the same rules as auto suggest.")
+        ui.label(tr("Memories automation would make next, using the same rules as auto suggest."))
         ui.label(
-            "Running a suggestion creates a video on the server. "
+            (tr("Running a suggestion creates a video on the server. "))
             + (
-                "Automatic upload to Immich is enabled."
+                tr("Automatic upload to Immich is enabled.")
                 if self.config.automation.upload_to_immich
-                else "Automatic upload to Immich is off."
+                else tr("Automatic upload to Immich is off.")
             )
         ).classes("text-sm")
-        self.refresh = ui.button("Refresh suggestions")
+        self.refresh = ui.button(tr("Refresh suggestions"))
         self.result_label = ui.label().classes("whitespace-pre-wrap")
         self.result_actions = ui.row()
         self.content = ui.column().classes("w-full")
@@ -132,14 +133,17 @@ class SuggestionsPage:
         if attempt.outcome is AutoOutcome.RUNNING:
             phase = attempt.last_phase.label.lower() if attempt.last_phase else "starting"
             self.result_label.set_text(
-                f"Running on the server: {phase}. It continues if you leave this page."
+                tr(
+                    "Running on the server: {phase}. It continues if you leave this page.",
+                    phase=phase,
+                )
             )
             return
         self.watch.deactivate()
         self.attempt_id = None
         if run_id := await run.io_bound(_run_id_for, self.config, attempt):
             with self.result_actions:
-                ui.link("Open run", f"/runs?run_id={run_id}")
+                ui.link(tr("Open run"), f"/runs?run_id={run_id}")
         self._settle(_finished_text(attempt))
 
     async def _load(self) -> None:
@@ -150,22 +154,24 @@ class SuggestionsPage:
         self.loading = True
         self.refresh.disable()
         self.content.clear()
-        self.result_label.set_text("Looking through the library…")
+        self.result_label.set_text(tr("Looking through the library…"))
         runner = AutoRunner(self.config)
         try:
             candidates = await run.io_bound(runner.suggest, limit=20) or []
             self.result_label.set_text("")
             with self.content:
                 if runner.last_suggest_status.error:
-                    ui.label(f"Discovery failed: {runner.last_suggest_status.error}")
+                    ui.label(
+                        tr("Discovery failed: {error}", error=runner.last_suggest_status.error)
+                    )
                 elif not candidates:
-                    ui.label("No eligible suggestions right now.")
+                    ui.label(tr("No eligible suggestions right now."))
                 for candidate in candidates:
                     _candidate_card(candidate, self._execute)
                 _skipped_candidates(runner)
         except Exception as exc:
             self.result_label.set_text(
-                f"Could not load suggestions: {sanitize_error_message(str(exc))}"
+                tr("Could not load suggestions: {value}", value=sanitize_error_message(str(exc)))
             )
         finally:
             self.loading = False
@@ -178,26 +184,32 @@ def _candidate_card(candidate, execute) -> None:
         if candidate.person_names:
             ui.label(", ".join(candidate.person_names)).classes("font-medium")
         ui.label(
-            f"{candidate.date_range_start} to {candidate.date_range_end} · {candidate.asset_count} pictures · {candidate.category.value.replace('_', ' ')}"
+            tr(
+                "{date_range_start} to {date_range_end} · {asset_count} pictures · {value}",
+                date_range_start=candidate.date_range_start,
+                date_range_end=candidate.date_range_end,
+                asset_count=candidate.asset_count,
+                value=candidate.category.value.replace("_", " "),
+            )
         )
-        with ui.expansion("Candidate key").classes("w-full"):
+        with ui.expansion(tr("Candidate key")).classes("w-full"):
             ui.label(candidate.memory_key).classes("break-all font-mono text-xs")
         with ui.row():
             ui.button(
-                "Check eligibility",
+                tr("Check eligibility"),
                 on_click=lambda key=candidate.memory_key: execute(key, dry_run=True),
             )
             ui.button(
-                "Run this suggestion",
+                tr("Run this suggestion"),
                 on_click=lambda key=candidate.memory_key: execute(key, dry_run=False),
             )
 
 
 def _skipped_candidates(runner: AutoRunner) -> None:
-    with ui.expansion("Why other suggestions were skipped").classes("w-full"):
+    with ui.expansion(tr("Why other suggestions were skipped")).classes("w-full"):
         rejected = runner.last_variety_decision.rejected
         if not rejected and not runner.last_backoff_skips:
-            ui.label("No suggestions were rejected by variety or failure backoff.")
+            ui.label(tr("No suggestions were rejected by variety or failure backoff."))
         for item in rejected:
             ui.label(
                 f"{item.candidate.reason}: {_RULES.get(item.rule, item.rule.replace('_', ' '))}"

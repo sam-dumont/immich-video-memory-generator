@@ -28,6 +28,7 @@ from immich_memories.operations.phases import OperationalPhase
 from immich_memories.operations.storyboard import MOTION_KINDS, PLAN_FILE
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.components import im_button
+from immich_memories.ui.i18n import N_, tr
 from immich_memories.ui.pages.clip_pipeline import (
     _build_pipeline_config,
     _configure_timeline_for_selection,
@@ -58,13 +59,13 @@ CUT_PHASES = (
     OperationalPhase.COMPLETE,
 )
 _PHASE_TITLES = {
-    OperationalPhase.DISCOVERY: "Finding media",
-    OperationalPhase.DOWNLOAD: "Loading thumbnails",
-    OperationalPhase.ANALYSIS: "Reading the pictures",
-    OperationalPhase.SELECTION: "Editing",
-    OperationalPhase.COMPLETE: "Done",
+    OperationalPhase.DISCOVERY: N_("Finding media"),
+    OperationalPhase.DOWNLOAD: N_("Loading thumbnails"),
+    OperationalPhase.ANALYSIS: N_("Reading the pictures"),
+    OperationalPhase.SELECTION: N_("Editing"),
+    OperationalPhase.COMPLETE: N_("Done"),
 }
-_PREPARING = "Preparing the cut"
+_PREPARING = N_("Preparing the cut")
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ def arm_cut(state: AppState, before: Callable[[], None] | None = None) -> bool:
     return True
 
 
-CUT_ALREADY_RUNNING = "A cut is already running; wait for it, or cancel it first"
+CUT_ALREADY_RUNNING = N_("A cut is already running; wait for it, or cancel it first")
 
 
 def _cache_path(state: AppState) -> Path:
@@ -275,7 +276,7 @@ class _PhaseRows:
             for phase in CUT_PHASES:
                 with ui.row().classes("items-center gap-3"):
                     icon = ui.icon("radio_button_unchecked").classes("text-lg")
-                    ui.label(_PHASE_TITLES[phase]).classes("text-sm w-40")
+                    ui.label(tr(_PHASE_TITLES[phase])).classes("text-sm w-40")
                     detail = (
                         ui.label("").classes("text-sm").style("color: var(--im-text-secondary)")
                     )
@@ -290,7 +291,7 @@ class _PhaseRows:
             elif phase is status.phase:
                 icon.name = "pending"
                 icon.style("color: var(--im-info)")
-                detail.set_text(status.detail)
+                detail.set_text(tr(status.detail))
             else:
                 icon.name = "radio_button_unchecked"
                 icon.style("color: var(--im-text-muted)")
@@ -395,7 +396,7 @@ async def _ready_to_cut(state: AppState, rows: _PhaseRows) -> bool:
 def render_cutting(state: AppState) -> None:
     """The cut in progress: phase rows, elapsed time, Cancel; a reload joins the same run."""
     ensure_caches(state)
-    ui.label("Cutting the memory...").classes("text-2xl font-bold mb-2")
+    ui.label(tr("Cutting the memory...")).classes("text-2xl font-bold mb-2")
     rows = _PhaseRows()
     strip = LiveStrip(get_thumbnail)
     bar = StageBar()
@@ -405,9 +406,9 @@ def render_cutting(state: AppState) -> None:
     def cancel() -> None:
         state.cancel_requested = True
         cancel_button.disable()
-        elapsed.set_text("Cancelling after the current stage...")
+        elapsed.set_text(tr("Cancelling after the current stage..."))
 
-    cancel_button = im_button("Cancel", variant="secondary", icon="stop", on_click=cancel)
+    cancel_button = im_button(tr("Cancel"), variant="secondary", icon="stop", on_click=cancel)
     progress_state: dict[str, Any] = {"done": False, "error": None}
 
     def poll() -> None:
@@ -427,7 +428,7 @@ def render_cutting(state: AppState) -> None:
         else:
             strip.fade_out()
         if record is not None and not state.cancel_requested:
-            elapsed.set_text(f"Elapsed: {elapsed_label(record.get('started_at'))}")
+            elapsed.set_text(tr("Elapsed: {value}", value=elapsed_label(record.get("started_at"))))
 
     timer = ui.timer(1.0, poll, active=False)
 
@@ -450,16 +451,17 @@ def render_reload_media(state: AppState, attempt_dir: Path, record: Mapping[str,
         container.clear()
         with container:
             progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
-            status = ui.label("Connecting to Immich...").classes("text-sm")
+            status = ui.label(tr("Connecting to Immich...")).classes("text-sm")
         try:
             await load_pool(state, status, progress)
             restore_cut_from_attempt(state, attempt_dir, record)
         except Exception as exc:  # WHY: UI graceful degradation
             logger.exception("Re-loading media for a recovered cut failed")
             ui.notify(
-                f"Could not re-load media: {sanitize_error_message(str(exc))}", type="negative"
+                tr("Could not re-load media: {value}", value=sanitize_error_message(str(exc))),
+                type="negative",
             )
             return
         ui.navigate.to("/")
 
-    im_button("Re-load media to export", variant="primary", icon="movie", on_click=reload)
+    im_button(tr("Re-load media to export"), variant="primary", icon="movie", on_click=reload)

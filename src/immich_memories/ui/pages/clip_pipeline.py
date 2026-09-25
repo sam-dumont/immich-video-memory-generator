@@ -18,6 +18,7 @@ from immich_memories.planning.auto_duration import (
     DurationDecision,
     decide_memory_duration,
 )
+from immich_memories.ui.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -51,30 +52,37 @@ def render_pipeline_summary(result: dict) -> None:
 
     with ui.card().classes("w-full p-4").style("background: var(--im-success-bg)"):
         ui.label(
-            f"Pipeline complete! Planned {planned_count} clips from "
-            f"{eligible_count} eligible media items."
+            tr(
+                "Pipeline complete! Planned {planned_count} clips from {eligible_count} eligible media items.",
+                planned_count=planned_count,
+                eligible_count=eligible_count,
+            )
         ).classes("font-semibold").style("color: var(--im-success-text)")
         if warning := editorial_duration_warning(stats.get("editorial_duration_realization")):
             ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
 
         with ui.row().classes("w-full gap-8 mt-4"):
             with ui.column().classes("items-center"):
-                ui.label("Media Eligible").classes("text-sm").style(
+                ui.label(tr("Media Eligible")).classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
                 ui.label(str(eligible_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
-                ui.label("Clips Planned").classes("text-sm").style(
+                ui.label(tr("Clips Planned")).classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
                 ui.label(str(planned_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
-                ui.label("Time Elapsed").classes("text-sm").style("color: var(--im-text-secondary)")
+                ui.label(tr("Time Elapsed")).classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
                 time_str = f"{elapsed / 60:.1f}m" if elapsed > 60 else f"{elapsed:.0f}s"
                 ui.label(time_str).classes("text-2xl font-bold")
 
         if error_count > 0:
-            with ui.expansion(f"Errors ({error_count})", icon="warning").classes("mt-4"):
+            with ui.expansion(
+                tr("Errors ({error_count})", error_count=error_count), icon="warning"
+            ).classes("mt-4"):
                 for err in errors:
                     clip_id = err.get("clip_id", "Unknown")
                     error_msg = err.get("error", "Unknown error")

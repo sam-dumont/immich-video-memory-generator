@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from nicegui import ui
 
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result
 
 if TYPE_CHECKING:
@@ -58,10 +59,10 @@ def render_upload_controls(state) -> None:
         state: AppState instance with upload_enabled and upload_album_name.
     """
     with ui.column().classes("w-full gap-3"):
-        upload_switch = ui.switch("Upload after generation").bind_value(state, "upload_enabled")
+        upload_switch = ui.switch(tr("Upload after generation")).bind_value(state, "upload_enabled")
 
         (
-            ui.input("Album name", placeholder="Memories")
+            ui.input(tr("Album name"), placeholder=tr("Memories"))
             .bind_value(state, "upload_album_name")
             .classes("w-full")
             .bind_visibility_from(upload_switch, "value")
@@ -69,8 +70,9 @@ def render_upload_controls(state) -> None:
 
         with ui.element("div").bind_visibility_from(upload_switch, "value"):
             ui.label(
-                "The generated video will be uploaded to your Immich instance "
-                "and added to the specified album."
+                tr(
+                    "The generated video will be uploaded to your Immich instance and added to the specified album."
+                )
             ).classes("text-xs").style("color: var(--im-text-secondary)")
 
 
@@ -98,7 +100,7 @@ async def upload_to_immich(
             raise RuntimeError("Run not started")
         return current
 
-    status_label.set_text("Uploading to Immich...")
+    status_label.set_text(tr("Uploading to Immich..."))
     progress_bar.value = 0.98
 
     try:
@@ -111,7 +113,7 @@ async def upload_to_immich(
         state.delivery_status = completed.delivery_status
         try:
             ui.notify(
-                f"Uploaded to Immich! Album: {params.upload_album}",
+                tr("Uploaded to Immich! Album: {upload_album}", upload_album=params.upload_album),
                 type="positive",
             )
         except Exception:  # WHY: the success observer cannot redefine delivery truth

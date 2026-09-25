@@ -15,6 +15,7 @@ from immich_memories.ui.components import (
     im_separator,
     im_stat_card,
 )
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.film_length import film_length_stat, measured_film_label
 from immich_memories.ui.state import get_app_state
 
@@ -29,16 +30,18 @@ def _render_existing_result(state) -> None:
     if not output_path.is_file():
         return
 
-    im_section_header("Result", icon="check_circle")
-    ui.label(f"Saved to: {output_path}").classes("text-sm").style("color: var(--im-text-secondary)")
+    im_section_header(tr("Result"), icon="check_circle")
+    ui.label(tr("Saved to: {output_path}", output_path=output_path)).classes("text-sm").style(
+        "color: var(--im-text-secondary)"
+    )
     if (length := measured_film_label(state)) is not None:
         ui.label(length).classes("text-sm").style("color: var(--im-text-secondary)")
     if state.generation_warning:
         ui.label(state.generation_warning).classes("text-sm").style("color: var(--im-warning)")
     delivery_label = state.delivery_status.value.replace("_", " ").title()
-    ui.label(f"Immich delivery: {delivery_label}").classes("text-sm").style(
-        "color: var(--im-text-secondary)"
-    )
+    ui.label(tr("Immich delivery: {delivery_label}", delivery_label=delivery_label)).classes(
+        "text-sm"
+    ).style("color: var(--im-text-secondary)")
     ui.video(output_path).classes("w-full rounded-lg").style(
         "max-height: 400px; object-fit: contain; background: var(--im-bg-surface)"
     )
@@ -55,8 +58,11 @@ def _render_recovered_run(state) -> None:
     if recovered.status == "running":
         started = recovered.run.created_at.astimezone().strftime("%H:%M") if recovered.run else "…"
         im_info_card(
-            f"A generation started at {started} is still running (run {run_id}). "
-            "This page checks every few seconds and shows the video when it finishes.",
+            tr(
+                "A generation started at {started} is still running (run {run_id}). This page checks every few seconds and shows the video when it finishes.",
+                started=started,
+                run_id=run_id,
+            ),
             variant="info",
         )
 
@@ -66,7 +72,7 @@ def _render_recovered_run(state) -> None:
         message = f"Run {run_id} was still marked running hours later — it did not finish. "
     else:
         message = f"The last generation (run {run_id}) {recovered.status}. "
-    im_info_card(message + "Check the server log, then generate again.", variant="warning")
+    im_info_card((message) + (tr("Check the server log, then generate again.")), variant="warning")
 
 
 def _poll_recovered_run(state, timer) -> bool:
@@ -93,7 +99,10 @@ def _render_photo_preview(state, photos_count: int) -> None:
     from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
     with ui.expansion(
-        f"{photos_count} Photos Available (auto-selected at generation)",
+        tr(
+            "{photos_count} Photos Available (auto-selected at generation)",
+            photos_count=photos_count,
+        ),
         icon="photo_library",
         value=False,
     ).classes("w-full"):
@@ -108,9 +117,9 @@ def _render_photo_preview(state, photos_count: int) -> None:
                     photo.id, classes="w-full rounded", style="aspect-ratio: 1; object-fit: cover"
                 )
         if photos_count > max_preview:
-            ui.label(f"+ {photos_count - max_preview} more").classes("text-sm mt-1").style(
-                "color: var(--im-text-secondary)"
-            )
+            ui.label(tr("+ {value} more", value=photos_count - max_preview)).classes(
+                "text-sm mt-1"
+            ).style("color: var(--im-text-secondary)")
 
 
 def render_step4() -> None:
@@ -120,21 +129,21 @@ def render_step4() -> None:
     selected_clips = state.get_selected_clips()
 
     if not selected_clips:
-        im_info_card("No clips selected. Go back to select clips.", variant="warning")
+        im_info_card(tr("No clips selected. Go back to select clips."), variant="warning")
 
         def go_back():
             state.step = 2
             ui.navigate.to("/step2")
 
         im_button(
-            "Back to the media pool", variant="secondary", on_click=go_back, icon="arrow_back"
+            tr("Back to the media pool"), variant="secondary", on_click=go_back, icon="arrow_back"
         )
         return
 
     options = state.generation_options
 
     # Summary
-    im_section_header("Summary", icon="summarize")
+    im_section_header(tr("Summary"), icon="summarize")
 
     photos_count = len(state.photo_assets) if state.include_photos and state.photo_assets else 0
 
@@ -143,17 +152,17 @@ def render_step4() -> None:
         .classes("w-full grid gap-3 mb-2")
         .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
     ):
-        im_stat_card("Clips", str(len(selected_clips)), icon="movie")
+        im_stat_card(tr("Clips"), str(len(selected_clips)), icon="movie")
         if photos_count:
-            im_stat_card("Photo Pool", str(photos_count), icon="photo_library")
+            im_stat_card(tr("Photo Pool"), str(photos_count), icon="photo_library")
         im_stat_card(*film_length_stat(state, selected_clips), icon="timer")
-        im_stat_card("Format", options.get("format", "MP4"), icon="video_file")
+        im_stat_card(tr("Format"), options.get("format", "MP4"), icon="video_file")
 
     # Photo preview (if included)
     _render_photo_preview(state, photos_count)
 
     # Output Settings (merged with Upload)
-    im_section_header("Output", icon="folder")
+    im_section_header(tr("Output"), icon="folder")
 
     if state.config is None:
         raise RuntimeError("Output settings require a loaded configuration")
@@ -182,12 +191,14 @@ def render_step4() -> None:
 
     with im_card() as card:
         card.classes("p-4")
-        filename_input = ui.input("Output filename", value=default_filename).classes(
+        filename_input = ui.input(tr("Output filename"), value=default_filename).classes(
             "w-full max-w-lg"
         )
-        ui.label(f"Will be saved to: {output_dir / default_filename}").classes("text-sm").style(
-            "color: var(--im-text-secondary)"
-        ).bind_text_from(filename_input, "value", lambda v: f"Will be saved to: {output_dir / v}")
+        ui.label(tr("Will be saved to: {value}", value=output_dir / default_filename)).classes(
+            "text-sm"
+        ).style("color: var(--im-text-secondary)").bind_text_from(
+            filename_input, "value", lambda v: f"Will be saved to: {output_dir / v}"
+        )
 
         ui.separator().classes("my-2")
 
@@ -210,9 +221,9 @@ def render_step4() -> None:
             output_container=output_container,
         )
 
-    im_button("Generate Video", variant="primary", on_click=generate_video, icon="movie").classes(
-        "w-full"
-    )
+    im_button(
+        tr("Generate Video"), variant="primary", on_click=generate_video, icon="movie"
+    ).classes("w-full")
 
     # A run that finished (or is still running) while this page was gone — below the button
     _render_recovered_run(state)
@@ -222,13 +233,13 @@ def render_step4() -> None:
     # Navigation
     with ui.row().classes("w-full gap-4"):
         im_button(
-            "Back to Generation Options",
+            tr("Back to Generation Options"),
             variant="secondary",
             icon="arrow_back",
             on_click=lambda: (setattr(state, "step", 3), ui.navigate.to("/step3")),
         )
         im_button(
-            "Start New Project",
+            tr("Start New Project"),
             variant="secondary",
             icon="refresh",
             on_click=lambda: (state.reset_clips(), setattr(state, "step", 1), ui.navigate.to("/")),

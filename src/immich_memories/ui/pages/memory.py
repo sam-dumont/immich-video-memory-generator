@@ -16,6 +16,7 @@ from nicegui import ui
 
 from immich_memories.analysis.editorial_duration_advisory import editorial_duration_warning
 from immich_memories.ui.components import im_button, im_info_card, im_separator
+from immich_memories.ui.i18n import N_, tr
 from immich_memories.ui.pages.clip_pipeline import render_pipeline_summary
 from immich_memories.ui.pages.memory_brief import render_brief
 from immich_memories.ui.pages.memory_run import (
@@ -39,10 +40,10 @@ if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
 _ENDINGS = {
-    "cancelled": "The last cut was cancelled before it finished.",
-    "failed": "The last cut failed; the server log has the reason.",
-    "interrupted": "The last cut was interrupted: the process that ran it is gone.",
-    "incomplete": "The last cut stopped without a result.",
+    "cancelled": N_("The last cut was cancelled before it finished."),
+    "failed": N_("The last cut failed; the server log has the reason."),
+    "interrupted": N_("The last cut was interrupted: the process that ran it is gone."),
+    "incomplete": N_("The last cut stopped without a result."),
 }
 
 
@@ -62,7 +63,7 @@ def render_memory() -> None:
 def _recut(state: AppState) -> None:
     """Run the editor again over the same pool, with the owner's ticks."""
     if not arm_cut(state, before=lambda: reset_for_recut(state)):
-        ui.notify(CUT_ALREADY_RUNNING, type="warning")
+        ui.notify(tr(CUT_ALREADY_RUNNING), type="warning")
         return
     ui.navigate.to("/")
 
@@ -92,19 +93,24 @@ def _render_actions(
     with ui.row().classes("w-full gap-4"):
         if recovered is None:
             im_button(
-                "Export", variant="primary", icon="movie", on_click=lambda: ui.navigate.to("/step4")
+                tr("Export"),
+                variant="primary",
+                icon="movie",
+                on_click=lambda: ui.navigate.to("/step4"),
             )
         else:
             render_reload_media(state, *recovered)
         im_button(
-            "Review the pool",
+            tr("Review the pool"),
             variant="secondary",
             icon="video_library",
             on_click=lambda: ui.navigate.to("/step2"),
         )
-        im_button("Cut again", variant="secondary", icon="refresh", on_click=lambda: _recut(state))
         im_button(
-            "Change the brief", variant="ghost", icon="edit", on_click=lambda: _new_brief(state)
+            tr("Cut again"), variant="secondary", icon="refresh", on_click=lambda: _recut(state)
+        )
+        im_button(
+            tr("Change the brief"), variant="ghost", icon="edit", on_click=lambda: _new_brief(state)
         )
 
 
@@ -114,12 +120,12 @@ def _render_views(view: StoryView, board: Storyboard | None, warning: str | None
         render_story(view, warning=warning)
         return
     # The thesis once, above both readings of the same cut.
-    ui.label(view.thesis or "The editor left no thesis for this cut.").classes(
+    ui.label(view.thesis or tr("The editor left no thesis for this cut.")).classes(
         "text-lg cut-thesis"
     ).style("color: var(--im-text)")
     with ui.tabs().classes("w-full") as tabs:
-        storyboard_tab = ui.tab("Storyboard", icon="view_timeline")
-        story_tab = ui.tab("Story", icon="auto_stories")
+        storyboard_tab = ui.tab("Storyboard", icon="view_timeline", label=tr("Storyboard"))
+        story_tab = ui.tab("Story", icon="auto_stories", label=tr("Story"))
     # No slide between the two readings of one cut: a screenshot mid-animation shows both.
     with ui.tab_panels(tabs, value=storyboard_tab, animated=False).classes("w-full"):
         with ui.tab_panel(storyboard_tab):
@@ -148,8 +154,12 @@ def _render_recovered(state: AppState, record: Mapping[str, Any]) -> None:
     attempt_dir = Path(str(record.get("directory") or ""))
     if status != "complete":
         im_info_card(
-            _ENDINGS.get(status, f"The last cut ended as {status}.")
-            + " Cut again runs it once more.",
+            (
+                tr(_ENDINGS[status])
+                if status in _ENDINGS
+                else tr("The last cut ended as {status}.", status=status)
+            )
+            + (tr(" Cut again runs it once more.")),
             variant="warning",
         )
         _render_actions(state, recovered=None)
@@ -159,7 +169,7 @@ def _render_recovered(state: AppState, record: Mapping[str, Any]) -> None:
         warning = editorial_duration_warning(record.get("duration_realization"))
         _render_views(view, read_storyboard(attempt_dir), warning)
     im_info_card(
-        "This cut finished while the page was away. Re-load its media to export it.",
+        tr("This cut finished while the page was away. Re-load its media to export it."),
         variant="info",
     )
     _render_actions(state, recovered=(attempt_dir, record))

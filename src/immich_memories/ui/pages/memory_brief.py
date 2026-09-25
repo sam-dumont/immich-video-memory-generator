@@ -18,6 +18,7 @@ from immich_memories.ui.components import (
     im_section_header,
     im_separator,
 )
+from immich_memories.ui.i18n import N_, tr, tr_options
 from immich_memories.ui.pages.memory_duration import render_duration_line
 from immich_memories.ui.pages.memory_run import CUT_ALREADY_RUNNING, arm_cut
 from immich_memories.ui.pages.step1_config import render_immich_connection
@@ -27,51 +28,57 @@ if TYPE_CHECKING:
     from immich_memories.ui.state import AppState
 
 _TITLES: dict[MemoryType, str] = {
-    MemoryType.YEAR_IN_REVIEW: "Year in Review",
-    MemoryType.SEASON: "Season",
-    MemoryType.PERSON_SPOTLIGHT: "Person Spotlight",
-    MemoryType.MULTI_PERSON: "Multi-Person",
-    MemoryType.MONTHLY_HIGHLIGHTS: "Monthly Highlights",
-    MemoryType.ON_THIS_DAY: "On This Day",
-    MemoryType.ALBUM: "Album",
-    MemoryType.TRIP: "Trip",
-    MemoryType.HOLIDAY: "Holiday",
-    MemoryType.SPECIAL_DAY: "Surprise me",
+    MemoryType.YEAR_IN_REVIEW: N_("Year in Review"),
+    MemoryType.SEASON: N_("Season"),
+    MemoryType.PERSON_SPOTLIGHT: N_("Person Spotlight"),
+    MemoryType.MULTI_PERSON: N_("Multi-Person"),
+    MemoryType.MONTHLY_HIGHLIGHTS: N_("Monthly Highlights"),
+    MemoryType.ON_THIS_DAY: N_("On This Day"),
+    MemoryType.ALBUM: N_("Album"),
+    MemoryType.TRIP: N_("Trip"),
+    MemoryType.HOLIDAY: N_("Holiday"),
+    MemoryType.SPECIAL_DAY: N_("Surprise me"),
 }
 
 # The select's rows: the CLI's --memory-type choices in the CLI's order, then
 # the custom range the CLI spells as --start/--end.
 MEMORY_TYPE_LABELS: dict[str, str] = {
     **{memory_type.value: _TITLES[memory_type] for memory_type in OFFERED_MEMORY_TYPES},
-    CUSTOM_RANGE: "Custom date range",
+    CUSTOM_RANGE: N_("Custom date range"),
 }
 
 # (label, AppState field, tooltip) for the pool switches the selection route reads.
 _POOL_SWITCHES = (
-    ("Include Photos", "include_photos", "Photographs join the pool as stills the editor can hold"),
     (
-        "Include Live Photos",
+        N_("Include Photos"),
+        "include_photos",
+        N_("Photographs join the pool as stills the editor can hold"),
+    ),
+    (
+        N_("Include Live Photos"),
         "include_live_photos",
-        "The editor may play a Live Photo's motion when it earns it",
+        N_("The editor may play a Live Photo's motion when it earns it"),
     ),
     (
-        "Accept Forwarded Media",
+        N_("Accept Forwarded Media"),
         "accept_any_provenance",
-        "Keep WhatsApp and other received media in the pool for this memory",
+        N_("Keep WhatsApp and other received media in the pool for this memory"),
     ),
-    ("HDR clips only", "hdr_only", "Drop SDR video from the pool"),
+    (N_("HDR clips only"), "hdr_only", N_("Drop SDR video from the pool")),
 )
 
 
 SHARING_LABELS: dict[str, str] = {
-    "just-us": "Just us",
-    "family": "Family",
-    "shareable": "Shareable",
+    "just-us": N_("Just us"),
+    "family": N_("Family"),
+    "shareable": N_("Shareable"),
 }
 _SHARING_LINES = {
-    "just-us": "The household. Private moments a caption names, like a bath, play too.",
-    "family": "Grandparents, siblings, the group chat. Private moments stay out.",
-    "shareable": "Anyone. Only pictures nothing held back: no detector flag, no private moment.",
+    "just-us": N_("The household. Private moments a caption names, like a bath, play too."),
+    "family": N_("Grandparents, siblings, the group chat. Private moments stay out."),
+    "shareable": N_(
+        "Anyone. Only pictures nothing held back: no detector flag, no private moment."
+    ),
 }
 
 
@@ -90,8 +97,8 @@ def begin_cut(state: AppState) -> str | None:
     """
     if not state.scope_is_selected:
         if state.memory_type == MemoryType.ALBUM:
-            return "Pick an album first"
-        return "Pick a memory type and a valid period first"
+            return tr("Pick an album first")
+        return tr("Pick a memory type and a valid period first")
     if state.config is not None:
         from immich_memories.analysis.editorial_shareability_tiers import sharing_refusal
 
@@ -99,7 +106,7 @@ def begin_cut(state: AppState) -> str | None:
         if refusal:
             return refusal
     if not arm_cut(state, before=state.reset_clips):
-        return CUT_ALREADY_RUNNING
+        return tr(CUT_ALREADY_RUNNING)
     return None
 
 
@@ -123,8 +130,8 @@ def _render_type_select(state: AppState, params: ui.column) -> None:
         fill(e.value)
 
     ui.select(
-        options=MEMORY_TYPE_LABELS,
-        label="Memory type",
+        options=tr_options(MEMORY_TYPE_LABELS),
+        label=tr("Memory type"),
         value=state.memory_type,
         on_change=on_change,
     ).classes("w-72")
@@ -133,14 +140,14 @@ def _render_type_select(state: AppState, params: ui.column) -> None:
 
 def _render_sharing(state: AppState) -> None:
     level = chosen_sharing(state)
-    select = ui.select(options=SHARING_LABELS, label="Sharing", value=level)
+    select = ui.select(options=tr_options(SHARING_LABELS), label=tr("Sharing"), value=level)
     select.classes("w-72")
-    line = ui.label(_SHARING_LINES[level]).classes("text-sm sharing-line")
+    line = ui.label(tr(_SHARING_LINES[level])).classes("text-sm sharing-line")
     line.style("color: var(--im-text-secondary)")
 
     def on_change(e) -> None:
         state.sharing = e.value
-        line.set_text(_SHARING_LINES[e.value])
+        line.set_text(tr(_SHARING_LINES[e.value]))
 
     select.on_value_change(on_change)
 
@@ -154,20 +161,23 @@ def _render_pool_switches(state: AppState) -> None:
         for label, field, tip in _POOL_SWITCHES:
             with im_card() as card:
                 card.classes("p-3")
-                ui.switch(label).bind_value(state, field).props("color=primary").tooltip(tip)
+                ui.switch(tr(label)).bind_value(state, field).props("color=primary").tooltip(
+                    tr(tip)
+                )
 
 
 def _render_advanced(state: AppState) -> None:
-    with ui.expansion("Advanced", icon="tune").classes("w-full"):
+    with ui.expansion(tr("Advanced"), icon="tune").classes("w-full"):
         render_immich_connection(state)
-        im_section_header("Pool", icon="photo_library")
+        im_section_header(tr("Pool"), icon="photo_library")
         _render_pool_switches(state)
         ui.label(
-            "The media pool and the excerpt editor have their own page: exclude what may "
-            "never be cut, and trim what was."
+            tr(
+                "The media pool and the excerpt editor have their own page: exclude what may never be cut, and trim what was."
+            )
         ).classes("text-sm mt-2").style("color: var(--im-text-secondary)")
         im_button(
-            "Open the media pool",
+            tr("Open the media pool"),
             variant="secondary",
             icon="video_library",
             on_click=lambda: ui.navigate.to("/step2"),
@@ -182,28 +192,29 @@ def render_brief(state: AppState) -> None:
     if not (state.people or state.years):
         render_immich_connection(state)
         im_info_card(
-            "Connect to your Immich server to continue. "
-            "Enter your server URL and API key above, then click 'Test Connection'.",
+            tr(
+                "Connect to your Immich server to continue. Enter your server URL and API key above, then click 'Test Connection'."
+            ),
             variant="warning",
         )
         return
 
     if state.cut_failure:
         im_info_card(state.cut_failure, variant="error")
-    im_section_header("What is it about", icon="auto_awesome")
+    im_section_header(tr("What is it about"), icon="auto_awesome")
     select_row = ui.row().classes("w-full items-end gap-4")
     params = ui.column().classes("w-full")
     with select_row:
         _render_type_select(state, params)
 
-    im_section_header("How long", icon="timer")
+    im_section_header(tr("How long"), icon="timer")
     render_duration_line(state)
 
-    im_section_header("Who will watch it", icon="group")
+    im_section_header(tr("Who will watch it"), icon="group")
     _render_sharing(state)
 
     _render_advanced(state)
     im_separator()
-    im_button("Cut", variant="primary", icon="content_cut", on_click=lambda: _cut(state)).classes(
-        "w-full"
-    )
+    im_button(
+        tr("Cut"), variant="primary", icon="content_cut", on_click=lambda: _cut(state)
+    ).classes("w-full")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import calendar as cal
 import logging
 from collections.abc import Callable
 from datetime import date
@@ -10,10 +9,12 @@ from typing import TYPE_CHECKING
 
 from nicegui import ui
 
+from immich_memories.i18n import film_text, get_month_name
 from immich_memories.memory_types.factory import create_preset
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.titles.title_source import TitleSource
 from immich_memories.ui.components import im_card
+from immich_memories.ui.i18n import N_, current_ui_locale, tr, tr_options
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.step1_config import render_custom_range
 from immich_memories.ui.pages.step1_people import (
@@ -35,7 +36,6 @@ logger = logging.getLogger(__name__)
 CUSTOM_RANGE = "custom"
 
 _SEASONS = ["spring", "summer", "autumn", "winter"]
-_MONTHS = {i: cal.month_name[i] for i in range(1, 13)}
 
 
 def render_type_params(key: str) -> None:
@@ -59,7 +59,7 @@ def render_type_params(key: str) -> None:
 
 def _render_on_this_day_params(state: AppState) -> None:  # noqa: ARG001
     """The only card with nothing to ask: today's date is the whole parameter."""
-    ui.label("Automatically uses today's date across previous years").style(
+    ui.label(tr("Automatically uses today's date across previous years")).style(
         "color: var(--im-text-secondary)"
     ).classes("text-sm italic")
     _apply_preset_to_state(MemoryType.ON_THIS_DAY)
@@ -69,7 +69,7 @@ def _render_holiday_params(state: AppState) -> None:
     """Holiday + year + how many years back to span."""
     from immich_memories.memory_types.factory import holiday_choices
 
-    choices = holiday_choices()
+    choices = {key: film_text(f"holiday.{key}", current_ui_locale()) for key in holiday_choices()}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
         current_holiday = state.memory_preset_params.get("holiday", "christmas")
@@ -79,7 +79,7 @@ def _render_holiday_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.HOLIDAY)
 
         ui.select(
-            options=choices, label="Holiday", value=current_holiday, on_change=on_holiday
+            options=choices, label=tr("Holiday"), value=current_holiday, on_change=on_holiday
         ).classes("w-48")
 
         year_options = state.years or list(range(2024, 2019, -1))
@@ -92,7 +92,10 @@ def _render_holiday_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.HOLIDAY)
 
         ui.select(
-            options=year_options, label="Most recent year", value=current_year, on_change=on_year
+            options=year_options,
+            label=tr("Most recent year"),
+            value=current_year,
+            on_change=on_year,
         ).classes("w-40")
 
         current_back = state.memory_preset_params.get("years_back", 5)
@@ -103,12 +106,12 @@ def _render_holiday_params(state: AppState) -> None:
 
         ui.select(
             options=list(range(2, 11)),
-            label="Years to span",
+            label=tr("Years to span"),
             value=current_back,
             on_change=on_years_back,
         ).classes("w-40")
 
-    ui.label("One window around the holiday in each year, most recent first.").style(
+    ui.label(tr("One window around the holiday in each year, most recent first.")).style(
         "color: var(--im-text-secondary)"
     ).classes("text-sm italic mt-2")
 
@@ -127,7 +130,7 @@ def _render_year_picker(state: AppState) -> None:
         state.memory_preset_params["year"] = e.value
         _apply_preset_to_state(MemoryType(state.memory_type))  # type: ignore[arg-type]
 
-    ui.select(options=year_options, label="Year", value=current, on_change=on_change).classes(
+    ui.select(options=year_options, label=tr("Year"), value=current, on_change=on_change).classes(
         "w-48"
     )
     state.memory_preset_params.setdefault("year", current)
@@ -148,7 +151,7 @@ def _render_season_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.SEASON)
 
         ui.select(
-            options=year_options, label="Year", value=current_year, on_change=on_year
+            options=year_options, label=tr("Year"), value=current_year, on_change=on_year
         ).classes("w-36")
 
         current_season = state.memory_preset_params.get("season", "summer")
@@ -158,7 +161,10 @@ def _render_season_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.SEASON)
 
         ui.select(
-            options=_SEASONS, label="Season", value=current_season, on_change=on_season
+            options={key: film_text(f"season.{key}", current_ui_locale()) for key in _SEASONS},
+            label=tr("Season"),
+            value=current_season,
+            on_change=on_season,
         ).classes("w-36")
 
         current_hemi = state.memory_preset_params.get("hemisphere", "north")
@@ -168,7 +174,10 @@ def _render_season_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.SEASON)
 
         ui.select(
-            options=["north", "south"], label="Hemisphere", value=current_hemi, on_change=on_hemi
+            options=tr_options([N_("north"), N_("south")]),
+            label=tr("Hemisphere"),
+            value=current_hemi,
+            on_change=on_hemi,
         ).classes("w-36")
 
     state.memory_preset_params.setdefault("year", current_year)
@@ -191,7 +200,7 @@ def _render_monthly_params(state: AppState) -> None:
             _apply_preset_to_state(MemoryType.MONTHLY_HIGHLIGHTS)
 
         ui.select(
-            options=year_options, label="Year", value=current_year, on_change=on_year
+            options=year_options, label=tr("Year"), value=current_year, on_change=on_year
         ).classes("w-36")
 
         current_month = state.memory_preset_params.get("month", 1)
@@ -200,9 +209,12 @@ def _render_monthly_params(state: AppState) -> None:
             state.memory_preset_params["month"] = e.value
             _apply_preset_to_state(MemoryType.MONTHLY_HIGHLIGHTS)
 
-        ui.select(options=_MONTHS, label="Month", value=current_month, on_change=on_month).classes(
-            "w-48"
-        )
+        ui.select(
+            options={i: get_month_name(i, current_ui_locale()) for i in range(1, 13)},
+            label=tr("Month"),
+            value=current_month,
+            on_change=on_month,
+        ).classes("w-48")
 
     state.memory_preset_params.setdefault("year", current_year)
     state.memory_preset_params.setdefault("month", current_month)
@@ -226,14 +238,14 @@ def _render_album_picker(state: AppState) -> None:
         album_container.clear()
         if not state.immich_url or not state.immich_api_key:
             with album_container:
-                ui.label("Connect to Immich first to choose an album.").style(
+                ui.label(tr("Connect to Immich first to choose an album.")).style(
                     "color: var(--im-text-secondary)"
                 ).classes("text-sm italic")
             return
 
         with album_container, ui.row().classes("items-center gap-2"):
             ui.spinner(size="sm")
-            ui.label("Loading albums...").style("color: var(--im-text-secondary)").classes(
+            ui.label(tr("Loading albums...")).style("color: var(--im-text-secondary)").classes(
                 "text-sm"
             )
 
@@ -253,15 +265,15 @@ def _render_album_picker(state: AppState) -> None:
             logger.warning("Album listing failed: %s", exc)
             album_container.clear()
             with album_container:
-                ui.label(f"Could not list albums: {exc}").style("color: var(--im-error)").classes(
-                    "text-sm"
-                )
+                ui.label(tr("Could not list albums: {exc}", exc=exc)).style(
+                    "color: var(--im-error)"
+                ).classes("text-sm")
             return
 
         album_container.clear()
         if not albums:
             with album_container:
-                ui.label("No albums with any assets in them yet.").style(
+                ui.label(tr("No albums with any assets in them yet.")).style(
                     "color: var(--im-text-secondary)"
                 ).classes("text-sm italic")
             return
@@ -275,7 +287,7 @@ def _render_album_picker(state: AppState) -> None:
         with album_container:
             ui.select(
                 options=options,
-                label="Album",
+                label=tr("Album"),
                 value=current,
                 with_input=True,
                 on_change=lambda e: _select(e.value, names),
@@ -308,7 +320,7 @@ async def _load_trip_year_options(state: AppState, year_select: ui.select) -> No
     except Exception as exc:  # WHY: keep the existing years usable if the timeline fails
         logger.warning("Could not load trip years: %s", exc)
         ui.notify(
-            "Could not load photo years. Showing the previously loaded years.", type="warning"
+            tr("Could not load photo years. Showing the previously loaded years."), type="warning"
         )
 
 
@@ -338,7 +350,7 @@ def _render_trip_params(state: AppState) -> None:
 
         if not state.immich_url or not state.immich_api_key:
             with trip_container:
-                ui.label("Connect to Immich first to detect trips.").style(
+                ui.label(tr("Connect to Immich first to detect trips.")).style(
                     "color: var(--im-text-secondary)"
                 ).classes("text-sm italic")
             return
@@ -347,7 +359,7 @@ def _render_trip_params(state: AppState) -> None:
             spinner_row = ui.row().classes("items-center gap-2")
             with spinner_row:
                 ui.spinner(size="sm")
-                ui.label("Detecting trips from GPS data...").style(
+                ui.label(tr("Detecting trips from GPS data...")).style(
                     "color: var(--im-text-secondary)"
                 ).classes("text-sm")
 
@@ -379,20 +391,20 @@ def _render_trip_params(state: AppState) -> None:
             logger.warning("Trip detection failed: %s", exc)
             trip_container.clear()
             with trip_container:
-                ui.label(f"Trip detection failed: {exc}").style("color: var(--im-error)").classes(
-                    "text-sm"
-                )
+                ui.label(tr("Trip detection failed: {exc}", exc=exc)).style(
+                    "color: var(--im-error)"
+                ).classes("text-sm")
             return
 
         trip_container.clear()
         with trip_container:
             if not detected:
-                ui.label("No trips detected for this year.").style(
+                ui.label(tr("No trips detected for this year.")).style(
                     "color: var(--im-text-secondary)"
                 ).classes("text-sm italic")
                 return
 
-            ui.label(f"Found {len(detected)} trip(s):").style(
+            ui.label(tr("Found {count} trip(s):", count=len(detected))).style(
                 "color: var(--im-text-secondary)"
             ).classes("text-sm mb-1")
 
@@ -416,7 +428,7 @@ def _render_trip_params(state: AppState) -> None:
 
             ui.select(
                 options=trip_options,
-                label="Select a trip",
+                label=tr("Select a trip"),
                 value=saved_idx,
                 on_change=on_trip,
             ).classes("w-full")
@@ -428,7 +440,9 @@ def _render_trip_params(state: AppState) -> None:
         state.date_ranges = []
         await _detect_trips_for_year(e.value)
 
-    year_select = ui.select(options=year_options, label="Year", value=current_year).classes("w-48")
+    year_select = ui.select(options=year_options, label=tr("Year"), value=current_year).classes(
+        "w-48"
+    )
 
     state.memory_preset_params.setdefault("year", current_year)
 
@@ -561,13 +575,14 @@ def _render_special_day_params(state: AppState) -> None:
                 return
 
             ui.label(
-                "Anniversaries first, then the rest. A scheduled run only proposes a day "
-                "on its anniversary; here you can pick any day the catalogue holds."
+                tr(
+                    "Anniversaries first, then the rest. A scheduled run only proposes a day on its anniversary; here you can pick any day the catalogue holds."
+                )
             ).style("color: var(--im-text-secondary)").classes("text-sm mb-1")
             chosen = state.memory_preset_params.get("day")
             ui.select(
                 options={i: label for i, (_, label) in enumerate(rows)},
-                label="Pick a day",
+                label=tr("Pick a day"),
                 value=next((i for i, (e, _) in enumerate(rows) if e.day == chosen), None),
                 on_change=lambda e: _choose_special_day(
                     rows[e.value][0],

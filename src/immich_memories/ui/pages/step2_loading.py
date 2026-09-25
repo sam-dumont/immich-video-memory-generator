@@ -14,6 +14,7 @@ from immich_memories.api.models import VideoClipInfo
 from immich_memories.api.person_scope import photos_in_window, videos_in_window
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.security import sanitize_error_message
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.state import get_app_state
 
@@ -248,7 +249,7 @@ async def _collect_date_range_media(state, status_label, progress_bar, on_phase:
 
     photo_assets = []
     if state.include_photos:
-        status_label.set_text("Fetching photos...")
+        status_label.set_text(tr("Fetching photos..."))
         photo_assets = await io_bound_result(_fetch_photos, state)
         logger.info(f"Found {len(photo_assets)} photos")
 
@@ -309,13 +310,13 @@ def _load_clips() -> None:
     state = get_app_state()
 
     with ui.dialog() as loading_dialog, ui.card().classes("p-6 min-w-[360px]"):
-        ui.label("Loading videos...").classes("text-lg font-semibold").style(
+        ui.label(tr("Loading videos...")).classes("text-lg font-semibold").style(
             "color: var(--im-text)"
         )
         progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full my-3")
         progress_bar.style("--q-linear-progress-color: var(--im-primary)")
         status_label = (
-            ui.label("Connecting to Immich...")
+            ui.label(tr("Connecting to Immich..."))
             .classes("text-sm")
             .style("color: var(--im-text-secondary)")
         )
@@ -331,7 +332,10 @@ def _load_clips() -> None:
 
         except Exception as e:  # WHY: UI graceful degradation
             loading_dialog.close()
-            ui.notify(f"Failed to load videos: {sanitize_error_message(str(e))}", type="negative")
+            ui.notify(
+                tr("Failed to load videos: {value}", value=sanitize_error_message(str(e))),
+                type="negative",
+            )
             logger.exception("Failed to load clips")
 
     ui.timer(0.1, do_load, once=True)
@@ -371,7 +375,7 @@ async def _load_thumbnails_async(
 
     if progress_bar:
         progress_bar.value = 1.0
-    status_label.set_text("Done")
+    status_label.set_text(tr("Done"))
 
 
 async def _fetch_thumbnails_batched(
@@ -407,7 +411,11 @@ async def _fetch_thumbnails_batched(
         done += len(batch)
         frac = done / total_work
         status_label.set_text(
-            f"Thumbnails: {min(i + batch_size, len(need_thumbs))}/{len(need_thumbs)}"
+            tr(
+                "Thumbnails: {value}/{count}",
+                value=min(i + batch_size, len(need_thumbs)),
+                count=len(need_thumbs),
+            )
         )
         if progress_bar:
             progress_bar.value = 0.1 + frac * 0.85
@@ -448,4 +456,10 @@ async def _load_photo_thumbnails_async(
                             thumbnail_cache.put(asset.id, "preview", thumb)
 
         await run.io_bound(fetch_batch)
-        status_label.set_text(f"Photo thumbnails: {min(i + batch_size, len(need))}/{len(need)}")
+        status_label.set_text(
+            tr(
+                "Photo thumbnails: {value}/{count}",
+                value=min(i + batch_size, len(need)),
+                count=len(need),
+            )
+        )

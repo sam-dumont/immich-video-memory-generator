@@ -35,6 +35,7 @@ from immich_memories.ui.auth import (
     trigger_token_authorizes,
 )
 from immich_memories.ui.health_api import register_health_routes
+from immich_memories.ui.i18n import N_, LocalizedPage, render_language_selector, tr
 from immich_memories.ui.media_route import (
     immich_person_face,
     register_media_route,
@@ -67,11 +68,11 @@ def _get_storage_secret() -> str:
 
 
 _NAVIGATION = [
-    ("Memory", "auto_awesome", "/"),
-    ("Suggestions", "lightbulb", "/suggestions"),
-    ("Runs", "history", "/runs"),
-    ("Media pool", "video_library", "/step2"),
-    ("Settings", "settings", "/settings/config"),
+    (N_("Memory"), "auto_awesome", "/"),
+    (N_("Suggestions"), "lightbulb", "/suggestions"),
+    (N_("Runs"), "history", "/runs"),
+    (N_("Media pool"), "video_library", "/step2"),
+    (N_("Settings"), "settings", "/settings/config"),
 ]
 
 
@@ -95,7 +96,7 @@ def _render_demo_toggle(state) -> None:
 
     with ui.row().classes("items-center gap-2 mb-2"):
         ui.switch(value=state.demo_mode, on_change=toggle_demo).props("dense")
-        ui.label("Demo mode").classes("text-xs").style("color: var(--im-text-secondary)")
+        ui.label(tr("Demo mode")).classes("text-xs").style("color: var(--im-text-secondary)")
 
 
 def _render_auth_controls() -> None:
@@ -109,7 +110,7 @@ def _render_auth_controls() -> None:
             ui.icon("person").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(username).classes("text-xs").style("color: var(--im-text-secondary)")
     ui.button(
-        "Sign out",
+        tr("Sign out"),
         icon="logout",
         on_click=lambda: ui.navigate.to("/logout"),
     ).props("flat dense no-caps size=sm").classes("w-full").style("color: var(--im-text-secondary)")
@@ -126,14 +127,14 @@ def _render_navigation() -> None:
                 ui.row().classes("items-center gap-3 w-full"),
             ):
                 ui.icon(icon).classes("text-xl")
-                ui.label(name).classes("text-sm")
+                ui.label(tr(name)).classes("text-sm")
         if path.startswith("/settings/"):
             for name, target in (
-                ("Configuration", "config"),
-                ("People", "people"),
-                ("Cache", "cache"),
+                (N_("Configuration"), "config"),
+                (N_("People"), "people"),
+                (N_("Cache"), "cache"),
             ):
-                ui.link(name, f"/settings/{target}").classes("ml-8 text-sm")
+                ui.link(tr(name), f"/settings/{target}").classes("ml-8 text-sm")
 
 
 def render_sidebar():  # pragma: no cover
@@ -160,6 +161,7 @@ def render_sidebar():  # pragma: no cover
             config = get_config()
             if config.server.enable_demo_mode:
                 _render_demo_toggle(state)
+            render_language_selector()
             render_theme_toggle()
             _render_auth_controls()
 
@@ -182,7 +184,7 @@ def page_header(title: str, drawer=None) -> None:
 # ============================================================================
 
 
-@ui.page("/")
+@LocalizedPage("/")
 def index_page() -> None:
     """The Memory page: the brief, the cut in progress, or what the cut produced."""
     from immich_memories.ui.pages.memory import render_memory
@@ -190,11 +192,11 @@ def index_page() -> None:
     apply_theme()
     d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Memory", drawer=d)
+        page_header(tr("Memory"), drawer=d)
         render_memory()
 
 
-@ui.page("/step2")
+@LocalizedPage("/step2")
 def step2_page() -> None:
     """Step 2: the media pool page."""
     from immich_memories.ui.pages.step2_review import render_step2
@@ -202,11 +204,11 @@ def step2_page() -> None:
     apply_theme()
     d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Media pool", drawer=d)
+        page_header(tr("Media pool"), drawer=d)
         render_step2()
 
 
-@ui.page("/runs")
+@LocalizedPage("/runs")
 def runs_page(run_id: str | None = None, status: str = "all", offset: int = 0) -> None:
     """Durable history for manual and automatic generation."""
     from immich_memories.ui.pages.runs import render_runs
@@ -214,11 +216,11 @@ def runs_page(run_id: str | None = None, status: str = "all", offset: int = 0) -
     apply_theme()
     drawer = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Runs", drawer=drawer)
+        page_header(tr("Runs"), drawer=drawer)
         render_runs(run_id, status, offset)
 
 
-@ui.page("/suggestions")
+@LocalizedPage("/suggestions")
 def suggestions_page() -> None:
     """The same candidates and eligibility rules the automatic runner uses."""
     from immich_memories.ui.pages.suggestions import SuggestionsPage
@@ -226,11 +228,11 @@ def suggestions_page() -> None:
     apply_theme()
     drawer = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Suggestions", drawer=drawer)
+        page_header(tr("Suggestions"), drawer=drawer)
         SuggestionsPage(get_config())
 
 
-@ui.page("/step3")
+@LocalizedPage("/step3")
 def step3_page() -> None:
     """Step 3: Generation Options page."""
     from immich_memories.ui.pages.step3_options import render_step3
@@ -238,11 +240,11 @@ def step3_page() -> None:
     apply_theme()
     d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Generation Options", drawer=d)
+        page_header(tr("Generation Options"), drawer=d)
         render_step3()
 
 
-@ui.page("/step4")
+@LocalizedPage("/step4")
 def step4_page() -> None:
     """Step 4: Preview & Export page."""
     from immich_memories.ui.pages.step4_export import render_step4
@@ -250,11 +252,11 @@ def step4_page() -> None:
     apply_theme()
     d = render_sidebar()
     with ui.column().classes("w-full px-8 py-5"):
-        page_header("Preview & Export", drawer=d)
+        page_header(tr("Preview & Export"), drawer=d)
         render_step4()
 
 
-@ui.page("/settings/config")
+@LocalizedPage("/settings/config")
 def config_page() -> None:
     """Configuration viewer/editor page."""
     from immich_memories.ui.pages.settings_config import render_config_page
@@ -267,11 +269,13 @@ def config_page() -> None:
             ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
                 "color: var(--im-text-muted)"
             )
-            ui.label("Configuration").classes("text-2xl font-bold").style("color: var(--im-text)")
+            ui.label(tr("Configuration")).classes("text-2xl font-bold").style(
+                "color: var(--im-text)"
+            )
         render_config_page()
 
 
-@ui.page("/settings/people")
+@LocalizedPage("/settings/people")
 def people_page() -> None:
     """The companion editor: who is in this library, and who they are to you."""
     from immich_memories.ui.pages.settings_people import render_people_page
@@ -284,11 +288,11 @@ def people_page() -> None:
             ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
                 "color: var(--im-text-muted)"
             )
-            ui.label("People").classes("text-2xl font-bold").style("color: var(--im-text)")
+            ui.label(tr("People")).classes("text-2xl font-bold").style("color: var(--im-text)")
         render_people_page()
 
 
-@ui.page("/settings/cache")
+@LocalizedPage("/settings/cache")
 def cache_page() -> None:
     """Cache management settings page."""
     from immich_memories.ui.pages.step1_cache import render_cache_management
@@ -301,7 +305,7 @@ def cache_page() -> None:
             ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
                 "color: var(--im-text-muted)"
             )
-            ui.label("Cache Management").classes("text-2xl font-bold").style(
+            ui.label(tr("Cache Management")).classes("text-2xl font-bold").style(
                 "color: var(--im-text)"
             )
         render_cache_management()
@@ -439,7 +443,7 @@ async def _auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-@ui.page("/login")
+@LocalizedPage("/login")
 def login_page_route() -> None:
     """Login page."""
     from immich_memories.ui.pages.login import render_login_page
