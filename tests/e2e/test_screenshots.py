@@ -191,3 +191,16 @@ def test_capture_automation_walkthrough(page: Page, launch_app_url: str, launch_
     from tests.e2e.test_automation_pages import test_choose_generate_and_read_the_same_automatic_run
 
     test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace)
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_sharing_levels(page: Page, launch_app_url: str, screenshot_dir: Path, theme: str):
+    """Who will watch it: the brief's sharing level, open on its three choices (#1325)."""
+    _open_brief(page, launch_app_url)
+    set_theme(page, theme)
+    _open_brief(page, launch_app_url)
+    _choose(page, "Memory type", "Monthly Highlights")
+    _choose(page, "Month", "June")
+    _choose(page, "Sharing", "Just us")
+    expect(page.get_by_text("The household.", exact=False)).to_be_visible()
+    _save(page, screenshot_dir, _name("memory-brief-sharing", theme))

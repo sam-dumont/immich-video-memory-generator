@@ -48,11 +48,11 @@ def test_the_brief_asks_who_will_watch_and_the_cut_is_made_for_them(
     page: Page, launch_app_url: str, launch_workspace
 ) -> None:
     _brief_for_june(page, launch_app_url)
-    who = page.get_by_role("combobox", name="Who will watch it")
+    who = page.get_by_role("combobox", name="Sharing")
     expect(who).to_have_value("Family")
     expect(page.get_by_text("Grandparents, siblings, the group chat.", exact=False)).to_be_visible()
 
-    _choose(page, "Who will watch it", "Just us")
+    _choose(page, "Sharing", "Just us")
     expect(page.get_by_text("The household.", exact=False)).to_be_visible()
     before = _attempts(launch_workspace)
     page.get_by_role("button", name="Cut", exact=True).click()

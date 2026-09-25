@@ -301,6 +301,7 @@ immich-memories generate [OPTIONS]
 | `--trace-selection` | file | - | Write a stage-by-stage report of how the clips were chosen |
 | `--include` | text | - | Keep this picture in the cut even if the editor would drop it (repeatable) |
 | `--exclude` | text | - | Leave this picture out of the cut (repeatable) |
+| `--sharing` | choice: `just-us` \| `family` \| `shareable` | - | Who the film is for: just-us (the household), family (default: defaults.sharing) or shareable (anyone) |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
 | `--add-date` | boolean | false | Caption each clip with its date |

@@ -133,7 +133,7 @@ def _render_type_select(state: AppState, params: ui.column) -> None:
 
 def _render_sharing(state: AppState) -> None:
     level = chosen_sharing(state)
-    select = ui.select(options=SHARING_LABELS, label="Who will watch it", value=level)
+    select = ui.select(options=SHARING_LABELS, label="Sharing", value=level)
     select.classes("w-72")
     line = ui.label(_SHARING_LINES[level]).classes("text-sm sharing-line")
     line.style("color: var(--im-text-secondary)")

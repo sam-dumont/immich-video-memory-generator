@@ -2,6 +2,8 @@
 title: Overrule it
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # Overrule it
 
 Reader: power user, with a newcomer summary first.
@@ -61,6 +63,8 @@ The CLI does the same with `generate --include ASSET_ID` and `--exclude ASSET_ID
 The web pool's ticks live in your session; **Start over** forgets them.
 
 ## Pick who it's for
+
+<ThemedScreenshot name="memory-brief-sharing" alt="The brief's Sharing select on Just us" />
 
 Each film is cut for one sharing level: **Who will watch it** in the brief, `generate --sharing`, and
 `defaults.sharing` for the rest (`family` unless you change it).
