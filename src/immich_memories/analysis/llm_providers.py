@@ -65,10 +65,10 @@ _ALWAYS_REASONING_MODELS = re.compile(r"^glm-5(\.\d+)?(-|$)")
 
 def _openai_reasoning(config: LLMConfig) -> dict:
     """Use the model's off switch where it has been verified to accept one."""
-    # Verified 2026-09-15: Luna rejects "minimal" with unsupported_value and
-    # defaults to medium when the field is removed; "none" bills no reasoning.
-    # Include pinned snapshots without extending this claim to other models.
-    if re.fullmatch(r"gpt-5\.6-luna(?:-\d{4}-\d{2}-\d{2})?", config.model.strip().lower()):
+    # Verified 2026-09-15 on gpt-5.6-luna and 2026-09-25 on gpt-6-luna: both reject
+    # "minimal" with unsupported_value and default to medium when the field is removed;
+    # "none" bills no reasoning. Pinned snapshots included; other models are not claimed.
+    if re.fullmatch(r"gpt-(?:5\.6|6)-luna(?:-\d{4}-\d{2}-\d{2})?", config.model.strip().lower()):
         effort = config.no_thinking_params.get("reasoning_effort", "none")
         # Mirror request shaping: auto omits the switch, drops remove it, and
         # extra_params has the final word. Only an effective "none" means the

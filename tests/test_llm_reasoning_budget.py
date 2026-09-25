@@ -225,7 +225,9 @@ async def test_a_host_that_refuses_the_effort_field_still_gets_the_room(error):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model", ["gpt-5.6-luna", "gpt-5.6-luna-2026-09-01"])
+@pytest.mark.parametrize(
+    "model", ["gpt-5.6-luna", "gpt-5.6-luna-2026-09-01", "gpt-6-luna", "gpt-6-luna-2026-09-20"]
+)
 async def test_luna_disables_reasoning_and_keeps_the_answer_budget_in_live_and_batch(model):
     config = LLMConfig(provider="openai", model=model, api_key="sk-test")
     # WHY: the provider's HTTP endpoint is the one boundary these tests replace.
