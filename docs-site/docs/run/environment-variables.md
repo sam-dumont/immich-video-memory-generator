@@ -183,3 +183,9 @@ Highest wins:
 So `IMMICH_URL=http://a` beats `IMMICH_MEMORIES_IMMICH__URL=http://b`, which beats `immich.url` in
 the file. `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are the exception above: they sit below the
 config file.
+
+## Compute tier
+
+`IMMICH_MEMORIES_TIER=nas|gpu|full` selects the same tier as `tier:` in the config file.
+The default is `nas`, which runs inexpensive CPU classifiers without a prose LLM.
+See the [tier reference](../reference/config-reference.md#tier).

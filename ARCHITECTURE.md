@@ -144,12 +144,11 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   (`triage/bundled_heads/public-8heads-v4.npz`, `editorial_preparation_heads.py`). Beside them sit
   two detectors, `nsfw_marqo` (exposure) and `doc_docling` (documents)
   (`editorial_preparation_detectors.py`).
-- **Tiers**: two separate knobs. `editorial.reader` is `rules` or `model` (`auto` means rules when
-  `llm.model` is blank); rules is the NAS path, a whole film from dates, places, people and
-  preparation facts with no model called. `editorial.preparation.tier` is `full` (captions, heads,
-  detectors), `no_captions` (heads and detectors, the default with no model configured) or
-  `metadata_only` (nothing looks at pixels, so every shot is held to the family)
-  (`config_models_editorial*.py`, `editorial_shareability_tiers.py`).
+- **Tiers**: `tier` selects `nas` (CPU heads and detectors), `gpu` (adds captions and Laya),
+  or `full` (adds an explicitly configured prose LLM). NAS and GPU always use the rules reader.
+  Advanced preparation can be reduced to `no_captions` (heads and detectors) or `metadata_only`
+  (nothing looks at pixels, so every shot is held to the family). Sharing never asks the prose
+  LLM (`config_tiers.py`, `config_models_editorial*.py`, `editorial_shareability_tiers.py`).
 - **Reach**: the pictures a film can actually select (for a person film, the ones that person is
   in), plus their Live Photo siblings and capture runs. Only those get prepared; the rest of the
   window is read as Immich metadata (`editorial_film_reach.py`).
@@ -213,11 +212,13 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   and `pictures never-use` writes `never_auto`, which `partition_units` keeps out of every unit
   pool. Owner rows stay off the editorial line, so a decision re-asks no reading. In a film shared outside the
   family, anything a detector head or exposure flag marked stays held whatever the text says
-  (`editorial.strict_sharing`, on by default; applied per film, never banked). On the model tier
-  the activity question (a bath, a nappy change, ...) may be answered by **Laya**, a local 0.4B
-  text classifier over the compact caption, instead of the reader (`editorial_laya_reader.py`,
-  `editorial.laya_audience`, off by default, Apple Silicon): it only adds holds, and its answers
-  bank under their own answerer.
+  (`editorial.strict_sharing`, on by default; applied per film, never banked). The activity question is answered only by **Laya**, a local 0.4B
+  text classifier over the compact ingest caption (`editorial_laya_reader.py`,
+  `editorial.laya_audience`, off by default, Apple Silicon). The rules route runs it too when
+  captions are prepared. Sharing never asks a prose LLM: detector/exposure flags hold without
+  further review, and an unanswered caption stays with the family. Answer banks distinguish
+  Laya from the rules check. `editorial_shareability_tiers.py` selects this policy independently
+  of whether the film uses prose or polish.
 - **Pictures are read once**: a model looks at a picture only at ingest (the caption server, the
   heads, the detectors). No film-time stage sends a picture to any model, on any tier; the reader
   is text only, and so is music: the mood comes from the cut's thesis, story titles and ingest
@@ -402,10 +403,8 @@ src/immich_memories/
 │   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind;
 │   │                               # a vote-named shot's refill comes from another moment
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
-│   │                               # caption (model tier, editorial.laya_audience); only adds holds
-│   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,
-│   │                               # one answer each; either order's hold holds
-│   │                               # (advanced.editorial.thin_batched_audience, off by default)
+│   │                               # caption (gpu/full tiers, editorial.laya_audience); the sharing
+│   │                               # question never goes to an LLM: what Laya leaves, heads + rules decide
 │   ├── library_catalogue.py    # The account of a month/year (or a multi-year window: one per year
 │   │                           # plus one over them), written over banked episode readings
 │   │                           # (plus the no-model facts of episodes a cut did not read), keyed by
@@ -763,6 +762,7 @@ src/immich_memories/
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
 ├── config_presets.py           # Named presets (`preset: fast`) that fill several knobs at once
+├── config_tiers.py             # The product tier (nas/gpu/full): reader, preparation tier, Laya
 ├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
 ├── config_models_analysis.py   # Source admission and the expected seconds per clip
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
@@ -877,12 +877,18 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 
 Config is organized in 3 tiers (see `config_loader.py`):
 
-- **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `network`, `photos`
+- **Tier 1** (top-level YAML): `tier`, `preset`, `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `network`, `photos`
 - **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`, `notifications`, `triage`, `editorial`, `inference`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
 Both flat and nested YAML formats are accepted.
+
+These YAML tiers are not the product `tier` (`config_tiers.py`): `nas` (inexpensive CPU classifiers), `gpu`
+(every light model, no LLM) or `full` (plus an LLM, whose endpoint it requires). The product
+tier sets defaults for `editorial.reader`, `editorial.preparation.tier` and `editorial.laya_audience`.
+Explicit preparation choices win, but NAS and GPU always force the rules reader. `save_yaml`
+omits unchanged tier defaults and preserves choices edited after loading.
 
 The tiers are a YAML layout, not a code layout. The section models are grouped by
 domain across the `config_models*.py` modules (resources, analysis, render,

@@ -80,6 +80,7 @@ def _film(tmp_path, *, strict):
     from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
     from immich_memories.analysis.editorial_structure_planner import plan_structure
     from tests.editorial_story_fixtures import ControlledStoryJudge
+    from tests.editorial_thin_fixtures import caption_laya
     from tests.test_editorial_duration_planner_integration import source
 
     captured = replace(source(tmp_path, seconds=24, pictures=4), audience="shareable")
@@ -88,25 +89,19 @@ def _film(tmp_path, *, strict):
         "picture-000": (share.FlagRow("picture-000", "review", "exposure=partial", "exposure"),)
     }
     captured = replace(captured, shareability_flags=marked)
-
-    class CoverageJudge(ControlledStoryJudge):
-        # WHY: the text reader; it reads every flagged person as clothed, the answer strict
-        # sharing must not let clear a shared film.
-        def answer(self, stage, prompt):
-            if "-exposure-" in stage:
-                return '{"observations":{"p1":[["a person","clothing"]]}}'
-            return super().answer(stage, prompt)
-
-    return plan_structure(
-        captured, StructurePlannerPorts(judge=CoverageJudge(), thumbnail_hash=lambda _: None)
+    judge = ControlledStoryJudge()
+    plan = plan_structure(
+        captured,
+        StructurePlannerPorts(judge=judge, thumbnail_hash=lambda _: None, laya=caption_laya()),
     ).plan
+    return plan, judge
 
 
-def test_the_setting_reaches_a_shared_film_through_the_planner(tmp_path):
-    strict = _film(tmp_path / "on", strict=True)
-    relaxed = _film(tmp_path / "off", strict=False)
+def test_a_flagged_picture_stays_out_of_a_shared_film_and_no_llm_is_asked(tmp_path):
+    """No caption can clear an exposure flag any more: nothing sends it to a reader."""
+    for strict in (True, False):
+        plan, judge = _film(tmp_path / str(strict), strict=strict)
 
-    assert strict["shareability"]["verdicts"]["picture-000"]["finding"] == "strict_sharing"
-    assert "picture-000" not in {row["asset_id"] for row in strict["carriers"]}
-    assert relaxed["shareability"]["verdicts"]["picture-000"]["verdict"] == "share"
-    assert "picture-000" in {row["asset_id"] for row in relaxed["carriers"]}
+        assert plan["shareability"]["verdicts"]["picture-000"]["verdict"] != "share"
+        assert "picture-000" not in {row["asset_id"] for row in plan["carriers"]}
+        assert not [c for c in judge.calls if c["stage"].startswith("shareability-")]

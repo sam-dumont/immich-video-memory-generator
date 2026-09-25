@@ -77,6 +77,7 @@ def test_immich_connection_error_does_not_expose_configured_api_key() -> None:
 def test_llm_preflight_reports_missing_configured_model() -> None:
     """A model-specific 404 is not mislabeled as a generic connection error."""
     config = Config(
+        tier="full",
         llm={
             "provider": "openai-compatible",
             "base_url": "http://localhost:9999/v1",
@@ -103,6 +104,7 @@ def test_llm_preflight_reports_missing_configured_model() -> None:
 def test_llm_preflight_reports_missing_chat_route() -> None:
     """A route-level 404 remains distinct from a removed model."""
     config = Config(
+        tier="full",
         llm={
             "provider": "openai-compatible",
             "base_url": "http://localhost:9999/v1",
@@ -143,7 +145,9 @@ def _messages_host(models=None, probe_status=200, probe_body=None):
 
 
 def test_llm_preflight_reports_the_model_list_an_anthropic_host_publishes() -> None:
-    config = Config(llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "k"})
+    config = Config(
+        tier="full", llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "k"}
+    )
     client = _messages_host([{"id": "claude-sonnet-4-5"}, {"id": "claude-opus-4-1"}])
 
     with patch("immich_memories.preflight.httpx.Client", return_value=client):
@@ -156,7 +160,9 @@ def test_llm_preflight_reports_the_model_list_an_anthropic_host_publishes() -> N
 
 
 def test_llm_preflight_names_a_model_the_anthropic_host_does_not_serve() -> None:
-    config = Config(llm={"provider": "anthropic", "model": "claude-retired", "api_key": "k"})
+    config = Config(
+        tier="full", llm={"provider": "anthropic", "model": "claude-retired", "api_key": "k"}
+    )
     client = _messages_host([{"id": "claude-sonnet-4-5"}])
 
     with patch("immich_memories.preflight.httpx.Client", return_value=client):
@@ -169,12 +175,13 @@ def test_llm_preflight_names_a_model_the_anthropic_host_does_not_serve() -> None
 def test_llm_preflight_falls_back_to_one_token_where_no_catalogue_is_served() -> None:
     """A gateway that serves only /v1/messages is still reachable, and says so."""
     config = Config(
+        tier="full",
         llm={
             "provider": "anthropic",
             "base_url": "https://gateway.example.invalid/anthropic",
             "model": "some-model",
             "api_key": "k",
-        }
+        },
     )
     client = _messages_host(models=None)
 
@@ -189,7 +196,9 @@ def test_llm_preflight_falls_back_to_one_token_where_no_catalogue_is_served() ->
 
 
 def test_llm_preflight_reports_a_rejected_key_on_the_messages_route() -> None:
-    config = Config(llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "bad"})
+    config = Config(
+        tier="full", llm={"provider": "anthropic", "model": "claude-sonnet-4-5", "api_key": "bad"}
+    )
     client = _messages_host(models=None, probe_status=401, probe_body={"error": {"type": "auth"}})
 
     with patch("immich_memories.preflight.httpx.Client", return_value=client):
@@ -201,7 +210,7 @@ def test_llm_preflight_reports_a_rejected_key_on_the_messages_route() -> None:
 
 def test_llm_preflight_checks_the_route_a_named_preset_actually_uses() -> None:
     """`zai` resolves to the Messages API, so the check must not probe the other one."""
-    config = Config(llm={"provider": "zai", "model": "glm-5.3-flash", "api_key": "k"})
+    config = Config(tier="full", llm={"provider": "zai", "model": "glm-5.3-flash", "api_key": "k"})
     client = _messages_host([{"id": "glm-5.3-flash"}])
 
     with patch("immich_memories.preflight.httpx.Client", return_value=client):
@@ -429,7 +438,9 @@ def test_detector_check_accepts_the_pinned_export(tmp_path, monkeypatch) -> None
 def test_caption_check_passes_when_the_endpoint_advertises_the_alias() -> None:
     endpoint = _CaptionEndpoint([API_MODEL])
     try:
-        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        config = Config(
+            tier="gpu", editorial={"preparation": {"caption_base_url": endpoint.base_url}}
+        )
         result = check_caption_endpoint(config)
     finally:
         endpoint.close()
@@ -441,7 +452,9 @@ def test_caption_check_passes_when_the_endpoint_advertises_the_alias() -> None:
 def test_caption_check_fails_when_the_endpoint_serves_another_model() -> None:
     endpoint = _CaptionEndpoint(["some-other-vlm"])
     try:
-        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        config = Config(
+            tier="gpu", editorial={"preparation": {"caption_base_url": endpoint.base_url}}
+        )
         result = check_caption_endpoint(config)
     finally:
         endpoint.close()
@@ -454,12 +467,13 @@ def test_caption_check_sends_the_configured_key() -> None:
     endpoint = _CaptionEndpoint([API_MODEL], "caption-token")
     try:
         config = Config(
+            tier="gpu",
             editorial={
                 "preparation": {
                     "caption_base_url": endpoint.base_url,
                     "caption_api_key": "caption-token",
                 }
-            }
+            },
         )
         result = check_caption_endpoint(config)
     finally:
@@ -471,7 +485,9 @@ def test_caption_check_sends_the_configured_key() -> None:
 def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
     endpoint = _CaptionEndpoint([API_MODEL], "caption-token")
     try:
-        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        config = Config(
+            tier="gpu", editorial={"preparation": {"caption_base_url": endpoint.base_url}}
+        )
         result = check_caption_endpoint(config)
     finally:
         endpoint.close()
@@ -481,7 +497,9 @@ def test_caption_check_names_the_key_when_the_endpoint_refuses() -> None:
 
 
 def test_caption_check_names_the_setup_page_when_no_server_answers() -> None:
-    config = Config(editorial={"preparation": {"caption_base_url": "http://127.0.0.1:1/v1"}})
+    config = Config(
+        tier="gpu", editorial={"preparation": {"caption_base_url": "http://127.0.0.1:1/v1"}}
+    )
 
     result = check_caption_endpoint(config)
 
@@ -492,7 +510,9 @@ def test_caption_check_names_the_setup_page_when_no_server_answers() -> None:
 def test_caption_check_names_the_setup_page_when_the_alias_is_missing() -> None:
     endpoint = _CaptionEndpoint(["some-other-vlm"])
     try:
-        config = Config(editorial={"preparation": {"caption_base_url": endpoint.base_url}})
+        config = Config(
+            tier="gpu", editorial={"preparation": {"caption_base_url": endpoint.base_url}}
+        )
         result = check_caption_endpoint(config)
     finally:
         endpoint.close()

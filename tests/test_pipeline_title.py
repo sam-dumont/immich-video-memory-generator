@@ -102,6 +102,7 @@ def _make_config(**overrides) -> MagicMock:
     cfg = MagicMock()
     cfg.title_llm = overrides.get("title_llm")
     cfg.llm.model = overrides.get("llm_model", "")
+    cfg.tier = overrides.get("tier", "full" if cfg.llm.model else "nas")
     cfg.title_screens.locale = overrides.get("locale", "en")
     return cfg
 
@@ -233,6 +234,23 @@ class TestGenerateTitleAfterPipeline:
 
         mock_llm.assert_not_called()
         # Template fallback should still be applied
+        assert state.title_suggestion_title is not None
+
+    @pytest.mark.asyncio
+    async def test_skips_llm_on_a_tier_without_one_even_with_a_model_in_the_file(self):
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.date_ranges = [_make_date_range()]
+        state.config = _make_config(llm_model="omlx", tier="gpu")
+
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+        ) as mock_llm:
+            await generate_title_after_pipeline(state)
+
+        mock_llm.assert_not_called()
         assert state.title_suggestion_title is not None
 
     @pytest.mark.asyncio

@@ -101,18 +101,6 @@ def test_the_polish_takes_out_what_the_vote_named_and_leaves_the_rest_standing(t
     assert named < {c["asset_id"] for c in fallback["carriers"]}
 
 
-def test_a_batched_audience_asks_the_cut_in_batches_and_the_audit_counts_every_call(tmp_path):
-    source = film(tmp_path)
-    source.config.editorial.thin_batched_audience = True
-    judge = PolishJudge()
-    run(source, judge, account=ACCOUNT)
-
-    stages = [call["stage"] for call in judge.calls]
-    assert any(stage.startswith("shareability-batch-") for stage in stages)
-    audit = audit_of(source)
-    assert 0 < audit["calls"]["asked"] <= audit["calls"]["budget"]
-
-
 def test_a_period_that_cannot_be_read_ships_the_no_model_cut_and_says_so(tmp_path, caplog):
     """The polish could not run, so the film is exactly the NAS cut, and the record says why."""
     from immich_memories.analysis.editorial_thin_layer import PeriodUnread

@@ -180,15 +180,8 @@ def test_unsampled_person_period_facts_reach_editorial_stages_but_not_picture_ev
     grounded_people = grounded[0]["people"]
     assert "relationship=partner" in grounded_people and "source=confirmed" in grounded_people
     assert "first=2020-05" in grounded_people
-    for prefix in ("shareability-",):
-        prompts = [row["prompt"] for row in judge.calls if row["stage"].startswith(prefix)]
-        assert prompts, prefix
-        assert all(
-            "Rowan" not in prompt
-            and "first_library_month" not in prompt
-            and "sustained_onset_month" not in prompt
-            for prompt in prompts
-        ), prefix
+    # The sharing question never goes to an LLM, so it never sees person-period facts either.
+    assert not any(row["stage"].startswith("shareability-") for row in judge.calls)
 
 
 def test_person_period_context_does_not_force_its_event_into_the_film(tmp_path):

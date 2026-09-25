@@ -126,7 +126,7 @@ def with_owner(captured, store):
     return replace(captured, shareability_flags=share.load_flags(store, captured.assets))
 
 
-def carried(captured, name, *, rules=False):
+def carried(captured, name, *, rules=False, laya=None):
     from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
 
     ports = (
@@ -136,7 +136,9 @@ def carried(captured, name, *, rules=False):
             rules=RuleStructureReader(captured),
         )
         if rules
-        else StructurePlannerPorts(judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None)
+        else StructurePlannerPorts(
+            judge=ControlledStoryJudge(), thumbnail_hash=lambda _: None, laya=laya
+        )
     )
     plan = plan_structure(
         replace(captured, artifact_dir=captured.bank_dir.parent / name), ports
@@ -145,13 +147,15 @@ def carried(captured, name, *, rules=False):
 
 
 def test_a_picture_a_caption_read_refused_plays_once_the_owner_clears_it(tmp_path):
+    from tests.editorial_thin_fixtures import caption_laya
+
     store = empty_store(tmp_path)
     captured = source(tmp_path, seconds=60, private_opening=True)
-    assert "picture-000" not in carried(captured, "before")
+    assert "picture-000" not in carried(captured, "before", laya=caption_laya())
 
     owner.decide(store, "picture-000", owner.CLEAR_HOLD, via="web")
 
-    assert "picture-000" in carried(with_owner(captured, store), "after")
+    assert "picture-000" in carried(with_owner(captured, store), "after", laya=caption_laya())
 
 
 @pytest.mark.parametrize("rules", [False, True], ids=["model", "no-model"])

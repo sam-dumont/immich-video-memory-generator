@@ -223,6 +223,7 @@ class ProductionPostCardBackend:
         )
         resources.callback(scene_prints.close)
         if rules:
+            from immich_memories.analysis.editorial_laya_reader import laya_reader_for
             from immich_memories.analysis.editorial_rule_reader import (
                 NoModelJudge,
                 RuleStructureReader,
@@ -230,6 +231,10 @@ class ProductionPostCardBackend:
 
             return StructurePlannerPorts(
                 judge=NoModelJudge(),
+                # Laya reads the captions, so only a tier that writes them can use it.
+                laya=laya_reader_for(self._config.editorial)
+                if self._config.editorial.preparation.demands_captions
+                else None,
                 thumbnail_hash=thumbnail_hasher,
                 scene_print=scene_prints,
                 thumbnail_metrics=thumbnail_hasher.metrics,

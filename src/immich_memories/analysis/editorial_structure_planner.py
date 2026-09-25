@@ -34,7 +34,6 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     NO_BANKED_FACTS,
     BankedAnswers,
     banked_leaders,
-    configured_text_identity,
     open_banked_facts,
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
@@ -347,15 +346,7 @@ def _select(
             json.dumps(payload, ensure_ascii=False, indent=1, default=str),
         )
 
-    # A run that only polishes a rules draft still has the captions its tier produces;
-    # the reduced check belongs to a run with no model at all.
-    audience_tier = (
-        "no_captions"
-        if ports.rules is not None
-        and ports.thin is None
-        and source.config.editorial.preparation.demands_models
-        else source.config.editorial.preparation.tier
-    )
+    audience_tier = source.config.editorial.preparation.tier
     gate = AudienceGate(
         ports.judge,
         audience=source.audience,
@@ -365,12 +356,12 @@ def _select(
         bank_path=audit_dir / "shareability.private.json",
         library=AudienceBank(
             source.bank_dir.parent / AUDIENCE_BANK_NAME,
-            answerer=f"{audience_tier}|{configured_text_identity(source.config.llm)}"
-            + "|laya" * bool(ports.laya),
+            answerer=f"{audience_tier}|" + ("laya" if ports.laya else "rules"),
         ),
         check_audience=audience_check_for(
             audience_tier,
             strict_sharing=source.config.editorial.strict_sharing and source.audience == SHAREABLE,
+            local_reader=ports.laya is not None,
         ),
         chains=chain_holds_for(
             source.assets, source.audience_annotations, source.companion_detectors

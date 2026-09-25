@@ -248,12 +248,13 @@ class EditorialJudge:
         return json.dumps(result)
 
 
-def run(source, judge):
+def run(source, judge, *, laya=None):
     return plan_structure(
         source,
         StructurePlannerPorts(
             judge=judge,
             thumbnail_hash=lambda _: None,
+            laya=laya,
         ),
     ).plan
 
@@ -330,10 +331,11 @@ def test_private_initial_choice_is_replaced_by_grounded_depth_without_claiming_i
     from dataclasses import replace
 
     from tests.editorial_story_fixtures import ControlledStoryJudge
+    from tests.editorial_thin_fixtures import caption_laya
 
     judge = ControlledStoryJudge()
     captured = replace(source(tmp_path, seconds=60, private_opening=True), audience="shareable")
-    plan = run(captured, judge)
+    plan = run(captured, judge, laya=caption_laya())
     assert plan["carriers"]
     assert all(c["asset_id"] != "picture-000" for c in plan["carriers"])
     assert [row["asset_id"] for row in plan["shareability"]["tightened"]] == ["picture-000"]

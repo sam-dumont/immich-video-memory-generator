@@ -137,7 +137,8 @@ def test_the_runtime_records_evidence_into_the_attempt_that_is_running(
         context=context,
         # The whole-film planner's up-front reader; the polish route reads on demand.
         config=Config(
-            llm={"model": "test-model"},
+            tier="full",
+            llm={"model": "test-model", "base_url": "http://llm.test/v1"},
             cache={"directory": str(tmp_path / "cache")},
             editorial={"thin_model_layer": False},
         ),

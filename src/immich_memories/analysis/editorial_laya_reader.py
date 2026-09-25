@@ -1,13 +1,13 @@
 """Laya, a small local text classifier, answering the audience check's activity question.
 
-The audience gate asks the text model one question per carrier: does its caption describe one of the
+The audience gate asks one question per carrier: does its caption describe one of the
 eight private activities (a bath, a nappy change, breastfeeding, ...). Laya (a 0.4B ModernBERT
 encoder, Apache-2.0, fine-tuned on public CC BY captions labelled in both orders by a hosted reader
 under the production question) answers it from the compact caption in about 14 ms, on Apple silicon.
 
-It only replaces that one text question. Everything around it stays: the detector and body holds are
+It answers that question without a prose LLM. Everything around it stays: detector and body holds are
 applied before and after it and are never lifted, the parser's support checks read its finding as they
-read the model's, and a carrier it does not answer is asked of the text model alone. It reads the
+read any finding, and a carrier it does not answer stays held to the family. It reads the
 compact caption the preparation seat wrote, the same text it was trained on, and never the picture
 observations the vision reader may have added.
 """
@@ -15,6 +15,7 @@ observations the vision reader may have added.
 from __future__ import annotations
 
 import json
+import logging
 import tarfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -45,6 +46,8 @@ AUDIENCE_QUESTION = {
 }
 _NUDITY = "nudity_shirtless_or_underwear"
 
+logger = logging.getLogger(__name__)
+
 
 class LayaScorer(Protocol):
     """Option probabilities for one question over many states, in the question's option order."""
@@ -67,7 +70,7 @@ class LayaReader:
         `pending` maps a carrier's check key to its members' compact captions and whether the
         nudity finding may be answered for it. A carrier whose hold probability reaches the
         threshold gets its likeliest hold finding; every other carrier gets `none`. A carrier
-        with no caption is left out, so the text model is asked about it alone.
+        with no caption is left out and stays held to the family without an LLM fallback.
         """
         keys = [key for key, (captions, _allow) in pending.items() if any(captions)]
         if not keys:
@@ -164,14 +167,28 @@ def unpack_checkpoint(archive: Path, destination: Path) -> Path:
 
 
 def laya_reader_for(editorial_config) -> LayaReader | None:
-    """The configured Laya reader, or None when it is off."""
+    """The configured Laya reader, or None when it is off or cannot run here.
+
+    A tier that turns Laya on still cuts without it: the heads and the rules answer the sharing
+    question alone, and one line says what is missing.
+    """
     if not editorial_config.laya_audience:
         return None
     archive = editorial_config.laya_checkpoint_path
     if not archive.is_file():
-        raise ValueError(
-            f"editorial.laya_audience is on but {archive} is missing: "
-            "run `immich-memories models fetch --laya`"
+        logger.warning(
+            "Laya is on but %s is missing, so the heads and rules decide sharing alone: "
+            "run `immich-memories models fetch`",
+            archive,
         )
+        return None
+    try:
+        import laya_mlx  # type: ignore[import-not-found,import-untyped,unused-ignore]  # noqa: F401
+    except ImportError:
+        logger.warning(
+            "Laya is on but laya-mlx is not installed, so the heads and rules decide sharing "
+            "alone: `pip install laya-mlx` (Apple silicon)"
+        )
+        return None
     checkpoint = unpack_checkpoint(archive, archive.with_suffix(""))
     return LayaReader(MlxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold)
