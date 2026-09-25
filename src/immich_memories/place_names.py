@@ -219,3 +219,16 @@ def localise_place_part(name: str, locale: str) -> str:
 def is_known_area(english_name: str) -> bool:
     """Whether this is an island or region the tables above name."""
     return english_name in _FRENCH or any(i.name == english_name for i in _ISLANDS)
+
+
+def area_name_groups() -> dict[str, frozenset[str]]:
+    """Each island and region the tables above hold, by English name: all its names."""
+    from immich_memories.place_name_translations import TRANSLATIONS
+
+    groups = {name: {name} for name in [i.name for i in _ISLANDS] + list(_FRENCH)}
+    for english, french in _FRENCH.items():
+        groups[english].add(french)
+    for table in TRANSLATIONS.values():
+        for english, local in table.items():
+            groups.setdefault(english, {english}).add(local)
+    return {english: frozenset(names) for english, names in groups.items()}
