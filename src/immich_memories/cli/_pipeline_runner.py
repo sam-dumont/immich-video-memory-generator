@@ -6,6 +6,7 @@ the assets the CLI fetched, then generates the final video from its cut.
 
 from __future__ import annotations
 
+import calendar
 import logging
 import sqlite3
 import sys
@@ -31,6 +32,7 @@ from immich_memories.cli._helpers import (
 from immich_memories.cli._run_inputs import ResolvedRunInputs
 from immich_memories.cli._run_summary import render_run_summary
 from immich_memories.cli._run_timeline import configure_timeline, final_timeline
+from immich_memories.operations.auto_output import NOTHING_WORTH_A_FILM
 from immich_memories.operations.run_index import run_id_for_attempt
 from immich_memories.operations.storyboard import read_storyboard
 from immich_memories.timeperiod import DateRange
@@ -101,6 +103,17 @@ def _configure_output_canvas(
         configured_resolution=config.output.resolution_tuple,
         clips=planning_sources,
     )
+
+
+def period_name(date_range: DateRange) -> str:
+    """How a person names the period: "2019", "February 2019", or the dates."""
+    start, end = date_range.start, date_range.end
+    if date_range.is_calendar_year:
+        return str(start.year)
+    last_day = calendar.monthrange(start.year, start.month)[1]
+    if start.day == 1 and (end.year, end.month, end.day) == (start.year, start.month, last_day):
+        return start.strftime("%B %Y")
+    return date_range.description
 
 
 def _stops_before_rendering(*, dry_run: bool, no_render: bool) -> bool:
@@ -494,6 +507,11 @@ def run_pipeline_and_generate(
     clip_segments = pipeline_result.clip_segments
 
     if not selected_clips:
+        # Pictures that were read and judged not worth a film are an answer, not a
+        # failure; an empty pool is still an error (a filter or connection gone wrong).
+        if all_candidates:
+            print_info(f"{NOTHING_WORTH_A_FILM} in {period_name(date_range)}")
+            sys.exit(0)
         print_error("Pipeline selected no clips")
         sys.exit(1)
 

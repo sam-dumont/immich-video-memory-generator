@@ -11,6 +11,11 @@ gets about 20 seconds, not a minute, and a quiet month with a week of nothing in
 on that week. When a film runs out of pictures worth showing, it ends early. A shorter film with
 every shot earned beats a full one padded with the fridge, the ceiling and a screenshot.
 
+Taken to the end, a period can hold nothing worth a film at all: three pictures of a floor
+being laid, say. Then no film is made, the run says `Nothing worth a film in February 2019` and
+exits 0. That is an answer, not a failure. A period with no pictures in it at all (a wrong date
+range, a filter, Immich unreachable) still ends in an error and exit 1.
+
 How the target itself is set (per memory type, per active day, `--duration`) is on
 [Memory types](../make/memory-types.mdx#how-long-a-film-runs).
 
