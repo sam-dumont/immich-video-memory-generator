@@ -383,3 +383,59 @@ class TestAlbumTitle:
         )
 
         assert "2025" in title
+
+
+class TestTemplateTitleSpeaksTheFilmsLanguage:
+    """Without a model the wizard's template is the film's title, so it speaks the film's language."""
+
+    def test_a_trip_template_names_the_place_the_way_the_film_does(self):
+        from datetime import date
+
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="trip",
+            start_date="2025-06-24",
+            end_date="2025-07-07",
+            preset_params={
+                "trip_start": date(2025, 6, 24),
+                "trip_end": date(2025, 7, 7),
+                "location_name": "Crete, Greece",
+                "location_kind": "island",
+            },
+            locale="fr",
+        )
+
+        assert (title, subtitle) == ("DEUX SEMAINES EN CRÈTE, GRÈCE, ÉTÉ 2025", None)
+
+    @pytest.mark.parametrize(
+        ("memory_type", "start", "end", "params", "expected"),
+        [
+            ("year_in_review", "2025-01-01", "2025-12-31", None, ("2025", None)),
+            ("season", "2025-06-01", "2025-08-31", {"season": "summer"}, ("Été 2025", None)),
+            ("monthly_highlights", "2025-03-01", "2025-03-31", None, ("Mars 2025", None)),
+            ("on_this_day", "2025-07-14", "2025-07-14", None,
+             ("14 juillet", "À travers les années")),
+            ("holiday", "2020-12-25", "2025-12-25", {"holiday": "christmas"},
+             ("Noël", "À travers les années")),
+        ],
+    )  # fmt: skip
+    def test_a_french_film_opens_in_french(self, memory_type, start, end, params, expected):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        got = generate_template_title(
+            memory_type=memory_type, start_date=start, end_date=end, preset_params=params,
+            locale="fr",
+        )  # fmt: skip
+
+        assert got == expected
+
+    def test_a_southern_summer_is_named_by_the_season_the_preset_chose(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, _ = generate_template_title(
+            memory_type="season", start_date="2024-12-01", end_date="2025-02-28",
+            preset_params={"season": "summer"},
+        )  # fmt: skip
+
+        assert title.startswith("Summer")

@@ -52,7 +52,17 @@ def test_a_machine_drafted_catalogue_says_so(locale: str) -> None:
 
 @pytest.mark.parametrize("locale", SUPPORTED_LOCALES)
 def test_no_template_asks_for_a_value_the_code_does_not_give(locale: str) -> None:
-    given = {"season", "year", "start_year", "end_year", "day", "person", "ordinal", "n"}
+    given = {
+        "season",
+        "year",
+        "start_year",
+        "end_year",
+        "end_year_short",
+        "day",
+        "person",
+        "ordinal",
+        "n",
+    }
     for prefix in ("", "start_", "end_"):
         given |= {f"{prefix}month", f"{prefix}month_lc", f"{prefix}month_of", f"{prefix}month_num"}
     for template in re.findall(r'^msgstr(?:\[\d\])? "(.*)"$', _po(locale), flags=re.MULTILINE):
@@ -179,8 +189,8 @@ def test_a_russian_title_draws_with_the_bundled_fonts(
         ("nl", "EEN WEEK OP KRETA, GRIEKENLAND, JUNI 2024"),
         ("pl", "TYDZIEŃ NA KRECIE, GRECJA, CZERWIEC 2024"),
         ("ru", "КРИТ, ГРЕЦИЯ · НЕДЕЛЯ, ИЮНЬ 2024"),
-        ("ja", "クレタ島, ギリシャ · 1週間, 2024年6月"),
-        ("zh-Hans", "克里特岛, 希腊 · 一周, 2024年6月"),
+        ("ja", "クレタ島、ギリシャ · 1週間、2024年6月"),
+        ("zh-Hans", "克里特岛，希腊 · 一周，2024年6月"),
         ("ko", "크레타섬, 그리스 · 일주일, 2024년 6월"),
     ],
 )

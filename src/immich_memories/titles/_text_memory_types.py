@@ -27,7 +27,12 @@ def generate_season_title(
     season_name = get_season_name(season, locale)
     if end_year and end_year != year:
         main_title = title_pattern(
-            "season_year_span", locale, season=season_name, start_year=year, end_year=end_year
+            "season_year_span",
+            locale,
+            season=season_name,
+            start_year=year,
+            end_year=end_year,
+            end_year_short=f"{end_year % 100:02d}",
         )
     else:
         main_title = title_pattern("season_year", locale, season=season_name, year=year)

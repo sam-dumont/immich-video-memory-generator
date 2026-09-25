@@ -77,8 +77,10 @@ def _flagged_reader(audience: str) -> RuleStructureReader:
     source = SimpleNamespace(
         assets={"a": SimpleNamespace(is_favorite=False, people=())},
         audience_annotations={"a": SimpleNamespace(heads=heads)},
+        shareability_flags={},
         annotations={"a": ""},
         intent=SimpleNamespace(product="month"),
+        owner_required_asset_ids=(),
         audience=audience,
     )
     return RuleStructureReader(source)

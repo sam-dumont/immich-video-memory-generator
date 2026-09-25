@@ -1086,6 +1086,20 @@ class TestRunOneOutcomes:
 
         assert result.outcome is AutoOutcome.COMPLETED
 
+    def test_a_period_with_nothing_worth_a_film_fails_with_that_reason(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """No film is the honest answer; the attempt still backs off, under its real reason."""
+        runner = AutoRunner(config)
+        runner.execute = lambda _argv: ProcessResult(
+            0, "\u2139 Nothing worth a film in February 2019\n", ""
+        )
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "nothing worth a film in this period"
+
     def test_same_key_run_from_another_attempt_cannot_prove_success(
         self, config: Config, candidate: MemoryCandidate, tmp_path: Path
     ) -> None:

@@ -138,13 +138,30 @@ class LookAlikeCheck:
             {"story": story, "asset_id": asset, "crowds": place, "_readmit": readmit}
         )
 
+    def waiting_for_their_place(self, wanted: Callable[[str], bool]) -> list[dict[str, Any]]:
+        """The place refusals still out of the cut whose picture `wanted` names, earliest first."""
+        back = {row["asset_id"] for row in self.readmitted}
+        return [
+            row
+            for row in self.refused
+            if "crowds" in row and row["asset_id"] not in back and wanted(row["asset_id"])
+        ]
+
+    def readmit_one(self, row: Mapping[str, Any]) -> bool:
+        """Bring one refused picture back now, if it can still take a slot."""
+        if not row["_readmit"]():
+            return False
+        self.readmitted.append({k: v for k, v in row.items() if k != "_readmit"})
+        return True
+
     def readmit(self, room: Callable[[], bool]) -> None:
         """Fill what the check alone left empty, earliest refusal first."""
+        back = {row["asset_id"] for row in self.readmitted}
         for row in self.refused:
             if not room():
                 return
-            if row["_readmit"]():
-                self.readmitted.append({k: v for k, v in row.items() if k != "_readmit"})
+            if row["asset_id"] not in back:
+                self.readmit_one(row)
 
     def record(self) -> dict[str, Any]:
         return {

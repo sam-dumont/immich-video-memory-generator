@@ -26,6 +26,10 @@ _TEST_ENV_KEYS = {
     "IMMICH_MEMORIES_CACHE__DATABASE": "cache.db",
     "IMMICH_MEMORIES_CACHE__DIRECTORY": "cache",
     "IMMICH_MEMORIES_OUTPUT__DIRECTORY": "output",
+    # The scene-print encoder defaults to a model under the developer's home. A machine that
+    # fetched it read real scene prints of synthetic previews, and a suite green in CI failed
+    # there. No test reads a model it did not put in place itself.
+    "IMMICH_MEMORIES_TRIAGE__ENCODER": "models/triage/dinov2-small.onnx",
 }
 _ORIGINAL_TEST_ENV: dict[str, str | None] = {}
 
@@ -146,6 +150,7 @@ def isolated_user_paths() -> Iterator[Path]:
         config.output.output_path,
     }
     assert not resolved_paths & normal_user_paths
+    assert Path.home() not in config.triage.encoder_path.parents
 
 
 @pytest.fixture()

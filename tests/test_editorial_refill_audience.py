@@ -78,3 +78,31 @@ def test_a_slot_whose_every_refill_is_held_stays_empty(tmp_path):
     run = _review(tmp_path, [_shot("held", 6)], exposed={"held"})
 
     assert [c["asset_id"] for c in run.carriers] == ["keeper"]
+
+
+def test_a_refill_the_settled_length_cannot_hold_leaves_its_slot_empty(tmp_path):
+    """The trim already fitted the film; a refill whose sentence runs past the room left by the
+    picture it replaces cannot be shaved to fit, so it does not come in."""
+    spoken = _shot("clean", 7) | {
+        "kind": "video",
+        "seconds": 6.0,
+        "start_time": 0.0,
+        "end_time": 6.0,
+        "speech_regions": [[0.2, 5.9]],
+    }
+    run = PlanRun(carriers=[_shot("keeper", 0), _shot("repeat", 5)], final_content_cap=7.0)
+    ports = SimpleNamespace(
+        thumbnail_hash=HASHES.get, scene_print=None, rules=object(), resolve_motion=None
+    )
+
+    final_duplicate_review(
+        run,
+        ports,
+        prior=None,
+        prior_assets=set(),
+        replacements_for=lambda _c: [("moment", spoken)],
+        gate=_gate(tmp_path, exposed=set()),
+    )
+
+    assert sum(c["seconds"] for c in run.carriers) <= run.final_content_cap
+    assert [c["asset_id"] for c in run.carriers] == ["keeper"]

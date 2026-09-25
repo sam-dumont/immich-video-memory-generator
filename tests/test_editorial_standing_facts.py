@@ -59,6 +59,26 @@ def test_a_bank_with_no_frame_kind_row_reads_a_document_as_before_eligibility_do
     )
 
 
+# -- a living subject needs a face ----------------------------------------------------------------
+
+SCREENED_MOMENT = {"frame_kind": "people_moment", "doc_docling": "screenshot", "screen": "yes"}
+
+
+def test_a_people_moment_with_no_face_is_weighed_rather_than_stood_free():
+    """The frame head calls legs, feet or a back a people moment too; only a face vouches for it."""
+    line = "2024-02-01 12:00 | BLOWN OUT"
+
+    assert not carries_nothing(SCREENED_MOMENT, line)
+    assert not carries_nothing(SCREENED_MOMENT, line, face=True)
+    assert carries_nothing(SCREENED_MOMENT, line, face=False)
+
+
+def test_a_dark_people_moment_is_weighed_like_a_soft_one():
+    """Dark is no reason to refuse a face, and no reason to skip counting either."""
+    assert not carries_nothing(SCREENED_MOMENT, "2024-02-01 23:00 | BLOWN OUT", face=True)
+    assert carries_nothing(SCREENED_MOMENT, "2024-02-01 23:00 | DARK | BLOWN OUT", face=True)
+
+
 # -- with the ingest caption ---------------------------------------------------------------------
 
 
@@ -108,6 +128,42 @@ def test_a_place_the_caption_names_without_anyone_in_it_still_stands():
     assert not carries_nothing(heads, "", "A lake at sunset with mountains in the distance.")
 
 
+def test_a_caption_naming_a_person_keeps_the_picture_only_when_a_face_is_in_it():
+    caption = "A person holds a phone displaying a game over a table."
+
+    assert not carries_nothing(LONE_OBJECT, "", caption, face=True)
+    assert not carries_nothing(LONE_OBJECT, "", caption)
+    assert carries_nothing(LONE_OBJECT, "", caption, face=False)
+
+
+def test_an_animal_the_caption_names_needs_no_face():
+    caption = "A dog next to a phone displaying a game on a table."
+
+    assert not carries_nothing(LONE_OBJECT, "", caption, face=False)
+
+
+def test_a_shelf_of_goods_is_an_object_however_the_frame_head_saw_it():
+    heads = {"frame_kind": "place_or_scenery", "people": "none"}
+
+    assert carries_nothing(heads, "", "A shelf displaying various products and bottles.")
+    assert not carries_nothing(heads, "", "A woman looks at products on a shelf.")
+
+
+def test_someone_the_people_head_saw_without_a_face_counts_toward_nothing():
+    heads = {"frame_kind": "lone_everyday_object", "people": "one"}
+
+    assert not carries_nothing(heads, "", "A table by a window.", face=True)
+    assert carries_nothing(heads, "", "A table by a window.", face=False)
+
+
+def test_a_library_whose_faces_were_never_read_keeps_the_table_fitted_without_them():
+    """The face-aware table lowers the other points because the missing face carries some of
+    the weight; with no face facts at all, the table fitted without them decides."""
+    heads = {"frame_kind": "lone_everyday_object", "people": "one"}
+
+    assert carries_nothing(heads, "", "A table by a window.")
+
+
 # -- the rules reader -----------------------------------------------------------------------------
 
 
@@ -120,6 +176,7 @@ def _reader(*, favourite=False, line="", description=None, audience="shareable",
         annotations={"a": line},
         intent=SimpleNamespace(product="month"),
         audience=audience,
+        owner_required_asset_ids=(),
     )
     return RuleStructureReader(source)
 
@@ -146,3 +203,15 @@ def test_a_favourite_stands_whatever_the_facts_say():
     reader = _reader(favourite=True, frame_kind="empty_room_ceiling_or_floor", people="none")
 
     assert reader.standing("a") == 2
+
+
+def test_the_rules_reader_takes_a_picture_with_no_face_in_a_library_whose_faces_it_read():
+    """Immich put nobody on this picture while it recognised someone elsewhere in the scope."""
+    line = "2024-02-01 | BLOWN OUT"
+    face_elsewhere = SimpleNamespace(is_favorite=False, people=[SimpleNamespace(id="p1", name="")])
+    assert _reader(line=line, **SCREENED_MOMENT).standing("a") >= 1
+
+    reader = _reader(line=line, **SCREENED_MOMENT)
+    reader.source.assets["b"] = face_elsewhere
+
+    assert reader.standing("a") == 0

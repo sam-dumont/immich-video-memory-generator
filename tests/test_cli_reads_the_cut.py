@@ -286,6 +286,17 @@ class TestRunsWhy:
         assert result.exit_code == 0, result.output
         assert "in the cut at 0:03, 2024-06-09, story: Lunch in the garden" in result.output
 
+    def test_the_owner_s_word_on_the_picture_is_said_last(self, cut):
+        from immich_memories.operations import picture_holds
+
+        config, _ = cut
+        picture_holds.never_use(config, "garden-2", via="cli")
+
+        result = _invoke(config, ["runs", "why", "garden-2"])
+
+        assert result.exit_code == 0, result.output
+        assert "Your word on it now: You'll never use this picture." in result.output
+
 
 class TestRunsShow:
     def test_it_names_the_sharing_level_the_cut_was_made_for(self, cut):

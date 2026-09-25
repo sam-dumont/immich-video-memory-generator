@@ -90,6 +90,8 @@ make notices-check
 # Check docker-compose.yml parses alone in an empty directory (the curl-one-file path)
 make compose-check
 
+# Public E2E library (on demand only, never on a PR; needs Docker + FFmpeg)
+
 # Every workflow job outside integration.yml skips in the private GPU mirror (part of make lint)
 make workflow-guard
 

@@ -77,6 +77,25 @@ def test_a_non_favourite_carrying_a_moment_whose_favourite_could_have_breaks_the
     assert _broken(cut) == [("favourite_wins_its_moment", "plain", "final-duplicates")]
 
 
+def test_a_favourite_collapsed_into_its_starred_twin_is_shown_by_the_twin():
+    """Near-identical favourites are one moment: the keeper shows it, and a plain frame of the
+    twin's own capture group is further depth of that one moment, not a passed-over favourite."""
+    units = {
+        "star": {"asset_id": "star", "moment": "M1", "favourite": True, "members": ["star"]},
+        "plain": {"asset_id": "plain", "moment": "M1", "favourite": False, "members": ["plain"]},
+        "twin": {"asset_id": "twin", "moment": "M2", "favourite": True, "members": ["twin"]},
+    }
+    cut = FinishedCut(
+        carriers=[_shot("plain", moment="M1", favourite=False), _shot("twin", moment="M2")],
+        units=units,
+        removed_by={"star": "final-duplicates"},
+        verdict_of=_shared,
+        collapsed_into={"star": "twin"},
+    )
+
+    assert cut_violations(cut) == []
+
+
 def test_a_favourite_the_film_refuses_leaves_its_moment_to_another_picture():
     units = {
         "star": {"asset_id": "star", "moment": "M1", "favourite": True, "members": ["star"]},

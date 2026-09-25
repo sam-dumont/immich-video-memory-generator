@@ -93,6 +93,14 @@ accent kept two vowels apart). Chinese characters use the Simplified forms unles
 `title_screens.locale` sets the language of everything the film prints: titles, months, weekdays, trip cards,
 holidays. `auto` (the default) follows the host's locale.
 
+A film whose window is exactly a meteorological season opens on the season's name (`Summer 2025`, `Été 2025`,
+`2025年の夏`), counted in your home's hemisphere: with `trips.homebase_latitude` south of the equator, 1 December to
+the end of February is `Summer 2024–25`. Without a home base, or for any other window, the months name it (`June to
+August 2025`).
+
+The web UI's suggested title is the same template in the same language, so with no reader a French trip made
+in the wizard opens on "DEUX SEMAINES EN CRÈTE, GRÈCE, ÉTÉ 2025", exactly as the CLI would.
+
 | Language | Code | Trip titles |
 |---|---|---|
 | English | `en` | full: "A WEEK IN THE NETHERLANDS" |
@@ -157,6 +165,10 @@ for the name in the film's language, one request per distinct place on the cut. 
 85 % opacity, each one appearing when it changes. Captions stay clear of dissolves so two never overlap, and a
 caption in any alphabet draws with the title fonts above, HDR included.
 
+The date says only what is new: the weekday and day inside one month, the day and month inside one year, the
+full date across years. Each language writes it its own way (`10. AUGUST`, `10 DE AGOSTO`, `10 SIERPNIA`,
+`8月10日`).
+
 Places you are at all the time stay unlabelled (the name of your own town over every third clip is noise). A
 spot is familiar when it recurs within 250 m of the picture over many weeks in several years; a yearly summer
 holiday never qualifies. `trips.homebase_latitude` and `trips.homebase_longitude` mark home too, and the home
@@ -188,7 +200,8 @@ occasion films ("Ada and her grandparents" instead of three stacked full names).
 The title reader gets facts, never pictures and never coordinates: first names, birth dates and ages, the
 relations your [people file](../get-started/who-is-who.md) confirms, the special-day catalogue's words, the
 album that holds most of the cut, and the place names by day. A capitalised word found in none of those facts
-gets the title refused in favour of the template, and a trip title has to name the trip's place. Refusing
+gets the title refused in favour of the template, and so does a country, island or region the facts do not
+name, even as the title's first word. A trip title has to name the trip's place. Refusing
 costs a plainer title, so the check leans towards refusing.
 
 ### Where the title came from

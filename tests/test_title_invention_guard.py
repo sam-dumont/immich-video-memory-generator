@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from immich_memories.titles.llm_titles import TitleSuggestion, invented_name, parse_title_response
 
 FACTS = (
@@ -52,3 +56,50 @@ def test_a_weekday_or_month_in_another_film_language_is_not_an_invention():
 def test_a_name_beside_a_month_is_still_caught():
     facts = "Span: 2024-01-01 to 2024-01-31 (31 days)\nPlaces by day:\n  01-04: Porto\n"
     assert invented_name("Porto in January with Marcel", facts) == "Marcel"
+
+
+def test_a_country_opening_the_title_that_no_fact_names_is_caught():
+    facts = "Memory type: monthly_highlights\nSpan: 2024-02-01 to 2024-02-29 (29 days)\n"
+    assert invented_name("Chypre en février", facts + "Places by day:\n  02-10: Brussels\n") == (
+        "Chypre"
+    )
+
+
+def test_a_country_the_facts_name_in_english_may_open_the_title_in_french():
+    facts = "Span: 2024-02-01 to 2024-02-29 (29 days)\nPlaces by day:\n  02-10: Nicosia, Cyprus\n"
+    assert invented_name("Chypre en février", facts) is None
+
+
+def test_a_country_is_not_taken_for_a_fact_label_it_happens_to_resemble():
+    # "Chypre" is as close to "type" (from "Memory type:") as the spelling tolerance allows.
+    facts = "Memory type: monthly_highlights\nPlaces by day:\n  02-10: Brussels\n"
+    assert invented_name("Une semaine à Chypre", facts) == "Chypre"
+
+
+def _country_island_and_region_words() -> set[str]:
+    from babel import Locale
+
+    from immich_memories.i18n import SUPPORTED_LOCALES
+    from immich_memories.place_names import area_name_groups
+
+    names = {n for group in area_name_groups().values() for n in group}
+    for code in SUPPORTED_LOCALES:
+        names.update(Locale.parse(code.replace("-", "_")).territories.values())
+    return {name.casefold() for name in names if " " not in name}
+
+
+@pytest.mark.parametrize(
+    ("memory_type", "person_names"),
+    [("monthly_highlights", None), ("trip", None), ("person_spotlight", ["Emma"])],
+)
+def test_a_title_prompt_names_no_place_but_the_facts_own(memory_type, person_names):
+    # A month film was titled "Chypre en février" off the prompt's own example line.
+    from immich_memories.titles.llm_titles import build_title_prompt
+
+    prompt = build_title_prompt(
+        memory_type, "fr", "2024-02-01", "2024-02-29", 28,
+        daily_locations=["02-10: Brussels"], person_names=person_names,
+    )  # fmt: skip
+    words = {w.casefold() for w in re.findall(r"[^\W\d_]+", prompt.text)}
+
+    assert not words & _country_island_and_region_words()

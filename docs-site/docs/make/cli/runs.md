@@ -90,6 +90,11 @@ sensitive-content detector read for it and the hold it sits under:
   worth a look before sharing: the exposure head read 0.35, under the 0.5 hold
 ```
 
+The last line is your own word on the picture as it stands today, which may be newer than the run:
+`Your word on it now: You cleared its hold (a nudity detector flagged it).`, or, where a hold stands
+and you haven't answered it, the hold and the [`pictures clear-hold`](./pictures.md) command that
+lifts it.
+
 Both commands find the run through the run id, which the CLI and the web UI share: a memory cut on
 the page can be read from the terminal and the other way round.
 

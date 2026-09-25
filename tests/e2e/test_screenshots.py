@@ -193,6 +193,93 @@ def test_capture_automation_walkthrough(page: Page, launch_app_url: str, launch_
     test_choose_generate_and_read_the_same_automatic_run(page, launch_app_url, launch_workspace)
 
 
+# The stock library's swim picture, as a nudity detector that misread it would bank it: the
+# false positive the owner clears by hand. Seeded by the recipe, never placed by hand.
+_HELD = "trip-swim-02"
+
+
+def _save_part(page: Page, locator, directory: Path, name: str) -> None:
+    """One element of the page (a card, a dialog), redacted like every full frame."""
+    locator.scroll_into_view_if_needed()
+    # The thumbnail loads lazily: shoot the picture, not its spinner.
+    expect(locator.locator(".q-img__loading")).to_have_count(0, timeout=30_000)
+    page.mouse.move(0, 0)
+    redact_page(page)
+    assert_no_real_address(page)
+    page.wait_for_timeout(300)
+    locator.screenshot(path=str(directory / f"{name}.png"))
+
+
+def _pool_card(page: Page, asset_id: str):
+    """Page the pool to this picture's card; the pool lists the library in capture order."""
+    from immich_memories.ui.pages.clip_grid import CLIPS_PER_PAGE
+    from tests.e2e.fake_library import BY_ID, LIBRARY
+
+    expect(page.locator(".picture-decision").first).to_be_visible(timeout=60_000)
+    index = [picture.asset_id for picture in LIBRARY].index(asset_id)
+    for number in range(index // CLIPS_PER_PAGE):
+        page.get_by_role("button", name="Next page").click()
+        first = (number + 1) * CLIPS_PER_PAGE + 1
+        expect(page.get_by_text(re.compile(f"^{first}–"))).to_be_visible()
+    card = page.locator(".q-card").filter(has_text=BY_ID[asset_id].filename).first
+    expect(card).to_be_visible()
+    return card
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_picture_decisions(
+    page: Page, launch_app_url: str, launch_workspace, screenshot_dir: Path, theme: str
+) -> None:
+    """Clear hold and Never use, on the storyboard and in the pool (#1324)."""
+    from tests.e2e.fake_library import CARRIERS
+    from tests.e2e.test_picture_decisions import flag_by_the_detector, store_of
+
+    store = store_of(launch_workspace)
+    flag_by_the_detector(store, _HELD)
+    shot, ticked = CARRIERS[1].asset_id, CARRIERS[2].asset_id
+    d = screenshot_dir
+    try:
+        _open_brief(page, launch_app_url)
+        set_theme(page, theme)
+        _open_brief(page, launch_app_url)
+        _choose(page, "Memory type", "Monthly Highlights")
+        _choose(page, "Month", "June")
+        page.get_by_role("button", name="Cut", exact=True).click()
+        shots = page.locator(".storyboard-shot")
+        expect(shots.nth(1)).to_be_visible(timeout=120_000)
+        shots.nth(1).get_by_role("button", name="Never use").click()
+        expect(shots.nth(1).get_by_text("You'll never use this picture.")).to_be_visible()
+        page.wait_for_timeout(3500)  # the toast fades
+        _save_part(page, shots.nth(1), d, _name("pictures-storyboard-never-use", theme))
+
+        page.get_by_role("button", name="Review the pool", exact=True).click()
+        card = _pool_card(page, _HELD)
+        expect(card.get_by_text("Held: a nudity detector flagged it.")).to_be_visible()
+        _save_part(page, card, d, _name("pictures-pool-held", theme))
+        card.get_by_role("button", name="Clear hold").click()
+        dialog = page.locator(".clear-hold-dialog")
+        expect(dialog.locator("img")).to_be_visible()
+        page.wait_for_timeout(600)
+        _save_part(page, dialog, d, _name("pictures-clear-dialog", theme))
+        dialog.get_by_role("button", name="Clear hold").click()
+        expect(card.get_by_text(re.compile("^You cleared its hold"))).to_be_visible()
+        page.wait_for_timeout(3500)
+        _save_part(page, card, d, _name("pictures-pool-cleared", theme))
+
+        page.get_by_role("button", name="Back to the cut").click()
+        page.get_by_role("button", name="Review the pool", exact=True).click()
+        other = _pool_card(page, ticked)
+        other.get_by_role("button", name="Never use").click()
+        expect(other.get_by_role("checkbox", name="Include")).not_to_be_checked()
+        page.wait_for_timeout(3500)
+        _save_part(page, other, d, _name("pictures-pool-never-use", theme))
+    finally:
+        from immich_memories.store import owner_decisions
+
+        for asset_id in (_HELD, shot, ticked):
+            owner_decisions.forget(store, asset_id)
+
+
 @pytest.mark.parametrize("theme", _THEMES)
 def test_capture_sharing_levels(page: Page, launch_app_url: str, screenshot_dir: Path, theme: str):
     """Who will watch it: the brief's sharing level, open on its three choices (#1325)."""

@@ -153,6 +153,25 @@ def never_auto_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
     return frozenset(out)
 
 
+def owner_cleared_ids(flags: Mapping[str, Sequence[FlagRow]]) -> frozenset[str]:
+    """The pictures whose holds the owner cleared, one by one."""
+    return frozenset(
+        asset_id
+        for asset_id, rows in flags.items()
+        if any(r.source == OWNER_SOURCE and r.flag == OWNER_CLEARED for r in rows)
+    )
+
+
+def owner_cleared_unit(unit: Mapping[str, Any], flags: Mapping[str, Sequence[FlagRow]]) -> bool:
+    """Whether the owner cleared every picture this unit shows, its Live clip included.
+
+    A clearance is per picture and never inherited: a burst with one member the owner did not
+    clear, or a clip the clearance did not reach, is judged as any other unit.
+    """
+    cleared = owner_cleared_ids({m: flags.get(m, ()) for m in unit_members(unit)})
+    return bool(cleared) and set(unit_members(unit)) <= cleared
+
+
 def unit_members(unit: Mapping[str, Any]) -> tuple[str, ...]:
     ids = [unit.get("asset_id"), *unit.get("members", ()), *unit.get("video_ids", ())]
     return tuple(dict.fromkeys(str(i) for i in ids if i))

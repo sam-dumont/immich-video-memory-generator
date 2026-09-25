@@ -84,6 +84,16 @@ def french_preposition(english_place: str) -> str:
     return "au"
 
 
+# Chinese and Japanese write a full-width comma with no space after it; ", " is
+# a Latin comma set in the middle of their text.
+_COMMAS = {"ja": "、", "zh-Hans": "，"}
+
+
+def comma(locale: str) -> str:
+    """The comma, with its space, that separates two parts of a label in this language."""
+    return _COMMAS.get(locale, ", ")
+
+
 def localise_place(name: str | None, locale: str) -> str | None:
     """Translate a "Place, Country" label: the country, and the place when it is known.
 
@@ -98,14 +108,14 @@ def localise_place(name: str | None, locale: str) -> str | None:
     head, separator, tail = name.rpartition(", ")
     if not separator:
         return localise_country(name, locale)
-    return f"{localise_place_part(head, locale)}, {localise_country(tail, locale)}"
+    return f"{localise_place_part(head, locale)}{comma(locale)}{localise_country(tail, locale)}"
 
 
 def place_label(city: str | None, country: str | None, locale: str) -> str | None:
     """The label a viewer reads for one place, or None when there is no place."""
     localised = localise_country(country, locale) if country else None
     if city and localised:
-        return f"{city}, {localised}"
+        return f"{city}{comma(locale)}{localised}"
     return localised or city or None
 
 

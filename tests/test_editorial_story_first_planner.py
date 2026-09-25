@@ -456,6 +456,35 @@ def test_timing_trim_drops_the_lightest_stories_extra_pictures_first_and_refits_
     ]  # the glimpse, then the minor's extra picture; then it fits
 
 
+def test_timing_trim_cuts_a_picture_nothing_vouches_for_before_a_favourite():
+    from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
+
+    def carrier(asset, story, weight, day, **extra):
+        return (
+            {"asset_id": asset, "story_episode": story, "story_weight": weight}
+            | {
+                "taken": f"2025-04-{day:02d}T10:00",
+                "kind": "still",
+                "favourite": False,
+            }
+            | extra
+        )
+
+    carriers = [
+        carrier("d1", "K1", "dominant", 18, favourite=True),
+        carrier("d2", "K1", "dominant", 19),
+        carrier("m1", "K2", "minor", 1, favourite=True),
+        carrier("m2", "K2", "minor", 2, favourite=True),
+    ]
+
+    kept, dropped = trim_to_timing_budget(
+        carriers, lambda _cs: 3 * 3.5, 3.5, vouched=lambda c: c["favourite"]
+    )
+
+    assert [c["asset_id"] for c in dropped] == ["d2"]
+    assert {c["asset_id"] for c in kept} == {"d1", "m1", "m2"}
+
+
 class CompanyReplacementJudge(StoryJudge):
     """Prefer two familiar views; let the production company rule improve them."""
 

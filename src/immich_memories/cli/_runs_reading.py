@@ -114,6 +114,18 @@ def why_text(
     return "\n".join(lines)
 
 
+def _owner_note(config, asset_id: str) -> str:
+    """What holds the picture today and what the owner decided, which may postdate the run."""
+    from immich_memories.operations import picture_holds
+
+    hold = picture_holds.read(config, [asset_id])[asset_id]
+    if hold.decision is not None:
+        return f"Your word on it now: {hold.describe()}"
+    if hold.can_clear:
+        return f"{hold.describe()} `pictures clear-hold {asset_id}` lifts it once you've looked."
+    return ""
+
+
 def _wrapped(text: str, columns: int) -> str:
     return textwrap.fill(
         text, width=max(columns, 20), initial_indent="  ", subsequent_indent="    "
@@ -180,3 +192,6 @@ def register_reading_commands(runs: click.Group) -> None:
         note = music_mood_note(attempt)
         if note:
             console.print(note, highlight=False)
+        owner = _owner_note(config, asset_id)
+        if owner:
+            console.print(owner, highlight=False, markup=False)

@@ -464,6 +464,73 @@ immich-memories people show [OPTIONS]
 | `--file` | file | - | The people file to read |
 | `--tier` | choice: `inner` \| `recurring` \| `episodic` \| `event` | - | Show only one tier |
 
+## `pictures`
+
+Your own word on a picture: clear its hold, or never use it.
+
+Every tier reads it, in every later cut. The asset id is the one `runs why`,
+`runs story` and Immich show.
+
+```bash
+immich-memories pictures [OPTIONS]
+```
+
+### `pictures clear-hold`
+
+Clear this one picture's hold, after you've looked at it yourself.
+
+```bash
+immich-memories pictures clear-hold [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--yes` | boolean | false | Clear it without asking |
+
+**Arguments:**
+- `asset_id` (text)
+
+### `pictures list`
+
+Every picture you cleared or will never use.
+
+```bash
+immich-memories pictures list [OPTIONS]
+```
+
+### `pictures never-use`
+
+Keep this picture out of every film from now on.
+
+```bash
+immich-memories pictures never-use [OPTIONS]
+```
+
+**Arguments:**
+- `asset_id` (text)
+
+### `pictures show`
+
+What holds this picture, and what you decided.
+
+```bash
+immich-memories pictures show [OPTIONS]
+```
+
+**Arguments:**
+- `asset_id` (text)
+
+### `pictures undo`
+
+Forget what you decided about this picture: the app's own holds apply again.
+
+```bash
+immich-memories pictures undo [OPTIONS]
+```
+
+**Arguments:**
+- `asset_id` (text)
+
 ## `preflight`
 
 Run preflight checks to validate all provider connections.

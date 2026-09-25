@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
@@ -20,6 +21,7 @@ from immich_memories.analysis.editorial_completion import (
     RetainedMotion,
 )
 from immich_memories.analysis.editorial_final_hash_review import review_cut_by_cached_hashes
+from immich_memories.analysis.editorial_intent_validation import MIN_CARRIERS, MIN_CONTENT_SHARE
 from immich_memories.analysis.editorial_source_route import retire_unprojectable
 from immich_memories.analysis.editorial_story_planner import alternatives_pool
 from immich_memories.analysis.editorial_story_trim import trim_to_timing_budget
@@ -38,6 +40,8 @@ from immich_memories.analysis.editorial_structure_record import shave_content_du
 from immich_memories.analysis.editorial_unvouched_filler import (
     FillerEvidence,
     drop_unvouched_filler,
+    filler_evidence,
+    owner_vouches_for,
 )
 from immich_memories.operations.cut_progress import StageUpdate, announce_stage
 
@@ -98,6 +102,7 @@ def resolve_motion_and_timing(
         lambda cs: timing.resolve(cs, source.assets).content_budget,
         MIN_CARRIER_SECONDS,
         protected=frozenset(source.owner_required_asset_ids),
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
     )
     run.cut_carriers.extend(dropped)
     run.render_timeline = timing.resolve(run.carriers, source.assets)
@@ -139,7 +144,25 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
         c["asset_id"]: c for c in retained([c for c in run.carriers if c["asset_id"] in filled])
     }
     run.carriers = [resolved.get(c["asset_id"], c) for c in run.carriers]
-    if run.final_content_cap > 0:
+    if run.final_content_cap <= 0:
+        return
+    run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+    # A refill whose own minimum hold (a sentence it cannot cut) runs past the room its slot
+    # left does not come in: the removal stands and the slot stays empty, latest refill first.
+    for asset in reversed(added):
+        if sum(c["seconds"] for c in run.carriers) <= run.final_content_cap:
+            return
+        refill = next((c for c in run.carriers if c["asset_id"] == asset), None)
+        if refill is None:
+            continue
+        run.carriers.remove(refill)
+        run.cut_carriers.append(
+            refill
+            | {
+                "reason": "A refill the settled length cannot hold",
+                "review_stage": "final-duplicates",
+            }
+        )
         run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
 
 
@@ -154,6 +177,8 @@ def final_duplicate_review(
     | None = None,
     close_family_of: Callable[[str], Collection[str]] = lambda _asset: (),
     gate: AudienceGate | None = None,
+    frame_quality: Callable[[str], tuple[int, float] | None] = lambda _asset: None,
+    requested_seconds: float = 0.0,
 ) -> None:
     """Audit the completed film, including later contributions and the actual
     resolved render kinds. Nothing may refill a removed duplicate afterward.
@@ -178,6 +203,9 @@ def final_duplicate_review(
         scene_print=ports.scene_print,
         close_family_of=close_family_of,
         admits=_admitted_by(gate),
+        frame_quality=frame_quality,
+        # Folding starred twins never takes a film under the floor where it abstains.
+        film_floor=(MIN_CARRIERS, MIN_CONTENT_SHARE * requested_seconds),
         # A scene repeat nothing replaces leaves only while the film still reaches its target
         # within the shortfall the owner accepts: a film short of material keeps it.
         content_floor=run.final_content_cap * (1 - ACCEPTED_SHORTFALL_FRACTION)
@@ -203,6 +231,20 @@ def final_duplicate_review(
     _settle_replacements(
         run, ports, [row["replacement"] for row in removed.values() if "replacement" in row]
     )
+
+
+def frame_quality_of(source) -> Callable[[str], tuple[int, float] | None]:
+    """How many faces Immich found on a picture and how sharp it is, for starred twins."""
+
+    def quality(asset_id: str) -> tuple[int, float] | None:
+        asset = source.assets.get(asset_id)
+        if asset is None:
+            return None
+        faces = max(len(asset.people or ()), len(getattr(asset, "faces", None) or ()))
+        sharpness = (source.pixel_facts.get(asset_id) or (None, None))[0]
+        return faces, float(sharpness or 0.0)
+
+    return quality
 
 
 def _admitted_by(gate: AudienceGate | None) -> Callable[[Mapping[str, Any]], bool]:
@@ -261,6 +303,7 @@ def trim_to_timing(
         lambda cs: source.render_timing.resolve(cs, source.assets).content_budget,
         MIN_CARRIER_SECONDS,
         protected=protected,
+        vouched=partial(owner_vouches_for, evidence=filler_evidence(source)),
     )
     record("timing-trim", {"dropped": [c["asset_id"] for c in dropped], "kept": len(run.carriers)})
 

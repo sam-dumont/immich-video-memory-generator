@@ -11,6 +11,11 @@ gets about 20 seconds, not a minute, and a quiet month with a week of nothing in
 on that week. When a film runs out of pictures worth showing, it ends early. A shorter film with
 every shot earned beats a full one padded with the fridge, the ceiling and a screenshot.
 
+Taken to the end, a period can hold nothing worth a film at all: three pictures of a floor
+being laid, say. Then no film is made, the run says `Nothing worth a film in February 2019` and
+exits 0. That is an answer, not a failure. A period with no pictures in it at all (a wrong date
+range, a filter, Immich unreachable) still ends in an error and exit 1.
+
 How the target itself is set (per memory type, per active day, `--duration`) is on
 [Memory types](../make/memory-types.mdx#how-long-a-film-runs).
 
@@ -35,7 +40,9 @@ A film has more candidate shots than seconds, so two passes fit it.
 **The trim** (`trim_to_timing_budget`, run after the draft and again once motion and speech are
 measured) drops whole shots, lightest story first: `none` and `glimpse` stories, then the extra
 shots of the lightest story, then its only shot, and the heaviest story's only shot last. Inside one
-story the latest shot goes first. A picture you ticked is never dropped.
+story the latest shot goes first. A picture you ticked is never dropped, and a favourite is never
+dropped while a shot nothing vouches for (no star, no recorded video, nobody Immich knows, not ticked)
+is still in the film.
 
 **The shave** takes 0.5 s off the longest hold, over and over, while the film is over length. It
 never takes a hold under 3.5 s (or under the shot's own length, if that was shorter) and never
@@ -83,7 +90,10 @@ The draft tries to reach its length before it gives up the seconds:
   already in. Every one must stand and must not look like its neighbours. A film of one repeated
   scene stays short.
 - **Readmission.** A frame refused for looking like another, or for crowding its place, comes back
-  when nothing else can fill the slot.
+  when nothing else can fill the slot. A favourite refused for crowding its place comes back sooner:
+  before a shot nothing vouches for keeps the slot it freed. That shot leaves (the weakest first, a
+  story's only shot last) and is listed under `displaced_for_a_favourite` in
+  `derived-decisions/story-selection.private.json`.
 - **With a model**, a film still short by S seconds reads up to 2 × ceil(S / 3.5) episodes it never
   reached, and seats the ones whose reading records something
   ([What a model adds](./what-a-model-adds.md#a-short-film-gets-one-more-look)).

@@ -49,15 +49,14 @@ class TestGenerateDateRangeTitle:
         result = _generate_date_range_title(date(2024, 1, 1), date(2024, 12, 31), "Alice", "en")
         assert result.subtitle == "Alice"
 
-    def test_french_locale(self):
-        """French locale uses correct month names and connectors."""
+    def test_french_writes_a_month_inside_a_title_in_lower_case(self):
+        # French capitalises no month mid-sentence: "de mars à août", never "à Août".
         result = _generate_date_range_title(date(2024, 3, 1), date(2024, 8, 15), None, "fr")
-        assert result.main_title == "Mars à Août 2024"
+        assert result.main_title == "De mars à août 2024"
 
     def test_french_cross_year(self):
-        """French cross-year range uses correct format."""
         result = _generate_date_range_title(date(2023, 11, 1), date(2024, 2, 28), None, "fr")
-        assert result.main_title == "Novembre 2023 à Février 2024"
+        assert result.main_title == "De novembre 2023 à février 2024"
 
 
 class TestGenerateTitleValidation:
@@ -191,14 +190,14 @@ class TestMemoryTypeTitles:
         assert result.subtitle is None
 
     def test_season_winter_spans_years(self):
-        """Winter season spanning years generates 'Winter 2023-2024'."""
+        """Winter season spanning years generates 'Winter 2023–24'."""
         result = generate_title(
             SelectionType.SEASON,
             season="winter",
             year=2023,
             end_year=2024,
         )
-        assert result.main_title == "Winter 2023-2024"
+        assert result.main_title == "Winter 2023–24"
 
     def test_season_with_person(self):
         """Season with person name uses person as subtitle."""

@@ -45,7 +45,8 @@ nothing is away, so a three-week holiday arrives as three weekly stories. Settin
 **One place does not take a film.** Inside a story, each place may hold only the share of shots its
 days (or its moments, on a one-day story) earn against the rest, on the same square-root curve a trip
 allowance uses. A story that only ever visited one place is never bounded. A picture refused for its
-place comes back when nothing else can fill the slot.
+place comes back when nothing else can fill the slot, and a starred one comes back before a shot
+nothing vouches for keeps its slot.
 
 ## How much a story weighs
 

@@ -22,6 +22,14 @@ from immich_memories.security import write_secret_file
 
 AUDIENCE_BANK_NAME = "audience-verdicts.private.json"
 
+CARRIER_RULE_SOURCE = "carrier-rule-on-observations"
+
+
+def library_bank_path(store_path: Path) -> Path:
+    """The library's audience bank, beside the annotation store every film of it reads."""
+    return Path(store_path).parent / "structure-banks" / AUDIENCE_BANK_NAME
+
+
 # Holds that say nothing was looked at, not that something was seen. Kept, they would hold a
 # picture forever for want of a reader the install may add later.
 _NOTHING_SEEN = frozenset(
@@ -258,11 +266,22 @@ class AudienceGate:
             self.verdicts[u["asset_id"]] = {
                 "verdict": "do_not_show",
                 "finding": observed_reason,
-                "source": "carrier-rule-on-observations",
+                "source": CARRIER_RULE_SOURCE,
                 "evidence_key": "",
             }
             self.keep_hold(u["asset_id"], self.verdicts[u["asset_id"]])
             return "do_not_show"
+        if _share.owner_cleared_unit(u, self._flag_rows):
+            # The owner looked at this picture and cleared it. Nothing is asked and nothing is
+            # banked: forgetting the clearance brings every banked hold straight back.
+            self.verdicts[u["asset_id"]] = {
+                "verdict": "share",
+                "finding": "owner_cleared",
+                "source": _share.OWNER_SOURCE,
+                "why": "you cleared this picture's hold",
+                "evidence_key": "",
+            }
+            return "share"
         standing = self._held_already(evidence)
         if standing is not None:
             record = {
@@ -315,7 +334,11 @@ class AudienceGate:
         captions: dict[str, list[str]] = {}
         for u in units:
             observed_reason, evidence = self._evidence(u)
-            if observed_reason or self._held_already(evidence):
+            if (
+                observed_reason
+                or _share.owner_cleared_unit(u, self._flag_rows)
+                or self._held_already(evidence)
+            ):
                 continue
             key = _share.audience_check_key(evidence)
             if key in self.bank or key in self._answered or self._library.answer(key):
