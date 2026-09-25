@@ -35,17 +35,27 @@ function HeroSection() {
             </div>
           </div>
           <div className={styles.heroVisual}>
-            <video
-              className={styles.heroScreenshot}
-              poster={useBaseUrl('/img/trip-map-flyover.jpg')}
-              controls
-              muted
-              playsInline
-              preload="metadata">
-              <source src={useBaseUrl('/demo/trip-preview.mp4')} type="video/mp4" />
-            </video>
+            <a href={useBaseUrl('/demo/demo.mp4')} aria-label="Play the demo with music">
+              <picture>
+                <source
+                  media="(prefers-reduced-motion: reduce)"
+                  srcSet={useBaseUrl('/img/screenshots/hero-memory.png')}
+                />
+                <img
+                  className={styles.heroScreenshot}
+                  src={useBaseUrl('/img/demo-hero.gif')}
+                  alt="Choose a memory, review its storyboard, and watch the finished film"
+                  width="720"
+                  height="405"
+                  fetchPriority="high"
+                />
+              </picture>
+            </a>
             <p className={styles.heroCredit}>
-              A finished trip film. CC0 stock pictures from StockSnap and Wikimedia Commons,{' '}
+              <a href={useBaseUrl('/demo/demo.mp4')}>Play the demo with music</a>
+              {' · '}
+              <a href={useBaseUrl('/demo/trip-preview.mp4')}>Watch a finished trip film</a>
+              . CC0 stock pictures from StockSnap and Wikimedia Commons,{' '}
               <a href="https://github.com/sam-dumont/immich-video-memory-generator/blob/main/tests/e2e/fixtures/library/CREDITS.md">
                 credited with their authors
               </a>

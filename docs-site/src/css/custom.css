@@ -80,7 +80,17 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Content width: comfortable reading measure */
 .theme-doc-markdown > * {
-  max-width: 80ch;
+  max-width: min(80ch, 100%);
+}
+
+/* Long config keys must wrap without widening the article or the phone viewport. */
+.theme-doc-markdown {
+  overflow-wrap: anywhere;
+}
+
+.theme-doc-markdown img,
+.theme-doc-markdown video {
+  height: auto;
 }
 
 /* Cards match app's 10px radius, flat style */
@@ -127,4 +137,22 @@ h1, h2, h3, h4, h5, h6 {
 [data-theme='dark'] .footer--dark {
   background: #09090b;
   border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+@media screen and (max-width: 996px) {
+  .navbar__toggle,
+  .navbar-sidebar__close {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .navbar-sidebar .menu__link,
+  .navbar-sidebar .menu__caret,
+  .theme-doc-toc-mobile > button {
+    min-height: 44px;
+  }
 }

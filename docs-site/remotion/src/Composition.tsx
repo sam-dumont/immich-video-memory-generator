@@ -54,9 +54,9 @@ export const DemoVideo: React.FC = () => {
   const frame = useCurrentFrame();
   const bass = useBassIntensity(frame);
 
-  // Music volume: fade out over the last 5 seconds.
+  // Ease the soundtrack in, then fade out over the last five seconds.
   const musicVolume = (f: number) =>
-    interpolate(f, [MUSIC_FADE_START, TOTAL_FRAMES], [0.7, 0], {
+    interpolate(f, [0, 30, MUSIC_FADE_START, TOTAL_FRAMES], [0, 0.7, 0.7, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
