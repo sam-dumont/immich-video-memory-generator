@@ -80,7 +80,7 @@ def polish_the_draft(
         line_of=lambda asset_id: selection.lines.get(asset_id, ""),
         record=record,
         candidates_of=story_candidates(selection, wall, pool, material.units),
-        content_cap=run.final_content_cap,
+        content_cap=_length_of(source, carriers, run),
         protected=source.owner_required_asset_ids,
         subject=source.intent.subject or "",
         close_family=film_close_family(source),
@@ -94,6 +94,16 @@ def polish_the_draft(
         if row["asset_id"] not in kept
     )
     return polished
+
+
+def _length_of(source, carriers, run) -> float:
+    """The content seconds the render timing gives this draft, the budget finishing will hold
+    the film to. The planner's rough reserve (target less 7.5 s) is not it: on measured months
+    the draft already ran past that reserve, and a polish measured against it had no room to
+    refill a single removal."""
+    if source.render_timing is None or not carriers:
+        return run.final_content_cap
+    return source.render_timing.resolve(list(carriers), source.assets).content_budget
 
 
 def _partition_of(intent) -> Callable[[str], str | None]:

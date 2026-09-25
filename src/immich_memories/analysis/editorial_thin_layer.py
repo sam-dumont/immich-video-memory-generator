@@ -190,6 +190,7 @@ class ThinPolish:
             candidates_of=lambda key: _with_records(candidates_of(key), catalogue),
             seen={c["asset_id"] for c in carriers},
             content_cap=content_cap,
+            removed=_removed(carriers, kept),
         )
         refill = ThinRefill(
             judge=judge,
@@ -470,6 +471,12 @@ def _with_records(
         record = catalogue.notable_record_of(row["asset_id"])
         marked.append(dict(row) | {"notable_record": record} if record else dict(row))
     return marked
+
+
+def _removed(carriers: Sequence[Mapping[str, Any]], kept: Sequence[Mapping[str, Any]]):
+    """The draft rows the gates or the vote took out, by asset."""
+    staying = {row["asset_id"] for row in kept}
+    return {row["asset_id"]: row for row in carriers if row["asset_id"] not in staying}
 
 
 def _drafted_shots(

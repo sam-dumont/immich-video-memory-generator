@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from datetime import datetime
 from operator import itemgetter
 from typing import Any
 
@@ -36,6 +37,8 @@ NOTABLE = "notable"
 VOTE_BAD = "vote-bad"
 VOTE_WEAK = "vote-weak"
 GATE_REFUSED = "gate-refused"
+# The seats a removal opens: every one of them is refilled or says why it could not be.
+REMOVALS = frozenset({VOTE_BAD, GATE_REFUSED})
 # The picker reads the first twelve rows of a page, in the page's own order: the refused shot's
 # moment, the moments the cut lacks, motion first. A thousand-picture story is not a longer ask.
 PAGE_ROWS = 12
@@ -54,6 +57,9 @@ class ThinSlot:
     replacing: str = ""
     filled_by: str = ""
     outcome: str = ""
+    # The seconds a removed shot gave back: its refill may take them past the length target,
+    # because the draft already held them.
+    frees: float = 0.0
 
     def row(self) -> dict[str, str]:
         return {
@@ -82,11 +88,14 @@ def seat(
     *,
     replacing: str,
     content_cap: float,
+    frees: float = 0.0,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Put one candidate in the cut, or leave the cut exactly as it was.
 
     The newcomer is trimmed by whatever it overruns the film by, and refused below the shortest
-    a moving picture may run rather than seated as a flash.
+    a moving picture may run rather than seated as a flash. The film may run to the length
+    target, or to the length it already had plus the seconds a removed shot freed (`frees`),
+    whichever is longer: a swap or a refill never makes the film longer than the draft was.
     """
     if candidate["asset_id"] in {c["asset_id"] for c in cut}:
         return [dict(c) for c in cut], False
@@ -101,7 +110,8 @@ def seat(
     else:
         result.append(seated)
     result.sort(key=itemgetter("taken", "asset_id"))
-    excess = sum(row["seconds"] for row in result) - content_cap
+    limit = max(content_cap, sum(row["seconds"] for row in cut) + frees)
+    excess = sum(row["seconds"] for row in result) - limit
     if excess > 0:
         if seated["seconds"] - excess < MIN_MOTION_SECONDS:
             return [dict(c) for c in cut], False
@@ -118,16 +128,23 @@ def plan_slots(
     candidates_of: Callable[[str], Sequence[Mapping[str, Any]]],
     seen: set[str],
     content_cap: float,
+    removed: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[ThinSlot]:
     """Every seat this polish may fill, in the order the budget is spent on them.
 
-    A notable record the cut does not hold comes first, then a replacement for a shot the vote
-    named and for one the gates refused, both bounded by the room the film actually has. A shot
-    only one order doubted keeps its place under a swap, which needs no room at all.
+    A notable record the cut does not hold comes first, in the room the draft left unused.
+    Then a replacement for every shot the vote named or the gates refused (`removed`, the draft
+    rows by asset): it takes the seconds that shot held, so it needs no room. Its page is its
+    own story's, or when that story has nothing left, the pictures of the stories the film
+    already holds, nearest in time first. A removal nothing is left for is still a seat, which
+    records that nothing was eligible. A shot only one
+    order doubted keeps its place under a swap, which needs no room at all either.
     """
     story_of = {asset: story.key for story in catalogue.stories for asset in story.asset_ids}
     offers = _offers(candidates_of, seen)
-    room = openable_slots(content_cap, sum(row["seconds"] for row in cut))
+    removed = removed or {}
+    freed = sum(row["seconds"] for row in removed.values())
+    room = openable_slots(content_cap, sum(row["seconds"] for row in cut) + freed)
     slots = newcomer_slots(cut, catalogue, offers, room, refused=refused)
     appends = [
         (asset, VOTE_BAD, story_of.get(asset, ""), "")
@@ -135,9 +152,7 @@ def plan_slots(
         if verdict["state"] == "bad"
     ]
     appends.extend((row.asset_id, GATE_REFUSED, row.story, row.moment) for row in refused)
-    slots.extend(
-        _append_slots(cut, appends, offers, room - len(slots), catalogue.notable_record_of)
-    )
+    slots.extend(_append_slots(cut, appends, offers, catalogue.notable_record_of, removed))
     slots.extend(
         ThinSlot(
             key=f"D9{number:02d}",
@@ -149,7 +164,7 @@ def plan_slots(
         for number, (asset, verdict) in enumerate(sorted(verdicts.items()), 1)
         if verdict["state"] == "weak"
     )
-    return [slot for slot in slots if slot.page]
+    return [slot for slot in slots if slot.page or slot.kind in REMOVALS]
 
 
 def _offers(candidates_of, seen: set[str]):
@@ -190,15 +205,15 @@ def newcomer_slots(
     ]
 
 
-def _append_slots(cut, appends, offers, room: int, record_of) -> list[ThinSlot]:
+def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
     moments_in_cut = {row.get("moment") for row in cut}
     refused_moments: dict[str, list[str]] = {}
     for _asset, kind, story, moment in appends:
         if kind == GATE_REFUSED and moment:
             refused_moments.setdefault(story, []).append(moment)
     slots = []
-    for number, (_asset, kind, story, _moment) in enumerate(appends[: max(0, room)], 1):
-        page = offers(story)
+    for number, (asset, kind, story, _moment) in enumerate(appends, 1):
+        page = offers(story) or _nearest_in_the_film(cut, offers, removed.get(asset))
         if story in refused_moments:
             page = gate_refill_page(page, refused_moments[story], moments_in_cut)
         else:
@@ -206,9 +221,34 @@ def _append_slots(cut, appends, offers, room: int, record_of) -> list[ThinSlot]:
         page = records_lead(page, record_of)
         prefix = "R" if kind == VOTE_BAD else "T"
         slots.append(
-            ThinSlot(key=f"{prefix}{number:03d}", story=story, kind=kind, page=tuple(page))
+            ThinSlot(
+                key=f"{prefix}{number:03d}",
+                story=story,
+                kind=kind,
+                page=tuple(page),
+                frees=float(removed[asset]["seconds"]) if asset in removed else 0.0,
+            )
         )
     return slots
+
+
+def _why_empty(refusal: GateRefusal | None) -> str:
+    return "none available" if refusal is None else f"refused by {refusal.rule}"
+
+
+def _nearest_in_the_film(cut, offers, shot: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """The pictures of the stories the cut holds, the nearest in time to `shot` first."""
+    if shot is None:
+        return []
+    when = _moment_in_time(shot["taken"])
+    stories = dict.fromkeys(str(row.get("story_episode") or "") for row in cut)
+    pool = [unit for key in stories if key for unit in offers(key)]
+    return sorted(pool, key=lambda unit: abs(_moment_in_time(unit["taken"]) - when))
+
+
+def _moment_in_time(taken: Any) -> float:
+    when = datetime.fromisoformat(str(taken))
+    return (when.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds()
 
 
 @dataclass(frozen=True)
@@ -235,7 +275,8 @@ class ThinRefill:
         from the same page. The chosen rows that stand are then put to the audience gate together.
         """
         current = [dict(row) for row in cut]
-        chosen, failed = self._picks(slots, taken={row["asset_id"] for row in current})
+        taken = {row["asset_id"] for row in current}
+        chosen, failed = self._picks(slots, taken=taken)
         self.gates.prefetch_audience(list(chosen.values()))
         outcomes = []
         for index, slot in enumerate(slots):
@@ -244,11 +285,17 @@ class ThinRefill:
                 outcomes.append(replace(slot, outcome=failed.get(index, "none available")))
                 continue
             refusal = self.gates.admits(candidate, cut=current, tier_of=self.tier_of)
-            if refusal is not None:
-                outcomes.append(replace(slot, outcome=f"refused by {refusal.rule}"))
+            if refusal is not None and slot.kind in REMOVALS:
+                candidate, refusal = self._chosen_again(slot, current, taken)
+            if candidate is None or refusal is not None:
+                outcomes.append(replace(slot, outcome=_why_empty(refusal)))
                 continue
             current, changed = seat(
-                current, candidate, replacing=slot.replacing, content_cap=self.content_cap
+                current,
+                candidate,
+                replacing=slot.replacing,
+                content_cap=self.content_cap,
+                frees=slot.frees,
             )
             outcomes.append(
                 replace(
@@ -258,6 +305,25 @@ class ThinRefill:
                 )
             )
         return current, outcomes
+
+    def _chosen_again(
+        self, slot: ThinSlot, current: Sequence[Mapping[str, Any]], taken: set[str]
+    ) -> tuple[Mapping[str, Any] | None, GateRefusal | None]:
+        """A removal's seat, after the gates refused its choice: one more pick from its page.
+
+        A seat a removal opened is how the film keeps its length, so it is not given up while
+        its page still holds a picture nobody has taken.
+        """
+        page = [unit for unit in slot.page if unit["asset_id"] not in taken]
+        pick = self._choose(slot, page[:PAGE_ROWS])
+        if pick is None:
+            return None, None
+        pick = favourite_of_its_moment(pick, page, taken)
+        taken.add(pick["asset_id"])
+        self.gates.settle([pick], self.tier_of)
+        if not self.gates.stands_alone(pick, self.tier_of):
+            return pick, GateRefusal(pick["asset_id"], slot.story, "standing", "second choice")
+        return pick, self.gates.admits(pick, cut=current, tier_of=self.tier_of)
 
     def _picks(
         self, slots: Sequence[ThinSlot], *, taken: set[str]
