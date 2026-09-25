@@ -96,6 +96,8 @@ class TitleScreenSettings:
 
     # Trip map settings (used when memory_type == "trip")
     memory_type: str | None = None  # "trip" enables map intro + location cards
+    # "north"/"south" from the home base: an exact-season window is titled by its season.
+    hemisphere: str | None = None
     trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins
     # Pin labels, index-aligned with trip_locations; "" where unknown
     trip_location_names: list[str] = field(default_factory=list)

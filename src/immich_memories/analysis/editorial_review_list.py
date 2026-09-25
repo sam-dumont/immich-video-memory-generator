@@ -47,6 +47,8 @@ _ALREADY_HELD = frozenset(
         "invalid_body_observation",
         "undecided_body_observation",
         "unresolved_companion_exposure",
+        # The owner looked at the picture itself and cleared it.
+        "owner_cleared",
     }
 )
 

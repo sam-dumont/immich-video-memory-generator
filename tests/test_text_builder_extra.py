@@ -190,14 +190,14 @@ class TestMemoryTypeTitles:
         assert result.subtitle is None
 
     def test_season_winter_spans_years(self):
-        """Winter season spanning years generates 'Winter 2023-2024'."""
+        """Winter season spanning years generates 'Winter 2023–24'."""
         result = generate_title(
             SelectionType.SEASON,
             season="winter",
             year=2023,
             end_year=2024,
         )
-        assert result.main_title == "Winter 2023-2024"
+        assert result.main_title == "Winter 2023–24"
 
     def test_season_with_person(self):
         """Season with person name uses person as subtitle."""

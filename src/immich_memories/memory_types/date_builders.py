@@ -81,6 +81,23 @@ def build_season(
     )
 
 
+def season_of_window(start: date, end: date, hemisphere: str | None) -> str | None:
+    """The season a window covers exactly, as the home's hemisphere names it, else None.
+
+    Exactly means first day of the season's first month to last day of its last
+    month ("summer" for 1 June to 31 August in the north, and for 1 December to
+    the end of February in the south). No hemisphere, no season: the same months
+    are two different seasons depending on where home is.
+    """
+    if hemisphere not in _VALID_HEMISPHERES:
+        return None
+    for name in ("spring", "summer", "fall", "winter"):
+        window = build_season(name, start.year, hemisphere)
+        if (window.start.date(), window.end.date()) == (start, end):
+            return name
+    return None
+
+
 def build_month(month: int, year: int) -> DateRange:
     """Build a DateRange for a full calendar month.
 

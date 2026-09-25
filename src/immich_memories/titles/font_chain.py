@@ -80,6 +80,20 @@ def _covers(face: _Face, char: str) -> bool:
     return ord(char) in _codepoints(face.path, face.index)
 
 
+# Scripts whose letters join, reorder or stack into clusters: without Raqm
+# they draw wrong. CJK, Hangul, Latin, Greek and Cyrillic draw the same either way.
+_SHAPED_SCRIPTS = (
+    "ARABIC", "SYRIAC", "THAANA", "NKO", "HEBREW", "DEVANAGARI", "BENGALI", "GURMUKHI",
+    "GUJARATI", "ORIYA", "TAMIL", "TELUGU", "KANNADA", "MALAYALAM", "SINHALA", "THAI",
+    "LAO", "TIBETAN", "MYANMAR", "KHMER",
+)  # fmt: skip
+
+
+def needs_shaping(text: str) -> bool:
+    """Whether `text` holds a letter of a script that only draws right when shaped."""
+    return any(unicodedata.name(char, "").startswith(_SHAPED_SCRIPTS) for char in text)
+
+
 def shaping_hint() -> str:
     """What to do on this system so Pillow shapes text."""
     if sys.platform == "darwin":
@@ -279,7 +293,7 @@ class ChainFont(ImageFont.FreeTypeFont):
         for run in text_runs(text, str(self.path), bold=self._bold):
             primary = run.face == str(self.path)
             font = self._run_font(_Face(run.face, self.index if primary else run.index))
-            if not shaped and run.installed:
+            if not shaped and run.installed and needs_shaping(run.text):
                 _warn_once(
                     "raqm",
                     "Pillow has no Raqm layout here, so %r is drawn unshaped (Arabic letters "

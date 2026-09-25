@@ -40,6 +40,7 @@ const sidebars: SidebarsConfig = {
             {type: 'doc', id: 'make/cli/generate', label: 'generate'},
             {type: 'doc', id: 'make/cli/prepare', label: 'prepare'},
             {type: 'doc', id: 'make/cli/runs', label: 'runs'},
+            {type: 'doc', id: 'make/cli/pictures', label: 'pictures'},
           ],
         },
       ],

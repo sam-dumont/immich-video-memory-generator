@@ -124,9 +124,11 @@ class CarrierAdmission:
         lookalike: LookAlikeCheck | None = None,
         places: PlaceShares | None = None,
         place_of: Callable[[str], str] = lambda _asset: "",
+        strangers_only: Callable[[str], bool] = lambda _asset: False,
         vouched: Callable[[Mapping[str, Any]], bool] = lambda _carrier: True,
     ) -> None:
         self._judge = judge
+        self._strangers_only = strangers_only
         self._vouched = vouched
         self._mechanical_picks = mechanical_picks
         self.lookalike = lookalike or LookAlikeCheck(None, slots=slots)
@@ -163,6 +165,10 @@ class CarrierAdmission:
 
     def starred_choice(self, c: DepictedChoice) -> bool:
         return choice_is_starred(c, self._unit_by_asset)
+
+    def of_strangers(self, c: DepictedChoice) -> bool:
+        """A moment whose people are all strangers to the library, in every picture of it."""
+        return all(self._strangers_only(a) for a in c.members)
 
     def free(self, asset: str) -> bool:
         return (
@@ -262,7 +268,8 @@ class CarrierAdmission:
                 self.parts,
                 self._unit_by_asset,
                 starred=self.starred_choice,
-                life=self._life,
+                # Strangers are not the life a story's sample reaches for first.
+                life=lambda a: self._life(a) and not self._strangers_only(a),
                 kind_of=self._kind_marker,
             )
             for s in funded
@@ -390,10 +397,14 @@ class CarrierAdmission:
         the favourites the spread passes over stay behind it, for when one cannot be placed.
         """
         stars = [c for c in eligible if self.starred_choice(c)]
-        rest = [c for c in eligible if not self.starred_choice(c)]
+        # A moment of strangers only is the weaker frame of its story: it comes after every
+        # other moment the story holds, never before one showing somebody the library knows.
+        rest = [c for c in eligible if not self.starred_choice(c) and not self.of_strangers(c)]
+        strangers = [c for c in eligible if not self.starred_choice(c) and self.of_strangers(c)]
         preferred = [*_spread(stars, n), *_spread(rest, max(0, n - len(stars)))]
+        preferred.extend(_spread(strangers, max(0, n - len(preferred))))
         local: list[DepictedChoice] = []
-        for c in (*preferred, *(c for c in (*stars, *rest) if c not in preferred)):
+        for c in (*preferred, *(c for c in (*stars, *rest, *strangers) if c not in preferred)):
             if len(local) >= n or not self.compatible(c, [*chosen, *local]):
                 continue
             local.append(c)

@@ -51,6 +51,41 @@ def metadata_life(
     return shows_life
 
 
+def strangers_only(
+    assets: Mapping[str, Any], audience_annotations: Mapping[str, Any]
+) -> Callable[[str], bool]:
+    """Whether a picture shows people and none of them is a person the library names.
+
+    The people graph decides: a named, visible Immich person is someone the owner knows; a
+    face nobody named, or people only the people head saw, are strangers. A library that
+    names nobody has no strangers to set apart, so nothing reads as one there.
+
+    This reads the people head directly rather than `metadata_life`: a frame of people Immich
+    found no face for is either strangers or a body part, and either way it ranks below a
+    frame of someone the library knows.
+    """
+
+    def shows_somebody(asset_id: str) -> bool:
+        asset = assets.get(asset_id)
+        if asset is not None and (asset.people or asset.faces):
+            return True
+        record = audience_annotations.get(asset_id)
+        heads = dict(record.heads) if record else {}
+        return heads.get("people", "undetermined") not in {"none", "undetermined"}
+
+    def knows(asset: Any) -> bool:
+        return any(p.name and not p.is_hidden for p in asset.people)
+
+    if not any(knows(asset) for asset in assets.values()):
+        return lambda _asset_id: False
+
+    def only_strangers(asset_id: str) -> bool:
+        asset = assets.get(asset_id)
+        return asset is not None and not knows(asset) and shows_somebody(asset_id)
+
+    return only_strangers
+
+
 class UnitLines:
     """The annotation line of a playable unit, and the facts read out of it."""
 

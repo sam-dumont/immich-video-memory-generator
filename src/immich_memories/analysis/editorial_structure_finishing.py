@@ -143,7 +143,25 @@ def _settle_replacements(run: PlanRun, ports: StructurePlannerPorts, added: Sequ
         c["asset_id"]: c for c in retained([c for c in run.carriers if c["asset_id"] in filled])
     }
     run.carriers = [resolved.get(c["asset_id"], c) for c in run.carriers]
-    if run.final_content_cap > 0:
+    if run.final_content_cap <= 0:
+        return
+    run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
+    # A refill whose own minimum hold (a sentence it cannot cut) runs past the room its slot
+    # left does not come in: the removal stands and the slot stays empty, latest refill first.
+    for asset in reversed(added):
+        if sum(c["seconds"] for c in run.carriers) <= run.final_content_cap:
+            return
+        refill = next((c for c in run.carriers if c["asset_id"] == asset), None)
+        if refill is None:
+            continue
+        run.carriers.remove(refill)
+        run.cut_carriers.append(
+            refill
+            | {
+                "reason": "A refill the settled length cannot hold",
+                "review_stage": "final-duplicates",
+            }
+        )
         run.shaved += shave_content_duration(run.carriers, run.final_content_cap)
 
 

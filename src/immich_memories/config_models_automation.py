@@ -22,6 +22,13 @@ class TripsConfig(BaseModel):
     min_duration_days: int = Field(default=2, ge=1, description="Min days to qualify as a trip")
     max_gap_days: int = Field(default=2, ge=1, description="Max gap before splitting trips")
 
+    @property
+    def hemisphere(self) -> str | None:
+        """ "north" or "south" from the home base's latitude; None while it is unset (0,0)."""
+        if self.homebase_latitude == self.homebase_longitude == 0.0:
+            return None
+        return "south" if self.homebase_latitude < 0 else "north"
+
     def validate_homebase(self) -> None:
         """Raise if homebase is still at Null Island (0,0)."""
         if self.homebase_latitude == self.homebase_longitude == 0.0:

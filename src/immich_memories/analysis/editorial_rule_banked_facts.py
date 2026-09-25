@@ -47,6 +47,7 @@ from immich_memories.analysis.editorial_structure_audience import (
     AUDIENCE_BANK_NAME,
     library_refusals,
 )
+from immich_memories.store.owner_decisions import CLEAR_HOLD, decisions
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +149,11 @@ def open_banked_facts(
     the cold draft, which is always a valid film.
     """
     representatives, culls = _banked_readings(store_path, episode_cards, own_producers)
+    refused = _refused_before(attempts_dir, audience=audience) | library_refusals(
+        bank_dir.parent / AUDIENCE_BANK_NAME, audience
+    )
     answers = BankedAnswers(
-        refused=_refused_before(attempts_dir, audience=audience)
-        | library_refusals(bank_dir.parent / AUDIENCE_BANK_NAME, audience),
+        refused=refused - _owner_cleared(store_path),
         representatives=representatives,
         culls=culls,
     )
@@ -161,6 +164,13 @@ def open_banked_facts(
         len(answers.culls),
     )
     return answers
+
+
+def _owner_cleared(store_path: Path | None) -> frozenset[str]:
+    """What the owner cleared by hand: a refusal banked before the clearance no longer holds."""
+    if store_path is None:
+        return frozenset()
+    return frozenset(a for a, decision in decisions(store_path).items() if decision == CLEAR_HOLD)
 
 
 def _refused_before(attempts_dir: Path | None, *, audience: str) -> frozenset[str]:
