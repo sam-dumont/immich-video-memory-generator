@@ -131,6 +131,13 @@ pip install laya-mlx                         # Apple Silicon only
 immich-memories models fetch --laya          # 811 MB, digest-pinned
 ```
 
+`models fetch` chooses the Apple archive on Apple silicon and the portable ONNX archive on
+Linux, Windows and Intel Macs. ONNX needs the `editorial` extra for CPU or `editorial-cuda` for
+NVIDIA. The ONNX download is 877 MB and expands to 1.70 GB; its calibrated default threshold is
+0.185, while MLX keeps 0.186. Both archives are SHA-256 checked. A download mirror must keep the
+archive's filename. When configuring a checkpoint for a different backend manually, set its
+threshold explicitly too.
+
 ```yaml
 advanced:
   editorial:
