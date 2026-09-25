@@ -83,8 +83,9 @@ the draft, not a rough reserve. When nothing is left to refill a removal, the re
 | T | replaces a shot a gate refused |
 | D | swaps out a shot one order named; needs no room |
 
-A seat's page is its own story's pictures, or, when the story has nothing left, the pictures of the
-stories the film already holds, nearest in time first. The refused moment comes first, then the
+A seat's page is its own story's pictures. An R or T seat then reads on into the pictures of the
+other stories the film already holds, nearest in time first, so it doesn't end empty while the film
+has material. The refused moment comes first, then the
 moments the cut lacks, moving ones first, the favourite first inside a moment. A refill's page puts
 the kind of shot its story holds fewer of (portrait or texture) on top of all that. The model picks
 from 12 rows at most; the facts then say whether the pick stands, and a failed pick gets one more
