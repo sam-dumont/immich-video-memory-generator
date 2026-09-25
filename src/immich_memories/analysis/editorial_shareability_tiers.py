@@ -99,8 +99,7 @@ _PHOTOGRAPH = "photograph"
 def _clean_heads(heads: Mapping[str, str]) -> bool:
     """Every head that could object read this frame and none did."""
     return (
-        heads.get("nsfw_marqo") == "no"
-        and heads.get("uncovered_person", "no") == "no"
+        heads.get("nsfw_marqo") == heads.get("uncovered_person", "no") == "no"
         and heads.get("doc_docling", _PHOTOGRAPH) == _PHOTOGRAPH
         and heads.get("venue") not in _PRIVATE_VENUES
     )

@@ -64,6 +64,17 @@ from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange
 
 
+def _apply_sharing(config, sharing: str | None) -> None:
+    """The run's sharing level over the config default; a shareable film this install can't
+    cut stops here, before anything is fetched."""
+    if sharing:
+        config.defaults.sharing = sharing
+    refusal = sharing_refusal(config)
+    if refusal:
+        print_error(refusal)
+        raise SystemExit(1)
+
+
 def register_generate_commands(main: click.Group) -> None:
     """Register the generate command on the main CLI group."""
 
@@ -169,12 +180,7 @@ def register_generate_commands(main: click.Group) -> None:
             format_override=output_format,
         )
 
-        if sharing:
-            config.defaults.sharing = sharing
-        refusal = sharing_refusal(config)
-        if refusal:
-            print_error(refusal)
-            raise SystemExit(1)
+        _apply_sharing(config, sharing)
 
         # CLI quality flag overrides config
         if quality:
