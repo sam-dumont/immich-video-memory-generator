@@ -81,6 +81,10 @@ mtime_ns  # unused variable (src/immich_memories/processing/probe_cache.py:27)
 _.get_field_value  # unused method (src/immich_memories/config_loader.py:197)
 _.settings_customise_sources  # unused method (src/immich_memories/config_loader.py:341)
 
+# NiceGUI Client.build_response calls this page override for the HTML lang and
+# Quasar widgets. The two-browser language E2E test exercises that library call.
+_.resolve_language  # library hook (src/immich_memories/ui/i18n.py)
+
 # Reached only from checked-in developer scripts, which vulture does not scan:
 # scripts/preview_trip_titles.py and scripts/demo_maps.py for the map frame,
 # scripts/validate_local_audio.py for the stem check, and

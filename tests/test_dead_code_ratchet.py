@@ -89,7 +89,10 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # Its C++ extractor reads these attributes; the real FireRedVAD fixture exercises
 # them, but vulture can only see their Python setters.
 # 54: the reranker port's identity field went with the port itself (#964).
-MAX_WHITELISTED_SYMBOLS = 54
+# 55: NiceGUI's Client.build_response calls LocalizedPage.resolve_language.
+# Vulture scans our source, not NiceGUI's; the browser locale tests exercise
+# that framework callback and its per-browser HTML language.
+MAX_WHITELISTED_SYMBOLS = 55
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

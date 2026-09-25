@@ -11,6 +11,7 @@ from nicegui import ui
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.operations.candidate_fates import CandidateFates
 from immich_memories.ui.components import im_badge
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.paging import DEFAULT_PAGE_SIZE, render_paged
 from immich_memories.ui.pages.picture_decisions import (
     PictureHold,
@@ -166,7 +167,7 @@ def _render_clip_card(
 
             return toggle
 
-        checkbox = ui.checkbox("Include", value=is_selected)
+        checkbox = ui.checkbox(tr("Include"), value=is_selected)
         checkbox.on_value_change(make_toggle_handler(clip.asset.id))
 
 
@@ -189,7 +190,7 @@ def _render_photo_card(
         _render_clip_thumbnail(photo.id)
 
         with ui.row().classes("gap-1 flex-wrap"):
-            im_badge("Photo", variant="analysis")
+            im_badge(tr("Photo"), variant="analysis")
             if photo.is_favorite:
                 ui.icon("star").classes("text-xs").style("color: var(--im-warning)")
 
@@ -220,7 +221,7 @@ def _render_photo_card(
 
             return toggle
 
-        checkbox = ui.checkbox("Include", value=is_selected)
+        checkbox = ui.checkbox(tr("Include"), value=is_selected)
         checkbox.on_value_change(make_photo_toggle(photo.id))
 
 

@@ -103,3 +103,20 @@ src/immich_memories/
 
 [ARCHITECTURE.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/ARCHITECTURE.md)
 has the full module map with class relationships.
+
+## Interface translations
+
+UI labels use `tr("Text")` from `immich_memories.ui.i18n`. For inserted values, keep a named
+placeholder in the template: `tr("Connected as: {name}", name=username)`. Mark labels stored in
+constants with `N_("Text")`, then translate them when rendering. Translating at import time
+would freeze the language for every browser. Select boxes keep their original values and
+translate only their labels with `tr_options`.
+
+Run `make ui-catalogues` after changing labels. It updates `ui.po` beside each language's
+film-text `messages.po`, preserving translations and leaving new messages for translation.
+Keep placeholders and their format specifications intact. The catalogue test checks every
+supported language for missing messages and mismatched placeholders. Non-English catalogues
+are marked AI-drafted until reviewed; native-speaker corrections are welcome.
+
+The app reads the shipped PO files directly and caches their translators. No separate
+compilation step is needed. Restart the app after editing a catalogue.

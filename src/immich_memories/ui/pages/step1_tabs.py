@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from nicegui import ui
 
 from immich_memories.timeperiod import available_years
+from immich_memories.ui.i18n import N_, tr, tr_options
 
 if TYPE_CHECKING:
     from nicegui.elements.menu import Menu
@@ -21,7 +22,7 @@ def _render_birthday_picker(state, update_fn, birthday_container: ui.element) ->
     with birthday_container:
         current_bday = state.birthday or date(2000, 1, 1)
         bday_menu: Menu
-        with ui.input("Birthday") as bday_input:
+        with ui.input(tr("Birthday")) as bday_input:
             with bday_input.add_slot("prepend"):
                 ui.icon("event").on("click", lambda: bday_menu.open()).classes("cursor-pointer")  # noqa: FURB111
             with ui.menu().props("no-auto-close") as bday_menu:
@@ -63,7 +64,7 @@ def _render_year_selector_row(state, update_fn) -> tuple:
     year_options = state.years or available_years()
     year_select = ui.select(
         options=year_options,
-        label="Year",
+        label=tr("Year"),
         value=state.selected_year or (year_options[0] if year_options else None),
     ).classes("w-48")
 
@@ -76,12 +77,12 @@ def _render_year_selector_row(state, update_fn) -> tuple:
         state.selected_year = year_options[0]
 
     with ui.column().classes("gap-1"):
-        ui.label("Year type").classes("text-sm").style("color: var(--im-text-secondary)")
+        ui.label(tr("Year type")).classes("text-sm").style("color: var(--im-text-secondary)")
         with ui.row().classes("gap-2"):
-            calendar_btn = ui.button("Calendar Year").props(
+            calendar_btn = ui.button(tr("Calendar Year")).props(
                 "flat" if state.year_type != "calendar" else ""
             )
-            birthday_btn = ui.button("From Birthday").props(
+            birthday_btn = ui.button(tr("From Birthday")).props(
                 "flat" if state.year_type != "birthday" else ""
             )
     return calendar_btn, birthday_btn
@@ -101,7 +102,7 @@ def _render_year_tab(state, tab, update_fn) -> None:
 def _render_duration_tab(state, tab, update_fn) -> None:
     """Render the Duration tab panel."""
     with ui.tab_panel(tab), ui.row().classes("w-full gap-3 items-end"):
-        duration_input = ui.number("Duration", value=state.period_value, min=1, max=24).classes(
+        duration_input = ui.number(tr("Duration"), value=state.period_value, min=1, max=24).classes(
             "w-24"
         )
 
@@ -112,8 +113,8 @@ def _render_duration_tab(state, tab, update_fn) -> None:
         duration_input.on_value_change(on_duration_change)
 
         unit_select = ui.select(
-            options=["Months", "Years"],
-            label="Unit",
+            options=tr_options([N_("Months"), N_("Years")]),
+            label=tr("Unit"),
             value="Months" if state.period_unit == "months" else "Years",
         ).classes("w-32")
 
@@ -124,7 +125,7 @@ def _render_duration_tab(state, tab, update_fn) -> None:
         unit_select.on_value_change(on_unit_change)
 
         period_start_menu: Menu
-        with ui.input("Starting from") as start_input:
+        with ui.input(tr("Starting from")) as start_input:
             with start_input.add_slot("prepend"):
                 ui.icon("event").on("click", lambda: period_start_menu.open()).classes(  # noqa: FURB111
                     "cursor-pointer"
@@ -158,7 +159,7 @@ def _render_custom_tab(state, tab, update_fn) -> None:
 def _render_custom_start_picker(state, update_fn, start_val: date) -> None:
     """Render the custom range start date picker."""
     custom_start_menu: Menu
-    with ui.input("Start date") as custom_start_input:
+    with ui.input(tr("Start date")) as custom_start_input:
         with custom_start_input.add_slot("prepend"):
             ui.icon("event").on("click", lambda: custom_start_menu.open()).classes("cursor-pointer")  # noqa: FURB111
         with ui.menu().props("no-auto-close") as custom_start_menu:
@@ -178,7 +179,7 @@ def _render_custom_start_picker(state, update_fn, start_val: date) -> None:
 def _render_custom_end_picker(state, update_fn, end_val: date) -> None:
     """Render the custom range end date picker."""
     custom_end_menu: Menu
-    with ui.input("End date") as custom_end_input:
+    with ui.input(tr("End date")) as custom_end_input:
         with custom_end_input.add_slot("prepend"):
             ui.icon("event").on("click", lambda: custom_end_menu.open()).classes("cursor-pointer")  # noqa: FURB111
         with ui.menu().props("no-auto-close") as custom_end_menu:

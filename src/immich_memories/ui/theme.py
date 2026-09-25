@@ -6,6 +6,8 @@ from pathlib import Path
 
 from nicegui import app, ui
 
+from immich_memories.ui.i18n import N_, tr
+
 # ---------------------------------------------------------------------------
 # Serve bundled static assets (fonts, etc.) — no external CDN requests
 # ---------------------------------------------------------------------------
@@ -315,9 +317,9 @@ def render_theme_toggle() -> None:
     current = app.storage.user.get("theme", "system")
 
     icons = [
-        ("light", "light_mode", "Light"),
-        ("system", "brightness_auto", "System"),
-        ("dark", "dark_mode", "Dark"),
+        ("light", "light_mode", N_("Light")),
+        ("system", "brightness_auto", N_("System")),
+        ("dark", "dark_mode", N_("Dark")),
     ]
 
     with ui.row().classes("gap-1 justify-center"):
@@ -334,7 +336,7 @@ def render_theme_toggle() -> None:
             btn = (
                 ui.button(icon=icon, on_click=make_handler(value))
                 .props("flat round size=sm")
-                .tooltip(tooltip)
+                .tooltip(tr(tooltip))
             )
             if is_active:
                 btn.style("color: var(--im-primary); background: var(--im-primary-light)")

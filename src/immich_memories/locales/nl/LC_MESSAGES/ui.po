@@ -1,0 +1,1835 @@
+# Immich Memories interface translations.
+# AI-drafted; native-speaker review welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: Immich Memories UI VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: nl\n"
+"Language-Team: nl <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: pages/memory.py:162
+msgid " Cut again runs it once more."
+msgstr " Opnieuw monteren voert de montage nogmaals uit."
+
+#: pages/settings_config.py:127
+#, python-brace-format
+msgid " Preset '{preset}' is active and fills the knobs you have not set."
+msgstr " Voorinstelling '{preset}' is actief en vult de niet-ingestelde opties aan."
+
+#: pages/step1_people.py:113
+msgid "(\"Person A\" OR \"Person B\") AND \"Person C\""
+msgstr "(\"Persoon A\" OR \"Persoon B\") AND \"Persoon C\""
+
+#: pages/step4_export.py:120
+#, python-brace-format
+msgid "+ {value} more"
+msgstr "+ {value} meer"
+
+#: pages/step3_options.py:239
+msgid "1080p"
+msgstr "1080p"
+
+#: pages/memory_duration.py:17
+msgid "30 s plus 10 s per active day, from the media once it is loaded"
+msgstr "30 s plus 10 s per actieve dag, bepaald zodra de media geladen zijn"
+
+#: pages/memory_duration.py:21
+msgid "30 s plus 6 s per active hour of the day"
+msgstr "30 s plus 6 s per actief uur van de dag"
+
+#: pages/step3_options.py:239
+msgid "4K"
+msgstr "4K"
+
+#: pages/step3_options.py:239
+msgid "720p"
+msgstr "720p"
+
+#: pages/memory_run.py:101
+msgid "A cut is already running; wait for it, or cancel it first"
+msgstr "Er loopt al een montage; wacht tot die klaar is of annuleer eerst"
+
+#: pages/step4_export.py:62
+#, python-brace-format
+msgid ""
+"A generation started at {started} is still running (run {run_id}). This page checks every few"
+" seconds and shows the video when it finishes."
+msgstr ""
+"De generatie gestart om {started} loopt nog (uitvoering {run_id}). Deze pagina controleert "
+"regelmatig en toont de video zodra die klaar is."
+
+#: pages/step3_options.py:371
+msgid "AI Generated"
+msgstr "Door AI gegenereerd"
+
+#: pages/step3_options.py:166
+msgid "AI will generate music based on the mood of your video clips"
+msgstr "AI maakt muziek op basis van de sfeer van je videoclips"
+
+#: pages/step1_config.py:69
+msgid "API Key"
+msgstr "API-sleutel"
+
+#: pages/memory_brief.py:63
+msgid "Accept Forwarded Media"
+msgstr "Ontvangen media toelaten"
+
+#: pages/settings_config.py:165
+msgid "Actions"
+msgstr "Acties"
+
+#: pages/settings_config.py:162
+msgid "Active Configuration"
+msgstr "Actieve configuratie"
+
+#: pages/step1_people.py:97 pages/step1_people.py:123
+#, python-brace-format
+msgid "Active condition: {display_label}"
+msgstr "Actieve voorwaarde: {display_label}"
+
+#: pages/settings_config.py:122
+msgid "Active config from ~/.immich-memories/config.yaml with env overrides. API keys are redacted."
+msgstr ""
+"Configuratie uit ~/.immich-memories/config.yaml met omgevingsvariabelen als overschrijvingen."
+" API-sleutels zijn verborgen."
+
+#: pages/settings_people.py:516
+msgid "Add a relationship"
+msgstr "Een relatie toevoegen"
+
+#: pages/step3_options.py:318
+msgid "Add date overlay"
+msgstr "Datum in beeld"
+
+#: pages/settings_people.py:504
+msgid "Add person"
+msgstr "Persoon toevoegen"
+
+#: pages/settings_people.py:405
+msgid "Add relationship"
+msgstr "Relatie toevoegen"
+
+#: pages/settings_people.py:483
+msgid "Add someone"
+msgstr "Iemand toevoegen"
+
+#: pages/settings_people.py:168
+msgid "Add someone not in Immich"
+msgstr "Iemand toevoegen die niet in Immich staat"
+
+#: pages/settings_people.py:498
+#, python-brace-format
+msgid "Added {value}"
+msgstr "{value} toegevoegd"
+
+#: pages/memory_brief.py:170
+msgid "Advanced"
+msgstr "Geavanceerd"
+
+#: pages/step3_options.py:265
+msgid "Advanced options"
+msgstr "Geavanceerde opties"
+
+#: pages/step1_people.py:37
+msgid "Advanced people condition"
+msgstr "Geavanceerde personenvoorwaarde"
+
+#: pages/memory_brief.py:37 pages/step1_presets.py:290
+msgid "Album"
+msgstr "Album"
+
+#: pages/_step4_upload.py:65
+msgid "Album name"
+msgstr "Albumnaam"
+
+#: pages/step1_people.py:249 pages/step1_people.py:311
+msgid "All Time"
+msgstr "Alle jaren"
+
+#: pages/step1_config.py:219
+msgid "All people"
+msgstr "Alle personen"
+
+#: pages/step1_cache.py:124
+msgid "Analysis cache"
+msgstr "Analysecache"
+
+#: pages/step1_presets.py:579
+msgid ""
+"Anniversaries first, then the rest. A scheduled run only proposes a day on its anniversary; "
+"here you can pick any day the catalogue holds."
+msgstr ""
+"Eerst verjaardagen, daarna de rest. Een geplande uitvoering stelt een dag alleen op zijn "
+"verjaardag voor; hier kun je elke dag uit de catalogus kiezen."
+
+#: pages/step1_people.py:32
+msgid "Any of these people"
+msgstr "Een van deze personen"
+
+#: pages/memory_brief.py:80
+msgid "Anyone. Only pictures nothing held back: no detector flag, no private moment."
+msgstr "Iedereen. Alleen beelden zonder beperkingen: geen detectiemelding, geen privémoment."
+
+#: pages/picture_decisions.py:28
+msgid "Anyone: shareable films too"
+msgstr "Iedereen: ook deelbare films"
+
+#: pages/clip_review.py:403
+msgid "Apply"
+msgstr "Toepassen"
+
+#: pages/memory_duration.py:30
+msgid "Auto"
+msgstr "Automatisch"
+
+#: pages/step3_options.py:272
+msgid "Auto (detect from clips)"
+msgstr "Automatisch (op basis van clips)"
+
+#: pages/step3_options.py:239
+msgid "Auto (match clips)"
+msgstr "Automatisch (zoals de clips)"
+
+#: pages/memory_duration.py:68
+msgid "Auto duration"
+msgstr "Automatische duur"
+
+#: i18n.py:101
+msgid "Automatic (browser)"
+msgstr "Automatisch (browser)"
+
+#: pages/suggestions.py:90
+msgid "Automatic upload to Immich is enabled."
+msgstr "Automatisch uploaden naar Immich staat aan."
+
+#: pages/suggestions.py:92
+msgid "Automatic upload to Immich is off."
+msgstr "Automatisch uploaden naar Immich staat uit."
+
+#: pages/step1_presets.py:62
+msgid "Automatically uses today's date across previous years"
+msgstr "Gebruikt automatisch de datum van vandaag in eerdere jaren"
+
+#: pages/step4_export.py:236
+msgid "Back to Generation Options"
+msgstr "Terug naar generatieopties"
+
+#: pages/runs.py:21
+msgid "Back to runs"
+msgstr "Terug naar uitvoeringen"
+
+#: pages/step2_review.py:84 pages/step2_review.py:104 pages/step2_review.py:287
+msgid "Back to the brief"
+msgstr "Terug naar de opzet"
+
+#: pages/step2_review.py:290
+msgid "Back to the cut"
+msgstr "Terug naar de montage"
+
+#: pages/clip_review.py:429 pages/clip_review.py:462 pages/step3_options.py:436
+#: pages/step4_export.py:139
+msgid "Back to the media pool"
+msgstr "Terug naar de media"
+
+#: pages/step3_options.py:385
+msgid "Background music"
+msgstr "Achtergrondmuziek"
+
+#: pages/step1_tabs.py:25
+msgid "Birthday"
+msgstr "Verjaardag"
+
+#: pages/step1_people.py:284
+msgid "Birthday to birthday"
+msgstr "Van verjaardag tot verjaardag"
+
+#: pages/step3_options.py:49
+msgid "Blur background"
+msgstr "Achtergrond vervagen"
+
+#: pages/_step3_music_preview.py:67
+msgid "Building mood timeline..."
+msgstr "Muzikale tijdlijn opbouwen..."
+
+#: pages/step3_options.py:369
+msgid "Bundled"
+msgstr "Meegeleverd"
+
+#: app.py:135
+msgid "Cache"
+msgstr "Cache"
+
+#: app.py:308 pages/step1_cache.py:76
+msgid "Cache Management"
+msgstr "Cachebeheer"
+
+#: pages/step1_tabs.py:82
+msgid "Calendar Year"
+msgstr "Kalenderjaar"
+
+#: pages/_step4_generate.py:386 pages/memory_run.py:411 pages/picture_decisions.py:176
+#: pages/settings_people.py:503 pages/settings_people.py:545
+msgid "Cancel"
+msgstr "Annuleren"
+
+#: pages/_step4_generate.py:74
+msgid "Cancel requested — stopping after current phase..."
+msgstr "Annulering aangevraagd: stoppen na de huidige fase..."
+
+#: pages/memory_run.py:409
+msgid "Cancelling after the current stage..."
+msgstr "Stoppen na de huidige stap..."
+
+#: pages/_step4_generate.py:72
+msgid "Cancelling..."
+msgstr "Annuleren..."
+
+#: pages/suggestions.py:195
+msgid "Candidate key"
+msgstr "Kandidaatsleutel"
+
+#: pages/step3_options.py:327
+msgid "Caption clips with their place"
+msgstr "Plaatsnaam bij clips tonen"
+
+#: pages/memory.py:113
+msgid "Change the brief"
+msgstr "Opzet aanpassen"
+
+#: pages/suggestions.py:199
+msgid "Check eligibility"
+msgstr "Geschiktheid controleren"
+
+#: pages/step4_export.py:75
+msgid "Check the server log, then generate again."
+msgstr "Bekijk het serverlog en genereer opnieuw."
+
+#: pages/settings_people.py:537
+msgid "Choose a relationship and a person"
+msgstr "Kies een relatie en een persoon"
+
+#: pages/step1_cache.py:67
+msgid "Clear"
+msgstr "Wissen"
+
+#: pages/step1_cache.py:211
+msgid "Clear all caches"
+msgstr "Alle caches legen"
+
+#: pages/picture_decisions.py:133 pages/picture_decisions.py:182
+msgid "Clear hold"
+msgstr "Beperking opheffen"
+
+#: pages/picture_decisions.py:156
+msgid "Clear this picture's hold?"
+msgstr "De beperking voor dit beeld opheffen?"
+
+#: pages/step1_cache.py:205
+#, python-brace-format
+msgid "Cleared all caches ({total} items)"
+msgstr "Alle caches geleegd ({total} items)"
+
+#: pages/step1_cache.py:121
+#, python-brace-format
+msgid "Cleared {count} analysis entries"
+msgstr "{count} analyses gewist"
+
+#: pages/step1_cache.py:164
+#, python-brace-format
+msgid "Cleared {count} cached thumbnails"
+msgstr "{count} miniaturen uit de cache gewist"
+
+#: pages/step1_cache.py:141
+#, python-brace-format
+msgid "Cleared {count} cached videos"
+msgstr "{count} video's uit de cache gewist"
+
+#: pages/step1_cache.py:175
+#, python-brace-format
+msgid "Cleared {count} preview files"
+msgstr "{count} voorbeeldbestanden gewist"
+
+#: pages/step3_options.py:414 pages/step4_export.py:155
+msgid "Clips"
+msgstr "Clips"
+
+#: pages/clip_pipeline.py:71
+msgid "Clips Planned"
+msgstr "Geplande clips"
+
+#: pages/step2_review.py:229
+msgid "Compact grid view"
+msgstr "Compact raster"
+
+#: pages/_step4_generate.py:120
+msgid "Complete!"
+msgstr "Klaar!"
+
+#: pages/settings_config.py:178
+#, python-brace-format
+msgid "Config file: {config_path}"
+msgstr "Configuratiebestand: {config_path}"
+
+#: app.py:133 app.py:272
+msgid "Configuration"
+msgstr "Configuratie"
+
+#: pages/settings_config.py:170
+msgid "Configuration reloaded from disk"
+msgstr "Configuratie opnieuw van schijf geladen"
+
+#: pages/step1_config.py:172
+msgid "Configuration saved!"
+msgstr "Configuratie opgeslagen!"
+
+#: pages/settings_people.py:546
+msgid "Confirm relationship"
+msgstr "Relatie bevestigen"
+
+#: pages/step1_presets.py:241
+msgid "Connect to Immich first to choose an album."
+msgstr "Maak eerst verbinding met Immich om een album te kiezen."
+
+#: pages/step1_presets.py:353
+msgid "Connect to Immich first to detect trips."
+msgstr "Maak eerst verbinding met Immich om reizen te vinden."
+
+#: pages/memory_brief.py:196
+msgid ""
+"Connect to your Immich server to continue. Enter your server URL and API key above, then "
+"click 'Test Connection'."
+msgstr ""
+"Maak verbinding met je Immich-server om verder te gaan. Vul hierboven de server-URL en API-"
+"sleutel in en klik op 'Verbinding testen'."
+
+#: pages/step1_config.py:53 pages/step1_config.py:110 pages/step1_config.py:120
+#, python-brace-format
+msgid "Connected as: {name}"
+msgstr "Verbonden als: {name}"
+
+#: pages/memory_run.py:454 pages/step2_loading.py:319
+msgid "Connecting to Immich..."
+msgstr "Verbinden met Immich..."
+
+#: pages/step1_config.py:127
+#, python-brace-format
+msgid "Connection failed: {value}"
+msgstr "Verbinding mislukt: {value}"
+
+#: pages/step1_presets.py:268
+#, python-brace-format
+msgid "Could not list albums: {exc}"
+msgstr "Albums konden niet worden opgehaald: {exc}"
+
+#: pages/step1_presets.py:323
+msgid "Could not load photo years. Showing the previously loaded years."
+msgstr "Fotojaren konden niet worden geladen. De eerder geladen jaren worden getoond."
+
+#: pages/suggestions.py:174
+#, python-brace-format
+msgid "Could not load suggestions: {value}"
+msgstr "Suggesties konden niet worden geladen: {value}"
+
+#: pages/memory_run.py:461
+#, python-brace-format
+msgid "Could not re-load media: {value}"
+msgstr "Media konden niet opnieuw worden geladen: {value}"
+
+#: pages/step3_options.py:302
+msgid "Crossfade"
+msgstr "Overvloeien"
+
+#: pages/settings_people.py:139
+msgid "Curation"
+msgstr "Ordenen"
+
+#: pages/step1_config.py:263
+msgid "Custom Range"
+msgstr "Aangepaste periode"
+
+#: pages/memory_brief.py:47
+msgid "Custom date range"
+msgstr "Aangepaste periode"
+
+#: pages/clip_review.py:394
+msgid "Custom seconds"
+msgstr "Aangepast aantal seconden"
+
+#: pages/memory_brief.py:219 pages/step2_review.py:154
+msgid "Cut"
+msgstr "Monteren"
+
+#: pages/memory.py:110 pages/step2_review.py:144
+msgid "Cut again"
+msgstr "Opnieuw monteren"
+
+#: pages/memory_run.py:399
+msgid "Cutting the memory..."
+msgstr "Herinnering monteren..."
+
+#: theme.py:322
+msgid "Dark"
+msgstr "Donker"
+
+#: app.py:99
+msgid "Demo mode"
+msgstr "Demomodus"
+
+#: pages/step2_review.py:233
+msgid "Detailed list view"
+msgstr "Gedetailleerde lijst"
+
+#: pages/cut_progress_view.py:188 pages/memory_story.py:58
+msgid "Details"
+msgstr "Details"
+
+#: pages/step1_presets.py:362
+msgid "Detecting trips from GPS data..."
+msgstr "Reizen vinden met GPS-gegevens..."
+
+#: pages/clip_review.py:369
+msgid "Difference"
+msgstr "Verschil"
+
+#: pages/suggestions.py:165
+#, python-brace-format
+msgid "Discovery failed: {error}"
+msgstr "Zoeken mislukt: {error}"
+
+#: pages/memory_run.py:66 pages/step2_loading.py:378
+msgid "Done"
+msgstr "Klaar"
+
+#: pages/runs.py:71
+msgid "Download child output"
+msgstr "Onderliggend resultaat downloaden"
+
+#: pages/memory_brief.py:67
+msgid "Drop SDR video from the pool"
+msgstr "SDR-video uit de media weglaten"
+
+#: pages/step1_config.py:262 pages/step1_tabs.py:105
+msgid "Duration"
+msgstr "Duur"
+
+#: pages/memory_run.py:65
+msgid "Editing"
+msgstr "Monteren"
+
+#: pages/memory_run.py:431
+#, python-brace-format
+msgid "Elapsed: {value}"
+msgstr "Verstreken: {value}"
+
+#: pages/step1_tabs.py:182
+msgid "End date"
+msgstr "Einddatum"
+
+#: pages/step1_config.py:132
+#, python-brace-format
+msgid "Error: {value}"
+msgstr "Fout: {value}"
+
+#: pages/clip_pipeline.py:84
+#, python-brace-format
+msgid "Errors ({error_count})"
+msgstr "Fouten ({error_count})"
+
+#: pages/memory.py:96
+msgid "Export"
+msgstr "Exporteren"
+
+#: pages/step2_loading.py:336
+#, python-brace-format
+msgid "Failed to load videos: {value}"
+msgstr "Video's laden mislukt: {value}"
+
+#: pages/_step3_music_preview.py:124
+#, python-brace-format
+msgid "Failed: {value}"
+msgstr "Mislukt: {value}"
+
+#: pages/memory_brief.py:73
+msgid "Family"
+msgstr "Familie"
+
+#: pages/picture_decisions.py:27
+msgid "Family: family films too"
+msgstr "Familie: ook familiefilms"
+
+#: pages/step3_options.py:81
+msgid ""
+"Fast (NAS) preset is active: 1080p H.264 with the fast encoder preset, static title "
+"backgrounds, no speech analysis, fewer photos, favorites-first analysis. Set with `preset: "
+"fast` in config.yaml or IMMICH_MEMORIES_PRESET=fast; the choices below still win for this "
+"run."
+msgstr ""
+"De snelle NAS-voorinstelling is actief: 1080p H.264 met snelle codering, stilstaande "
+"titelachtergronden, geen spraakanalyse, minder foto's, favorieten eerst. Ingesteld met "
+"`preset: fast` in config.yaml of IMMICH_MEMORIES_PRESET=fast; onderstaande keuzes blijven "
+"voor deze uitvoering leidend."
+
+#: pages/step2_loading.py:252
+msgid "Fetching photos..."
+msgstr "Foto's ophalen..."
+
+#: pages/_step3_music_preview.py:232
+msgid "Film language"
+msgstr "Taal van de film"
+
+#: pages/film_length.py:73 pages/film_length.py:83
+msgid "Film length"
+msgstr "Filmlengte"
+
+#: pages/clip_review.py:503
+#, python-brace-format
+msgid "Final Duration: {value}"
+msgstr "Uiteindelijke duur: {value}"
+
+#: pages/settings_people.py:263
+msgid "Find a name"
+msgstr "Een naam zoeken"
+
+#: pages/memory_run.py:62
+msgid "Finding media"
+msgstr "Media zoeken"
+
+#: pages/picture_decisions.py:168
+msgid "Fine for"
+msgstr "Geschikt voor"
+
+#: pages/clip_review.py:168
+msgid "First 5s"
+msgstr "Eerste 5 s"
+
+#: pages/step4_export.py:159
+msgid "Format"
+msgstr "Formaat"
+
+#: pages/step1_presets.py:407
+#, python-brace-format
+msgid "Found {count} trip(s):"
+msgstr "Gevonden reizen: {count}"
+
+#: pages/step1_tabs.py:85
+msgid "From Birthday"
+msgstr "Vanaf verjaardag"
+
+#: pages/clip_review.py:204
+msgid "Full clip"
+msgstr "Hele clip"
+
+#: pages/settings_people.py:489
+msgid "Full name"
+msgstr "Volledige naam"
+
+#: pages/_step3_music_preview.py:275
+msgid "Generate Music"
+msgstr "Muziek genereren"
+
+#: pages/step4_export.py:225
+msgid "Generate Video"
+msgstr "Video genereren"
+
+#: pages/_step3_music_preview.py:288
+msgid "Generate music now to preview before rendering your video"
+msgstr "Genereer nu muziek om die te beluisteren voordat je de video rendert"
+
+#: pages/_step3_music_preview.py:146
+msgid "Generated Music"
+msgstr "Gegenereerde muziek"
+
+#: pages/_step3_music_preview.py:99
+msgid "Generating music..."
+msgstr "Muziek genereren..."
+
+#: app.py:243
+msgid "Generation Options"
+msgstr "Generatieopties"
+
+#: pages/memory_brief.py:78
+msgid "Grandparents, siblings, the group chat. Private moments stay out."
+msgstr "Grootouders, broers en zussen, de groepschat. Privémomenten blijven eruit."
+
+#: pages/step1_people.py:111
+msgid "Grouped people condition (optional)"
+msgstr "Gegroepeerde personenvoorwaarde (optioneel)"
+
+#: pages/memory_brief.py:67
+msgid "HDR clips only"
+msgstr "Alleen HDR-clips"
+
+#: pages/step3_options.py:303
+msgid "Hard cut"
+msgstr "Harde knip"
+
+#: pages/step1_presets.py:178
+msgid "Hemisphere"
+msgstr "Halfrond"
+
+#: pages/picture_decisions.py:101
+msgid "Hold cleared. The next cut may use it."
+msgstr "Beperking opgeheven. De volgende montage mag dit beeld gebruiken."
+
+#: pages/memory_brief.py:39 pages/step1_presets.py:82
+msgid "Holiday"
+msgstr "Feestdag"
+
+#: pages/memory_brief.py:210
+msgid "How long"
+msgstr "Hoe lang"
+
+#: pages/step1_config.py:39
+msgid "Immich Connection"
+msgstr "Verbinding met Immich"
+
+#: pages/step1_config.py:37
+#, python-brace-format
+msgid "Immich Connection: {name}"
+msgstr "Verbinding met Immich: {name}"
+
+#: pages/step1_config.py:61
+msgid "Immich Server URL"
+msgstr "URL van Immich-server"
+
+#: pages/_step4_generate.py:663 pages/step4_export.py:42
+#, python-brace-format
+msgid "Immich delivery: {delivery_label}"
+msgstr "Levering aan Immich: {delivery_label}"
+
+#: pages/runs.py:39
+#, python-brace-format
+msgid "Immich delivery: {value}"
+msgstr "Levering aan Immich: {value}"
+
+#: pages/clip_grid.py:170 pages/clip_grid.py:224
+msgid "Include"
+msgstr "Opnemen"
+
+#: pages/memory_brief.py:58
+msgid "Include Live Photos"
+msgstr "Live Photos opnemen"
+
+#: pages/memory_brief.py:53
+msgid "Include Photos"
+msgstr "Foto's opnemen"
+
+#: pages/clip_review.py:308
+msgid "Include in compilation"
+msgstr "In compilatie opnemen"
+
+#: i18n.py:109
+msgid "Interface language"
+msgstr "Interfacetaal"
+
+#: pages/step1_config.py:209
+#, python-brace-format
+msgid "Invalid date range: {e}"
+msgstr "Ongeldige periode: {e}"
+
+#: pages/login.py:77
+msgid "Invalid username or password"
+msgstr "Ongeldige gebruikersnaam of wachtwoord"
+
+#: pages/picture_decisions.py:107
+msgid "It won't be in any film from the next cut on."
+msgstr "Vanaf de volgende montage wordt dit beeld in geen enkele film gebruikt."
+
+#: pages/memory_brief.py:72
+msgid "Just us"
+msgstr "Alleen wij"
+
+#: pages/picture_decisions.py:26
+msgid "Just us: only films for the household"
+msgstr "Alleen wij: alleen films voor het huishouden"
+
+#: pages/memory_brief.py:65
+msgid "Keep WhatsApp and other received media in the pool for this memory"
+msgstr "WhatsApp en andere ontvangen media voor deze herinnering behouden"
+
+#: pages/step3_options.py:336
+msgid "Keep intermediate files"
+msgstr "Tussenbestanden bewaren"
+
+#: pages/step3_options.py:273
+msgid "Landscape (16:9)"
+msgstr "Liggend (16:9)"
+
+#: pages/clip_review.py:180
+msgid "Last 5s"
+msgstr "Laatste 5 s"
+
+#: pages/film_length.py:89
+#, python-brace-format
+msgid "Length: {duration}"
+msgstr "Lengte: {duration}"
+
+#: pages/step3_options.py:50
+msgid "Letterbox (black bars)"
+msgstr "Zwarte balken"
+
+#: theme.py:320
+msgid "Light"
+msgstr "Licht"
+
+#: pages/step1_presets.py:248
+msgid "Loading albums..."
+msgstr "Albums laden..."
+
+#: pages/memory_run.py:63
+msgid "Loading thumbnails"
+msgstr "Miniaturen laden"
+
+#: pages/step2_loading.py:313
+msgid "Loading videos..."
+msgstr "Video's laden..."
+
+#: pages/suggestions.py:157
+msgid "Looking through the library…"
+msgstr "Bibliotheek doorzoeken…"
+
+#: pages/memory_duration.py:30
+msgid "Manual"
+msgstr "Handmatig"
+
+#: pages/runs.py:83
+msgid "Manual and automatic runs, including failures. Open a run to read its cut and timings."
+msgstr ""
+"Handmatige en automatische uitvoeringen, inclusief fouten. Open een uitvoering voor de "
+"montage en doorlooptijden."
+
+#: pages/_step3_music_preview.py:171
+#, python-brace-format
+msgid "Map: {title_suggestion_map_mode}"
+msgstr "Kaart: {title_suggestion_map_mode}"
+
+#: pages/clip_pipeline.py:66
+msgid "Media Eligible"
+msgstr "Geschikte media"
+
+#: app.py:74 app.py:207
+msgid "Media pool"
+msgstr "Media"
+
+#: pages/_step4_upload.py:65
+msgid "Memories"
+msgstr "Herinneringen"
+
+#: pages/suggestions.py:86
+msgid "Memories automation would make next, using the same rules as auto suggest."
+msgstr ""
+"De herinneringen die de automatisering hierna zou maken, volgens dezelfde regels als auto "
+"suggest."
+
+#: app.py:71 app.py:195
+msgid "Memory"
+msgstr "Herinnering"
+
+#: pages/memory_brief.py:134
+msgid "Memory type"
+msgstr "Type herinnering"
+
+#: pages/clip_review.py:192
+msgid "Middle 5s"
+msgstr "Middelste 5 s"
+
+#: pages/step1_presets.py:214
+msgid "Month"
+msgstr "Maand"
+
+#: pages/memory_brief.py:35
+msgid "Monthly Highlights"
+msgstr "Hoogtepunten van de maand"
+
+#: pages/step1_tabs.py:116
+msgid "Months"
+msgstr "Maanden"
+
+#: pages/_step3_music_preview.py:148
+#, python-brace-format
+msgid "Mood: {mood_text}"
+msgstr "Sfeer: {mood_text}"
+
+#: pages/step1_presets.py:96
+msgid "Most recent year"
+msgstr "Meest recente jaar"
+
+#: pages/memory_brief.py:34
+msgid "Multi-Person"
+msgstr "Meerdere personen"
+
+#: pages/step3_options.py:361 pages/step3_options.py:417
+msgid "Music"
+msgstr "Muziek"
+
+#: pages/_step3_music_preview.py:120
+msgid "Music generated successfully!"
+msgstr "Muziek succesvol gegenereerd!"
+
+#: pages/_step3_music_preview.py:115
+msgid "Music generated!"
+msgstr "Muziek gegenereerd!"
+
+#: pages/_step3_music_preview.py:126
+#, python-brace-format
+msgid "Music generation failed: {value}"
+msgstr "Muziek genereren mislukt: {value}"
+
+#: pages/step3_options.py:120
+msgid "Music volume:"
+msgstr "Muziekvolume:"
+
+#: pages/step1_people.py:174
+msgid "Narrow this memory to these people, the same as --person on the CLI."
+msgstr "Beperk deze herinnering tot deze personen, net als --person op de opdrachtregel."
+
+#: pages/picture_decisions.py:136
+msgid "Never use"
+msgstr "Nooit gebruiken"
+
+#: pages/settings_people.py:285
+msgid "Next"
+msgstr "Volgende"
+
+#: pages/runs.py:127
+msgid "Next runs"
+msgstr "Volgende uitvoeringen"
+
+#: pages/clip_review.py:433
+msgid "Next: Generation Options"
+msgstr "Volgende: generatieopties"
+
+#: pages/step3_options.py:439
+msgid "Next: Preview & Export"
+msgstr "Volgende: voorbeeld en export"
+
+#: pages/step1_presets.py:276
+msgid "No albums with any assets in them yet."
+msgstr "Er zijn nog geen albums met media."
+
+#: pages/runs.py:73
+msgid "No child output was retained for this run."
+msgstr "Er is geen onderliggend resultaat bewaard voor deze uitvoering."
+
+#: pages/step4_export.py:132
+msgid "No clips selected. Go back to select clips."
+msgstr "Geen clips geselecteerd. Ga terug om clips te kiezen."
+
+#: pages/suggestions.py:168
+msgid "No eligible suggestions right now."
+msgstr "Momenteel geen geschikte suggesties."
+
+#: pages/settings_people.py:251
+msgid ""
+"No people file yet. Rescan the library to build one — it reads every named person's count and"
+" month curve, and looks at no pixels."
+msgstr ""
+"Nog geen personenbestand. Scan de bibliotheek opnieuw: dit leest aantallen en maandcurves van"
+" elke benoemde persoon, zonder beeldanalyse."
+
+#: pages/runs.py:105
+msgid "No runs match this view. Make a memory from Memory or Suggestions."
+msgstr "Geen uitvoeringen voor deze weergave. Maak een herinnering via Herinnering of Suggesties."
+
+#: pages/runs.py:62
+msgid "No saved cut is available for this run."
+msgstr "Geen opgeslagen montage voor deze uitvoering."
+
+#: pages/suggestions.py:212
+msgid "No suggestions were rejected by variety or failure backoff."
+msgstr "Geen suggesties afgewezen vanwege variatie of wachttijd na fouten."
+
+#: pages/step1_presets.py:402
+msgid "No trips detected for this year."
+msgstr "Geen reizen gevonden voor dit jaar."
+
+#: pages/clip_review.py:454
+msgid "No video clips in the cut; there is nothing to trim."
+msgstr "Geen videoclips in de montage; er valt niets bij te knippen."
+
+#: pages/step2_review.py:98
+msgid "No videos found for the selected criteria."
+msgstr "Geen video's gevonden voor de gekozen criteria."
+
+#: pages/settings_people.py:478
+msgid "No, they are not"
+msgstr "Nee, dat klopt niet"
+
+#: pages/step3_options.py:304 pages/step3_options.py:365
+msgid "None"
+msgstr "Geen"
+
+#: pages/settings_people.py:389
+msgid "Notes"
+msgstr "Notities"
+
+#: pages/settings_people.py:409
+msgid "Nothing recorded yet."
+msgstr "Nog niets vastgelegd."
+
+#: pages/settings_people.py:212
+msgid "Nothing to curate — no twins and no split records."
+msgstr "Niets te ordenen: geen dubbelen of opgesplitste vermeldingen."
+
+#: pages/memory_brief.py:36
+msgid "On This Day"
+msgstr "Op deze dag"
+
+#: pages/picture_decisions.py:22
+msgid ""
+"Once cleared, every film up to that level may use it. Nothing the app reads later puts the "
+"hold back; Undo does."
+msgstr ""
+"Na het opheffen mag elke film tot dat niveau dit beeld gebruiken. Een latere analyse herstelt"
+" de beperking niet; Ongedaan maken wel."
+
+#: pages/settings_people.py:521
+msgid "One answer updates both people. Confirmed relationships are never replaced by a scan."
+msgstr "Eén antwoord werkt beide personen bij. Een scan vervangt nooit bevestigde relaties."
+
+#: pages/step1_presets.py:114
+msgid "One window around the holiday in each year, most recent first."
+msgstr "Elk jaar een periode rond de feestdag, van nieuw naar oud."
+
+#: pages/step1_people.py:169
+msgid "Only with (optional)"
+msgstr "Alleen met (optioneel)"
+
+#: pages/picture_decisions.py:165
+msgid "Open it in Immich first if you haven't looked at it yourself."
+msgstr "Open het beeld eerst in Immich als je het nog niet zelf hebt bekeken."
+
+#: pages/suggestions.py:146
+msgid "Open run"
+msgstr "Uitvoering openen"
+
+#: pages/memory_brief.py:180
+msgid "Open the media pool"
+msgstr "Media openen"
+
+#: pages/settings_people.py:233
+#, python-brace-format
+msgid "Open {name} in Immich"
+msgstr "{name} openen in Immich"
+
+#: pages/step3_options.py:278
+msgid "Orientation"
+msgstr "Oriëntatie"
+
+#: pages/step4_export.py:165
+msgid "Output"
+msgstr "Uitvoer"
+
+#: pages/step3_options.py:253
+msgid "Output Format"
+msgstr "Uitvoerformaat"
+
+#: pages/step3_options.py:228
+msgid "Output Settings"
+msgstr "Uitvoerinstellingen"
+
+#: pages/step4_export.py:194
+msgid "Output filename"
+msgstr "Uitvoerbestandsnaam"
+
+#: pages/_step4_generate.py:118
+#, python-brace-format
+msgid "Output: {name}"
+msgstr "Uitvoer: {name}"
+
+#: pages/login.py:50
+msgid "Password"
+msgstr "Wachtwoord"
+
+#: app.py:134 app.py:291
+msgid "People"
+msgstr "Personen"
+
+#: pages/step1_people.py:330
+msgid "People (select 2+)"
+msgstr "Personen (kies er minstens 2)"
+
+#: pages/settings_people.py:530 pages/step1_config.py:224 pages/step1_people.py:272
+msgid "Person"
+msgstr "Persoon"
+
+#: pages/step1_config.py:217
+msgid "Person Filter"
+msgstr "Personenfilter"
+
+#: pages/memory_brief.py:33
+msgid "Person Spotlight"
+msgstr "Persoon in beeld"
+
+#: pages/clip_grid.py:193
+msgid "Photo"
+msgstr "Foto"
+
+#: pages/step4_export.py:157
+msgid "Photo Pool"
+msgstr "Beschikbare foto's"
+
+#: pages/step3_options.py:188
+msgid "Photo duration (seconds)"
+msgstr "Fotoduur (seconden)"
+
+#: pages/step2_loading.py:461
+#, python-brace-format
+msgid "Photo thumbnails: {value}/{count}"
+msgstr "Fotominiaturen: {value}/{count}"
+
+#: pages/memory_brief.py:55
+msgid "Photographs join the pool as stills the editor can hold"
+msgstr "Foto's komen bij de media als stilstaande beelden die de montage kan vasthouden"
+
+#: pages/step3_options.py:183
+#, python-brace-format
+msgid "Photos enabled ({photos_count} found)"
+msgstr "Foto's ingeschakeld ({photos_count} gevonden)"
+
+#: pages/step1_presets.py:585
+msgid "Pick a day"
+msgstr "Een dag kiezen"
+
+#: pages/memory_brief.py:101
+msgid "Pick a memory type and a valid period first"
+msgstr "Kies eerst een type herinnering en een geldige periode"
+
+#: pages/memory_brief.py:100
+msgid "Pick an album first"
+msgstr "Kies eerst een album"
+
+#: pages/clip_review.py:447
+msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
+msgstr "Kies en bekijk de seconden die elke video toont. Foto's hoeven niet bijgeknipt te worden."
+
+#: pages/film_length.py:71
+msgid "Pictures & video"
+msgstr "Foto's en video's"
+
+#: pages/clip_pipeline.py:56
+#, python-brace-format
+msgid "Pipeline complete! Planned {planned_count} clips from {eligible_count} eligible media items."
+msgstr "Verwerking voltooid! {planned_count} clips gepland uit {eligible_count} geschikte media."
+
+#: pages/step1_config.py:157
+msgid "Please enter both URL and API key"
+msgstr "Vul zowel de URL als de API-sleutel in"
+
+#: pages/clip_review.py:426
+msgid "Please select at least one clip"
+msgstr "Selecteer minstens één clip"
+
+#: pages/memory_brief.py:172
+msgid "Pool"
+msgstr "Beschikbare media"
+
+#: pages/step3_options.py:274
+msgid "Portrait (9:16)"
+msgstr "Staand (9:16)"
+
+#: pages/memory_run.py:68
+msgid "Preparing the cut"
+msgstr "Montage voorbereiden"
+
+#: pages/clip_review.py:164
+msgid "Preview"
+msgstr "Voorbeeld"
+
+#: app.py:255
+msgid "Preview & Export"
+msgstr "Voorbeeld en export"
+
+#: pages/step1_cache.py:178
+msgid "Preview cache"
+msgstr "Voorbeeldcache"
+
+#: pages/settings_people.py:282
+msgid "Previous"
+msgstr "Vorige"
+
+#: pages/runs.py:121
+msgid "Previous runs"
+msgstr "Vorige uitvoeringen"
+
+#: pages/memory_run.py:467
+msgid "Re-load media to export"
+msgstr "Media opnieuw laden om te exporteren"
+
+#: pages/runs.py:55
+msgid "Read the cut"
+msgstr "Montage bekijken"
+
+#: pages/settings_people.py:153
+msgid "Reading the library…"
+msgstr "Bibliotheek lezen…"
+
+#: pages/memory_run.py:64
+msgid "Reading the pictures"
+msgstr "Beelden lezen"
+
+#: pages/runs.py:132
+msgid "Refresh runs"
+msgstr "Uitvoeringen vernieuwen"
+
+#: pages/suggestions.py:95
+msgid "Refresh suggestions"
+msgstr "Suggesties vernieuwen"
+
+#: pages/_step3_music_preview.py:246
+msgid "Regenerate"
+msgstr "Opnieuw genereren"
+
+#: pages/_step3_music_preview.py:275
+msgid "Regenerate Music"
+msgstr "Muziek opnieuw genereren"
+
+#: pages/settings_people.py:541
+msgid "Relationship confirmed"
+msgstr "Relatie bevestigd"
+
+#: pages/settings_people.py:437
+msgid "Relationship removed"
+msgstr "Relatie verwijderd"
+
+#: pages/settings_people.py:400
+msgid "Relationships"
+msgstr "Relaties"
+
+#: pages/settings_config.py:174
+msgid "Reload from Disk"
+msgstr "Opnieuw van schijf laden"
+
+#: pages/clip_review.py:431
+msgid "Reload the pool"
+msgstr "Media opnieuw laden"
+
+#: pages/settings_people.py:442
+msgid "Remove this relationship"
+msgstr "Deze relatie verwijderen"
+
+#: pages/settings_people.py:165
+msgid "Rescan the library"
+msgstr "Bibliotheek opnieuw scannen"
+
+#: pages/step3_options.py:241 pages/step3_options.py:416
+msgid "Resolution"
+msgstr "Resolutie"
+
+#: pages/step4_export.py:33
+msgid "Result"
+msgstr "Resultaat"
+
+#: pages/memory.py:104
+msgid "Review the pool"
+msgstr "Media bekijken"
+
+#: pages/settings_people.py:378
+msgid "Role (suggestions; type your own)"
+msgstr "Rol (suggesties of eigen tekst)"
+
+#: pages/clip_review.py:251
+msgid "Rotation"
+msgstr "Rotatie"
+
+#: pages/runs.py:23
+msgid "Run not found. It may have been removed."
+msgstr "Uitvoering niet gevonden. Mogelijk is die verwijderd."
+
+#: pages/suggestions.py:203
+msgid "Run this suggestion"
+msgstr "Deze suggestie uitvoeren"
+
+#: pages/suggestions.py:88
+msgid "Running a suggestion creates a video on the server. "
+msgstr "Een suggestie uitvoeren maakt een video op de server. "
+
+#: pages/suggestions.py:137
+#, python-brace-format
+msgid "Running on the server: {phase}. It continues if you leave this page."
+msgstr "Actief op de server: {phase}. Dit gaat door als je deze pagina verlaat."
+
+#: app.py:73 app.py:219
+msgid "Runs"
+msgstr "Uitvoeringen"
+
+#: pages/step1_config.py:140
+msgid "Save Config"
+msgstr "Configuratie opslaan"
+
+#: pages/step1_config.py:72
+msgid "Saved - type a new key to replace it"
+msgstr "Opgeslagen: typ een nieuwe sleutel om te vervangen"
+
+#: pages/runs.py:38 pages/step4_export.py:34
+#, python-brace-format
+msgid "Saved to: {output_path}"
+msgstr "Opgeslagen in: {output_path}"
+
+#: pages/_step4_generate.py:650
+#, python-brace-format
+msgid "Saved to: {result_path} ({file_size})"
+msgstr "Opgeslagen in: {result_path} ({file_size})"
+
+#: pages/step3_options.py:289
+msgid "Scaling Mode"
+msgstr "Schaalmodus"
+
+#: pages/memory_brief.py:32 pages/step1_presets.py:165
+msgid "Season"
+msgstr "Seizoen"
+
+#: pages/step3_options.py:134
+msgid "Select a music file:"
+msgstr "Kies een muziekbestand:"
+
+#: pages/step1_presets.py:431
+msgid "Select a trip"
+msgstr "Een reis kiezen"
+
+#: pages/step3_options.py:150
+msgid "Select music file"
+msgstr "Muziekbestand kiezen"
+
+#: pages/clip_review.py:239
+msgid "Select range"
+msgstr "Periode kiezen"
+
+#: pages/clip_review.py:354
+msgid "Selected Clips"
+msgstr "Geselecteerde clips"
+
+#: pages/step3_options.py:157
+#, python-brace-format
+msgid "Selected: {value}"
+msgstr "Geselecteerd: {value}"
+
+#: pages/step2_review.py:79
+msgid "Session expired — please reconfigure. The server restarted and lost your settings."
+msgstr ""
+"Sessie verlopen: stel alles opnieuw in. De server is herstart en je instellingen zijn "
+"verloren."
+
+#: pages/clip_review.py:391
+msgid "Set all to first 5s"
+msgstr "Overal de eerste 5 s gebruiken"
+
+#: pages/clip_review.py:392
+msgid "Set all to middle 5s"
+msgstr "Overal de middelste 5 s gebruiken"
+
+#: app.py:75
+msgid "Settings"
+msgstr "Instellingen"
+
+#: pages/memory_brief.py:74
+msgid "Shareable"
+msgstr "Deelbaar"
+
+#: pages/memory_brief.py:143
+msgid "Sharing"
+msgstr "Delen"
+
+#: pages/login.py:80
+msgid "Sign in"
+msgstr "Aanmelden"
+
+#: app.py:113
+msgid "Sign out"
+msgstr "Afmelden"
+
+#: pages/step3_options.py:301
+msgid "Smart (mix of fades & cuts)"
+msgstr "Slim (overgangen en harde knippen)"
+
+#: pages/step3_options.py:275
+msgid "Square (1:1)"
+msgstr "Vierkant (1:1)"
+
+#: pages/step4_export.py:242
+msgid "Start New Project"
+msgstr "Nieuw project starten"
+
+#: pages/step1_tabs.py:162
+msgid "Start date"
+msgstr "Begindatum"
+
+#: pages/step2_review.py:152
+msgid "Start over"
+msgstr "Opnieuw beginnen"
+
+#: pages/step1_tabs.py:128
+msgid "Starting from"
+msgstr "Vanaf"
+
+#: pages/_step4_generate.py:378
+msgid "Starting..."
+msgstr "Starten..."
+
+#: pages/runs.py:98
+msgid "Status"
+msgstr "Status"
+
+#: pages/memory.py:128
+msgid "Story"
+msgstr "Verhaal"
+
+#: pages/memory_story.py:61
+msgid "Story weight"
+msgstr "Gewicht van het verhaal"
+
+#: pages/memory.py:127
+msgid "Storyboard"
+msgstr "Storyboard"
+
+#: pages/_step3_music_preview.py:212
+msgid "Subtitle"
+msgstr "Ondertitel"
+
+#: app.py:72 app.py:231
+msgid "Suggestions"
+msgstr "Suggesties"
+
+#: pages/step3_options.py:399 pages/step4_export.py:146
+msgid "Summary"
+msgstr "Samenvatting"
+
+#: pages/memory_brief.py:40
+msgid "Surprise me"
+msgstr "Verras me"
+
+#: theme.py:321
+msgid "System"
+msgstr "Systeem"
+
+#: pages/clip_review.py:366
+msgid "Target"
+msgstr "Doel"
+
+#: pages/memory_duration.py:89
+msgid "Target duration (min)"
+msgstr "Gewenste duur (min)"
+
+#: pages/step1_config.py:137
+msgid "Test Connection"
+msgstr "Verbinding testen"
+
+#: pages/step1_config.py:89
+msgid "Testing connection..."
+msgstr "Verbinding testen..."
+
+#: pages/picture_decisions.py:89
+msgid "That didn't save. Try again, or use `pictures` in the CLI."
+msgstr "Opslaan mislukt. Probeer opnieuw of gebruik `pictures` op de opdrachtregel."
+
+#: pages/step3_options.py:143
+msgid "That file is not an MP3, M4A or WAV"
+msgstr "Dat bestand is geen MP3, M4A of WAV"
+
+#: pages/memory.py:123 pages/memory_story.py:96
+msgid "The editor left no thesis for this cut."
+msgstr "De montage heeft geen hoofdgedachte achtergelaten."
+
+#: pages/memory_brief.py:60
+msgid "The editor may play a Live Photo's motion when it earns it"
+msgstr "De montage kan de beweging van een Live Photo gebruiken als die iets toevoegt"
+
+#: pages/_step4_upload.py:74
+msgid "The generated video will be uploaded to your Immich instance and added to the specified album."
+msgstr ""
+"De gegenereerde video wordt naar je Immich-instantie geüpload en aan het opgegeven album "
+"toegevoegd."
+
+#: pages/memory_brief.py:77
+msgid "The household. Private moments a caption names, like a bath, play too."
+msgstr "Het huishouden. Privémomenten die een bijschrift benoemt, zoals een bad, komen ook in beeld."
+
+#: pages/memory.py:160
+#, python-brace-format
+msgid "The last cut ended as {status}."
+msgstr "De laatste montage eindigde met status {status}."
+
+#: pages/memory.py:44
+msgid "The last cut failed; the server log has the reason."
+msgstr "De laatste montage is mislukt; het serverlog bevat de reden."
+
+#: pages/memory.py:46
+msgid "The last cut stopped without a result."
+msgstr "De laatste montage is gestopt zonder resultaat."
+
+#: pages/memory.py:43
+msgid "The last cut was cancelled before it finished."
+msgstr "De laatste montage is voor voltooiing geannuleerd."
+
+#: pages/memory.py:45
+msgid "The last cut was interrupted: the process that ran it is gone."
+msgstr "De laatste montage is onderbroken: het uitvoerende proces bestaat niet meer."
+
+#: pages/memory_brief.py:176
+msgid ""
+"The media pool and the excerpt editor have their own page: exclude what may never be cut, and"
+" trim what was."
+msgstr ""
+"De media en clipbewerker hebben hun eigen pagina: sluit uit wat nooit in beeld mag komen en "
+"pas de gekozen fragmenten aan."
+
+#: pages/step2_review.py:253
+#, python-brace-format
+msgid "The pool{value}"
+msgstr "De media{value}"
+
+#: pages/settings_people.py:142
+msgid "The roster"
+msgstr "De personenlijst"
+
+#: pages/settings_people.py:158
+#, python-brace-format
+msgid "The scan could not finish: {exc}"
+msgstr "De scan kon niet worden afgerond: {exc}"
+
+#: pages/memory_story.py:94
+msgid "The story"
+msgstr "Het verhaal"
+
+#: pages/memory_storyboard.py:100
+msgid "The storyboard"
+msgstr "Het storyboard"
+
+#: pages/memory_duration.py:69
+msgid "The type decides the length; turn off to set an exact target"
+msgstr "Het type bepaalt de lengte; zet uit om een exacte duur te kiezen"
+
+#: pages/memory.py:172
+msgid "This cut finished while the page was away. Re-load its media to export it."
+msgstr ""
+"Deze montage is voltooid terwijl de pagina gesloten was. Laad de media opnieuw om te "
+"exporteren."
+
+#: pages/step1_cache.py:167
+msgid "Thumbnail cache"
+msgstr "Miniaturencache"
+
+#: pages/step2_loading.py:415
+#, python-brace-format
+msgid "Thumbnails: {value}/{count}"
+msgstr "Miniaturen: {value}/{count}"
+
+#: pages/clip_pipeline.py:76
+msgid "Time Elapsed"
+msgstr "Verstreken tijd"
+
+#: pages/_step3_music_preview.py:197 pages/step3_options.py:350
+msgid "Title"
+msgstr "Titel"
+
+#: pages/memory_storyboard.py:110
+msgid "Titles and transitions make up the rest of the film."
+msgstr "Titels en overgangen vullen de rest van de film."
+
+#: pages/step1_people.py:32
+msgid "Together"
+msgstr "Samen"
+
+#: pages/step1_people.py:181
+msgid ""
+"Together keeps only the moments holding everyone named. Any of these people keeps a moment "
+"holding any one of them."
+msgstr ""
+"Samen bewaart alleen momenten met alle genoemde personen. Een van deze personen bewaart "
+"momenten waar minstens één van hen in voorkomt."
+
+#: pages/login.py:64
+msgid "Too many failed attempts. Try again later."
+msgstr "Te veel mislukte pogingen. Probeer het later opnieuw."
+
+#: pages/clip_review.py:361
+msgid "Total Duration"
+msgstr "Totale duur"
+
+#: pages/step3_options.py:307
+msgid "Transition Style"
+msgstr "Overgangsstijl"
+
+#: pages/clip_review.py:445 pages/step2_review.py:147
+msgid "Trim the video clips"
+msgstr "Videoclips bijsnijden"
+
+#: pages/memory_brief.py:38
+msgid "Trip"
+msgstr "Reis"
+
+#: pages/step1_presets.py:394
+#, python-brace-format
+msgid "Trip detection failed: {exc}"
+msgstr "Reisdetectie mislukt: {exc}"
+
+#: pages/_step3_music_preview.py:164
+#, python-brace-format
+msgid "Trip: {title_suggestion_trip_type}"
+msgstr "Reis: {title_suggestion_trip_type}"
+
+#: pages/login.py:35
+msgid "Turn your photo library into video memories"
+msgstr "Maak videoherinneringen van je fotobibliotheek"
+
+#: pages/picture_decisions.py:138
+msgid "Undo"
+msgstr "Ongedaan maken"
+
+#: pages/step1_tabs.py:117
+msgid "Unit"
+msgstr "Eenheid"
+
+#: pages/_step4_upload.py:62
+msgid "Upload after generation"
+msgstr "Uploaden na generatie"
+
+#: pages/step3_options.py:365
+msgid "Upload file"
+msgstr "Bestand uploaden"
+
+#: pages/_step4_upload.py:116
+#, python-brace-format
+msgid "Uploaded to Immich! Album: {upload_album}"
+msgstr "Geüpload naar Immich! Album: {upload_album}"
+
+#: pages/step3_options.py:147
+#, python-brace-format
+msgid "Uploaded: {name}"
+msgstr "Geüpload: {name}"
+
+#: pages/_step4_upload.py:103
+msgid "Uploading to Immich..."
+msgstr "Uploaden naar Immich..."
+
+#: pages/step1_people.py:118
+msgid ""
+"Use quoted names, AND, OR and parentheses. AND requires the people in the same photo or "
+"video, not separate pictures from the same event. Changing the people picker replaces this "
+"condition."
+msgstr ""
+"Gebruik namen tussen aanhalingstekens, AND, OR en haakjes. AND vereist de personen in "
+"dezelfde foto of video, niet in aparte beelden van dezelfde gebeurtenis. De personenkeuze "
+"wijzigen vervangt deze voorwaarde."
+
+#: pages/settings_people.py:486
+msgid ""
+"Use this for someone who is not face-tagged in Immich. You can connect them to the family "
+"immediately afterwards."
+msgstr ""
+"Voor iemand zonder gezichtslabel in Immich. Je kunt die daarna meteen met de familie "
+"verbinden."
+
+#: pages/login.py:48
+msgid "Username"
+msgstr "Gebruikersnaam"
+
+#: pages/step1_config.py:245
+#, python-brace-format
+msgid "Using {name}'s birthday: {value}"
+msgstr "Verjaardag van {name} gebruiken: {value}"
+
+#: pages/step1_cache.py:144
+msgid "Video cache"
+msgstr "Videocache"
+
+#: pages/_step4_generate.py:631
+msgid "Video generated successfully!"
+msgstr "Video succesvol gegenereerd!"
+
+#: pages/memory_brief.py:204
+msgid "What is it about"
+msgstr "Waar gaat het over"
+
+#: pages/settings_people.py:134
+msgid ""
+"Who the library thinks is in it, read from counts and month curves alone. Everything the scan"
+" inferred is recomputed each time you rescan; everything you confirm here is yours and is "
+"never overwritten."
+msgstr ""
+"Wie de bibliotheek denkt te bevatten, alleen op basis van aantallen en maandcurves. Een "
+"nieuwe scan herberekent alle afleidingen; jouw bevestigingen worden nooit overschreven."
+
+#: pages/memory_brief.py:213
+msgid "Who will watch it"
+msgstr "Wie gaat kijken"
+
+#: pages/suggestions.py:209
+msgid "Why other suggestions were skipped"
+msgstr "Waarom andere suggesties zijn overgeslagen"
+
+#: pages/step4_export.py:197
+#, python-brace-format
+msgid "Will be saved to: {value}"
+msgstr "Wordt opgeslagen in: {value}"
+
+#: pages/step1_config.py:261 pages/step1_people.py:250 pages/step1_people.py:312
+#: pages/step1_presets.py:133 pages/step1_presets.py:154 pages/step1_presets.py:203
+#: pages/step1_presets.py:443 pages/step1_tabs.py:67
+msgid "Year"
+msgstr "Jaar"
+
+#: pages/memory_brief.py:31
+msgid "Year in Review"
+msgstr "Jaaroverzicht"
+
+#: pages/step1_tabs.py:80
+msgid "Year type"
+msgstr "Type jaar"
+
+#: pages/step1_tabs.py:116
+msgid "Years"
+msgstr "Jaren"
+
+#: pages/step1_presets.py:109
+msgid "Years to span"
+msgstr "Aantal jaren"
+
+#: pages/settings_people.py:475
+msgid "Yes, that is right"
+msgstr "Ja, dat klopt"
+
+#: pages/login.py:92
+msgid "You will be redirected to your identity provider"
+msgstr "Je wordt doorgestuurd naar je identiteitsprovider"
+
+#: pages/picture_decisions.py:114
+msgid "Your decision is gone; the app's own holds apply again."
+msgstr "Je beslissing is verwijderd; de beperkingen van de app gelden weer."
+
+#: pages/_step4_generate.py:643
+msgid "Your memory video is ready!"
+msgstr "Je herinneringsvideo is klaar!"
+
+#: pages/memory_duration.py:22
+msgid "about 10 minutes per year of range, shorter if the media cannot fill it"
+msgstr "ongeveer 10 minuten per jaar in de periode, korter als er te weinig media zijn"
+
+#: pages/runs.py:87
+msgid "all"
+msgstr "alle"
+
+#: pages/runs.py:91
+msgid "cancelled"
+msgstr "geannuleerd"
+
+#: pages/runs.py:88
+msgid "completed"
+msgstr "voltooid"
+
+#: pages/settings_people.py:433
+msgid "confirmed"
+msgstr "bevestigd"
+
+#: pages/settings_people.py:337
+msgid "counts unreliable"
+msgstr "onbetrouwbare aantallen"
+
+#: pages/_step3_music_preview.py:214
+msgid "e.g. June – August 2025"
+msgstr "bijv. juni – augustus 2025"
+
+#: pages/_step3_music_preview.py:199
+msgid "e.g. Summer in Saxony"
+msgstr "bijv. Zomer in Saksen"
+
+#: pages/settings_people.py:352
+msgid "edit in Immich"
+msgstr "bewerken in Immich"
+
+#: pages/runs.py:89
+msgid "failed"
+msgstr "mislukt"
+
+#: pages/runs.py:92
+msgid "interrupted"
+msgstr "onderbroken"
+
+#: pages/settings_people.py:527
+msgid "is…"
+msgstr "is…"
+
+#: pages/step1_presets.py:177
+msgid "north"
+msgstr "noord"
+
+#: pages/runs.py:90
+msgid "running"
+msgstr "bezig"
+
+#: pages/step1_presets.py:177
+msgid "south"
+msgstr "zuid"
+
+#: pages/memory_duration.py:24
+msgid "the type's default length, shorter if the media cannot fill it"
+msgstr "standaardlengte van het type, korter als er te weinig media zijn"
+
+#: pages/runs.py:32
+#, python-brace-format
+msgid "{clips_selected} pictures selected · {total_duration_seconds:.1f}s recorded run time"
+msgstr "{clips_selected} beelden geselecteerd · {total_duration_seconds:.1f}s opgenomen duur"
+
+#: pages/memory_story.py:109
+#, python-brace-format
+msgid "{count} stories, {carrier_count} pictures"
+msgstr "{count} verhalen, {carrier_count} beelden"
+
+#: pages/runs.py:114
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end}"
+msgstr "{date_range_start} tot {date_range_end}"
+
+#: pages/suggestions.py:188
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end} · {asset_count} pictures · {value}"
+msgstr "{date_range_start} tot {date_range_end} · {asset_count} beelden · {value}"
+
+#: pages/step1_config.py:203
+#, python-brace-format
+msgid "{description} ({days} days)"
+msgstr "{description} ({days} dagen)"
+
+#: pages/settings_people.py:160
+#, python-brace-format
+msgid "{found} people in {path}"
+msgstr "{found} personen in {path}"
+
+#: pages/cut_progress_view.py:166
+#, python-brace-format
+msgid "{label} {value:,} of {value2:,}"
+msgstr "{label} {value:,} van {value2:,}"
+
+#: pages/settings_people.py:466
+#, python-brace-format
+msgid "{name} and {target_name}: {value}"
+msgstr "{name} en {target_name}: {value}"
+
+#: pages/step4_export.py:103
+#, python-brace-format
+msgid "{photos_count} Photos Available (auto-selected at generation)"
+msgstr "{photos_count} foto's beschikbaar (automatisch gekozen bij generatie)"
+
+#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#, python-brace-format
+msgid "{seconds:g} s"
+msgstr "{seconds:g} s"
+
+#: pages/settings_config.py:147
+#, python-brace-format
+msgid "{title}  ({n_keys} keys)"
+msgstr "{title} ({n_keys} sleutels)"
+
+#: pages/runs.py:45
+#, python-brace-format
+msgid "{value}: {duration_seconds:.1f}s"
+msgstr "{value}: {duration_seconds:.1f}s"
+

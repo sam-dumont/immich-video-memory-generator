@@ -1,0 +1,1829 @@
+# Immich Memories interface translations.
+# AI-drafted; native-speaker review welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: Immich Memories UI VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: pt_PT\n"
+"Language-Team: pt_PT <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: pages/memory.py:162
+msgid " Cut again runs it once more."
+msgstr " Montar novamente repete a montagem."
+
+#: pages/settings_config.py:127
+#, python-brace-format
+msgid " Preset '{preset}' is active and fills the knobs you have not set."
+msgstr " O perfil '{preset}' está ativo e preenche as opções por definir."
+
+#: pages/step1_people.py:113
+msgid "(\"Person A\" OR \"Person B\") AND \"Person C\""
+msgstr "(\"Pessoa A\" OR \"Pessoa B\") AND \"Pessoa C\""
+
+#: pages/step4_export.py:120
+#, python-brace-format
+msgid "+ {value} more"
+msgstr "+ {value} mais"
+
+#: pages/step3_options.py:239
+msgid "1080p"
+msgstr "1080p"
+
+#: pages/memory_duration.py:17
+msgid "30 s plus 10 s per active day, from the media once it is loaded"
+msgstr "30 s mais 10 s por dia ativo, calculados após carregar os conteúdos"
+
+#: pages/memory_duration.py:21
+msgid "30 s plus 6 s per active hour of the day"
+msgstr "30 s mais 6 s por hora ativa do dia"
+
+#: pages/step3_options.py:239
+msgid "4K"
+msgstr "4K"
+
+#: pages/step3_options.py:239
+msgid "720p"
+msgstr "720p"
+
+#: pages/memory_run.py:101
+msgid "A cut is already running; wait for it, or cancel it first"
+msgstr "Já existe uma montagem em curso; aguarda que termine ou cancela-a primeiro"
+
+#: pages/step4_export.py:62
+#, python-brace-format
+msgid ""
+"A generation started at {started} is still running (run {run_id}). This page checks every few"
+" seconds and shows the video when it finishes."
+msgstr ""
+"A geração iniciada às {started} continua em curso (execução {run_id}). Esta página verifica "
+"regularmente e mostra o vídeo quando terminar."
+
+#: pages/step3_options.py:371
+msgid "AI Generated"
+msgstr "Gerada por IA"
+
+#: pages/step3_options.py:166
+msgid "AI will generate music based on the mood of your video clips"
+msgstr "A IA criará música de acordo com o ambiente dos teus clips"
+
+#: pages/step1_config.py:69
+msgid "API Key"
+msgstr "Chave API"
+
+#: pages/memory_brief.py:63
+msgid "Accept Forwarded Media"
+msgstr "Aceitar conteúdos recebidos"
+
+#: pages/settings_config.py:165
+msgid "Actions"
+msgstr "Ações"
+
+#: pages/settings_config.py:162
+msgid "Active Configuration"
+msgstr "Configuração ativa"
+
+#: pages/step1_people.py:97 pages/step1_people.py:123
+#, python-brace-format
+msgid "Active condition: {display_label}"
+msgstr "Condição ativa: {display_label}"
+
+#: pages/settings_config.py:122
+msgid "Active config from ~/.immich-memories/config.yaml with env overrides. API keys are redacted."
+msgstr ""
+"Configuração de ~/.immich-memories/config.yaml com prioridade para as variáveis de ambiente. "
+"As chaves API estão ocultas."
+
+#: pages/settings_people.py:516
+msgid "Add a relationship"
+msgstr "Adicionar uma relação"
+
+#: pages/step3_options.py:318
+msgid "Add date overlay"
+msgstr "Mostrar a data"
+
+#: pages/settings_people.py:504
+msgid "Add person"
+msgstr "Adicionar pessoa"
+
+#: pages/settings_people.py:405
+msgid "Add relationship"
+msgstr "Adicionar relação"
+
+#: pages/settings_people.py:483
+msgid "Add someone"
+msgstr "Adicionar alguém"
+
+#: pages/settings_people.py:168
+msgid "Add someone not in Immich"
+msgstr "Adicionar alguém que não está no Immich"
+
+#: pages/settings_people.py:498
+#, python-brace-format
+msgid "Added {value}"
+msgstr "Adicionado: {value}"
+
+#: pages/memory_brief.py:170
+msgid "Advanced"
+msgstr "Avançado"
+
+#: pages/step3_options.py:265
+msgid "Advanced options"
+msgstr "Opções avançadas"
+
+#: pages/step1_people.py:37
+msgid "Advanced people condition"
+msgstr "Condição avançada de pessoas"
+
+#: pages/memory_brief.py:37 pages/step1_presets.py:290
+msgid "Album"
+msgstr "Álbum"
+
+#: pages/_step4_upload.py:65
+msgid "Album name"
+msgstr "Nome do álbum"
+
+#: pages/step1_people.py:249 pages/step1_people.py:311
+msgid "All Time"
+msgstr "Todos os anos"
+
+#: pages/step1_config.py:219
+msgid "All people"
+msgstr "Todas as pessoas"
+
+#: pages/step1_cache.py:124
+msgid "Analysis cache"
+msgstr "Cache de análises"
+
+#: pages/step1_presets.py:579
+msgid ""
+"Anniversaries first, then the rest. A scheduled run only proposes a day on its anniversary; "
+"here you can pick any day the catalogue holds."
+msgstr ""
+"Primeiro os aniversários, depois os restantes. Uma execução agendada só propõe um dia no seu "
+"aniversário; aqui podes escolher qualquer dia do catálogo."
+
+#: pages/step1_people.py:32
+msgid "Any of these people"
+msgstr "Qualquer uma destas pessoas"
+
+#: pages/memory_brief.py:80
+msgid "Anyone. Only pictures nothing held back: no detector flag, no private moment."
+msgstr "Qualquer pessoa. Apenas imagens sem restrições: nenhum alerta do detetor nem momento privado."
+
+#: pages/picture_decisions.py:28
+msgid "Anyone: shareable films too"
+msgstr "Qualquer pessoa: também filmes partilháveis"
+
+#: pages/clip_review.py:403
+msgid "Apply"
+msgstr "Aplicar"
+
+#: pages/memory_duration.py:30
+msgid "Auto"
+msgstr "Automático"
+
+#: pages/step3_options.py:272
+msgid "Auto (detect from clips)"
+msgstr "Automático (a partir dos clips)"
+
+#: pages/step3_options.py:239
+msgid "Auto (match clips)"
+msgstr "Automático (igual aos clips)"
+
+#: pages/memory_duration.py:68
+msgid "Auto duration"
+msgstr "Duração automática"
+
+#: i18n.py:101
+msgid "Automatic (browser)"
+msgstr "Automático (navegador)"
+
+#: pages/suggestions.py:90
+msgid "Automatic upload to Immich is enabled."
+msgstr "O envio automático para o Immich está ativo."
+
+#: pages/suggestions.py:92
+msgid "Automatic upload to Immich is off."
+msgstr "O envio automático para o Immich está desativado."
+
+#: pages/step1_presets.py:62
+msgid "Automatically uses today's date across previous years"
+msgstr "Usa automaticamente a data de hoje em anos anteriores"
+
+#: pages/step4_export.py:236
+msgid "Back to Generation Options"
+msgstr "Voltar às opções de geração"
+
+#: pages/runs.py:21
+msgid "Back to runs"
+msgstr "Voltar às execuções"
+
+#: pages/step2_review.py:84 pages/step2_review.py:104 pages/step2_review.py:287
+msgid "Back to the brief"
+msgstr "Voltar ao projeto"
+
+#: pages/step2_review.py:290
+msgid "Back to the cut"
+msgstr "Voltar à montagem"
+
+#: pages/clip_review.py:429 pages/clip_review.py:462 pages/step3_options.py:436
+#: pages/step4_export.py:139
+msgid "Back to the media pool"
+msgstr "Voltar aos conteúdos"
+
+#: pages/step3_options.py:385
+msgid "Background music"
+msgstr "Música de fundo"
+
+#: pages/step1_tabs.py:25
+msgid "Birthday"
+msgstr "Aniversário"
+
+#: pages/step1_people.py:284
+msgid "Birthday to birthday"
+msgstr "De aniversário a aniversário"
+
+#: pages/step3_options.py:49
+msgid "Blur background"
+msgstr "Fundo desfocado"
+
+#: pages/_step3_music_preview.py:67
+msgid "Building mood timeline..."
+msgstr "A preparar a sequência musical..."
+
+#: pages/step3_options.py:369
+msgid "Bundled"
+msgstr "Incluída"
+
+#: app.py:135
+msgid "Cache"
+msgstr "Cache"
+
+#: app.py:308 pages/step1_cache.py:76
+msgid "Cache Management"
+msgstr "Gestão da cache"
+
+#: pages/step1_tabs.py:82
+msgid "Calendar Year"
+msgstr "Ano civil"
+
+#: pages/_step4_generate.py:386 pages/memory_run.py:411 pages/picture_decisions.py:176
+#: pages/settings_people.py:503 pages/settings_people.py:545
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: pages/_step4_generate.py:74
+msgid "Cancel requested — stopping after current phase..."
+msgstr "Cancelamento pedido: paragem após a fase atual..."
+
+#: pages/memory_run.py:409
+msgid "Cancelling after the current stage..."
+msgstr "A cancelar após a etapa atual..."
+
+#: pages/_step4_generate.py:72
+msgid "Cancelling..."
+msgstr "A cancelar..."
+
+#: pages/suggestions.py:195
+msgid "Candidate key"
+msgstr "Chave do candidato"
+
+#: pages/step3_options.py:327
+msgid "Caption clips with their place"
+msgstr "Mostrar o local nos clips"
+
+#: pages/memory.py:113
+msgid "Change the brief"
+msgstr "Alterar o projeto"
+
+#: pages/suggestions.py:199
+msgid "Check eligibility"
+msgstr "Verificar elegibilidade"
+
+#: pages/step4_export.py:75
+msgid "Check the server log, then generate again."
+msgstr "Consulta o registo do servidor e volta a gerar."
+
+#: pages/settings_people.py:537
+msgid "Choose a relationship and a person"
+msgstr "Escolhe uma relação e uma pessoa"
+
+#: pages/step1_cache.py:67
+msgid "Clear"
+msgstr "Limpar"
+
+#: pages/step1_cache.py:211
+msgid "Clear all caches"
+msgstr "Limpar todas as caches"
+
+#: pages/picture_decisions.py:133 pages/picture_decisions.py:182
+msgid "Clear hold"
+msgstr "Remover restrição"
+
+#: pages/picture_decisions.py:156
+msgid "Clear this picture's hold?"
+msgstr "Remover a restrição desta imagem?"
+
+#: pages/step1_cache.py:205
+#, python-brace-format
+msgid "Cleared all caches ({total} items)"
+msgstr "Todas as caches limpas ({total} elementos)"
+
+#: pages/step1_cache.py:121
+#, python-brace-format
+msgid "Cleared {count} analysis entries"
+msgstr "{count} análises eliminadas"
+
+#: pages/step1_cache.py:164
+#, python-brace-format
+msgid "Cleared {count} cached thumbnails"
+msgstr "{count} miniaturas eliminadas da cache"
+
+#: pages/step1_cache.py:141
+#, python-brace-format
+msgid "Cleared {count} cached videos"
+msgstr "{count} vídeos eliminados da cache"
+
+#: pages/step1_cache.py:175
+#, python-brace-format
+msgid "Cleared {count} preview files"
+msgstr "{count} ficheiros de pré-visualização eliminados"
+
+#: pages/step3_options.py:414 pages/step4_export.py:155
+msgid "Clips"
+msgstr "Clips"
+
+#: pages/clip_pipeline.py:71
+msgid "Clips Planned"
+msgstr "Clips previstos"
+
+#: pages/step2_review.py:229
+msgid "Compact grid view"
+msgstr "Grelha compacta"
+
+#: pages/_step4_generate.py:120
+msgid "Complete!"
+msgstr "Concluído!"
+
+#: pages/settings_config.py:178
+#, python-brace-format
+msgid "Config file: {config_path}"
+msgstr "Ficheiro de configuração: {config_path}"
+
+#: app.py:133 app.py:272
+msgid "Configuration"
+msgstr "Configuração"
+
+#: pages/settings_config.py:170
+msgid "Configuration reloaded from disk"
+msgstr "Configuração recarregada do disco"
+
+#: pages/step1_config.py:172
+msgid "Configuration saved!"
+msgstr "Configuração guardada!"
+
+#: pages/settings_people.py:546
+msgid "Confirm relationship"
+msgstr "Confirmar relação"
+
+#: pages/step1_presets.py:241
+msgid "Connect to Immich first to choose an album."
+msgstr "Liga-te primeiro ao Immich para escolher um álbum."
+
+#: pages/step1_presets.py:353
+msgid "Connect to Immich first to detect trips."
+msgstr "Liga-te primeiro ao Immich para detetar viagens."
+
+#: pages/memory_brief.py:196
+msgid ""
+"Connect to your Immich server to continue. Enter your server URL and API key above, then "
+"click 'Test Connection'."
+msgstr ""
+"Liga-te ao teu servidor Immich para continuar. Introduz o URL e a chave API acima e clica em "
+"«Testar ligação»."
+
+#: pages/step1_config.py:53 pages/step1_config.py:110 pages/step1_config.py:120
+#, python-brace-format
+msgid "Connected as: {name}"
+msgstr "Ligado como: {name}"
+
+#: pages/memory_run.py:454 pages/step2_loading.py:319
+msgid "Connecting to Immich..."
+msgstr "A ligar ao Immich..."
+
+#: pages/step1_config.py:127
+#, python-brace-format
+msgid "Connection failed: {value}"
+msgstr "Falha na ligação: {value}"
+
+#: pages/step1_presets.py:268
+#, python-brace-format
+msgid "Could not list albums: {exc}"
+msgstr "Não foi possível listar os álbuns: {exc}"
+
+#: pages/step1_presets.py:323
+msgid "Could not load photo years. Showing the previously loaded years."
+msgstr ""
+"Não foi possível carregar os anos das fotografias. São apresentados os anos carregados "
+"anteriormente."
+
+#: pages/suggestions.py:174
+#, python-brace-format
+msgid "Could not load suggestions: {value}"
+msgstr "Não foi possível carregar as sugestões: {value}"
+
+#: pages/memory_run.py:461
+#, python-brace-format
+msgid "Could not re-load media: {value}"
+msgstr "Não foi possível recarregar os conteúdos: {value}"
+
+#: pages/step3_options.py:302
+msgid "Crossfade"
+msgstr "Dissolução cruzada"
+
+#: pages/settings_people.py:139
+msgid "Curation"
+msgstr "Organização"
+
+#: pages/step1_config.py:263
+msgid "Custom Range"
+msgstr "Período personalizado"
+
+#: pages/memory_brief.py:47
+msgid "Custom date range"
+msgstr "Período personalizado"
+
+#: pages/clip_review.py:394
+msgid "Custom seconds"
+msgstr "Segundos personalizados"
+
+#: pages/memory_brief.py:219 pages/step2_review.py:154
+msgid "Cut"
+msgstr "Montar"
+
+#: pages/memory.py:110 pages/step2_review.py:144
+msgid "Cut again"
+msgstr "Montar novamente"
+
+#: pages/memory_run.py:399
+msgid "Cutting the memory..."
+msgstr "A montar a memória..."
+
+#: theme.py:322
+msgid "Dark"
+msgstr "Escuro"
+
+#: app.py:99
+msgid "Demo mode"
+msgstr "Modo de demonstração"
+
+#: pages/step2_review.py:233
+msgid "Detailed list view"
+msgstr "Lista detalhada"
+
+#: pages/cut_progress_view.py:188 pages/memory_story.py:58
+msgid "Details"
+msgstr "Detalhes"
+
+#: pages/step1_presets.py:362
+msgid "Detecting trips from GPS data..."
+msgstr "A detetar viagens a partir do GPS..."
+
+#: pages/clip_review.py:369
+msgid "Difference"
+msgstr "Diferença"
+
+#: pages/suggestions.py:165
+#, python-brace-format
+msgid "Discovery failed: {error}"
+msgstr "Falha na pesquisa: {error}"
+
+#: pages/memory_run.py:66 pages/step2_loading.py:378
+msgid "Done"
+msgstr "Concluído"
+
+#: pages/runs.py:71
+msgid "Download child output"
+msgstr "Transferir resultado associado"
+
+#: pages/memory_brief.py:67
+msgid "Drop SDR video from the pool"
+msgstr "Excluir vídeos SDR"
+
+#: pages/step1_config.py:262 pages/step1_tabs.py:105
+msgid "Duration"
+msgstr "Duração"
+
+#: pages/memory_run.py:65
+msgid "Editing"
+msgstr "Montagem"
+
+#: pages/memory_run.py:431
+#, python-brace-format
+msgid "Elapsed: {value}"
+msgstr "Tempo decorrido: {value}"
+
+#: pages/step1_tabs.py:182
+msgid "End date"
+msgstr "Data final"
+
+#: pages/step1_config.py:132
+#, python-brace-format
+msgid "Error: {value}"
+msgstr "Erro: {value}"
+
+#: pages/clip_pipeline.py:84
+#, python-brace-format
+msgid "Errors ({error_count})"
+msgstr "Erros ({error_count})"
+
+#: pages/memory.py:96
+msgid "Export"
+msgstr "Exportar"
+
+#: pages/step2_loading.py:336
+#, python-brace-format
+msgid "Failed to load videos: {value}"
+msgstr "Falha ao carregar vídeos: {value}"
+
+#: pages/_step3_music_preview.py:124
+#, python-brace-format
+msgid "Failed: {value}"
+msgstr "Falha: {value}"
+
+#: pages/memory_brief.py:73
+msgid "Family"
+msgstr "Família"
+
+#: pages/picture_decisions.py:27
+msgid "Family: family films too"
+msgstr "Família: também filmes de família"
+
+#: pages/step3_options.py:81
+msgid ""
+"Fast (NAS) preset is active: 1080p H.264 with the fast encoder preset, static title "
+"backgrounds, no speech analysis, fewer photos, favorites-first analysis. Set with `preset: "
+"fast` in config.yaml or IMMICH_MEMORIES_PRESET=fast; the choices below still win for this "
+"run."
+msgstr ""
+"O perfil rápido (NAS) está ativo: H.264 a 1080p com codificação rápida, fundos de títulos "
+"estáticos, sem análise de voz, menos fotografias e favoritos primeiro. Definido por `preset: "
+"fast` em config.yaml ou IMMICH_MEMORIES_PRESET=fast; as opções abaixo têm prioridade nesta "
+"execução."
+
+#: pages/step2_loading.py:252
+msgid "Fetching photos..."
+msgstr "A obter fotografias..."
+
+#: pages/_step3_music_preview.py:232
+msgid "Film language"
+msgstr "Idioma do filme"
+
+#: pages/film_length.py:73 pages/film_length.py:83
+msgid "Film length"
+msgstr "Duração do filme"
+
+#: pages/clip_review.py:503
+#, python-brace-format
+msgid "Final Duration: {value}"
+msgstr "Duração final: {value}"
+
+#: pages/settings_people.py:263
+msgid "Find a name"
+msgstr "Procurar um nome"
+
+#: pages/memory_run.py:62
+msgid "Finding media"
+msgstr "A procurar conteúdos"
+
+#: pages/picture_decisions.py:168
+msgid "Fine for"
+msgstr "Permitir para"
+
+#: pages/clip_review.py:168
+msgid "First 5s"
+msgstr "Primeiros 5 s"
+
+#: pages/step4_export.py:159
+msgid "Format"
+msgstr "Formato"
+
+#: pages/step1_presets.py:407
+#, python-brace-format
+msgid "Found {count} trip(s):"
+msgstr "Viagens encontradas: {count}"
+
+#: pages/step1_tabs.py:85
+msgid "From Birthday"
+msgstr "A partir do aniversário"
+
+#: pages/clip_review.py:204
+msgid "Full clip"
+msgstr "Clip completo"
+
+#: pages/settings_people.py:489
+msgid "Full name"
+msgstr "Nome completo"
+
+#: pages/_step3_music_preview.py:275
+msgid "Generate Music"
+msgstr "Gerar música"
+
+#: pages/step4_export.py:225
+msgid "Generate Video"
+msgstr "Gerar vídeo"
+
+#: pages/_step3_music_preview.py:288
+msgid "Generate music now to preview before rendering your video"
+msgstr "Gera já a música para a ouvir antes de renderizar o vídeo"
+
+#: pages/_step3_music_preview.py:146
+msgid "Generated Music"
+msgstr "Música gerada"
+
+#: pages/_step3_music_preview.py:99
+msgid "Generating music..."
+msgstr "A gerar música..."
+
+#: app.py:243
+msgid "Generation Options"
+msgstr "Opções de geração"
+
+#: pages/memory_brief.py:78
+msgid "Grandparents, siblings, the group chat. Private moments stay out."
+msgstr "Avós, irmãos, conversa de grupo. Os momentos privados ficam de fora."
+
+#: pages/step1_people.py:111
+msgid "Grouped people condition (optional)"
+msgstr "Condição agrupada de pessoas (opcional)"
+
+#: pages/memory_brief.py:67
+msgid "HDR clips only"
+msgstr "Apenas clips HDR"
+
+#: pages/step3_options.py:303
+msgid "Hard cut"
+msgstr "Corte direto"
+
+#: pages/step1_presets.py:178
+msgid "Hemisphere"
+msgstr "Hemisfério"
+
+#: pages/picture_decisions.py:101
+msgid "Hold cleared. The next cut may use it."
+msgstr "Restrição removida. A próxima montagem poderá usar a imagem."
+
+#: pages/memory_brief.py:39 pages/step1_presets.py:82
+msgid "Holiday"
+msgstr "Festividade"
+
+#: pages/memory_brief.py:210
+msgid "How long"
+msgstr "Qual a duração"
+
+#: pages/step1_config.py:39
+msgid "Immich Connection"
+msgstr "Ligação ao Immich"
+
+#: pages/step1_config.py:37
+#, python-brace-format
+msgid "Immich Connection: {name}"
+msgstr "Ligação ao Immich: {name}"
+
+#: pages/step1_config.py:61
+msgid "Immich Server URL"
+msgstr "URL do servidor Immich"
+
+#: pages/_step4_generate.py:663 pages/step4_export.py:42
+#, python-brace-format
+msgid "Immich delivery: {delivery_label}"
+msgstr "Envio para o Immich: {delivery_label}"
+
+#: pages/runs.py:39
+#, python-brace-format
+msgid "Immich delivery: {value}"
+msgstr "Envio para o Immich: {value}"
+
+#: pages/clip_grid.py:170 pages/clip_grid.py:224
+msgid "Include"
+msgstr "Incluir"
+
+#: pages/memory_brief.py:58
+msgid "Include Live Photos"
+msgstr "Incluir Live Photos"
+
+#: pages/memory_brief.py:53
+msgid "Include Photos"
+msgstr "Incluir fotografias"
+
+#: pages/clip_review.py:308
+msgid "Include in compilation"
+msgstr "Incluir na compilação"
+
+#: i18n.py:109
+msgid "Interface language"
+msgstr "Idioma da interface"
+
+#: pages/step1_config.py:209
+#, python-brace-format
+msgid "Invalid date range: {e}"
+msgstr "Período inválido: {e}"
+
+#: pages/login.py:77
+msgid "Invalid username or password"
+msgstr "Nome de utilizador ou palavra-passe inválidos"
+
+#: pages/picture_decisions.py:107
+msgid "It won't be in any film from the next cut on."
+msgstr "Esta imagem ficará de fora de todos os filmes a partir da próxima montagem."
+
+#: pages/memory_brief.py:72
+msgid "Just us"
+msgstr "Só nós"
+
+#: pages/picture_decisions.py:26
+msgid "Just us: only films for the household"
+msgstr "Só nós: apenas filmes para a casa"
+
+#: pages/memory_brief.py:65
+msgid "Keep WhatsApp and other received media in the pool for this memory"
+msgstr "Manter WhatsApp e outros conteúdos recebidos nesta memória"
+
+#: pages/step3_options.py:336
+msgid "Keep intermediate files"
+msgstr "Manter ficheiros intermédios"
+
+#: pages/step3_options.py:273
+msgid "Landscape (16:9)"
+msgstr "Horizontal (16:9)"
+
+#: pages/clip_review.py:180
+msgid "Last 5s"
+msgstr "Últimos 5 s"
+
+#: pages/film_length.py:89
+#, python-brace-format
+msgid "Length: {duration}"
+msgstr "Duração: {duration}"
+
+#: pages/step3_options.py:50
+msgid "Letterbox (black bars)"
+msgstr "Barras pretas"
+
+#: theme.py:320
+msgid "Light"
+msgstr "Claro"
+
+#: pages/step1_presets.py:248
+msgid "Loading albums..."
+msgstr "A carregar álbuns..."
+
+#: pages/memory_run.py:63
+msgid "Loading thumbnails"
+msgstr "A carregar miniaturas"
+
+#: pages/step2_loading.py:313
+msgid "Loading videos..."
+msgstr "A carregar vídeos..."
+
+#: pages/suggestions.py:157
+msgid "Looking through the library…"
+msgstr "A percorrer a biblioteca…"
+
+#: pages/memory_duration.py:30
+msgid "Manual"
+msgstr "Manual"
+
+#: pages/runs.py:83
+msgid "Manual and automatic runs, including failures. Open a run to read its cut and timings."
+msgstr ""
+"Execuções manuais e automáticas, incluindo falhas. Abre uma execução para ver a montagem e os"
+" tempos."
+
+#: pages/_step3_music_preview.py:171
+#, python-brace-format
+msgid "Map: {title_suggestion_map_mode}"
+msgstr "Mapa: {title_suggestion_map_mode}"
+
+#: pages/clip_pipeline.py:66
+msgid "Media Eligible"
+msgstr "Conteúdos elegíveis"
+
+#: app.py:74 app.py:207
+msgid "Media pool"
+msgstr "Conteúdos"
+
+#: pages/_step4_upload.py:65
+msgid "Memories"
+msgstr "Memórias"
+
+#: pages/suggestions.py:86
+msgid "Memories automation would make next, using the same rules as auto suggest."
+msgstr "As próximas memórias que a automatização criaria, com as mesmas regras de auto suggest."
+
+#: app.py:71 app.py:195
+msgid "Memory"
+msgstr "Memória"
+
+#: pages/memory_brief.py:134
+msgid "Memory type"
+msgstr "Tipo de memória"
+
+#: pages/clip_review.py:192
+msgid "Middle 5s"
+msgstr "Os 5 s centrais"
+
+#: pages/step1_presets.py:214
+msgid "Month"
+msgstr "Mês"
+
+#: pages/memory_brief.py:35
+msgid "Monthly Highlights"
+msgstr "Destaques do mês"
+
+#: pages/step1_tabs.py:116
+msgid "Months"
+msgstr "Meses"
+
+#: pages/_step3_music_preview.py:148
+#, python-brace-format
+msgid "Mood: {mood_text}"
+msgstr "Ambiente: {mood_text}"
+
+#: pages/step1_presets.py:96
+msgid "Most recent year"
+msgstr "Ano mais recente"
+
+#: pages/memory_brief.py:34
+msgid "Multi-Person"
+msgstr "Várias pessoas"
+
+#: pages/step3_options.py:361 pages/step3_options.py:417
+msgid "Music"
+msgstr "Música"
+
+#: pages/_step3_music_preview.py:120
+msgid "Music generated successfully!"
+msgstr "Música gerada com sucesso!"
+
+#: pages/_step3_music_preview.py:115
+msgid "Music generated!"
+msgstr "Música gerada!"
+
+#: pages/_step3_music_preview.py:126
+#, python-brace-format
+msgid "Music generation failed: {value}"
+msgstr "Falha ao gerar música: {value}"
+
+#: pages/step3_options.py:120
+msgid "Music volume:"
+msgstr "Volume da música:"
+
+#: pages/step1_people.py:174
+msgid "Narrow this memory to these people, the same as --person on the CLI."
+msgstr "Limitar esta memória a estas pessoas, como --person na linha de comandos."
+
+#: pages/picture_decisions.py:136
+msgid "Never use"
+msgstr "Nunca usar"
+
+#: pages/settings_people.py:285
+msgid "Next"
+msgstr "Seguinte"
+
+#: pages/runs.py:127
+msgid "Next runs"
+msgstr "Próximas execuções"
+
+#: pages/clip_review.py:433
+msgid "Next: Generation Options"
+msgstr "Seguinte: opções de geração"
+
+#: pages/step3_options.py:439
+msgid "Next: Preview & Export"
+msgstr "Seguinte: pré-visualização e exportação"
+
+#: pages/step1_presets.py:276
+msgid "No albums with any assets in them yet."
+msgstr "Ainda não há álbuns com conteúdos."
+
+#: pages/runs.py:73
+msgid "No child output was retained for this run."
+msgstr "Nenhum resultado associado foi guardado para esta execução."
+
+#: pages/step4_export.py:132
+msgid "No clips selected. Go back to select clips."
+msgstr "Nenhum clip selecionado. Volta atrás para escolher clips."
+
+#: pages/suggestions.py:168
+msgid "No eligible suggestions right now."
+msgstr "Sem sugestões elegíveis neste momento."
+
+#: pages/settings_people.py:251
+msgid ""
+"No people file yet. Rescan the library to build one — it reads every named person's count and"
+" month curve, and looks at no pixels."
+msgstr ""
+"Ainda não existe ficheiro de pessoas. Analisa novamente a biblioteca: lê as contagens e "
+"curvas mensais de cada pessoa com nome, sem analisar imagens."
+
+#: pages/runs.py:105
+msgid "No runs match this view. Make a memory from Memory or Suggestions."
+msgstr "Nenhuma execução corresponde a esta vista. Cria uma memória em Memória ou Sugestões."
+
+#: pages/runs.py:62
+msgid "No saved cut is available for this run."
+msgstr "Não existe montagem guardada para esta execução."
+
+#: pages/suggestions.py:212
+msgid "No suggestions were rejected by variety or failure backoff."
+msgstr "Nenhuma sugestão foi excluída por variedade ou por espera após uma falha."
+
+#: pages/step1_presets.py:402
+msgid "No trips detected for this year."
+msgstr "Não foram detetadas viagens neste ano."
+
+#: pages/clip_review.py:454
+msgid "No video clips in the cut; there is nothing to trim."
+msgstr "A montagem não contém clips de vídeo; não há nada para aparar."
+
+#: pages/step2_review.py:98
+msgid "No videos found for the selected criteria."
+msgstr "Não foram encontrados vídeos com estes critérios."
+
+#: pages/settings_people.py:478
+msgid "No, they are not"
+msgstr "Não, não são"
+
+#: pages/step3_options.py:304 pages/step3_options.py:365
+msgid "None"
+msgstr "Nenhuma"
+
+#: pages/settings_people.py:389
+msgid "Notes"
+msgstr "Notas"
+
+#: pages/settings_people.py:409
+msgid "Nothing recorded yet."
+msgstr "Ainda não há nada registado."
+
+#: pages/settings_people.py:212
+msgid "Nothing to curate — no twins and no split records."
+msgstr "Nada a organizar: sem duplicados nem registos separados."
+
+#: pages/memory_brief.py:36
+msgid "On This Day"
+msgstr "Neste dia"
+
+#: pages/picture_decisions.py:22
+msgid ""
+"Once cleared, every film up to that level may use it. Nothing the app reads later puts the "
+"hold back; Undo does."
+msgstr ""
+"Depois de remover a restrição, qualquer filme até esse nível poderá usar a imagem. Uma "
+"análise posterior não repõe a restrição; Desfazer repõe."
+
+#: pages/settings_people.py:521
+msgid "One answer updates both people. Confirmed relationships are never replaced by a scan."
+msgstr "Uma resposta atualiza ambas as pessoas. Uma análise nunca substitui relações confirmadas."
+
+#: pages/step1_presets.py:114
+msgid "One window around the holiday in each year, most recent first."
+msgstr "Um período em torno da festividade em cada ano, do mais recente para o mais antigo."
+
+#: pages/step1_people.py:169
+msgid "Only with (optional)"
+msgstr "Apenas com (opcional)"
+
+#: pages/picture_decisions.py:165
+msgid "Open it in Immich first if you haven't looked at it yourself."
+msgstr "Abre primeiro a imagem no Immich se ainda não a viste pessoalmente."
+
+#: pages/suggestions.py:146
+msgid "Open run"
+msgstr "Abrir execução"
+
+#: pages/memory_brief.py:180
+msgid "Open the media pool"
+msgstr "Abrir os conteúdos"
+
+#: pages/settings_people.py:233
+#, python-brace-format
+msgid "Open {name} in Immich"
+msgstr "Abrir {name} no Immich"
+
+#: pages/step3_options.py:278
+msgid "Orientation"
+msgstr "Orientação"
+
+#: pages/step4_export.py:165
+msgid "Output"
+msgstr "Resultado"
+
+#: pages/step3_options.py:253
+msgid "Output Format"
+msgstr "Formato de saída"
+
+#: pages/step3_options.py:228
+msgid "Output Settings"
+msgstr "Definições de saída"
+
+#: pages/step4_export.py:194
+msgid "Output filename"
+msgstr "Nome do ficheiro de saída"
+
+#: pages/_step4_generate.py:118
+#, python-brace-format
+msgid "Output: {name}"
+msgstr "Resultado: {name}"
+
+#: pages/login.py:50
+msgid "Password"
+msgstr "Palavra-passe"
+
+#: app.py:134 app.py:291
+msgid "People"
+msgstr "Pessoas"
+
+#: pages/step1_people.py:330
+msgid "People (select 2+)"
+msgstr "Pessoas (pelo menos 2)"
+
+#: pages/settings_people.py:530 pages/step1_config.py:224 pages/step1_people.py:272
+msgid "Person"
+msgstr "Pessoa"
+
+#: pages/step1_config.py:217
+msgid "Person Filter"
+msgstr "Filtro de pessoas"
+
+#: pages/memory_brief.py:33
+msgid "Person Spotlight"
+msgstr "Uma pessoa em destaque"
+
+#: pages/clip_grid.py:193
+msgid "Photo"
+msgstr "Fotografia"
+
+#: pages/step4_export.py:157
+msgid "Photo Pool"
+msgstr "Fotografias disponíveis"
+
+#: pages/step3_options.py:188
+msgid "Photo duration (seconds)"
+msgstr "Duração das fotografias (segundos)"
+
+#: pages/step2_loading.py:461
+#, python-brace-format
+msgid "Photo thumbnails: {value}/{count}"
+msgstr "Miniaturas das fotografias: {value}/{count}"
+
+#: pages/memory_brief.py:55
+msgid "Photographs join the pool as stills the editor can hold"
+msgstr "As fotografias entram como imagens fixas que a montagem pode manter no ecrã"
+
+#: pages/step3_options.py:183
+#, python-brace-format
+msgid "Photos enabled ({photos_count} found)"
+msgstr "Fotografias ativas ({photos_count} encontradas)"
+
+#: pages/step1_presets.py:585
+msgid "Pick a day"
+msgstr "Escolher um dia"
+
+#: pages/memory_brief.py:101
+msgid "Pick a memory type and a valid period first"
+msgstr "Escolhe primeiro um tipo de memória e um período válido"
+
+#: pages/memory_brief.py:100
+msgid "Pick an album first"
+msgstr "Escolhe primeiro um álbum"
+
+#: pages/clip_review.py:447
+msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
+msgstr "Escolhe os segundos de cada vídeo e pré-visualiza-os. As fotografias não precisam de cortes."
+
+#: pages/film_length.py:71
+msgid "Pictures & video"
+msgstr "Fotografias e vídeos"
+
+#: pages/clip_pipeline.py:56
+#, python-brace-format
+msgid "Pipeline complete! Planned {planned_count} clips from {eligible_count} eligible media items."
+msgstr ""
+"Processamento concluído! {planned_count} clips previstos entre {eligible_count} conteúdos "
+"elegíveis."
+
+#: pages/step1_config.py:157
+msgid "Please enter both URL and API key"
+msgstr "Introduz o URL e a chave API"
+
+#: pages/clip_review.py:426
+msgid "Please select at least one clip"
+msgstr "Seleciona pelo menos um clip"
+
+#: pages/memory_brief.py:172
+msgid "Pool"
+msgstr "Conteúdos disponíveis"
+
+#: pages/step3_options.py:274
+msgid "Portrait (9:16)"
+msgstr "Vertical (9:16)"
+
+#: pages/memory_run.py:68
+msgid "Preparing the cut"
+msgstr "A preparar a montagem"
+
+#: pages/clip_review.py:164
+msgid "Preview"
+msgstr "Pré-visualização"
+
+#: app.py:255
+msgid "Preview & Export"
+msgstr "Pré-visualização e exportação"
+
+#: pages/step1_cache.py:178
+msgid "Preview cache"
+msgstr "Cache de pré-visualizações"
+
+#: pages/settings_people.py:282
+msgid "Previous"
+msgstr "Anterior"
+
+#: pages/runs.py:121
+msgid "Previous runs"
+msgstr "Execuções anteriores"
+
+#: pages/memory_run.py:467
+msgid "Re-load media to export"
+msgstr "Recarregar conteúdos para exportar"
+
+#: pages/runs.py:55
+msgid "Read the cut"
+msgstr "Ver a montagem"
+
+#: pages/settings_people.py:153
+msgid "Reading the library…"
+msgstr "A ler a biblioteca…"
+
+#: pages/memory_run.py:64
+msgid "Reading the pictures"
+msgstr "A ler as imagens"
+
+#: pages/runs.py:132
+msgid "Refresh runs"
+msgstr "Atualizar execuções"
+
+#: pages/suggestions.py:95
+msgid "Refresh suggestions"
+msgstr "Atualizar sugestões"
+
+#: pages/_step3_music_preview.py:246
+msgid "Regenerate"
+msgstr "Gerar novamente"
+
+#: pages/_step3_music_preview.py:275
+msgid "Regenerate Music"
+msgstr "Gerar música novamente"
+
+#: pages/settings_people.py:541
+msgid "Relationship confirmed"
+msgstr "Relação confirmada"
+
+#: pages/settings_people.py:437
+msgid "Relationship removed"
+msgstr "Relação removida"
+
+#: pages/settings_people.py:400
+msgid "Relationships"
+msgstr "Relações"
+
+#: pages/settings_config.py:174
+msgid "Reload from Disk"
+msgstr "Recarregar do disco"
+
+#: pages/clip_review.py:431
+msgid "Reload the pool"
+msgstr "Recarregar os conteúdos"
+
+#: pages/settings_people.py:442
+msgid "Remove this relationship"
+msgstr "Remover esta relação"
+
+#: pages/settings_people.py:165
+msgid "Rescan the library"
+msgstr "Analisar novamente a biblioteca"
+
+#: pages/step3_options.py:241 pages/step3_options.py:416
+msgid "Resolution"
+msgstr "Resolução"
+
+#: pages/step4_export.py:33
+msgid "Result"
+msgstr "Resultado"
+
+#: pages/memory.py:104
+msgid "Review the pool"
+msgstr "Rever os conteúdos"
+
+#: pages/settings_people.py:378
+msgid "Role (suggestions; type your own)"
+msgstr "Papel (sugestões ou texto livre)"
+
+#: pages/clip_review.py:251
+msgid "Rotation"
+msgstr "Rotação"
+
+#: pages/runs.py:23
+msgid "Run not found. It may have been removed."
+msgstr "Execução não encontrada. Pode ter sido removida."
+
+#: pages/suggestions.py:203
+msgid "Run this suggestion"
+msgstr "Executar esta sugestão"
+
+#: pages/suggestions.py:88
+msgid "Running a suggestion creates a video on the server. "
+msgstr "Executar uma sugestão cria um vídeo no servidor. "
+
+#: pages/suggestions.py:137
+#, python-brace-format
+msgid "Running on the server: {phase}. It continues if you leave this page."
+msgstr "Em curso no servidor: {phase}. Continua mesmo que saias desta página."
+
+#: app.py:73 app.py:219
+msgid "Runs"
+msgstr "Execuções"
+
+#: pages/step1_config.py:140
+msgid "Save Config"
+msgstr "Guardar configuração"
+
+#: pages/step1_config.py:72
+msgid "Saved - type a new key to replace it"
+msgstr "Guardada: introduz uma nova chave para a substituir"
+
+#: pages/runs.py:38 pages/step4_export.py:34
+#, python-brace-format
+msgid "Saved to: {output_path}"
+msgstr "Guardado em: {output_path}"
+
+#: pages/_step4_generate.py:650
+#, python-brace-format
+msgid "Saved to: {result_path} ({file_size})"
+msgstr "Guardado em: {result_path} ({file_size})"
+
+#: pages/step3_options.py:289
+msgid "Scaling Mode"
+msgstr "Modo de escala"
+
+#: pages/memory_brief.py:32 pages/step1_presets.py:165
+msgid "Season"
+msgstr "Estação"
+
+#: pages/step3_options.py:134
+msgid "Select a music file:"
+msgstr "Escolhe um ficheiro de música:"
+
+#: pages/step1_presets.py:431
+msgid "Select a trip"
+msgstr "Escolher uma viagem"
+
+#: pages/step3_options.py:150
+msgid "Select music file"
+msgstr "Escolher ficheiro de música"
+
+#: pages/clip_review.py:239
+msgid "Select range"
+msgstr "Escolher período"
+
+#: pages/clip_review.py:354
+msgid "Selected Clips"
+msgstr "Clips selecionados"
+
+#: pages/step3_options.py:157
+#, python-brace-format
+msgid "Selected: {value}"
+msgstr "Selecionado: {value}"
+
+#: pages/step2_review.py:79
+msgid "Session expired — please reconfigure. The server restarted and lost your settings."
+msgstr "Sessão expirada: configura novamente. O servidor reiniciou e perdeu as tuas definições."
+
+#: pages/clip_review.py:391
+msgid "Set all to first 5s"
+msgstr "Usar os primeiros 5 s em todos"
+
+#: pages/clip_review.py:392
+msgid "Set all to middle 5s"
+msgstr "Usar os 5 s centrais em todos"
+
+#: app.py:75
+msgid "Settings"
+msgstr "Definições"
+
+#: pages/memory_brief.py:74
+msgid "Shareable"
+msgstr "Partilhável"
+
+#: pages/memory_brief.py:143
+msgid "Sharing"
+msgstr "Partilha"
+
+#: pages/login.py:80
+msgid "Sign in"
+msgstr "Iniciar sessão"
+
+#: app.py:113
+msgid "Sign out"
+msgstr "Terminar sessão"
+
+#: pages/step3_options.py:301
+msgid "Smart (mix of fades & cuts)"
+msgstr "Inteligente (dissoluções e cortes)"
+
+#: pages/step3_options.py:275
+msgid "Square (1:1)"
+msgstr "Quadrado (1:1)"
+
+#: pages/step4_export.py:242
+msgid "Start New Project"
+msgstr "Novo projeto"
+
+#: pages/step1_tabs.py:162
+msgid "Start date"
+msgstr "Data inicial"
+
+#: pages/step2_review.py:152
+msgid "Start over"
+msgstr "Recomeçar"
+
+#: pages/step1_tabs.py:128
+msgid "Starting from"
+msgstr "A partir de"
+
+#: pages/_step4_generate.py:378
+msgid "Starting..."
+msgstr "A iniciar..."
+
+#: pages/runs.py:98
+msgid "Status"
+msgstr "Estado"
+
+#: pages/memory.py:128
+msgid "Story"
+msgstr "História"
+
+#: pages/memory_story.py:61
+msgid "Story weight"
+msgstr "Peso da história"
+
+#: pages/memory.py:127
+msgid "Storyboard"
+msgstr "Guião visual"
+
+#: pages/_step3_music_preview.py:212
+msgid "Subtitle"
+msgstr "Subtítulo"
+
+#: app.py:72 app.py:231
+msgid "Suggestions"
+msgstr "Sugestões"
+
+#: pages/step3_options.py:399 pages/step4_export.py:146
+msgid "Summary"
+msgstr "Resumo"
+
+#: pages/memory_brief.py:40
+msgid "Surprise me"
+msgstr "Surpreende-me"
+
+#: theme.py:321
+msgid "System"
+msgstr "Sistema"
+
+#: pages/clip_review.py:366
+msgid "Target"
+msgstr "Objetivo"
+
+#: pages/memory_duration.py:89
+msgid "Target duration (min)"
+msgstr "Duração pretendida (min)"
+
+#: pages/step1_config.py:137
+msgid "Test Connection"
+msgstr "Testar ligação"
+
+#: pages/step1_config.py:89
+msgid "Testing connection..."
+msgstr "A testar a ligação..."
+
+#: pages/picture_decisions.py:89
+msgid "That didn't save. Try again, or use `pictures` in the CLI."
+msgstr "Não foi possível guardar. Tenta novamente ou usa `pictures` na linha de comandos."
+
+#: pages/step3_options.py:143
+msgid "That file is not an MP3, M4A or WAV"
+msgstr "Esse ficheiro não é MP3, M4A nem WAV"
+
+#: pages/memory.py:123 pages/memory_story.py:96
+msgid "The editor left no thesis for this cut."
+msgstr "A montagem não deixou uma ideia central."
+
+#: pages/memory_brief.py:60
+msgid "The editor may play a Live Photo's motion when it earns it"
+msgstr "A montagem pode usar o movimento de uma Live Photo quando acrescentar algo"
+
+#: pages/_step4_upload.py:74
+msgid "The generated video will be uploaded to your Immich instance and added to the specified album."
+msgstr "O vídeo gerado será enviado para a tua instância Immich e adicionado ao álbum indicado."
+
+#: pages/memory_brief.py:77
+msgid "The household. Private moments a caption names, like a bath, play too."
+msgstr "A casa. Inclui também momentos privados citados por uma descrição, como um banho."
+
+#: pages/memory.py:160
+#, python-brace-format
+msgid "The last cut ended as {status}."
+msgstr "A última montagem terminou com o estado {status}."
+
+#: pages/memory.py:44
+msgid "The last cut failed; the server log has the reason."
+msgstr "A última montagem falhou; o motivo está no registo do servidor."
+
+#: pages/memory.py:46
+msgid "The last cut stopped without a result."
+msgstr "A última montagem parou sem resultado."
+
+#: pages/memory.py:43
+msgid "The last cut was cancelled before it finished."
+msgstr "A última montagem foi cancelada antes de terminar."
+
+#: pages/memory.py:45
+msgid "The last cut was interrupted: the process that ran it is gone."
+msgstr "A última montagem foi interrompida: o processo que a executava já não existe."
+
+#: pages/memory_brief.py:176
+msgid ""
+"The media pool and the excerpt editor have their own page: exclude what may never be cut, and"
+" trim what was."
+msgstr ""
+"Os conteúdos e o editor de excertos têm a sua própria página: exclui o que nunca deve "
+"aparecer e ajusta os excertos escolhidos."
+
+#: pages/step2_review.py:253
+#, python-brace-format
+msgid "The pool{value}"
+msgstr "Os conteúdos{value}"
+
+#: pages/settings_people.py:142
+msgid "The roster"
+msgstr "A lista de pessoas"
+
+#: pages/settings_people.py:158
+#, python-brace-format
+msgid "The scan could not finish: {exc}"
+msgstr "A análise não conseguiu terminar: {exc}"
+
+#: pages/memory_story.py:94
+msgid "The story"
+msgstr "A história"
+
+#: pages/memory_storyboard.py:100
+msgid "The storyboard"
+msgstr "O guião visual"
+
+#: pages/memory_duration.py:69
+msgid "The type decides the length; turn off to set an exact target"
+msgstr "O tipo decide a duração; desativa para definir um objetivo exato"
+
+#: pages/memory.py:172
+msgid "This cut finished while the page was away. Re-load its media to export it."
+msgstr "Esta montagem terminou enquanto estavas ausente. Recarrega os conteúdos para a exportar."
+
+#: pages/step1_cache.py:167
+msgid "Thumbnail cache"
+msgstr "Cache de miniaturas"
+
+#: pages/step2_loading.py:415
+#, python-brace-format
+msgid "Thumbnails: {value}/{count}"
+msgstr "Miniaturas: {value}/{count}"
+
+#: pages/clip_pipeline.py:76
+msgid "Time Elapsed"
+msgstr "Tempo decorrido"
+
+#: pages/_step3_music_preview.py:197 pages/step3_options.py:350
+msgid "Title"
+msgstr "Título"
+
+#: pages/memory_storyboard.py:110
+msgid "Titles and transitions make up the rest of the film."
+msgstr "Os títulos e as transições completam o resto do filme."
+
+#: pages/step1_people.py:32
+msgid "Together"
+msgstr "Juntas"
+
+#: pages/step1_people.py:181
+msgid ""
+"Together keeps only the moments holding everyone named. Any of these people keeps a moment "
+"holding any one of them."
+msgstr ""
+"Juntas mantém apenas momentos com todas as pessoas indicadas. Qualquer uma destas pessoas "
+"mantém momentos com pelo menos uma delas."
+
+#: pages/login.py:64
+msgid "Too many failed attempts. Try again later."
+msgstr "Demasiadas tentativas falhadas. Tenta mais tarde."
+
+#: pages/clip_review.py:361
+msgid "Total Duration"
+msgstr "Duração total"
+
+#: pages/step3_options.py:307
+msgid "Transition Style"
+msgstr "Estilo de transição"
+
+#: pages/clip_review.py:445 pages/step2_review.py:147
+msgid "Trim the video clips"
+msgstr "Aparar os clips de vídeo"
+
+#: pages/memory_brief.py:38
+msgid "Trip"
+msgstr "Viagem"
+
+#: pages/step1_presets.py:394
+#, python-brace-format
+msgid "Trip detection failed: {exc}"
+msgstr "Falha na deteção de viagens: {exc}"
+
+#: pages/_step3_music_preview.py:164
+#, python-brace-format
+msgid "Trip: {title_suggestion_trip_type}"
+msgstr "Viagem: {title_suggestion_trip_type}"
+
+#: pages/login.py:35
+msgid "Turn your photo library into video memories"
+msgstr "Transforma a tua fototeca em memórias em vídeo"
+
+#: pages/picture_decisions.py:138
+msgid "Undo"
+msgstr "Desfazer"
+
+#: pages/step1_tabs.py:117
+msgid "Unit"
+msgstr "Unidade"
+
+#: pages/_step4_upload.py:62
+msgid "Upload after generation"
+msgstr "Enviar após a geração"
+
+#: pages/step3_options.py:365
+msgid "Upload file"
+msgstr "Enviar ficheiro"
+
+#: pages/_step4_upload.py:116
+#, python-brace-format
+msgid "Uploaded to Immich! Album: {upload_album}"
+msgstr "Enviado para o Immich! Álbum: {upload_album}"
+
+#: pages/step3_options.py:147
+#, python-brace-format
+msgid "Uploaded: {name}"
+msgstr "Enviado: {name}"
+
+#: pages/_step4_upload.py:103
+msgid "Uploading to Immich..."
+msgstr "A enviar para o Immich..."
+
+#: pages/step1_people.py:118
+msgid ""
+"Use quoted names, AND, OR and parentheses. AND requires the people in the same photo or "
+"video, not separate pictures from the same event. Changing the people picker replaces this "
+"condition."
+msgstr ""
+"Usa nomes entre aspas, AND, OR e parênteses. AND exige as pessoas na mesma fotografia ou "
+"vídeo, não em imagens separadas do mesmo evento. Alterar a seleção de pessoas substitui esta "
+"condição."
+
+#: pages/settings_people.py:486
+msgid ""
+"Use this for someone who is not face-tagged in Immich. You can connect them to the family "
+"immediately afterwards."
+msgstr "Para alguém sem rosto identificado no Immich. Podes ligá-lo à família logo a seguir."
+
+#: pages/login.py:48
+msgid "Username"
+msgstr "Nome de utilizador"
+
+#: pages/step1_config.py:245
+#, python-brace-format
+msgid "Using {name}'s birthday: {value}"
+msgstr "A usar o aniversário de {name}: {value}"
+
+#: pages/step1_cache.py:144
+msgid "Video cache"
+msgstr "Cache de vídeos"
+
+#: pages/_step4_generate.py:631
+msgid "Video generated successfully!"
+msgstr "Vídeo gerado com sucesso!"
+
+#: pages/memory_brief.py:204
+msgid "What is it about"
+msgstr "Sobre o que é"
+
+#: pages/settings_people.py:134
+msgid ""
+"Who the library thinks is in it, read from counts and month curves alone. Everything the scan"
+" inferred is recomputed each time you rescan; everything you confirm here is yours and is "
+"never overwritten."
+msgstr ""
+"Quem a biblioteca pensa que aparece nela, apenas a partir de contagens e curvas mensais. Cada"
+" análise recalcula as suas deduções; as tuas confirmações nunca são substituídas."
+
+#: pages/memory_brief.py:213
+msgid "Who will watch it"
+msgstr "Quem vai ver"
+
+#: pages/suggestions.py:209
+msgid "Why other suggestions were skipped"
+msgstr "Porque foram ignoradas outras sugestões"
+
+#: pages/step4_export.py:197
+#, python-brace-format
+msgid "Will be saved to: {value}"
+msgstr "Será guardado em: {value}"
+
+#: pages/step1_config.py:261 pages/step1_people.py:250 pages/step1_people.py:312
+#: pages/step1_presets.py:133 pages/step1_presets.py:154 pages/step1_presets.py:203
+#: pages/step1_presets.py:443 pages/step1_tabs.py:67
+msgid "Year"
+msgstr "Ano"
+
+#: pages/memory_brief.py:31
+msgid "Year in Review"
+msgstr "Resumo do ano"
+
+#: pages/step1_tabs.py:80
+msgid "Year type"
+msgstr "Tipo de ano"
+
+#: pages/step1_tabs.py:116
+msgid "Years"
+msgstr "Anos"
+
+#: pages/step1_presets.py:109
+msgid "Years to span"
+msgstr "Número de anos"
+
+#: pages/settings_people.py:475
+msgid "Yes, that is right"
+msgstr "Sim, está correto"
+
+#: pages/login.py:92
+msgid "You will be redirected to your identity provider"
+msgstr "Serás redirecionado para o teu fornecedor de identidade"
+
+#: pages/picture_decisions.py:114
+msgid "Your decision is gone; the app's own holds apply again."
+msgstr "A tua decisão foi removida; voltam a aplicar-se as restrições da aplicação."
+
+#: pages/_step4_generate.py:643
+msgid "Your memory video is ready!"
+msgstr "O teu vídeo de memórias está pronto!"
+
+#: pages/memory_duration.py:22
+msgid "about 10 minutes per year of range, shorter if the media cannot fill it"
+msgstr "cerca de 10 minutos por ano do período, menos se os conteúdos não chegarem"
+
+#: pages/runs.py:87
+msgid "all"
+msgstr "todas"
+
+#: pages/runs.py:91
+msgid "cancelled"
+msgstr "cancelada"
+
+#: pages/runs.py:88
+msgid "completed"
+msgstr "concluída"
+
+#: pages/settings_people.py:433
+msgid "confirmed"
+msgstr "confirmado"
+
+#: pages/settings_people.py:337
+msgid "counts unreliable"
+msgstr "contagens pouco fiáveis"
+
+#: pages/_step3_music_preview.py:214
+msgid "e.g. June – August 2025"
+msgstr "por ex. junho – agosto de 2025"
+
+#: pages/_step3_music_preview.py:199
+msgid "e.g. Summer in Saxony"
+msgstr "por ex. Verão na Saxónia"
+
+#: pages/settings_people.py:352
+msgid "edit in Immich"
+msgstr "editar no Immich"
+
+#: pages/runs.py:89
+msgid "failed"
+msgstr "falhou"
+
+#: pages/runs.py:92
+msgid "interrupted"
+msgstr "interrompida"
+
+#: pages/settings_people.py:527
+msgid "is…"
+msgstr "é…"
+
+#: pages/step1_presets.py:177
+msgid "north"
+msgstr "norte"
+
+#: pages/runs.py:90
+msgid "running"
+msgstr "em curso"
+
+#: pages/step1_presets.py:177
+msgid "south"
+msgstr "sul"
+
+#: pages/memory_duration.py:24
+msgid "the type's default length, shorter if the media cannot fill it"
+msgstr "duração predefinida do tipo, reduzida se os conteúdos não chegarem"
+
+#: pages/runs.py:32
+#, python-brace-format
+msgid "{clips_selected} pictures selected · {total_duration_seconds:.1f}s recorded run time"
+msgstr "{clips_selected} imagens selecionadas · {total_duration_seconds:.1f}s de duração gravada"
+
+#: pages/memory_story.py:109
+#, python-brace-format
+msgid "{count} stories, {carrier_count} pictures"
+msgstr "{count} histórias, {carrier_count} imagens"
+
+#: pages/runs.py:114
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end}"
+msgstr "{date_range_start} a {date_range_end}"
+
+#: pages/suggestions.py:188
+#, python-brace-format
+msgid "{date_range_start} to {date_range_end} · {asset_count} pictures · {value}"
+msgstr "{date_range_start} a {date_range_end} · {asset_count} imagens · {value}"
+
+#: pages/step1_config.py:203
+#, python-brace-format
+msgid "{description} ({days} days)"
+msgstr "{description} ({days} dias)"
+
+#: pages/settings_people.py:160
+#, python-brace-format
+msgid "{found} people in {path}"
+msgstr "{found} pessoas em {path}"
+
+#: pages/cut_progress_view.py:166
+#, python-brace-format
+msgid "{label} {value:,} of {value2:,}"
+msgstr "{label} {value:,} de {value2:,}"
+
+#: pages/settings_people.py:466
+#, python-brace-format
+msgid "{name} and {target_name}: {value}"
+msgstr "{name} e {target_name}: {value}"
+
+#: pages/step4_export.py:103
+#, python-brace-format
+msgid "{photos_count} Photos Available (auto-selected at generation)"
+msgstr "{photos_count} fotografias disponíveis (seleção automática na geração)"
+
+#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#, python-brace-format
+msgid "{seconds:g} s"
+msgstr "{seconds:g} s"
+
+#: pages/settings_config.py:147
+#, python-brace-format
+msgid "{title}  ({n_keys} keys)"
+msgstr "{title} ({n_keys} chaves)"
+
+#: pages/runs.py:45
+#, python-brace-format
+msgid "{value}: {duration_seconds:.1f}s"
+msgstr "{value}: {duration_seconds:.1f}s"
+

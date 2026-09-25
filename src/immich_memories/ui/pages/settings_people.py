@@ -43,6 +43,7 @@ from immich_memories.people.editor import (
 )
 from immich_memories.people.relationships import RELATIONSHIP_CHOICES, relationship_label
 from immich_memories.ui.components import im_badge, im_button, im_info_card, im_section_header
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.media_route import person_thumbnail_url
 from immich_memories.ui.nicegui_compat import io_bound_result
 
@@ -129,16 +130,16 @@ def render_people_page() -> None:
     view = _RosterView()
 
     im_info_card(
-        "Who the library thinks is in it, read from counts and month curves alone. "
-        "Everything the scan inferred is recomputed each time you rescan; everything "
-        "you confirm here is yours and is never overwritten.",
+        tr(
+            "Who the library thinks is in it, read from counts and month curves alone. Everything the scan inferred is recomputed each time you rescan; everything you confirm here is yours and is never overwritten."
+        ),
         variant="info",
     )
 
-    im_section_header("Curation", icon="report_problem")
+    im_section_header(tr("Curation"), icon="report_problem")
     flags_column = ui.column().classes("w-full gap-2")
 
-    im_section_header("The roster", icon="groups")
+    im_section_header(tr("The roster"), icon="groups")
     actions_row = ui.row().classes("w-full items-center gap-3 mb-2")
     roster_column = ui.column().classes("w-full gap-3")
 
@@ -149,22 +150,22 @@ def render_people_page() -> None:
         _draw_roster(roster_column, people, path, view, refresh)
 
     async def rescan() -> None:
-        ui.notify("Reading the library…", type="ongoing")
+        ui.notify(tr("Reading the library…"), type="ongoing")
         try:
             found = await io_bound_result(_scan, path)
         except Exception as exc:  # noqa: BLE001 - an unreachable Immich is a message, not a stack
             logger.warning("The people scan failed: %s", exc)
-            ui.notify(f"The scan could not finish: {exc}", type="negative")
+            ui.notify(tr("The scan could not finish: {exc}", exc=exc), type="negative")
             return
-        ui.notify(f"{found} people in {path}", type="positive")
+        ui.notify(tr("{found} people in {path}", found=found, path=path), type="positive")
         refresh()
 
     # Above the roster: on a fresh install the empty-state card must sit under the button that fixes it.
     with actions_row:
-        im_button("Rescan the library", variant="secondary", on_click=rescan, icon="refresh")
+        im_button(tr("Rescan the library"), variant="secondary", on_click=rescan, icon="refresh")
         add_person_dialog = _add_person_dialog(path, refresh)
         im_button(
-            "Add someone not in Immich",
+            tr("Add someone not in Immich"),
             variant="ghost",
             on_click=add_person_dialog.open,
             icon="person_add",
@@ -208,9 +209,9 @@ def _draw_flags(container: ui.column, flags: list[CurationFlag]) -> None:
     container.clear()
     with container:
         if not flags:
-            ui.label("Nothing to curate — no twins and no split records.").classes("text-sm").style(
-                "color: var(--im-text-secondary)"
-            )
+            ui.label(tr("Nothing to curate — no twins and no split records.")).classes(
+                "text-sm"
+            ).style("color: var(--im-text-secondary)")
             return
         for flag in flags:
             _flag_card(flag)
@@ -229,7 +230,9 @@ def _flag_card(flag: CurationFlag) -> None:
             for name, person_id in zip(flag.names, flag.person_ids, strict=True):
                 url = _person_url(person_id)
                 if url:
-                    ui.link(f"Open {name} in Immich", url, new_tab=True).classes("text-sm")
+                    ui.link(tr("Open {name} in Immich", name=name), url, new_tab=True).classes(
+                        "text-sm"
+                    )
 
 
 def _draw_roster(
@@ -244,8 +247,9 @@ def _draw_roster(
     with container:
         if not people:
             im_info_card(
-                "No people file yet. Rescan the library to build one — it reads every "
-                "named person's count and month curve, and looks at no pixels.",
+                tr(
+                    "No people file yet. Rescan the library to build one — it reads every named person's count and month curve, and looks at no pixels."
+                ),
                 variant="warning",
             )
             return
@@ -256,7 +260,7 @@ def _draw_roster(
             view.page = 0
             refresh()
 
-        ui.input(label="Find a name", value=view.query, on_change=on_query).props(
+        ui.input(label=tr("Find a name"), value=view.query, on_change=on_query).props(
             "dense outlined clearable debounce=400"
         ).classes("w-64 roster-filter")
         _pager(filtered_roster(people, view.query), view, label, refresh)
@@ -275,10 +279,10 @@ def _pager(people: list[PersonView], view: _RosterView, label: str, refresh: Ref
     with ui.row().classes("w-full items-center gap-2 roster-pager"):
         ui.label(label).classes("text-sm").style("color: var(--im-text-secondary)")
         ui.element("div").classes("flex-grow")
-        previous = ui.button("Previous", icon="chevron_left", on_click=lambda: turn(-1)).props(
+        previous = ui.button(tr("Previous"), icon="chevron_left", on_click=lambda: turn(-1)).props(
             "flat dense no-caps size=sm"
         )
-        following = ui.button("Next", icon="chevron_right", on_click=lambda: turn(1)).props(
+        following = ui.button(tr("Next"), icon="chevron_right", on_click=lambda: turn(1)).props(
             "flat dense no-caps size=sm"
         )
         if view.page == 0:
@@ -330,7 +334,7 @@ def _headline(person: PersonView) -> None:
         if person.tier:
             im_badge(person.tier, variant=_TIER_VARIANT.get(person.tier, "info"))
         if not person.counts_reliable:
-            im_badge("counts unreliable", variant="warning", icon="warning")
+            im_badge(tr("counts unreliable"), variant="warning", icon="warning")
 
 
 def _facts(person: PersonView) -> None:
@@ -345,7 +349,7 @@ def _facts(person: PersonView) -> None:
         ui.label(born).classes("text-sm").style("color: var(--im-text-secondary)")
         url = _person_url(person.person_id)
         if url:
-            ui.link("edit in Immich", url, new_tab=True).classes("text-sm")
+            ui.link(tr("edit in Immich"), url, new_tab=True).classes("text-sm")
 
 
 def _role_options(role: str | None) -> list[str]:
@@ -371,7 +375,7 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
         ui.select(
             options=_role_options(person.role),
             value=person.role,
-            label="Role (suggestions; type your own)",
+            label=tr("Role (suggestions; type your own)"),
             with_input=True,
             new_value_mode="add-unique",
             clearable=True,
@@ -382,7 +386,7 @@ def _confirm_controls(person: PersonView, path: Path) -> None:
             settle(path, person, notes=event.value)
 
         ui.input(
-            label="Notes",
+            label=tr("Notes"),
             value=person.notes or "",
             on_change=on_notes,
         ).props("dense outlined debounce=800").classes("flex-grow")
@@ -393,16 +397,18 @@ def _links_section(
 ) -> None:
     ui.separator().classes("my-2")
     with ui.row().classes("w-full items-center gap-2"):
-        ui.label("Relationships").classes("text-sm font-medium").style(
+        ui.label(tr("Relationships")).classes("text-sm font-medium").style(
             "color: var(--im-text-secondary)"
         )
         ui.element("div").classes("flex-grow")
         dialog = _relationship_dialog(person, people, path, refresh)
-        ui.button("Add relationship", icon="add", on_click=dialog.open).props(
+        ui.button(tr("Add relationship"), icon="add", on_click=dialog.open).props(
             "flat dense no-caps size=sm"
         ).style("color: var(--im-primary)")
     if not person.links:
-        ui.label("Nothing recorded yet.").classes("text-xs").style("color: var(--im-text-muted)")
+        ui.label(tr("Nothing recorded yet.")).classes("text-xs").style(
+            "color: var(--im-text-muted)"
+        )
         return
     for link in person.links:
         _link_row(person, link, path, refresh)
@@ -424,16 +430,16 @@ def _link_row(person: PersonView, link: LinkView, path: Path, refresh: Refresh) 
         ui.label(_why(link)).classes("text-xs").style("color: var(--im-text-muted)")
         ui.element("div").classes("flex-grow")
         if not link.inferred:
-            im_badge("confirmed", variant="success")
+            im_badge(tr("confirmed"), variant="success")
 
             def remove() -> None:
                 remove_relationship(path, person.person_id, link.kind, link.target_id)
-                ui.notify("Relationship removed", type="positive")
+                ui.notify(tr("Relationship removed"), type="positive")
                 refresh()
 
             ui.button(icon="delete_outline", on_click=remove).props(
                 "flat dense round size=sm"
-            ).style("color: var(--im-text-muted)").tooltip("Remove this relationship")
+            ).style("color: var(--im-text-muted)").tooltip(tr("Remove this relationship"))
             return
         answered = ui.row().classes("items-center")
 
@@ -455,24 +461,32 @@ def _link_row(person: PersonView, link: LinkView, path: Path, refresh: Refresh) 
             link.decision = None if link.decision == answer else answer
             save_person(path, person)
             draw_answer()
-            ui.notify(f"{person.name} and {link.target_name}: {link.decision or 'undecided'}")
+            ui.notify(
+                tr(
+                    "{name} and {target_name}: {value}",
+                    name=person.name,
+                    target_name=link.target_name,
+                    value=link.decision or "undecided",
+                )
+            )
 
         ui.button(icon="check", on_click=lambda: decide(CONFIRMED)).props(
             "flat dense round size=sm color=positive"
-        ).tooltip("Yes, that is right")
+        ).tooltip(tr("Yes, that is right"))
         ui.button(icon="close", on_click=lambda: decide(REJECTED)).props(
             "flat dense round size=sm color=negative"
-        ).tooltip("No, they are not")
+        ).tooltip(tr("No, they are not"))
 
 
 def _add_person_dialog(path: Path, refresh: Refresh) -> ui.dialog:
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md p-5 gap-4"):
-        ui.label("Add someone").classes("text-lg font-semibold").style("color: var(--im-text)")
+        ui.label(tr("Add someone")).classes("text-lg font-semibold").style("color: var(--im-text)")
         ui.label(
-            "Use this for someone who is not face-tagged in Immich. You can connect them "
-            "to the family immediately afterwards."
+            tr(
+                "Use this for someone who is not face-tagged in Immich. You can connect them to the family immediately afterwards."
+            )
         ).classes("text-sm").style("color: var(--im-text-secondary)")
-        name = ui.input(label="Full name").props("outlined autofocus").classes("w-full")
+        name = ui.input(label=tr("Full name")).props("outlined autofocus").classes("w-full")
 
         def create() -> None:
             try:
@@ -481,13 +495,13 @@ def _add_person_dialog(path: Path, refresh: Refresh) -> ui.dialog:
                 ui.notify(str(exc), type="negative")
                 return
             dialog.close()
-            ui.notify(f"Added {name.value}", type="positive")
+            ui.notify(tr("Added {value}", value=name.value), type="positive")
             name.value = ""
             refresh()
 
         with ui.row().classes("w-full justify-end gap-2"):
-            im_button("Cancel", variant="ghost", on_click=dialog.close)
-            im_button("Add person", on_click=create)
+            im_button(tr("Cancel"), variant="ghost", on_click=dialog.close)
+            im_button(tr("Add person"), on_click=create)
     return dialog
 
 
@@ -499,31 +513,35 @@ def _relationship_dialog(
         other.person_id: other.name for other in people if other.person_id != person.person_id
     }
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg p-5 gap-4"):
-        ui.label("Add a relationship").classes("text-lg font-semibold").style(
+        ui.label(tr("Add a relationship")).classes("text-lg font-semibold").style(
             "color: var(--im-text)"
         )
         ui.label(
-            "One answer updates both people. Confirmed relationships are never replaced by a scan."
+            tr(
+                "One answer updates both people. Confirmed relationships are never replaced by a scan."
+            )
         ).classes("text-sm").style("color: var(--im-text-secondary)")
         with ui.column().classes("w-full gap-2"):
             ui.label(person.name).classes("font-medium").style("color: var(--im-text)")
-            kind = ui.select(kinds, label="is…").props("outlined options-dense").classes("w-full")
+            kind = (
+                ui.select(kinds, label=tr("is…")).props("outlined options-dense").classes("w-full")
+            )
             target = (
-                ui.select(targets, label="Person", with_input=True)
+                ui.select(targets, label=tr("Person"), with_input=True)
                 .props("outlined options-dense use-input input-debounce=0")
                 .classes("w-full")
             )
 
         def save() -> None:
             if not kind.value or not target.value:
-                ui.notify("Choose a relationship and a person", type="warning")
+                ui.notify(tr("Choose a relationship and a person"), type="warning")
                 return
             add_relationship(path, person.person_id, str(kind.value), str(target.value))
             dialog.close()
-            ui.notify("Relationship confirmed", type="positive")
+            ui.notify(tr("Relationship confirmed"), type="positive")
             refresh()
 
         with ui.row().classes("w-full justify-end gap-2"):
-            im_button("Cancel", variant="ghost", on_click=dialog.close)
-            im_button("Confirm relationship", on_click=save)
+            im_button(tr("Cancel"), variant="ghost", on_click=dialog.close)
+            im_button(tr("Confirm relationship"), on_click=save)
     return dialog

@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.step2_helpers import format_duration
 
 
@@ -67,9 +68,9 @@ def film_length_stat(state: Any, selected_clips: list) -> tuple[str, str]:
         for start, end in (state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5)),)
     )
     if state.timeline_plan is None or state.config is None:
-        return "Pictures & video", format_duration(content)
+        return tr("Pictures & video"), format_duration(content)
     if state.editorial_render_timing is not None:
-        return "Film length", f"≈{format_duration(_bound_film_length(state, selected_clips))}"
+        return tr("Film length"), f"≈{format_duration(_bound_film_length(state, selected_clips))}"
     estimate = estimate_film_duration(
         state.timeline_plan,
         content_seconds=content,
@@ -79,10 +80,10 @@ def film_length_stat(state: Any, selected_clips: list) -> tuple[str, str]:
         ),
         transition_duration=state.config.defaults.transition_duration,
     )
-    return "Film length", f"≈{format_duration(estimate)}"
+    return tr("Film length"), f"≈{format_duration(estimate)}"
 
 
 def measured_film_label(state: Any) -> str | None:
     """The finished file's own length, ffprobed by the run tracker; None before there is one."""
     seconds = state.output_duration_seconds
-    return f"Length: {format_duration(seconds)}" if seconds > 0 else None
+    return tr("Length: {duration}", duration=format_duration(seconds)) if seconds > 0 else None

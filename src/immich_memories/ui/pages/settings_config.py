@@ -10,6 +10,7 @@ from nicegui import ui
 
 from immich_memories.config import get_config, get_config_path
 from immich_memories.ui.components import im_button, im_info_card, im_section_header
+from immich_memories.ui.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +117,16 @@ def render_config_viewer() -> None:
     redacted = redact_config(config.model_dump())
 
     im_info_card(
-        "Active config from ~/.immich-memories/config.yaml with env overrides. "
-        "API keys are redacted."
+        (
+            tr(
+                "Active config from ~/.immich-memories/config.yaml with env overrides. API keys are redacted."
+            )
+        )
         + (
-            f" Preset '{config.preset}' is active and fills the knobs you have not set."
+            tr(
+                " Preset '{preset}' is active and fills the knobs you have not set.",
+                preset=config.preset,
+            )
             if config.preset
             else ""
         ),
@@ -137,7 +144,7 @@ def render_config_viewer() -> None:
 
         with (
             ui.expansion(
-                f"{title}  ({n_keys} keys)",
+                tr("{title}  ({n_keys} keys)", title=title, n_keys=n_keys),
                 icon=icon,
                 value=section_name in {"immich", "analysis", "output", "defaults"},
             )
@@ -152,20 +159,22 @@ def render_config_viewer() -> None:
 
 def render_config_page() -> None:
     """Render the full config settings page."""
-    im_section_header("Active Configuration", icon="description")
+    im_section_header(tr("Active Configuration"), icon="description")
     render_config_viewer()
 
-    im_section_header("Actions", icon="build")
+    im_section_header(tr("Actions"), icon="build")
     with ui.row().classes("gap-3"):
 
         def reload_config():
             get_config(reload=True)
-            ui.notify("Configuration reloaded from disk", type="positive")
+            ui.notify(tr("Configuration reloaded from disk"), type="positive")
             ui.navigate.reload()
 
-        im_button("Reload from Disk", variant="secondary", on_click=reload_config, icon="refresh")
+        im_button(
+            tr("Reload from Disk"), variant="secondary", on_click=reload_config, icon="refresh"
+        )
 
         config_path = get_config_path()
-        ui.label(f"Config file: {config_path}").classes("text-sm self-center").style(
-            "color: var(--im-text-secondary)"
-        )
+        ui.label(tr("Config file: {config_path}", config_path=config_path)).classes(
+            "text-sm self-center"
+        ).style("color: var(--im-text-secondary)")

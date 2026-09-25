@@ -8,6 +8,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def _render_cache_row(
             ui.icon(icon).style("color: var(--im-text-secondary)")
             ui.label(label).classes("font-medium")
         ui.label(stat_text).classes("text-sm").style("color: var(--im-text-secondary)")
-        ui.button("Clear", on_click=on_clear, icon="delete_outline").props(
+        ui.button(tr("Clear"), on_click=on_clear, icon="delete_outline").props(
             "flat size=sm color=negative"
         )
 
@@ -72,7 +73,7 @@ def render_cache_management() -> None:
     """Render cache management section with stats and clear buttons."""
     ui.separator().classes("my-6")
 
-    with ui.expansion("Cache Management", icon="storage").classes("w-full").props("dense"):
+    with ui.expansion(tr("Cache Management"), icon="storage").classes("w-full").props("dense"):
         stats_container = ui.column().classes("w-full gap-0")
 
         async def refresh_stats() -> None:
@@ -117,10 +118,10 @@ def render_cache_management() -> None:
                     count = await io_bound_result(
                         VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all
                     )
-                    ui.notify(f"Cleared {count} analysis entries", type="positive")
+                    ui.notify(tr("Cleared {count} analysis entries", count=count), type="positive")
                     await refresh_stats()
 
-                _render_cache_row("Analysis cache", "analytics", a_text, clear_analysis)
+                _render_cache_row(tr("Analysis cache"), "analytics", a_text, clear_analysis)
 
                 # Video download cache
                 v = all_stats["video"]
@@ -137,10 +138,10 @@ def render_cache_management() -> None:
                     count = await io_bound_result(
                         VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear
                     )
-                    ui.notify(f"Cleared {count} cached videos", type="positive")
+                    ui.notify(tr("Cleared {count} cached videos", count=count), type="positive")
                     await refresh_stats()
 
-                _render_cache_row("Video cache", "movie", v_text, clear_video)
+                _render_cache_row(tr("Video cache"), "movie", v_text, clear_video)
 
                 # Thumbnail cache
                 t = all_stats["thumbnail"]
@@ -160,10 +161,10 @@ def render_cache_management() -> None:
                             max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
                         ).clear
                     )
-                    ui.notify(f"Cleared {count} cached thumbnails", type="positive")
+                    ui.notify(tr("Cleared {count} cached thumbnails", count=count), type="positive")
                     await refresh_stats()
 
-                _render_cache_row("Thumbnail cache", "image", t_text, clear_thumbnail)
+                _render_cache_row(tr("Thumbnail cache"), "image", t_text, clear_thumbnail)
 
                 # Preview cache
                 p = all_stats["preview"]
@@ -171,10 +172,10 @@ def render_cache_management() -> None:
 
                 async def clear_preview():
                     count = await io_bound_result(_clear_preview_cache)
-                    ui.notify(f"Cleared {count} preview files", type="positive")
+                    ui.notify(tr("Cleared {count} preview files", count=count), type="positive")
                     await refresh_stats()
 
-                _render_cache_row("Preview cache", "play_circle", p_text, clear_preview)
+                _render_cache_row(tr("Preview cache"), "play_circle", p_text, clear_preview)
 
                 # Clear all button
                 ui.separator().classes("my-2")
@@ -200,13 +201,15 @@ def render_cache_management() -> None:
                         return a + v + t + p
 
                     total = await io_bound_result(_do_clear_all)
-                    ui.notify(f"Cleared all caches ({total} items)", type="positive")
+                    ui.notify(
+                        tr("Cleared all caches ({total} items)", total=total), type="positive"
+                    )
                     await refresh_stats()
 
                 with ui.row().classes("w-full justify-end"):
-                    ui.button("Clear all caches", on_click=clear_all, icon="delete_sweep").props(
-                        "outline color=negative"
-                    )
+                    ui.button(
+                        tr("Clear all caches"), on_click=clear_all, icon="delete_sweep"
+                    ).props("outline color=negative")
 
         # Load stats when expansion is opened
         ui.timer(0.1, refresh_stats, once=True)

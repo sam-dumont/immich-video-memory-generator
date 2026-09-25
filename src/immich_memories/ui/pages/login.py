@@ -13,6 +13,7 @@ from immich_memories.ui.auth import (
     set_session,
     verify_credentials,
 )
+from immich_memories.ui.i18n import render_language_selector, tr
 from immich_memories.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def render_login_page(auth_config: AuthConfig) -> None:
                 ui.label("Immich Memories").classes("text-2xl font-bold").style(
                     "color: var(--im-text)"
                 )
-            ui.label("Turn your photo library into video memories").classes("text-sm").style(
+            ui.label(tr("Turn your photo library into video memories")).classes("text-sm").style(
                 "color: var(--im-text-muted)"
             )
 
@@ -40,12 +41,13 @@ def render_login_page(auth_config: AuthConfig) -> None:
                 _render_basic_form(auth_config)
             elif auth_config.provider == "oidc":
                 _render_oidc_form(auth_config)
+            render_language_selector()
 
 
 def _render_basic_form(auth_config: AuthConfig) -> None:
-    username_input = ui.input("Username").classes("w-full").props("outlined dense")
+    username_input = ui.input(tr("Username")).classes("w-full").props("outlined dense")
     password_input = (
-        ui.input("Password", password=True, password_toggle_button=True)
+        ui.input(tr("Password"), password=True, password_toggle_button=True)
         .classes("w-full")
         .props("outlined dense")
     )
@@ -59,7 +61,7 @@ def _render_basic_form(auth_config: AuthConfig) -> None:
 
         if is_rate_limited(client_ip):
             error_label.style("display: block")
-            error_label.set_text("Too many failed attempts. Try again later.")
+            error_label.set_text(tr("Too many failed attempts. Try again later."))
             return
 
         user = username_input.value.strip()
@@ -72,10 +74,10 @@ def _render_basic_form(auth_config: AuthConfig) -> None:
         else:
             record_failed_login(client_ip)
             error_label.style("display: block")
-            error_label.set_text("Invalid username or password")
+            error_label.set_text(tr("Invalid username or password"))
 
     password_input.on("keydown.enter", attempt_login)
-    ui.button("Sign in", on_click=attempt_login).classes("w-full mt-2").props(
+    ui.button(tr("Sign in"), on_click=attempt_login).classes("w-full mt-2").props(
         "color=primary no-caps"
     )
 
@@ -87,6 +89,6 @@ def _render_oidc_form(auth_config: AuthConfig) -> None:
     ui.button(auth_config.button_text, on_click=start_oidc).classes("w-full").props(
         "color=primary no-caps"
     ).style("font-weight: 500")
-    ui.label("You will be redirected to your identity provider").classes(
+    ui.label(tr("You will be redirected to your identity provider")).classes(
         "text-xs text-center mt-2"
     ).style("color: var(--im-text-muted)")

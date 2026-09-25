@@ -7,6 +7,7 @@ from pathlib import Path
 from nicegui import ui
 
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.paging import render_paged
 from immich_memories.ui.pages.step2_helpers import (
@@ -160,11 +161,11 @@ def _render_quick_range_buttons(
     mid = duration / 2
     with ui.row().classes("gap-2 mt-2"):
         ui.button(
-            "Preview",
+            tr("Preview"),
             on_click=_make_play_handler(video_id, clip.asset.id, start, end, state),
         ).props("outline size=sm color=primary").classes("font-semibold")
         ui.button(
-            "First 5s",
+            tr("First 5s"),
             on_click=_make_quick_btn_handler(
                 clip.asset.id,
                 0.0,
@@ -176,7 +177,7 @@ def _render_quick_range_buttons(
             ),
         ).props("outline size=sm")
         ui.button(
-            "Last 5s",
+            tr("Last 5s"),
             on_click=_make_quick_btn_handler(
                 clip.asset.id,
                 max(0, duration - 5.0),
@@ -188,7 +189,7 @@ def _render_quick_range_buttons(
             ),
         ).props("outline size=sm")
         ui.button(
-            "Middle 5s",
+            tr("Middle 5s"),
             on_click=_make_quick_btn_handler(
                 clip.asset.id,
                 max(0, mid - 2.5),
@@ -200,7 +201,7 @@ def _render_quick_range_buttons(
             ),
         ).props("outline size=sm")
         ui.button(
-            "Full clip",
+            tr("Full clip"),
             on_click=_make_quick_btn_handler(
                 clip.asset.id, 0.0, duration, video_id, range_slider, state, update_summary
             ),
@@ -235,7 +236,7 @@ def _render_clip_controls(
     )
 
     with ui.column().classes("flex-1"):
-        ui.label("Select range").classes("text-sm").style("color: var(--im-text-secondary)")
+        ui.label(tr("Select range")).classes("text-sm").style("color: var(--im-text-secondary)")
         range_slider = ui.range(
             min=0, max=duration, step=0.1, value={"min": start, "max": end}
         ).classes("w-full")
@@ -247,7 +248,7 @@ def _render_clip_controls(
 
         rotation_select = ui.select(
             options=list(rotation_options.keys()),
-            label="Rotation",
+            label=tr("Rotation"),
             value=current_opt,
         ).classes("w-32")
         rotation_select.on_value_change(
@@ -304,7 +305,7 @@ def _render_review_clip_row(
 
             _wire_preview_to_row(row, clip, video_container, video_id, open_now=idx == 0)
 
-            keep_checkbox = ui.checkbox("Include in compilation", value=True)
+            keep_checkbox = ui.checkbox(tr("Include in compilation"), value=True)
             keep_checkbox.on_value_change(
                 _make_toggle_handler(clip.asset.id, state, update_summary)
             )
@@ -350,18 +351,22 @@ def _render_summary_metrics(
     diff = total_selected - target_duration
     with summary_container:
         with ui.column().classes("items-center"):
-            ui.label("Selected Clips").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(tr("Selected Clips")).classes("text-sm").style(
+                "color: var(--im-text-secondary)"
+            )
             ui.label(
                 str(len([c for c in selected_clips if c.asset.id in state.selected_clip_ids]))
             ).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Total Duration").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(tr("Total Duration")).classes("text-sm").style(
+                "color: var(--im-text-secondary)"
+            )
             ui.label(format_duration(total_selected)).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Target").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(tr("Target")).classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(format_duration(target_duration)).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Difference").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(tr("Difference")).classes("text-sm").style("color: var(--im-text-secondary)")
             diff_str = f"{'+' if diff > 0 else ''}{format_duration(abs(diff))}"
             ui.label(diff_str).classes("text-xl font-bold")
 
@@ -383,10 +388,10 @@ def _render_bulk_actions(selected_clips, state, update_summary) -> None:
                 state.clip_segments[clip.asset.id] = (max(0, mid - 2.5), min(duration, mid + 2.5))
             update_summary()
 
-        ui.button("Set all to first 5s", on_click=set_all_first_5s).props("outline")
-        ui.button("Set all to middle 5s", on_click=set_all_middle_5s).props("outline")
+        ui.button(tr("Set all to first 5s"), on_click=set_all_first_5s).props("outline")
+        ui.button(tr("Set all to middle 5s"), on_click=set_all_middle_5s).props("outline")
 
-        custom_sec_input = ui.number("Custom seconds", value=5, min=1, max=30).classes("w-24")
+        custom_sec_input = ui.number(tr("Custom seconds"), value=5, min=1, max=30).classes("w-24")
 
         def set_all_custom():
             custom_sec = float(custom_sec_input.value)
@@ -395,7 +400,7 @@ def _render_bulk_actions(selected_clips, state, update_summary) -> None:
                 state.clip_segments[clip.asset.id] = (0.0, min(custom_sec, duration))
             update_summary()
 
-        ui.button("Apply", on_click=set_all_custom).props("outline")
+        ui.button(tr("Apply"), on_click=set_all_custom).props("outline")
 
 
 def _render_review_nav(state) -> None:
@@ -418,14 +423,14 @@ def _render_review_nav(state) -> None:
                 state.step = 3
                 ui.navigate.to("/step3")
             else:
-                ui.notify("Please select at least one clip", type="warning")
+                ui.notify(tr("Please select at least one clip"), type="warning")
 
-        ui.button("Back to the media pool", on_click=go_back_selection, icon="arrow_back").props(
-            "outline"
-        )
-        ui.button("Reload the pool", on_click=reload_pool, icon="refresh").props("outline")
         ui.button(
-            "Next: Generation Options",
+            tr("Back to the media pool"), on_click=go_back_selection, icon="arrow_back"
+        ).props("outline")
+        ui.button(tr("Reload the pool"), on_click=reload_pool, icon="refresh").props("outline")
+        ui.button(
+            tr("Next: Generation Options"),
             on_click=continue_to_generation,
             icon="arrow_forward",
         ).props("color=primary")
@@ -437,16 +442,16 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
 
     from immich_memories.ui.pages.step2_helpers import review_candidates
 
-    ui.label("Trim the video clips").classes("text-xl font-semibold")
-    ui.label("Pick the seconds each video shows and preview it. Stills need no trimming.").classes(
-        "text-sm mb-4"
-    ).style("color: var(--im-text-secondary)")
+    ui.label(tr("Trim the video clips")).classes("text-xl font-semibold")
+    ui.label(
+        tr("Pick the seconds each video shows and preview it. Stills need no trimming.")
+    ).classes("text-sm mb-4").style("color: var(--im-text-secondary)")
 
     selected_clips = review_candidates([c for c in clips if c.asset.id in state.selected_clip_ids])
 
     if not selected_clips:
         with ui.card().classes("w-full p-4").style("background: var(--im-warning-bg)"):
-            ui.label("No video clips in the cut; there is nothing to trim.").style(
+            ui.label(tr("No video clips in the cut; there is nothing to trim.")).style(
                 "color: var(--im-warning-text)"
             )
 
@@ -454,7 +459,7 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
             state.review_selected_mode = False
             ui.navigate.to("/step2")
 
-        ui.button("Back to the media pool", on_click=go_back, icon="arrow_back")
+        ui.button(tr("Back to the media pool"), on_click=go_back, icon="arrow_back")
         return
 
     for clip in selected_clips:
@@ -495,6 +500,8 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
     ui.separator()
 
     final_duration = calc_total_duration()
-    ui.label(f"Final Duration: {format_duration(final_duration)}").classes("text-lg font-semibold")
+    ui.label(tr("Final Duration: {value}", value=format_duration(final_duration))).classes(
+        "text-lg font-semibold"
+    )
 
     _render_review_nav(state)

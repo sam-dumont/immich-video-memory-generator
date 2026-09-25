@@ -13,19 +13,19 @@ from nicegui import ui
 from immich_memories.operations import picture_holds
 from immich_memories.operations.picture_holds import PictureHold
 from immich_memories.ui.components import im_button
+from immich_memories.ui.i18n import N_, tr, tr_options
 from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
 logger = logging.getLogger(__name__)
 
-_CLEAR_WARNING = (
-    "Once cleared, every film up to that level may use it. Nothing the app reads later puts "
-    "the hold back; Undo does."
+_CLEAR_WARNING = N_(
+    "Once cleared, every film up to that level may use it. Nothing the app reads later puts the hold back; Undo does."
 )
 # The widest film a cleared picture may play in, as the dialog offers it.
 CLEAR_LEVELS = {
-    "just-us": "Just us: only films for the household",
-    "family": "Family: family films too",
-    "anyone": "Anyone: shareable films too",
+    "just-us": N_("Just us: only films for the household"),
+    "family": N_("Family: family films too"),
+    "anyone": N_("Anyone: shareable films too"),
 }
 
 
@@ -85,7 +85,9 @@ class _DecisionView:
             action(_config(), self._asset_id, clip_id=self._clip_id)
         except Exception:  # WHY: a store that refuses the write must say so, not vanish
             logger.warning("could not record the decision on %s", self._asset_id, exc_info=True)
-            ui.notify("That didn't save. Try again, or use `pictures` in the CLI.", type="negative")
+            ui.notify(
+                tr("That didn't save. Try again, or use `pictures` in the CLI."), type="negative"
+            )
             return False
         fresh = read_holds([self._asset_id], {self._asset_id: self._clip_id})
         self._hold = fresh.get(self._asset_id, self._hold)
@@ -96,19 +98,21 @@ class _DecisionView:
     def _clear(self, level: str) -> None:
         self._act(
             partial(picture_holds.clear_hold, via="web", level=level),
-            "Hold cleared. The next cut may use it.",
+            tr("Hold cleared. The next cut may use it."),
         )
 
     def _never(self) -> None:
         saved = self._act(
             partial(picture_holds.never_use, via="web"),
-            "It won't be in any film from the next cut on.",
+            tr("It won't be in any film from the next cut on."),
         )
         if saved and self._on_never is not None:
             self._on_never()
 
     def _undo(self) -> None:
-        self._act(picture_holds.forget, "Your decision is gone; the app's own holds apply again.")
+        self._act(
+            picture_holds.forget, tr("Your decision is gone; the app's own holds apply again.")
+        )
 
     def draw(self) -> None:
         self._holder.clear()
@@ -126,12 +130,12 @@ class _DecisionView:
     def _buttons(self, current: PictureHold) -> None:
         if current.can_clear:
             _button(
-                "Clear hold", "lock_open", self._compact, lambda: _confirm(current, self._clear)
+                tr("Clear hold"), "lock_open", self._compact, lambda: _confirm(current, self._clear)
             )
         if current.decision != picture_holds.NEVER_USE:
-            _button("Never use", "block", self._compact, self._never)
+            _button(tr("Never use"), "block", self._compact, self._never)
         if current.decision is not None:
-            _button("Undo", "undo", self._compact, self._undo)
+            _button(tr("Undo"), "undo", self._compact, self._undo)
 
 
 def _button(text: str, icon: str, compact: bool, on_click) -> None:
@@ -149,7 +153,7 @@ def _button(text: str, icon: str, compact: bool, on_click) -> None:
 def _confirm(hold: PictureHold, clear) -> None:
     """Ask before clearing: the owner looks at the picture, the app never clears one itself."""
     with ui.dialog() as dialog, ui.card().classes("clear-hold-dialog"):
-        ui.label("Clear this picture's hold?").classes("text-lg font-semibold")
+        ui.label(tr("Clear this picture's hold?")).classes("text-lg font-semibold")
         render_thumbnail(
             hold.asset_id,
             classes="rounded-lg",
@@ -158,18 +162,22 @@ def _confirm(hold: PictureHold, clear) -> None:
         )
         ui.label(hold.describe()).classes("text-sm")
         if hold.detector:
-            ui.label("Open it in Immich first if you haven't looked at it yourself.").classes(
+            ui.label(tr("Open it in Immich first if you haven't looked at it yourself.")).classes(
                 "text-sm"
             )
-        ui.label("Fine for").classes("text-sm font-semibold mt-1")
-        level = ui.radio(CLEAR_LEVELS, value="family").props("dense").classes("clear-hold-level")
-        ui.label(_CLEAR_WARNING).classes("text-xs").style("color: var(--im-text-secondary)")
+        ui.label(tr("Fine for")).classes("text-sm font-semibold mt-1")
+        level = (
+            ui.radio(tr_options(CLEAR_LEVELS), value="family")
+            .props("dense")
+            .classes("clear-hold-level")
+        )
+        ui.label(tr(_CLEAR_WARNING)).classes("text-xs").style("color: var(--im-text-secondary)")
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
-            im_button("Cancel", variant="ghost", on_click=dialog.close)
+            im_button(tr("Cancel"), variant="ghost", on_click=dialog.close)
 
             def confirmed() -> None:
                 dialog.close()
                 clear(level.value)
 
-            im_button("Clear hold", variant="primary", on_click=confirmed)
+            im_button(tr("Clear hold"), variant="primary", on_click=confirmed)
     dialog.open()

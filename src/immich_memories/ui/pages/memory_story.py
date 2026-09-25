@@ -7,6 +7,7 @@ from datetime import datetime
 from nicegui import ui
 
 from immich_memories.ui.components import im_badge, im_card, im_section_header
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.memory_story_data import CarrierView, StoryEntry, StoryView
 from immich_memories.ui.pages.step2_helpers import render_thumbnail
 
@@ -33,7 +34,7 @@ def _render_carrier(carrier: CarrierView) -> None:
         with ui.column().classes("gap-1 flex-1"):
             with ui.row().classes("items-center gap-2 flex-wrap"):
                 im_badge(carrier.render_label, variant="analysis" if carrier.motion else "info")
-                ui.label(f"{carrier.seconds:g} s").classes("text-xs").style(
+                ui.label(tr("{seconds:g} s", seconds=carrier.seconds)).classes("text-xs").style(
                     "color: var(--im-text-secondary)"
                 )
                 ui.label(_when(carrier.taken)).classes("text-xs").style(
@@ -54,10 +55,10 @@ def _render_details(story: StoryEntry) -> None:
     standings = [carrier for carrier in story.carriers if carrier.standing]
     if not story.weight and not standings:
         return
-    with ui.expansion("Details").classes("w-full mt-2 text-xs"):
+    with ui.expansion(tr("Details")).classes("w-full mt-2 text-xs"):
         if story.weight:
             _labelled_badge(
-                "Story weight", story.weight, _WEIGHT_VARIANT.get(story.weight, "warning")
+                tr("Story weight"), story.weight, _WEIGHT_VARIANT.get(story.weight, "warning")
             )
         for carrier in standings:
             _labelled_badge(
@@ -90,11 +91,11 @@ def _render_story(story: StoryEntry) -> None:
 
 def render_story(view: StoryView, warning: str | None = None, *, show_thesis: bool = True) -> None:
     """The weighed story: one duration line, then every story with its carriers."""
-    im_section_header("The story", icon="auto_stories")
+    im_section_header(tr("The story"), icon="auto_stories")
     if show_thesis:
-        ui.label(view.thesis or "The editor left no thesis for this cut.").classes("text-lg").style(
-            "color: var(--im-text)"
-        )
+        ui.label(view.thesis or tr("The editor left no thesis for this cut.")).classes(
+            "text-lg"
+        ).style("color: var(--im-text)")
     if view.preparation:
         ui.label(view.preparation).classes("text-sm mt-1").style("color: var(--im-text-secondary)")
     if view.duration is not None:
@@ -103,6 +104,13 @@ def render_story(view: StoryView, warning: str | None = None, *, show_thesis: bo
         )
     if warning:
         ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
-    im_section_header(f"{len(view.stories)} stories, {view.carrier_count} pictures", icon="movie")
+    im_section_header(
+        tr(
+            "{count} stories, {carrier_count} pictures",
+            count=len(view.stories),
+            carrier_count=view.carrier_count,
+        ),
+        icon="movie",
+    )
     for story in view.stories:
         _render_story(story)

@@ -19,6 +19,7 @@ from immich_memories.ui.components import (
     im_section_header,
     im_separator,
 )
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.pages.clip_grid import (
     GridItem,
     _render_clip_grid,
@@ -74,11 +75,13 @@ def _render_step2_header(state) -> bool:
     """Session guard, cache init and clip loading. Returns True when the caller must stop."""
     if not state.scope_is_selected or not state.immich_url:
         im_info_card(
-            "Session expired — please reconfigure. The server restarted and lost your settings.",
+            tr(
+                "Session expired — please reconfigure. The server restarted and lost your settings."
+            ),
             variant="warning",
         )
         im_button(
-            "Back to the brief",
+            tr("Back to the brief"),
             variant="secondary",
             on_click=lambda: ui.navigate.to("/"),
             icon="arrow_back",
@@ -92,13 +95,13 @@ def _render_step2_header(state) -> bool:
         return True
 
     if not state.clips:
-        im_info_card("No videos found for the selected criteria.", variant="warning")
+        im_info_card(tr("No videos found for the selected criteria."), variant="warning")
 
         def go_back():
             state.step = 1
             ui.navigate.to("/")
 
-        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button(tr("Back to the brief"), variant="secondary", on_click=go_back, icon="arrow_back")
         return True
 
     # A running cut lives on the Memory page, whatever page armed it.
@@ -138,14 +141,17 @@ def _render_pool_actions(state) -> None:
     )
     with ui.row().classes("w-full gap-4 mt-2"):
         if has_result:
-            im_button("Cut again", variant="primary", on_click=cut, icon="refresh")
+            im_button(tr("Cut again"), variant="primary", on_click=cut, icon="refresh")
             if review_candidates(state.get_selected_clips()):
                 im_button(
-                    "Trim the video clips", variant="secondary", on_click=trim_clips, icon="edit"
+                    tr("Trim the video clips"),
+                    variant="secondary",
+                    on_click=trim_clips,
+                    icon="edit",
                 )
-            im_button("Start over", variant="ghost", on_click=start_over, icon="restart_alt")
+            im_button(tr("Start over"), variant="ghost", on_click=start_over, icon="restart_alt")
         else:
-            im_button("Cut", variant="primary", on_click=cut, icon="auto_awesome")
+            im_button(tr("Cut"), variant="primary", on_click=cut, icon="auto_awesome")
 
 
 def _make_lazy_loader(
@@ -220,11 +226,11 @@ def _render_view_toggle(state) -> None:
         grid_btn = ui.button(icon="grid_view", on_click=lambda: set_view("grid")).props(
             "dense flat" if not is_grid else "dense unelevated"
         )
-        grid_btn.tooltip("Compact grid view")
+        grid_btn.tooltip(tr("Compact grid view"))
         list_btn = ui.button(icon="view_list", on_click=lambda: set_view("list")).props(
             "dense flat" if is_grid else "dense unelevated"
         )
-        list_btn.tooltip("Detailed list view")
+        list_btn.tooltip(tr("Detailed list view"))
 
 
 def _build_mixed_items(clips: list[VideoClipInfo], state) -> list[GridItem]:
@@ -243,7 +249,9 @@ def _render_step2_content(
 ) -> None:
     """The grid or the list: photos and videos in one chronological pool."""
     period = str(state.date_range.description) if state.date_range else ""
-    im_section_header(f"The pool{': ' + period if period else ''}", icon="video_library")
+    im_section_header(
+        tr("The pool{value}", value=": " + period if period else ""), icon="video_library"
+    )
 
     with ui.row().classes("w-full items-center gap-2 mb-2"):
         ui.element("div").classes("flex-grow")
@@ -276,10 +284,10 @@ def _render_step2_nav(state) -> None:
             state.step = 1
             ui.navigate.to("/")
 
-        im_button("Back to the brief", variant="secondary", on_click=go_back, icon="arrow_back")
+        im_button(tr("Back to the brief"), variant="secondary", on_click=go_back, icon="arrow_back")
         if state.pipeline_result is not None:
             im_button(
-                "Back to the cut",
+                tr("Back to the cut"),
                 variant="ghost",
                 on_click=lambda: ui.navigate.to("/"),
                 icon="view_timeline",

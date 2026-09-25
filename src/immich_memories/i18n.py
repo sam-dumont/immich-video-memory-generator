@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import gettext
+import io
 import locale
 import os
 from collections.abc import Callable
@@ -111,15 +112,24 @@ def film_text_n(key: str, n: int, locale_code: str = DEFAULT_LOCALE, **values: o
     return str(form).format(n=n, **values)
 
 
-@lru_cache(maxsize=10)
-def get_translator(locale_code: str) -> gettext.GNUTranslations | gettext.NullTranslations:
-    """A gettext translator for compiled catalogues, if any are installed."""
-    try:
-        return gettext.translation(
-            "messages", localedir=LOCALES_DIR, languages=[_supported(locale_code)]
-        )
-    except FileNotFoundError:
+@lru_cache(maxsize=32)
+def get_translator(
+    locale_code: str, domain: str = "messages"
+) -> gettext.GNUTranslations | gettext.NullTranslations:
+    """Read the shipped PO catalogue, including its plural rules, without a build step."""
+    from babel.messages.mofile import write_mo
+    from babel.messages.pofile import read_po
+
+    code = _supported(locale_code)
+    path = LOCALES_DIR / code.replace("-", "_") / "LC_MESSAGES" / f"{domain}.po"
+    if not path.is_file():
         return gettext.NullTranslations()
+    with path.open("rb") as handle:
+        catalogue = read_po(handle, locale=code.replace("-", "_"))
+    compiled = io.BytesIO()
+    write_mo(compiled, catalogue)
+    compiled.seek(0)
+    return gettext.GNUTranslations(compiled)
 
 
 def _(message: str, locale_code: str = DEFAULT_LOCALE) -> str:

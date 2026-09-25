@@ -21,6 +21,7 @@ from immich_memories.ui.components import (
     im_info_card,
     im_separator,
 )
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.nicegui_compat import io_bound_result, run_ui_observer
 from immich_memories.ui.pages.film_length import measured_film_label
 from immich_memories.ui.pages.step3_options import SCALE_MODE_OPTIONS, resolve_scale_mode_label
@@ -68,9 +69,9 @@ def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
     """Request cancellation of the running generation."""
     state.cancel_requested = True
     if cancel_btn is not None:
-        cancel_btn.set_text("Cancelling...")
+        cancel_btn.set_text(tr("Cancelling..."))
         cancel_btn.disable()
-    status_label.set_text("Cancel requested — stopping after current phase...")
+    status_label.set_text(tr("Cancel requested — stopping after current phase..."))
 
 
 def _write_progress_ui(progress_bar, status_label, progress: float, message: str) -> bool:
@@ -114,9 +115,9 @@ def _write_completion_ui(
     """Render completed-artifact facts; say where the result went if the client is gone."""
 
     def write() -> None:
-        run_id_label.set_text(f"Output: {result_path.parent.name}")
+        run_id_label.set_text(tr("Output: {name}", name=result_path.parent.name))
         progress_bar.value = 1.0
-        status_label.set_text("Complete!")
+        status_label.set_text(tr("Complete!"))
         cancel_btn.set_visibility(False)
         _show_output(output_container, result_path, state)
 
@@ -374,7 +375,7 @@ async def run_generation(
     with progress_container:
         progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
         progress_bar.style("--q-linear-progress-color: var(--im-primary)")
-        status_label = ui.label("Starting...").classes("text-sm").style("color: var(--im-text)")
+        status_label = ui.label(tr("Starting...")).classes("text-sm").style("color: var(--im-text)")
         run_id_label = ui.label("").classes("text-sm").style("color: var(--im-text-secondary)")
 
         preview_image = (
@@ -382,7 +383,7 @@ async def run_generation(
         )
 
         cancel_btn = im_button(
-            "Cancel",
+            tr("Cancel"),
             variant="secondary",
             on_click=lambda: _request_cancel(state, cancel_ref[0], status_label),
             icon="cancel",
@@ -627,7 +628,7 @@ def _format_file_size(path: Path) -> str:
 
 def _show_output(output_container, result_path: Path, state) -> None:
     """Display the generated video with success state, and the length it actually runs."""
-    ui.notify("Video generated successfully!", type="positive")
+    ui.notify(tr("Video generated successfully!"), type="positive")
     output_container.clear()
     with output_container:
         im_separator()
@@ -639,14 +640,18 @@ def _show_output(output_container, result_path: Path, state) -> None:
         ):
             ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
             with ui.column().classes("gap-0"):
-                ui.label("Your memory video is ready!").classes("text-base font-semibold").style(
-                    "color: var(--im-success)"
-                )
+                ui.label(tr("Your memory video is ready!")).classes(
+                    "text-base font-semibold"
+                ).style("color: var(--im-success)")
                 if result_path.exists():
                     file_size = _format_file_size(result_path)
-                    ui.label(f"Saved to: {result_path} ({file_size})").classes("text-sm").style(
-                        "color: var(--im-text-secondary)"
-                    )
+                    ui.label(
+                        tr(
+                            "Saved to: {result_path} ({file_size})",
+                            result_path=result_path,
+                            file_size=file_size,
+                        )
+                    ).classes("text-sm").style("color: var(--im-text-secondary)")
                 if (length := measured_film_label(state)) is not None:
                     ui.label(length).classes("text-sm").style("color: var(--im-text-secondary)")
                 if state.generation_warning:
@@ -654,9 +659,9 @@ def _show_output(output_container, result_path: Path, state) -> None:
                         "color: var(--im-warning)"
                     )
                 delivery_label = state.delivery_status.value.replace("_", " ").title()
-                ui.label(f"Immich delivery: {delivery_label}").classes("text-sm").style(
-                    "color: var(--im-text-secondary)"
-                )
+                ui.label(
+                    tr("Immich delivery: {delivery_label}", delivery_label=delivery_label)
+                ).classes("text-sm").style("color: var(--im-text-secondary)")
 
         if result_path.exists():
             video_wrapper = (

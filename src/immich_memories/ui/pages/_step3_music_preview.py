@@ -14,6 +14,7 @@ from nicegui import ui
 
 from immich_memories.security import sanitize_error_message
 from immich_memories.titles.title_source import TitleSource
+from immich_memories.ui.i18n import tr
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ async def _generate_music(
 
     progress_bar.set_visibility(True)
     status_label.set_visibility(True)
-    status_label.set_text("Building mood timeline...")
+    status_label.set_text(tr("Building mood timeline..."))
     progress_bar.value = 0.0
 
     try:
@@ -95,7 +96,7 @@ async def _generate_music(
             progress_bar.value = min(progress / 100.0, 0.99)
             status_label.set_text(f"{status} ({int(progress)}%)")
 
-        status_label.set_text("Generating music...")
+        status_label.set_text(tr("Generating music..."))
         music_result = await generate_music_for_video(
             timeline=timeline,
             output_dir=music_dir,
@@ -111,18 +112,18 @@ async def _generate_music(
             state.music_preview_result = music_result
 
         progress_bar.value = 1.0
-        status_label.set_text("Music generated!")
+        status_label.set_text(tr("Music generated!"))
 
         # Render audio player
         _render_player(state, player_container)
 
-        ui.notify("Music generated successfully!", type="positive")
+        ui.notify(tr("Music generated successfully!"), type="positive")
 
     except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Music preview generation failed: {e}")
-        status_label.set_text(f"Failed: {sanitize_error_message(str(e))}")
+        status_label.set_text(tr("Failed: {value}", value=sanitize_error_message(str(e))))
         ui.notify(
-            f"Music generation failed: {sanitize_error_message(str(e))}",
+            tr("Music generation failed: {value}", value=sanitize_error_message(str(e))),
             type="negative",
         )
 
@@ -142,9 +143,9 @@ def _render_player(state, container):
         with ui.row().classes("w-full items-center gap-4"):
             ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
             with ui.column().classes("flex-1"):
-                ui.label("Generated Music").classes("font-medium")
+                ui.label(tr("Generated Music")).classes("font-medium")
                 mood_text = version.mood or result.mood or "auto"
-                ui.label(f"Mood: {mood_text}").classes("text-sm").style(
+                ui.label(tr("Mood: {mood_text}", mood_text=mood_text)).classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
 
@@ -158,11 +159,19 @@ def _render_title_metadata_chips(state) -> None:
         return
     with ui.row().classes("gap-2 mt-1"):
         if state.title_suggestion_trip_type:
-            ui.badge(f"Trip: {state.title_suggestion_trip_type}").props("outline").classes(
-                "text-xs"
-            )
+            ui.badge(
+                tr(
+                    "Trip: {title_suggestion_trip_type}",
+                    title_suggestion_trip_type=state.title_suggestion_trip_type,
+                )
+            ).props("outline").classes("text-xs")
         if state.title_suggestion_map_mode:
-            ui.badge(f"Map: {state.title_suggestion_map_mode}").props("outline").classes("text-xs")
+            ui.badge(
+                tr(
+                    "Map: {title_suggestion_map_mode}",
+                    title_suggestion_map_mode=state.title_suggestion_map_mode,
+                )
+            ).props("outline").classes("text-xs")
 
 
 def _edit_title(state, title: str | None) -> None:
@@ -185,9 +194,9 @@ def render_title_section() -> None:
         with ui.row().classes("w-full gap-4 items-end flex-wrap"):
             title_input = (
                 ui.input(
-                    label="Title",
+                    label=tr("Title"),
                     value=state.title_suggestion_title or "",
-                    placeholder="e.g. Summer in Saxony",
+                    placeholder=tr("e.g. Summer in Saxony"),
                 )
                 .classes("flex-1")
                 .style("min-width: 200px")
@@ -200,9 +209,9 @@ def render_title_section() -> None:
 
             subtitle_input = (
                 ui.input(
-                    label="Subtitle",
+                    label=tr("Subtitle"),
                     value=state.title_suggestion_subtitle or "",
-                    placeholder="e.g. June – August 2025",
+                    placeholder=tr("e.g. June – August 2025"),
                 )
                 .classes("flex-1")
                 .style("min-width: 200px")
@@ -220,7 +229,7 @@ def render_title_section() -> None:
             from immich_memories.i18n import SUPPORTED_LOCALES
 
             locale_select = ui.select(
-                label="Language",
+                label=tr("Film language"),
                 options=["auto", *SUPPORTED_LOCALES],
                 value=locale_default,
             ).classes("w-32")
@@ -234,7 +243,7 @@ def render_title_section() -> None:
                 title_input.value = state.title_suggestion_title or ""
                 subtitle_input.value = state.title_suggestion_subtitle or ""
 
-            ui.button("Regenerate", on_click=regenerate_title).props("flat dense")
+            ui.button(tr("Regenerate"), on_click=regenerate_title).props("flat dense")
 
         _render_title_metadata_chips(state)
 
@@ -263,7 +272,7 @@ def render_music_preview_section(options: dict) -> None:
 
     # Generate / Regenerate button
     has_preview = state.music_preview_result and state.music_preview_result.versions
-    button_text = "Regenerate Music" if has_preview else "Generate Music"
+    button_text = tr("Regenerate Music") if has_preview else tr("Generate Music")
     button_icon = "refresh" if has_preview else "music_note"
 
     async def on_generate():
@@ -276,6 +285,6 @@ def render_music_preview_section(options: dict) -> None:
     ).props("color=secondary").classes("mt-2")
 
     if not has_preview:
-        ui.label("Generate music now to preview before rendering your video").classes(
+        ui.label(tr("Generate music now to preview before rendering your video")).classes(
             "text-sm mt-1"
         ).style("color: var(--im-text-secondary)")
