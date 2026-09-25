@@ -402,6 +402,24 @@ otherwise learns them from the provider's 400s and remembers the answer per serv
 merged into Ollama's own options block rather than replacing it, and a `num_predict` you set there
 wins over the reasoning room the run would otherwise compute.
 
+Two settings shape what a prose request asks for:
+
+```yaml
+llm:
+  structured_output: true   # default: ask for each answer's exact JSON shape
+  repetition_penalty: 1.0   # default: sent to a server on your own machine or network, and to Ollama
+```
+
+`structured_output` sends the JSON shape each prose seat's parser reads (episode readings, period
+accounts, the title) as `response_format` `json_schema`, or as Ollama's `format`. A small local
+model then can't break the JSON it writes: measured on 243 public episodes, Gemma 4 E4B read every
+episode on the first try with it and lost a whole request to one broken token about one time in
+five without it. A server that refuses the field is asked again without it, and the run remembers.
+
+`repetition_penalty` is sent because local servers default to 1.1 (oMLX, Ollama), which penalises
+the repeated keys every JSON answer needs. It is never sent to a public host; a server of your own
+that refuses it is asked again without it. Set it to `null` to leave the server's default.
+
 A separate `title_llm` section can point title generation at a different model, for the CLI and the
 web UI alike:
 

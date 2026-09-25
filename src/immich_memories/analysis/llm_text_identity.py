@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
+from typing import Any
 
 from immich_memories.config_models_llm import LLMConfig
 
@@ -24,6 +26,8 @@ def text_model_identity(resolved: LLMConfig, *, thinking: bool) -> str:
         "max_tokens_param": resolved.max_tokens_param,
         "drop_params": sorted(resolved.drop_params),
         "extra_params": resolved.extra_params,
+        "structured_output": resolved.structured_output,
+        "repetition_penalty": resolved.repetition_penalty,
     }
     digest = _digest(material)
     return f"{resolved.model or 'unnamed-model'}@text-{digest[:20]}"
@@ -38,6 +42,7 @@ def text_judgment_key(
     temperature: float,
     require_complete: bool,
     policy: str = "single-text-request-v2",
+    response_format: Mapping[str, Any] | None = None,
 ) -> str:
     """An incomplete answer cannot satisfy a request requiring completion.
 
@@ -52,6 +57,7 @@ def text_judgment_key(
             "max_tokens": max_tokens,
             "temperature": temperature,
             "require_complete": require_complete,
+            **({"response_format": response_format} if response_format else {}),
         }
     )
 

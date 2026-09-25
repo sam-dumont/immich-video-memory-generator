@@ -19,7 +19,9 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
 
+from immich_memories.analysis.prose_shapes import accounts_shape
 from immich_memories.analysis.strict_json import final_json_object
+from immich_memories.analysis.text_episode_paging import TEXT_EPISODE_MAX_OUTPUT_TOKENS
 from immich_memories.operations.cancellation import check_cancelled
 from immich_memories.store.episode_readings import BankedEpisodeReading
 from immich_memories.store.library_catalogue import CatalogueStore, LibraryAccount
@@ -346,10 +348,16 @@ class _AccountBuilder:
         contract += f"This batch contains {len(pending)} independent records. "
         contract += "Return an account for EACH of these exact keys: "
         contract += ", ".join(row["key"] for row in pending) + ".\n"
-        # A reader may fence its JSON or trail a word after it; take the object it answered with.
-        return final_json_object(
-            self.requester(contract + _OVERVIEW_INSTRUCTIONS + _encode(pending))
+        prompt = contract + _OVERVIEW_INSTRUCTIONS + _encode(pending)
+        budgeted = getattr(self.requester, "request_with_budget", None)
+        shape = accounts_shape([row["key"] for row in pending], max_chars=_MAX_ACCOUNT_CHARS)
+        raw = (
+            budgeted(prompt, max_tokens=TEXT_EPISODE_MAX_OUTPUT_TOKENS, response_format=shape)
+            if callable(budgeted)
+            else self.requester(prompt)
         )
+        # A reader may fence its JSON or trail a word after it; take the object it answered with.
+        return final_json_object(raw)
 
 
 def _valid_accounts(raw, pending) -> dict[str, str]:

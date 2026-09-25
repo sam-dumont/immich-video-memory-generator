@@ -108,6 +108,23 @@ class LLMConfig(BaseModel):
         default_factory=dict,
         description="Request fields merged into every call, for provider-specific requirements.",
     )
+    structured_output: bool = Field(
+        default=True,
+        description=(
+            "Ask the server for each prose answer's exact JSON shape (response_format "
+            "json_schema; Ollama's format). A small local model then never breaks the JSON it "
+            "writes. A server that refuses the field is asked again without it, and remembered."
+        ),
+    )
+    repetition_penalty: float | None = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Sent to a local OpenAI-compatible server and to Ollama, whose own defaults (1.1) "
+            "penalise the repeated keys every JSON answer needs. None leaves the server's "
+            "default. Never sent to a hosted OpenAI, z.ai or Anthropic endpoint."
+        ),
+    )
     always_reasons: bool = Field(
         default=False,
         description=(

@@ -72,6 +72,7 @@ def test_exact_complete_reply_is_retained_before_episode_parser_rejects_it(tmp_p
                 "thinking": False,
                 "cache_path": None,
                 "require_complete": True,
+                "response_format": None,
             },
         )
     ]

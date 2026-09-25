@@ -6,9 +6,10 @@ import asyncio
 import logging
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextvars import copy_context
 from dataclasses import dataclass, replace
+from typing import Any
 
 import httpx
 
@@ -305,13 +306,23 @@ class SyncTextPromptRequester:
         ceiling = None if self.retry_larger else self.max_tokens
         return _run_sync(self._request(prompt, max_tokens=self.max_tokens, ceiling=ceiling))
 
-    def request_with_budget(self, prompt: str, *, max_tokens: int) -> str:
-        """Honor a caller-sized completion budget under this adapter's hard ceiling."""
+    def request_with_budget(
+        self, prompt: str, *, max_tokens: int, response_format: Mapping[str, Any] | None = None
+    ) -> str:
+        """Honor a caller-sized completion budget under this adapter's hard ceiling.
+
+        `response_format` is the JSON shape the seat's parser reads, asked of a server that
+        takes one; a queued batch answer is read without it.
+        """
         if not prompt.strip() or max_tokens <= 0:
             raise ValueError("text prompt and completion budget must be positive")
         if max_tokens > self.max_tokens:
             raise ValueError("text completion budget exceeds the configured ceiling")
-        return _run_sync(self._request(prompt, max_tokens=max_tokens, ceiling=self.max_tokens))
+        return _run_sync(
+            self._request(
+                prompt, max_tokens=max_tokens, ceiling=self.max_tokens, shape=response_format
+            )
+        )
 
     def prefetch(self, asked: Sequence[tuple[str, int]]) -> None:
         """Offer a stage's independent prompts to the provider's batch route at once.
@@ -344,16 +355,23 @@ class SyncTextPromptRequester:
         key = batch_prompt_key(self.llm_config, prompt, max_tokens=max_tokens)
         return self.batch.answer_for(key)
 
-    async def _request(self, prompt: str, *, max_tokens: int, ceiling: int | None) -> str:
+    async def _request(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        ceiling: int | None,
+        shape: Mapping[str, Any] | None = None,
+    ) -> str:
         try:
-            return await self._query(prompt, max_tokens=max_tokens)
+            return await self._query(prompt, max_tokens=max_tokens, shape=shape)
         except (KeyError, ValueError):
             retry_tokens = max_tokens * 2
             if ceiling is not None:
                 retry_tokens = min(retry_tokens, ceiling)
             if retry_tokens <= max_tokens:
                 raise
-            return await self._query(prompt, max_tokens=retry_tokens)
+            return await self._query(prompt, max_tokens=retry_tokens, shape=shape)
 
     def _read_queued(self, prompt: str, reply: LLMReply, *, max_tokens: int) -> str | None:
         """Put one queued reply on the record, and say whether it answered at all."""
@@ -385,7 +403,9 @@ class SyncTextPromptRequester:
             )
         return answer
 
-    async def _query(self, prompt: str, *, max_tokens: int) -> str:
+    async def _query(
+        self, prompt: str, *, max_tokens: int, shape: Mapping[str, Any] | None = None
+    ) -> str:
         queued = self._batched(prompt, max_tokens)
         if queued is not None:
             answer = self._read_queued(prompt, queued, max_tokens=max_tokens)
@@ -415,6 +435,7 @@ class SyncTextPromptRequester:
                 cache_path=None,
                 transport_observer=billed.watching(watch_provider("reader", self.llm_config)),
                 require_complete=True,
+                response_format=shape,
             )
         except BaseException as exc:
             if self.artifacts:

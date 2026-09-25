@@ -17,6 +17,7 @@ from immich_memories.analysis.editorial_contracts import (
     RequestTrace,
 )
 from immich_memories.analysis.editorial_evidence_provenance import EpisodeEvidenceLines
+from immich_memories.analysis.prose_shapes import episode_reading_shape
 from immich_memories.analysis.selection_source_groups import EditorialGroupProjection
 from immich_memories.analysis.strict_json import bounded_model_text
 from immich_memories.analysis.text_episode_answers import (
@@ -627,7 +628,11 @@ def _read_missing(
     prompt = episode_prompt(scopes, facts)
     budgeted_request = getattr(requester, "request_with_budget", None)
     raw = (
-        budgeted_request(prompt, max_tokens=max_tokens)
+        budgeted_request(
+            prompt,
+            max_tokens=max_tokens,
+            response_format=episode_reading_shape(len(scopes), lean=facts.lean),
+        )
         if callable(budgeted_request)
         else requester(prompt)
     )

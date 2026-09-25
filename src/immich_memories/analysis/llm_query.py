@@ -19,7 +19,7 @@ import logging
 import time
 from dataclasses import replace
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -66,7 +66,7 @@ from immich_memories.config_models_llm import LLMConfig
 from immich_memories.operations.cancellation import check_cancelled
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -184,6 +184,7 @@ async def query_llm(
     cache_path: Path | None = None,
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
     require_complete: bool = False,
+    response_format: Mapping[str, Any] | None = None,
 ) -> str:
     """Send a prompt, optionally with JPEG images, and return the response.
 
@@ -215,6 +216,7 @@ async def query_llm(
             max_tokens=max_tokens,
             temperature=temperature,
             require_complete=require_complete,
+            response_format=response_format if llm_config.structured_output else None,
         )
         if not images
         else None
@@ -250,6 +252,7 @@ async def query_llm(
                 image_detail,
                 watch,
                 require_complete,
+                response_format,
             )
     finally:
         # In `finally` so a failed call still shows the time it burned; a run
@@ -297,6 +300,7 @@ async def _dispatch(
     image_detail: str,
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
     require_complete: bool = False,
+    response_format: Mapping[str, Any] | None = None,
 ) -> str:
     think = thinking and llm_config.reasons and not images
     if llm_config.provider == "ollama":
@@ -310,6 +314,7 @@ async def _dispatch(
             images,
             transport_observer,
             require_complete,
+            response_format,
         )
     if llm_config.provider == "anthropic":
         return await _query_anthropic(
@@ -334,6 +339,7 @@ async def _dispatch(
         image_detail,
         transport_observer,
         require_complete,
+        response_format,
     )
 
 
@@ -376,6 +382,20 @@ def _ollama_body(
     if images:
         payload["images"] = [base64.b64encode(image).decode("utf-8") for image in images]
     return payload
+
+
+def _ollama_shape(
+    payload: dict,
+    config: LLMConfig,
+    response_format: Mapping[str, Any] | None,
+    images: Sequence[bytes],
+) -> None:
+    """Ollama takes the JSON shape as `format` and the penalty as `repeat_penalty`."""
+    schema = (response_format or {}).get("json_schema", {}).get("schema")
+    if schema and config.structured_output and not images:
+        payload["format"] = schema
+    if config.repetition_penalty is not None:
+        payload["options"]["repeat_penalty"] = config.repetition_penalty
 
 
 def _ollama_extras(payload: dict, config: LLMConfig) -> None:
@@ -437,10 +457,12 @@ async def _query_ollama(
     images: Sequence[bytes] = (),
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
     require_complete: bool = False,
+    response_format: Mapping[str, Any] | None = None,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     endpoint = (base_url, config.model)
     payload = _ollama_body(config, prompt, temperature, images)
+    _ollama_shape(payload, config, response_format, images)
     timeout = _apply_ollama_reasoning(payload, config, thinking, max_tokens, timeout, endpoint)
     _ollama_extras(payload, config)
     async with httpx.AsyncClient(timeout=build_llm_timeout(float(timeout))) as client:
@@ -592,9 +614,12 @@ def _openai_request(
     images: Sequence[bytes],
     image_detail: str,
     endpoint: tuple[str, str],
+    response_format: Mapping[str, Any] | None = None,
 ) -> tuple[dict, int, set[str]]:
     """The body to post, the read budget it earns, and this endpoint's learned dialect."""
-    payload = openai_payload(prompt, config, temperature, max_tokens, images, image_detail)
+    payload = openai_payload(
+        prompt, config, temperature, max_tokens, images, image_detail, response_format
+    )
     if thinking:
         timeout = apply_thinking_budget(payload, config, max_tokens, timeout)
     else:
@@ -616,12 +641,22 @@ async def _query_openai(
     image_detail: str = "low",
     transport_observer: Callable[[LLMTransportAttempt], None] | None = None,
     require_complete: bool = False,
+    response_format: Mapping[str, Any] | None = None,
 ) -> str:
     base_url = config.base_url.rstrip("/")
     headers = openai_headers(config)
     endpoint = (base_url, config.model)
     payload, timeout, adaptations = _openai_request(
-        prompt, config, temperature, max_tokens, timeout, thinking, images, image_detail, endpoint
+        prompt,
+        config,
+        temperature,
+        max_tokens,
+        timeout,
+        thinking,
+        images,
+        image_detail,
+        endpoint,
+        response_format,
     )
     again = partial(
         _query_openai,
@@ -634,6 +669,7 @@ async def _query_openai(
         image_detail=image_detail,
         transport_observer=transport_observer,
         require_complete=require_complete,
+        response_format=response_format,
     )
     # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
     # Per-phase, not a scalar: a stuck server should fail while connecting
