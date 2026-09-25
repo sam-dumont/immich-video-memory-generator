@@ -176,6 +176,7 @@ def _reader(*, favourite=False, line="", description=None, audience="sendable", 
         annotations={"a": line},
         intent=SimpleNamespace(product="month"),
         audience=audience,
+        owner_required_asset_ids=(),
     )
     return RuleStructureReader(source)
 

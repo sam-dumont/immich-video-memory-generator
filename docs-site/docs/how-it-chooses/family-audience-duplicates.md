@@ -174,12 +174,16 @@ No tier asks a model to compare two pictures.
    - a scene print (the pooled DINOv2 vector of the preview, banked in `scene-prints.sqlite`) at a
      cosine of 0.65 or more, within 14 days, across stories. That catches the same trail at dusk
      shot twice from different spots, which hashes as strangers. Two favourites are the same scene
-     only on the same day.
+     only within 2 days of each other: the same pose in the same place on consecutive days is one
+     moment you starred twice, and further apart it is two moments.
 
 Which frame stays: one you ticked, then the favourite, then the one that moves (a video before a Live
-Photo), then a close family member's only shot, then the earlier one. A moving frame is never a
+Photo), then a close family member's only shot, then (between two favourites) the one with more
+faces Immich found and then the sharper, then the earlier one. A moving frame is never a
 repeat of a still. A scene repeat is less certain than a hash repeat, so it leaves only when a
-replacement takes its slot or the film still reaches 85 % of its length without it. Every
+replacement takes its slot or the film still reaches 85 % of its length without it. Two starred
+twins are the exception: the second leaves either way, and its slot goes to a refill when there is
+one. The record names each such pair under `collapsed_favourites`. Every
 replacement passes the family-viewing gate first. The `final_duplicate_review` record lists each
 removal, the distance or cosine behind it, and who kept the slot.
 
@@ -189,7 +193,8 @@ Each pass keeps its promise when it runs, and a later pass can undo it without k
 the last pass the cut is read once against all of them (`editorial_cut_invariants.py`):
 
 1. every close family member the seat owes a shot has one, or the seat recorded why not;
-2. no non-favourite carries a moment whose favourite could have carried it;
+2. no non-favourite carries a moment whose favourite could have carried it (a favourite folded into
+   its starred twin counts as shown by the twin);
 3. in a film split into years or ranges, every one with a story has a shot;
 4. a Live Photo whose clip measured at least 1.5 with its subject in frame plays as motion;
 5. nothing a carrier rule or the gate refuses, and nothing the gate never judged, is in the cut;
