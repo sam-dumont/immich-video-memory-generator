@@ -249,3 +249,25 @@ def test_a_removals_refill_the_vote_revokes_is_chosen_again(tmp_path):
     assert newcomers == ["fine"]
     assert record["revoked_by_the_fit_check"] == ["filler"]
     assert len(cut) == 2
+
+
+def test_two_removals_in_a_story_with_one_picture_left_both_refill_from_the_pool(tmp_path):
+    """June 2023 (09-25): a removal's page held one picture, another seat took it, and the seat
+    ended 'none available' while the film's other stories still had pictures."""
+    from datetime import timedelta
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers.update({"S001": "maybe", "S002": "maybe"})
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.draft.append(film.shot("d3", "S001", START + timedelta(days=2), f"{JUNK}, later"))
+    film.draft.append(film.shot("d4", "S002", START + timedelta(days=4), "a walk in the park"))
+    film.shot("spare", "S001", START + timedelta(days=1, hours=5), "people in the garden")
+    film.shot("near", "S002", START + timedelta(days=3), "the park at dusk")
+
+    _judge, record, _cut, newcomers = polish(tmp_path, film)
+
+    assert sorted(newcomers) == ["near", "spare"]
+    assert {slot["outcome"] for slot in record["slots"]} == {"seated"}

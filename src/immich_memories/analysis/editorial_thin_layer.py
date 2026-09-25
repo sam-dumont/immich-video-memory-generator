@@ -330,6 +330,7 @@ class ThinPolish:
                 filled_by="",
                 outcome="",
                 page=tuple(unit for unit in slot.page if unit["asset_id"] not in revoked),
+                fallback=tuple(u for u in slot.fallback if u["asset_id"] not in revoked),
             )
             for slot in outcomes
             if slot.kind in REMOVALS and slot.filled_by in revoked

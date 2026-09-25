@@ -61,6 +61,14 @@ class ThinSlot:
     # The seconds a removed shot gave back: its refill may take them past the length target,
     # because the draft already held them.
     frees: float = 0.0
+    # A removal's seat reads on into the film's other stories, nearest in time first, once its
+    # own story's page runs out.
+    fallback: tuple[dict[str, Any], ...] = ()
+
+    @property
+    def offered(self) -> tuple[dict[str, Any], ...]:
+        """Every row the seat may pick from, in order: its page, then its fallback."""
+        return (*self.page, *self.fallback)
 
     def row(self) -> dict[str, str]:
         return {
@@ -70,7 +78,7 @@ class ThinSlot:
             "replacing": self.replacing,
             "chosen": self.filled_by,
             "outcome": self.outcome or ("seated" if self.filled_by else ""),
-            "offered": str(len(self.page)),
+            "offered": str(len(self.offered)),
         }
 
 
@@ -178,19 +186,25 @@ def plan_slots(
     )
     if kind_of is not None:
         slots = [
-            s if s.kind == NOTABLE else replace(s, page=_variety_first(s, cut, kind_of))
+            s
+            if s.kind == NOTABLE
+            else replace(
+                s,
+                page=_variety_first(s, s.page, cut, kind_of),
+                fallback=_variety_first(s, s.fallback, cut, kind_of),
+            )
             for s in slots
         ]
-    return [slot for slot in slots if slot.page or slot.kind in REMOVALS]
+    return [slot for slot in slots if slot.offered or slot.kind in REMOVALS]
 
 
-def _variety_first(slot: ThinSlot, cut, kind_of: KindOf) -> tuple[dict[str, Any], ...]:
-    """The slot's page with the kind its story (else the film) holds fewer of leading."""
+def _variety_first(slot: ThinSlot, rows, cut, kind_of: KindOf) -> tuple[dict[str, Any], ...]:
+    """These rows of the slot with the kind its story (else the film) holds fewer of leading."""
     company = [row for row in cut if row.get("story_episode") == slot.story] or list(cut)
     want = lacking(kind_of(row["asset_id"]) for row in company if row["asset_id"] != slot.replacing)
     if want is None:
-        return slot.page
-    return tuple(sorted(slot.page, key=lambda unit: kind_of(unit["asset_id"]) != want))
+        return tuple(rows)
+    return tuple(sorted(rows, key=lambda unit: kind_of(unit["asset_id"]) != want))
 
 
 def _offers(candidates_of, seen: set[str]):
@@ -239,9 +253,11 @@ def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
             refused_moments.setdefault(story, []).append(moment)
     slots = []
     for number, (asset, kind, story, _moment) in enumerate(appends, 1):
-        page = offers(story) or _nearest_in_the_film(cut, offers, removed.get(asset))
+        page = offers(story)
+        pool = _nearest_in_the_film(cut, offers, removed.get(asset), story)
         if kind == VOTE_BAD:
             page = _other_moments(page, removed.get(asset))
+            pool = _other_moments(pool, removed.get(asset))
         if story in refused_moments:
             page = gate_refill_page(page, refused_moments[story], moments_in_cut)
         else:
@@ -255,6 +271,7 @@ def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
                 kind=kind,
                 page=tuple(page),
                 frees=float(removed[asset]["seconds"]) if asset in removed else 0.0,
+                fallback=tuple(pool),
             )
         )
     return slots
@@ -271,13 +288,15 @@ def _why_empty(refusal: GateRefusal | None) -> str:
     return "none available" if refusal is None else f"refused by {refusal.rule}"
 
 
-def _nearest_in_the_film(cut, offers, shot: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    """The pictures of the stories the cut holds, the nearest in time to `shot` first."""
+def _nearest_in_the_film(
+    cut, offers, shot: Mapping[str, Any] | None, own: str
+) -> list[dict[str, Any]]:
+    """The pictures of the other stories the cut holds, the nearest in time to `shot` first."""
     if shot is None:
         return []
     when = _moment_in_time(shot["taken"])
     stories = dict.fromkeys(str(row.get("story_episode") or "") for row in cut)
-    pool = [unit for key in stories if key for unit in offers(key)]
+    pool = [unit for key in stories if key and key != own for unit in offers(key)]
     return sorted(pool, key=lambda unit: abs(_moment_in_time(unit["taken"]) - when))
 
 
@@ -349,7 +368,7 @@ class ThinRefill:
         A seat a removal opened is how the film keeps its length, so it is not given up while
         its page still holds a picture nobody has taken.
         """
-        page = [unit for unit in slot.page if unit["asset_id"] not in taken]
+        page = [unit for unit in slot.offered if unit["asset_id"] not in taken]
         pick = self._choose(slot, page[:PAGE_ROWS])
         if pick is None:
             return None, None
@@ -386,7 +405,7 @@ class ThinRefill:
         """One pick per pending seat, from the first rows of its page nobody has taken."""
         picks = {}
         for index in pending:
-            page = [unit for unit in slots[index].page if unit["asset_id"] not in taken]
+            page = [unit for unit in slots[index].offered if unit["asset_id"] not in taken]
             pick = self._choose(slots[index], page[:PAGE_ROWS])
             if pick is not None:
                 pick = favourite_of_its_moment(pick, page, taken)
