@@ -62,6 +62,11 @@ def polish_the_draft(
     except PeriodUnread as exc:
         catalogue, unread = None, str(exc)
     run.polished = catalogue is not None and bool(carriers)
+    if catalogue is not None and not selection.story.thesis:
+        # The polish judges every shot against the period's account, so that account is what
+        # this film is about: the film page and `runs story` read it from the plan's story.
+        selection.story.thesis = catalogue.thesis
+        record("period-story", selection.story.as_record())
     polished = ports.thin.polish(
         carriers,
         judge=ports.judge,
