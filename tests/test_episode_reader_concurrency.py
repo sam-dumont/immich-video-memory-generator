@@ -61,7 +61,7 @@ def _reader(tmp_path, config):
             artifacts=TextPromptArtifacts(lambda: tmp_path, "episode"),
         ),
         # One episode fits a request and two do not, so every page is its own call.
-        limits=TextEpisodeRequestLimits(max_prompt_chars=2246),
+        limits=TextEpisodeRequestLimits(max_prompt_chars=2779),
     )
     return reader, projections
 

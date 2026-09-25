@@ -8,7 +8,7 @@ from hashlib import sha256
 
 from immich_memories.analysis.text_episode_answers import _EpisodeRequestScope
 
-_PROMPT_NAME = "episode-prompt-v3-notable-moments"
+_PROMPT_NAME = "episode-prompt-v4-notable-bar"
 
 AlbumNames = Callable[[Sequence[str]], tuple[str, ...]]
 
@@ -26,12 +26,18 @@ video, or qualifying Live Photo when it earns the place. Cull buckets are notes 
 documents, receipts), failed (the picture did not come out), and foreign (saved imagery not
 from this life). Similar or merely ordinary pictures are not Cull rejects.
 
-Also return notable_moments, separately from the account and its representatives: the moments
-of this episode a family would remember on their own, and that a 25-word summary of the episode
-would lose. A discovery, a milestone, a change, a once-only record. Name the asset and the
-observable reason it is one. A small object or a quiet detail can carry one. Do not infer a
-first, a relationship, a diagnosis or a feeling from the order things happened in. Return []
-when nothing in the lines supports one; most episodes have none.
+Also return notable_moments, separately from the account and its representatives: a picture
+that is the record of something that happens once, which the 25-word account would lose. The
+bar is absolute: judge each episode on its own lines, never against the other episodes here.
+It passes only when a line shows the once-only thing itself: an arrival (a birth, a new pet, a
+new home), a milestone with its occasion visible (a named birthday or anniversary, a first day,
+a graduation, a wedding, a trophy or a certificate), a change you can see (a new haircut, a cast,
+a finished build), or text naming the occasion. A small object can carry one when it is the
+record itself (a ring in its box, a hospital bracelet, the keys to a new home). An outing, a
+view, a meal, a pose, a game, a nice portrait or an animal is not a record, however good the
+picture. Do not infer a first, a relationship, a diagnosis or a feeling from the order things
+happened in. Name the asset and the observable reason. Return [] when no line shows such a
+record; that is the usual answer.
 
 Return JSON only:
 {{"schema_version":"episode-reading-text-v1","episodes":[{{"episode":1,
@@ -41,7 +47,7 @@ Return JSON only:
 
 {episodes}"""
 
-_LEAN_PROMPT_NAME = "episode-prompt-v3-lean"
+_LEAN_PROMPT_NAME = "episode-prompt-v4-lean"
 
 # What a film's on-demand reading asks: the account's sentence and the records, with the one
 # representative a reading needs to be bankable. The full prompt's other asks (up to three
@@ -59,12 +65,18 @@ For every episode return what happened in at most 25 words, and the one represen
 best shows it, with a reason of at most six words. Prefer a starred action frame, video, or
 qualifying Live Photo when it earns the place.
 
-Also return notable_moments, separately from the account and its representative: the moments
-of this episode a family would remember on their own, and that a 25-word summary of the episode
-would lose. A discovery, a milestone, a change, a once-only record. Name the asset and the
-observable reason it is one. A small object or a quiet detail can carry one. Do not infer a
-first, a relationship, a diagnosis or a feeling from the order things happened in. Return []
-when nothing in the lines supports one; most episodes have none.
+Also return notable_moments, separately from the account and its representative: a picture
+that is the record of something that happens once, which the 25-word account would lose. The
+bar is absolute: judge each episode on its own lines, never against the other episodes here.
+It passes only when a line shows the once-only thing itself: an arrival (a birth, a new pet, a
+new home), a milestone with its occasion visible (a named birthday or anniversary, a first day,
+a graduation, a wedding, a trophy or a certificate), a change you can see (a new haircut, a cast,
+a finished build), or text naming the occasion. A small object can carry one when it is the
+record itself (a ring in its box, a hospital bracelet, the keys to a new home). An outing, a
+view, a meal, a pose, a game, a nice portrait or an animal is not a record, however good the
+picture. Do not infer a first, a relationship, a diagnosis or a feeling from the order things
+happened in. Name the asset and the observable reason. Return [] when no line shows such a
+record; that is the usual answer.
 
 Return JSON only:
 {{"schema_version":"episode-reading-text-v1","episodes":[{{"episode":1,

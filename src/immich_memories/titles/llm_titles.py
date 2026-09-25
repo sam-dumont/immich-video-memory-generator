@@ -638,6 +638,31 @@ def invented_name(line: str, facts: str) -> str | None:
     )
 
 
+def restore_fact_casing(suggestion: TitleSuggestion, facts: str) -> TitleSuggestion:
+    """A name the facts spell with a capital keeps it, whatever case the model wrote it in.
+
+    Asked for sentence case, a small model lowercases proper nouns too ("Mai à split"). Only a
+    word of three letters or more that the facts themselves capitalise is touched.
+    """
+    names = {word.casefold() for word in _name_words(facts) if word[:1].isupper() and len(word) > 2}
+
+    def capital(match: re.Match[str]) -> str:
+        word = match.group(0)
+        flat = _name_words(word)
+        if word[:1].islower() and flat and flat[0].casefold() in names:
+            return word[:1].upper() + word[1:]
+        return word
+
+    def fixed(text: str | None) -> str | None:
+        return re.sub(r"[^\W\d_]+", capital, text) if text else text
+
+    return replace(
+        suggestion,
+        title=fixed(suggestion.title) or suggestion.title,
+        subtitle=fixed(suggestion.subtitle),
+    )
+
+
 def _refusing_invented_names(
     suggestion: TitleSuggestion | None, facts: str
 ) -> TitleSuggestion | None:
@@ -739,7 +764,10 @@ async def generate_title_with_llm(
             cache_path=cache_path,
             response_format=title_shape(trip=_is_trip(memory_type)),
         )
-        suggestion = _refusing_invented_names(parse_title_response(raw), prompt.facts)
+        parsed = parse_title_response(raw)
+        if parsed is not None:
+            parsed = restore_fact_casing(parsed, prompt.facts or prompt.text)
+        suggestion = _refusing_invented_names(parsed, prompt.facts)
         if memory_type in PEOPLE_MEMORY_TYPES or memory_type in OCCASION_MEMORY_TYPES:
             return suggestion
         return _requiring_the_place(suggestion, facts.place if facts else None, locale)
