@@ -717,6 +717,42 @@ class TestBulkCallsDoNotThink:
         assert "chat_template_kwargs" not in mock_post.call_args_list[-1][1]["json"]
 
 
+_OPENAI = LLMConfig(provider="openai-compatible", base_url="http://vlm:8080/v1", model="qwen")
+
+
+@pytest.mark.asyncio
+async def test_a_null_content_reply_is_asked_again_and_the_answer_returned() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    # WHY: the LLM server is the external boundary; a quantized model answers null once.
+    with patch(
+        "httpx.AsyncClient.post",
+        side_effect=[_openai_response(content=None), _openai_response(content='{"a": 1}')],
+    ) as post:
+        answer = await query_llm("Choose a mood", _OPENAI)
+
+    assert answer == '{"a": 1}'
+    assert post.call_count == 2
+    assert post.call_args[0][0] == "http://vlm:8080/v1/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_three_null_content_replies_fail_instead_of_returning_nothing() -> None:
+    from immich_memories.analysis.llm_query import query_llm
+
+    # WHY: the LLM server is the external boundary; it never answers with content.
+    with (
+        patch(
+            "httpx.AsyncClient.post",
+            side_effect=[_openai_response(content=None) for _ in range(3)],
+        ) as post,
+        pytest.raises(ValueError, match="null content"),
+    ):
+        await query_llm("Choose a mood", _OPENAI)
+
+    assert post.call_count == 3
+
+
 @pytest.mark.asyncio
 async def test_transport_observer_records_each_null_content_wire_retry() -> None:
     from immich_memories.analysis.llm_query import query_llm
