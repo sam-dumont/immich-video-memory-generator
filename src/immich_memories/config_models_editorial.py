@@ -161,7 +161,7 @@ class EditorialConfig(BaseModel):
     )
     laya_checkpoint: str = Field(
         default="~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar",
-        description="The digest-pinned Laya checkpoint archive (811 MB); unpacked beside it on first use",
+        description="A Laya checkpoint archive, unpacked beside it on first use, or an extracted checkpoint directory",
     )
     laya_checkpoint_url: str = Field(
         default=LAYA_AUDIENCE_URL,

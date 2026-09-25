@@ -147,7 +147,9 @@ def unpack_checkpoint(archive: Path, destination: Path) -> Path:
     Only regular files whose names stay inside the destination are written; the archive is
     digest-pinned, but a path that climbs out of the folder is refused rather than trusted.
     """
-    if (destination / "model.safetensors").is_file():
+    if (destination / "model.safetensors").is_file() or (
+        (destination / "model.onnx").is_file() and (destination / "model.onnx.data").is_file()
+    ):
         return destination
     root = destination.resolve()
     with tarfile.open(archive) as bundle:
@@ -168,10 +170,18 @@ def laya_reader_for(editorial_config) -> LayaReader | None:
     if not editorial_config.laya_audience:
         return None
     archive = editorial_config.laya_checkpoint_path
-    if not archive.is_file():
+    if not archive.exists():
         raise ValueError(
             f"editorial.laya_audience is on but {archive} is missing: "
             "run `immich-memories models fetch --laya`"
         )
-    checkpoint = unpack_checkpoint(archive, archive.with_suffix(""))
+    checkpoint = (
+        archive if archive.is_dir() else unpack_checkpoint(archive, archive.with_suffix(""))
+    )
+    if (checkpoint / "model.onnx").is_file():
+        from immich_memories.analysis.editorial_laya_onnx import OnnxLayaScorer
+
+        return LayaReader(
+            OnnxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold
+        )
     return LayaReader(MlxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold)

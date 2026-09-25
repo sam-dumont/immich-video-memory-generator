@@ -401,6 +401,7 @@ src/immich_memories/
 │   │                               # meet the gates, and a refused pick is picked once more; a removal's
 │   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind;
 │   │                               # a vote-named shot's refill comes from another moment
+│   ├── editorial_laya_onnx.py      # Portable Laya tokenizer and batched ONNX scorer (CUDA or CPU).
 │   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
 │   │                               # caption (model tier, editorial.laya_audience); only adds holds
 │   ├── editorial_audience_batch.py # The audience question over 12 carriers per request in two orders,

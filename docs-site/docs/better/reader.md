@@ -144,6 +144,19 @@ reader's, and a shot it doesn't answer goes to the reader. The threshold,
 split. Its known gap: a travel or administrative document (a boarding pass, an invoice) can slip
 through, since few such captions were in its training data. The detectors stay the floor either way.
 
+An exported Laya checkpoint can also run through ONNX Runtime. Point
+`advanced.editorial.laya_checkpoint` at its extracted directory or archive containing
+`model.onnx`, `model.onnx.data`, `rl_agent_config.json` and `tokenizer/`. The `editorial`
+extra supplies the CPU runtime and tokenizer; `editorial-cuda` supplies the NVIDIA runtime.
+The scorer chooses CUDA when available and otherwise uses CPU. This path needs neither
+PyTorch nor MLX. The default fetched archive remains the Apple checkpoint.
+
+For the audience ONNX export, set `laya_audience_threshold: 0.185`. This threshold was
+chosen on the public calibration split to retain all 15 MLX holds. On 3,143 held-out
+captions it retained all 23 MLX holds and added one. This checks CPU decisions; validation
+of the packaged NVIDIA runtime is tracked in
+[#1385](https://github.com/sam-dumont/immich-video-memory-generator/issues/1385).
+
 ## Providers and dialects
 
 Five provider values, three code paths. `ollama` speaks Ollama's native API, `anthropic` speaks
