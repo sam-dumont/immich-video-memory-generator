@@ -81,6 +81,12 @@ def register_config_commands(main: click.Group) -> None:
             table.add_row("Output directory", str(cfg.output.output_path))
             table.add_row("Default scale mode", cfg.defaults.scale_mode)
             table.add_row("Preset", cfg.preset or "(none)")
+            editorial = cfg.editorial
+            table.add_row(
+                "Tier",
+                f"{cfg.tier} (reader {editorial.reader}, preparation "
+                f"{editorial.preparation.tier}, Laya {'on' if editorial.laya_audience else 'off'})",
+            )
 
             console.print(table)
             return

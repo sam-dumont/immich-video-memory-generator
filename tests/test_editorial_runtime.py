@@ -170,10 +170,14 @@ def test_missing_store_is_initialized_and_old_flag_cannot_bypass_preparation(tmp
     store = tmp_path / "annotations.sqlite"
 
     disabled = Config(
-        llm={"model": "text-model"}, editorial={"enabled": False, "annotation_database": str(store)}
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
+        editorial={"enabled": False, "annotation_database": str(store)},
     )
     enabled = Config(
-        llm={"model": "text-model"}, editorial={"enabled": True, "annotation_database": str(store)}
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
+        editorial={"enabled": True, "annotation_database": str(store)},
     )
 
     planner = build_editorial_planner(
@@ -236,7 +240,11 @@ def test_smart_pipeline_factory_preserves_the_existing_constructor_seam(tmp_path
 
 
 def test_default_store_is_initialized_in_the_library_cache(tmp_path):
-    config = Config(llm={"model": "text-model"}, cache={"directory": str(tmp_path / "cache")})
+    config = Config(
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
+        cache={"directory": str(tmp_path / "cache")},
+    )
     context = EditorialRunContext(
         "month",
         "A month",
@@ -262,7 +270,12 @@ def test_explicit_model_runtime_rejects_blank_model_before_opening_the_store(
     tmp_path,
 ) -> None:
     store = tmp_path / "annotations.sqlite"
-    config = Config(editorial={"reader": "model", "annotation_database": str(store)})
+    config = Config(
+        tier="full",
+        llm={"base_url": "http://llm.test/v1", "model": "reader"},
+        editorial={"reader": "model", "annotation_database": str(store)},
+    )
+    config.llm.model = ""
     context = EditorialRunContext(
         key="month",
         label="August 2026",
@@ -309,7 +322,8 @@ def test_runtime_acquires_each_exact_window_through_the_real_text_lane(tmp_path)
     store = tmp_path / "annotations.sqlite"
     sqlite3.connect(store).close()
     config = Config(
-        llm={"model": "text-model"},
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
         editorial={"enabled": True, "annotation_database": str(store)},
     )
     earlier = _window(2015, 8, 20)
@@ -376,7 +390,8 @@ def test_album_runtime_uses_only_the_captured_album_corpus(tmp_path) -> None:
     store = tmp_path / "annotations.sqlite"
     sqlite3.connect(store).close()
     config = Config(
-        llm={"model": "text-model"},
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
         editorial={"enabled": True, "annotation_database": str(store)},
     )
     clip = make_clip("album-demanded", file_created_at=datetime(2026, 7, 1, tzinfo=UTC))
@@ -427,7 +442,8 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
         },
     )
     config = Config(
-        llm={"model": "text-model"},
+        tier="full",
+        llm={"model": "text-model", "base_url": "http://llm.test/v1"},
         editorial={
             "enabled": True,
             "annotation_database": str(store),
