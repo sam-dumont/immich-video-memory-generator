@@ -13,7 +13,7 @@ from tests.editorial_thin_fixtures import JUNK, START, Film, polish
 
 
 def test_a_shot_kind_is_read_off_the_frame_people_and_activity_heads():
-    assert shot_kind({"frame_kind": "place_or_scenery", "people": "none"}) == TEXTURE
+    assert shot_kind({"frame_kind": "place_or_scenery", "location": "outdoor"}) == TEXTURE
     assert shot_kind({"frame_kind": "people_moment", "people": "crowd"}) == TEXTURE
     assert (
         shot_kind({"frame_kind": "people_moment", "people": "one", "activity": "sport-active"})
@@ -22,6 +22,15 @@ def test_a_shot_kind_is_read_off_the_frame_people_and_activity_heads():
     assert (
         shot_kind({"frame_kind": "people_moment", "people": "two", "activity": "posing"})
         == PORTRAIT
+    )
+    # an empty interior is not a place a film is about: store shelves, a hallway
+    assert (
+        shot_kind({"frame_kind": "place_or_scenery", "location": "indoor", "people": "one"}) is None
+    )
+    assert shot_kind({"frame_kind": "place_or_scenery", "location": "outdoor"}) == TEXTURE
+    assert (
+        shot_kind({"frame_kind": "place_or_scenery", "location": "indoor", "people": "crowd"})
+        == TEXTURE
     )
     assert shot_kind({"frame_kind": "lone_everyday_object"}) is None
     assert shot_kind({}) is None

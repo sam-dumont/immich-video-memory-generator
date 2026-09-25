@@ -65,7 +65,8 @@ own story and keeps its place until one passes.
 
 **What the vote can't touch.** A favourite, a picture an episode reading recorded as worth a place of
 its own, the only shot of a close family member, and a story's only shot that isn't a portrait
-(a place, a crowd, a race, a party: the frame, people and activity heads say which). Left alone,
+(a place outdoors, a crowd, a race, a party: the frame, people, activity and location heads
+say which; an empty interior doesn't count). Left alone,
 the vote reads a road race as filler and a posed selfie as the point. A block made only of those is
 not asked. Only a
 gate removes them. Your ticks are added back after the polish either way.
