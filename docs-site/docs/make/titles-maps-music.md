@@ -160,6 +160,10 @@ for the name in the film's language, one request per distinct place on the cut. 
 85 % opacity, each one appearing when it changes. Captions stay clear of dissolves so two never overlap, and a
 caption in any alphabet draws with the title fonts above, HDR included.
 
+The date says only what is new: the weekday and day inside one month, the day and month inside one year, the
+full date across years. Each language writes it its own way (`10. AUGUST`, `10 DE AGOSTO`, `10 SIERPNIA`,
+`8月10日`).
+
 Places you are at all the time stay unlabelled (the name of your own town over every third clip is noise). A
 spot is familiar when it recurs within 250 m of the picture over many weeks in several years; a yearly summer
 holiday never qualifies. `trips.homebase_latitude` and `trips.homebase_longitude` mark home too, and the home
