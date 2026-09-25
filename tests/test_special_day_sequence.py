@@ -77,10 +77,10 @@ class Reader:
 def reader(monkeypatch):
     read = Reader()
     monkeypatch.setattr("immich_memories.analysis.special_day_sequence._read", read)
-    # WHY: ask_if_special is the per-day naming call; which days reach it is the subject.
+    # WHY: the day-level model confirms the camp; which days reach it is the subject.
     monkeypatch.setattr(
         "immich_memories.automation.special_day_scan.ask_if_special",
-        lambda *_a, **_k: SpecialDay(special=False, title="Camp", what="a camp"),
+        lambda *_a, **_k: SpecialDay(special=True, title="Camp", what="a camp"),
     )
     return read
 
@@ -94,6 +94,20 @@ def test_a_day_under_every_bar_is_found_by_what_it_was(reader):
     # Both days reached the reader, side by side in one reading of their month.
     assert len(reader.prompts) == 1
     assert "summer camp" in reader.prompts[0] and "cat asleep" in reader.prompts[0]
+
+
+def test_the_days_own_evidence_must_confirm_the_proposed_occasion(reader, monkeypatch):
+    assets, captions = _library()
+    # WHY: the day-level model disagrees with the month-level model's proposed occasion.
+    monkeypatch.setattr(
+        "immich_memories.automation.special_day_scan.ask_if_special",
+        lambda *_a, **_k: SpecialDay(special=False, title="An afternoon outside", what="a walk"),
+    )
+
+    found = scan_year(assets, llm_config=None, home=None, captions=captions)
+
+    assert len(reader.prompts) == 1
+    assert found == []
 
 
 def test_an_occasion_a_film_cannot_be_cut_from_is_dropped_at_the_end(reader, caplog):

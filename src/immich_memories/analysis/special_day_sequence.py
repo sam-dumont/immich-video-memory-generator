@@ -48,8 +48,8 @@ from immich_memories.people.relationships import is_close_family
 logger = logging.getLogger(__name__)
 
 SEQUENCE_VERSION = "special-day-sequence-v1-occasions-in-order"
-# What a catalogued day says found and named it: the sequence reading, then the day's own question.
-SCAN_VERSION = f"{SEQUENCE_VERSION}+{PROMPT_VERSION}"
+# A catalogue from before this contract did not honour the day-level rejection.
+SCAN_VERSION = f"{SEQUENCE_VERSION}+{PROMPT_VERSION}+confirmed-v1"
 
 # Owner, 2026-09-18: a day is kept only if a film of it can run this long.
 MIN_FILM_SECONDS = 30.0
