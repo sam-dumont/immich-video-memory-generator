@@ -80,6 +80,7 @@ def _flagged_reader(audience: str) -> RuleStructureReader:
         shareability_flags={},
         annotations={"a": ""},
         intent=SimpleNamespace(product="month"),
+        owner_required_asset_ids=(),
         audience=audience,
     )
     return RuleStructureReader(source)

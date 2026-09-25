@@ -188,6 +188,33 @@ def _names_an_animal(caption: str) -> bool:
     return bool(_ANIMAL.search(_living_text(caption)))
 
 
+# Parts of a body and what a foot or a hand wears: a shot of these alone shows no one.
+_BODY_PART = _words(
+    "feet foot toes toe leg legs knee knees hand hands finger fingers arm arms",
+    "shoe shoes sneaker sneakers trainers boot boots sandal sandals sock socks slipper slippers",
+)
+
+
+def shows_only_a_body_part(
+    heads: Mapping[str, str], caption: str | None, *, face: bool | None
+) -> bool:
+    """A body part with no face: legs, feet, shoes or hands alone (the owner's rule).
+
+    It sits on top of the points tables and is not fitted to them. A face on the picture makes
+    it a person. The frame head's body-part reading, or a caption naming a body part or what a
+    foot wears and no animal, says what the shot shows. Where Immich never read this library's
+    faces (`face` is None) there is no face to miss, so a caption must also name nobody alive.
+    """
+    if face is True:
+        return False
+    if heads.get("frame_kind") == "body_part_closeup":
+        return True
+    if not caption or not _BODY_PART.search(caption) or _names_an_animal(caption):
+        return False
+    # With faces read and none found, a person the caption names is the body part it shows.
+    return face is False or not names_someone_alive(caption)
+
+
 def face_evidence(assets: Mapping[str, Any]) -> Callable[[str], bool | None]:
     """Whether Immich found a face on a picture of this scope, as `carries_nothing` reads it.
 

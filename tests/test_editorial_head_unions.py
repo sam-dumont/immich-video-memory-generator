@@ -28,6 +28,7 @@ def reader(*, favourite=False, people=(), product="month", line="", audience="se
         shareability_flags={},
         annotations={"a": line},
         intent=SimpleNamespace(product=product),
+        owner_required_asset_ids=(),
         audience=audience,
     )
     return RuleStructureReader(source)
