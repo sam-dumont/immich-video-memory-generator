@@ -132,7 +132,10 @@ def test_laya_is_off_by_default_and_a_missing_checkpoint_degrades_naming_the_fet
 
 def test_a_missing_laya_runtime_degrades_naming_the_install(monkeypatch, tmp_path, caplog):
     archive = tmp_path / "laya.tar"
-    archive.write_bytes(b"")
+    with tarfile.open(archive, "w") as bundle:
+        info = tarfile.TarInfo("model.safetensors")
+        info.size = 1
+        bundle.addfile(info, io.BytesIO(b"x"))
     # WHY: stands in for an install without laya-mlx, which CI never has anyway.
     monkeypatch.setitem(sys.modules, "laya_mlx", None)
 

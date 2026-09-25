@@ -33,8 +33,10 @@ def _units():
     }
 
 
-def _admission(*, mechanical, slots=8):
+def _admission(*, mechanical, slots=8, favourites=()):
     unit_by_asset = _units()
+    for asset in favourites:
+        unit_by_asset[asset][1]["favourite"] = True
     story = {
         "key": "S001",
         "title": "A long moment",
@@ -117,3 +119,11 @@ def test_a_film_that_has_filled_its_slots_takes_no_second_pick_of_a_group():
     admission.run()
 
     assert [c["asset_id"] for c in admission.carriers] == ["first"]
+
+
+def test_depth_keeps_a_second_favourite_before_a_more_distant_plain_frame():
+    admission = _admission(mechanical=True, slots=2, favourites=("first", "third"))
+
+    admission.run()
+
+    assert [c["asset_id"] for c in admission.carriers] == ["first", "third"]

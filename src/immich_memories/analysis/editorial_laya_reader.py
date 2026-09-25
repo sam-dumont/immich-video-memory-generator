@@ -150,7 +150,9 @@ def unpack_checkpoint(archive: Path, destination: Path) -> Path:
     Only regular files whose names stay inside the destination are written; the archive is
     digest-pinned, but a path that climbs out of the folder is refused rather than trusted.
     """
-    if (destination / "model.safetensors").is_file():
+    if (destination / "model.safetensors").is_file() or (
+        (destination / "model.onnx").is_file() and (destination / "model.onnx.data").is_file()
+    ):
         return destination
     root = destination.resolve()
     with tarfile.open(archive) as bundle:
@@ -175,13 +177,22 @@ def laya_reader_for(editorial_config) -> LayaReader | None:
     if not editorial_config.laya_audience:
         return None
     archive = editorial_config.laya_checkpoint_path
-    if not archive.is_file():
+    if not archive.exists():
         logger.warning(
             "Laya is on but %s is missing, so the heads and rules decide sharing alone: "
             "run `immich-memories models fetch`",
             archive,
         )
         return None
+    checkpoint = (
+        archive if archive.is_dir() else unpack_checkpoint(archive, archive.with_suffix(""))
+    )
+    if (checkpoint / "model.onnx").is_file():
+        from immich_memories.analysis.editorial_laya_onnx import OnnxLayaScorer
+
+        return LayaReader(
+            OnnxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold
+        )
     try:
         import laya_mlx  # type: ignore[import-not-found,import-untyped,unused-ignore]  # noqa: F401
     except ImportError:
@@ -190,5 +201,4 @@ def laya_reader_for(editorial_config) -> LayaReader | None:
             "alone: `pip install laya-mlx` (Apple silicon)"
         )
         return None
-    checkpoint = unpack_checkpoint(archive, archive.with_suffix(""))
     return LayaReader(MlxLayaScorer(checkpoint), threshold=editorial_config.laya_audience_threshold)

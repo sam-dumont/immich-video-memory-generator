@@ -149,7 +149,7 @@ class EditorialConfig(BaseModel):
     )
     laya_checkpoint: str = Field(
         default_factory=default_laya_path,
-        description="The digest-pinned Laya checkpoint archive (811 MB); unpacked beside it on first use",
+        description="A Laya checkpoint archive, unpacked beside it on first use, or an extracted checkpoint directory",
     )
     laya_checkpoint_url: str = Field(
         default_factory=default_laya_url,

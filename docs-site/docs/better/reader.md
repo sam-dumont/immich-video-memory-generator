@@ -119,21 +119,23 @@ second failure the rules draft ships with the passes a no-model film gets, and t
 
 ## The Laya audience pre-screen
 
-On Apple Silicon, Laya answers the sharing question locally: does the caption describe
+Laya answers the sharing question locally: does the caption describe
 a bath, a nappy change, breastfeeding or one of the other
 private activities a family film holds back. Laya is a 0.4B text classifier (Apache-2.0),
 fine-tuned on captions of public CC BY photographs whose authors are credited in the archive. It
-reads the ingest caption, in about 14 ms a shot. It works with the rules reader and the prose
-reader when preparation produces captions. It is off by default.
+reads the ingest caption, in about 14 ms a shot on Apple silicon. It works with the rules reader
+and the prose reader when preparation produces captions. The `gpu` and `full` tiers enable it;
+the default `nas` tier uses the picture classifiers and rules.
 
 ```bash
 pip install laya-mlx                         # Apple Silicon only
-immich-memories models fetch --laya          # 811 MB, digest-pinned
+immich-memories models fetch --laya          # platform-specific, digest-pinned
 ```
 
 `models fetch` chooses the Apple archive on Apple silicon and the portable ONNX archive on
 Linux, Windows and Intel Macs. ONNX needs the `editorial` extra for CPU or `editorial-cuda` for
-NVIDIA. The ONNX download is 877 MB and expands to 1.70 GB; its calibrated default threshold is
+NVIDIA. The Apple download is 811 MB. The ONNX download is 877 MB and expands to 1.70 GB;
+its calibrated default threshold is
 0.185, while MLX keeps 0.186. Both archives are SHA-256 checked. A download mirror must keep the
 archive's filename. When configuring a checkpoint for a different backend manually, set its
 threshold explicitly too.
@@ -147,10 +149,21 @@ advanced:
 It only adds holds. The detector holds (the sensitive-content detector and the uncovered-person
 head) apply first and are never lifted, its findings go through the same support checks as the
 reader's, and a shot it doesn't answer stays held to the family. Sharing never asks the prose
-LLM, including when Laya is absent or a detector flags exposure. The threshold,
-`laya_audience_threshold: 0.186`, is the lowest that kept every hold of its public calibration
-split. Its known gap: a travel or administrative document (a boarding pass, an invoice) can slip
+LLM, including when Laya is absent or a detector flags exposure. The MLX threshold,
+`laya_audience_threshold: 0.186`, kept every hold of its public calibration split. Its known gap:
+a travel or administrative document (a boarding pass, an invoice) can slip
 through, since few such captions were in its training data. The detectors stay the floor either way.
+
+To use an extracted ONNX checkpoint, point `advanced.editorial.laya_checkpoint` at the
+directory containing `model.onnx`, `model.onnx.data`, `rl_agent_config.json` and `tokenizer/`.
+The scorer chooses CUDA when available and otherwise uses CPU. This path needs neither
+PyTorch nor MLX.
+
+For the audience ONNX export, set `laya_audience_threshold: 0.185`. This threshold was
+chosen on the public calibration split to retain all 15 MLX holds. On 3,143 held-out
+captions it retained all 23 MLX holds and added one. These are classifier checks; validation
+of the complete NVIDIA image is tracked in
+[#1385](https://github.com/sam-dumont/immich-video-memory-generator/issues/1385).
 
 ## Providers and dialects
 
