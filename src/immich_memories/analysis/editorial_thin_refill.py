@@ -119,7 +119,10 @@ def seat(
     else:
         result.append(seated)
     result.sort(key=itemgetter("taken", "asset_id"))
-    limit = max(content_cap, sum(row["seconds"] for row in cut) + frees)
+    # A removed shot shorter than a moving picture's floor still frees a whole seat; finishing
+    # shaves the fraction of a second the floor overruns.
+    freed = max(frees, MIN_MOTION_SECONDS) if frees > 0 else 0.0
+    limit = max(content_cap, sum(row["seconds"] for row in cut) + freed)
     excess = sum(row["seconds"] for row in result) - limit
     if excess > 0:
         if seated["seconds"] - excess < MIN_MOTION_SECONDS:
@@ -139,6 +142,7 @@ def plan_slots(
     content_cap: float,
     removed: Mapping[str, Mapping[str, Any]] | None = None,
     kind_of: KindOf | None = None,
+    vouched: Callable[[Mapping[str, Any]], bool] = lambda _row: True,
 ) -> list[ThinSlot]:
     """Every seat this polish may fill, in the order the budget is spent on them.
 
@@ -153,6 +157,8 @@ def plan_slots(
     Every refill's page leads with the kind of shot (`kind_of`: portrait or texture) its story
     holds fewer of in the cut, or the film does when the story holds none: the picker reads a
     page in order, and a film refilled from the top of plain pages drifts to posed portraits.
+    Only a row the library `vouched` for (a star, a video, a known person) is lifted: a head's
+    guess at a kind never puts an object nobody vouches for on top.
     """
     story_of = {asset: story.key for story in catalogue.stories for asset in story.asset_ids}
     offers = _offers(candidates_of, seen)
@@ -190,21 +196,25 @@ def plan_slots(
             if s.kind == NOTABLE
             else replace(
                 s,
-                page=_variety_first(s, s.page, cut, kind_of),
-                fallback=_variety_first(s, s.fallback, cut, kind_of),
+                page=_variety_first(s, s.page, cut, kind_of, vouched),
+                fallback=_variety_first(s, s.fallback, cut, kind_of, vouched),
             )
             for s in slots
         ]
     return [slot for slot in slots if slot.offered or slot.kind in REMOVALS]
 
 
-def _variety_first(slot: ThinSlot, rows, cut, kind_of: KindOf) -> tuple[dict[str, Any], ...]:
+def _variety_first(
+    slot: ThinSlot, rows, cut, kind_of: KindOf, vouched
+) -> tuple[dict[str, Any], ...]:
     """These rows of the slot with the kind its story (else the film) holds fewer of leading."""
     company = [row for row in cut if row.get("story_episode") == slot.story] or list(cut)
     want = lacking(kind_of(row["asset_id"]) for row in company if row["asset_id"] != slot.replacing)
     if want is None:
         return tuple(rows)
-    return tuple(sorted(rows, key=lambda unit: kind_of(unit["asset_id"]) != want))
+    return tuple(
+        sorted(rows, key=lambda unit: not (kind_of(unit["asset_id"]) == want and vouched(unit)))
+    )
 
 
 def _offers(candidates_of, seen: set[str]):

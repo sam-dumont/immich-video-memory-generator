@@ -69,3 +69,22 @@ def test_a_refill_is_offered_the_kind_of_shot_its_story_lacks_first(tmp_path):
         "draft": {PORTRAIT: 2},
         "polished": {PORTRAIT: 1, TEXTURE: 1},
     }
+
+
+def test_variety_never_lifts_a_picture_nothing_vouches_for(tmp_path):
+    """The 2024 year (09-25): a story short of texture had a lawnmower on a patio lifted to the
+    top of its page, and the picker took it. Variety reorders only what the library vouches for
+    (a star, a video, a known person)."""
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("p1", "S001", START, "two people smiling"))
+    film.draft.append(film.shot("p2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("posed", "S001", START + timedelta(hours=3), "two people posing")
+    film.shot("lawn", "S001", START + timedelta(hours=5), "a lawnmower on a patio")
+    kinds = {"p1": PORTRAIT, "p2": PORTRAIT, "posed": PORTRAIT, "lawn": TEXTURE}
+
+    _judge, _record, _cut, newcomers = polish(
+        tmp_path, film, kind_of=kinds.get, vouched=lambda row: row["asset_id"] != "lawn"
+    )
+
+    assert newcomers == ["posed"]

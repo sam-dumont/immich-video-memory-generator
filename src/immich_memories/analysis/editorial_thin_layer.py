@@ -168,6 +168,7 @@ class ThinPolish:
         close_family: CloseFamily = close_family_on,
         era_of: Callable[[str], str | None] | None = None,
         kind_of: KindOf | None = None,
+        vouched: Callable[[Mapping[str, Any]], bool] = lambda _row: True,
     ) -> list[dict[str, Any]]:
         """The cut this period's gates, one closed vote and one refill leave standing.
 
@@ -178,7 +179,8 @@ class ThinPolish:
         about people the subject's own as well. `era_of` maps a capture time to the partition a
         film promises a voice to (a year of a lifetime film), None when it promises none.
         `kind_of` says whether a shot is a portrait or texture, for the film's variety: the vote
-        keeps each story's only texture shot, and a refill leads with the kind its story lacks.
+        keeps each story's only texture shot, and a refill leads with the kind its story lacks,
+        among the rows the library `vouched` for.
         """
         if catalogue is None or not carriers:
             return _unpolished(carriers, _why_unpolished(catalogue, unread), record)
@@ -200,6 +202,7 @@ class ThinPolish:
             content_cap=content_cap,
             removed=_removed(carriers, kept),
             kind_of=kind_of,
+            vouched=vouched,
         )
         refill = ThinRefill(
             judge=judge,

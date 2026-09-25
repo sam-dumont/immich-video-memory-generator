@@ -87,7 +87,9 @@ A seat's page is its own story's pictures. An R or T seat then reads on into the
 other stories the film already holds, nearest in time first, so it doesn't end empty while the film
 has material. The refused moment comes first, then the
 moments the cut lacks, moving ones first, the favourite first inside a moment. A refill's page puts
-the kind of shot its story holds fewer of (portrait or texture) on top of all that. The model picks
+the kind of shot its story holds fewer of (portrait or texture) on top of all that, among the
+pictures the library vouches for (a star, a video, someone Immich knows). A removed shot shorter than
+2 s still frees a whole seat; finishing shaves the fraction the refill runs over. The model picks
 from 12 rows at most; the facts then say whether the pick stands, and a failed pick gets one more
 try, as does an R or T pick a gate refuses. A replacement for a shot the vote named comes from
 another moment: the vote judged the moment, and a frame taken seconds apart adds nothing either. A

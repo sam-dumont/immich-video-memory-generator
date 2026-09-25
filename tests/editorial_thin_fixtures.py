@@ -144,6 +144,7 @@ def polish(
     room: float = 120.0,
     kind_of=lambda _asset: None,
     scene_print=None,
+    vouched=lambda _row: True,
 ):
     judge = CountingJudge()
     recorded: dict = {}
@@ -183,6 +184,7 @@ def polish(
         candidates_of=lambda key: film.pool.get(key, []),
         content_cap=sum(row["seconds"] for row in film.draft) + room,
         kind_of=kind_of,
+        vouched=vouched,
     )
     newcomers = [row["asset_id"] for row in cut if row["asset_id"] not in drafted]
     return judge, recorded["thin-polish"], cut, newcomers
