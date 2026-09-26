@@ -113,21 +113,26 @@ def test_a_close_family_members_only_shot_survives_a_vote_that_names_it(tmp_path
         },
         record=lambda name, payload: written.__setitem__(name, dict(payload)),
     )
-    assert kept == ["a1", "a2"]
+    assert kept == ["a1", "a2", "a3"]
     verdict = written["thin-polish"]["verdicts"]["a2"]
     assert verdict["state"] == "kept" and verdict["named_by"] == 2
     assert "partner" in verdict["held_by"]
+    assert written["thin-polish"]["retained_without_replacement"] == ["a3"]
 
 
 def test_a_close_family_member_with_another_shot_is_voted_like_anyone(tmp_path):
+    written: dict[str, dict] = {}
     kept, _judge = polish_of(
         tmp_path,
         {
             "a1": f"2024-02-01 09:00 | a woman holding a baby | {PARTNER}",
             "a2": f"2024-02-02 09:00 | filler: a woman by a window | {PARTNER}",
         },
+        record=lambda name, payload: written.__setitem__(name, dict(payload)),
     )
-    assert kept == ["a1"]
+    assert kept == ["a1", "a2"]
+    assert written["thin-polish"]["verdicts"]["a2"]["state"] == "bad"
+    assert written["thin-polish"]["retained_without_replacement"] == ["a2"]
 
 
 def test_the_gates_still_refuse_a_close_family_members_only_shot(tmp_path):
@@ -162,7 +167,7 @@ def test_the_vote_is_told_whose_film_it_is_and_each_shots_relation_to_the_owner(
 
 def test_a_person_film_holds_the_only_shot_of_its_subjects_father(tmp_path):
     """To the owner he is an in-law; in a film of his daughter he is her father, and a vote that
-    calls his only shot filler does not remove it. A month film still lets the vote remove it."""
+    calls his only shot filler cannot replace it. A month film can propose a replacement."""
     _people, relation = subject_people(tmp_path)
     father = f"with Her Father ({relation['Her Father']})"
     lines = {
@@ -178,6 +183,9 @@ def test_a_person_film_holds_the_only_shot_of_its_subjects_father(tmp_path):
         )
         rows[product] = dict(re.findall(r"^(P\d+): (.*)$", judge.prompts[0], re.MULTILINE))
 
-    assert kept == {"person_spotlight": ["a1", "a2", "a3"], "monthly_highlights": ["a1", "a3"]}
+    assert kept == {
+        "person_spotlight": ["a1", "a2", "a3"],
+        "monthly_highlights": ["a1", "a2", "a3"],
+    }
     assert "the film's subject's close family: parent" in rows["person_spotlight"]["P02"]
     assert "close family" not in rows["monthly_highlights"]["P02"]

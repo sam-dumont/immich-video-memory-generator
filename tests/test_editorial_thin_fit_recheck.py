@@ -48,6 +48,10 @@ def test_a_newcomer_both_orders_name_is_still_revoked(tmp_path):
     # the removal's seat picks once more after the first refill is revoked; both are revoked
     assert len(payload["revoked_by_the_fit_check"]) == 2
     assert not set(payload["revoked_by_the_fit_check"]) & {row["asset_id"] for row in cut}
+    assert cut == film.draft
+    assert payload["removed_by_the_vote"] == []
+    assert payload["retained_without_replacement"] == ["d040"]
+    assert all(slot["outcome"] != "seated" for slot in payload["slots"])
 
 
 def test_a_swap_takes_its_shots_block_and_an_append_joins_the_block_its_time_falls_in():

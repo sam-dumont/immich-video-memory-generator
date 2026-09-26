@@ -65,13 +65,14 @@ def test_a_years_only_shot_survives_a_vote_that_names_it(tmp_path):
         record=lambda name, payload: written.__setitem__(name, dict(payload)),
     )
 
-    assert kept == ["a1", "a2", "a3"]
+    assert kept == ["a1", "a2", "a3", "a4"]
     verdict = written["thin-polish"]["verdicts"]["a2"]
     assert verdict["state"] == "kept" and verdict["named_by"] == 2
     assert "year-2007" in verdict["held_by"]
+    assert written["thin-polish"]["retained_without_replacement"] == ["a4"]
 
 
-def test_a_year_whose_every_shot_is_named_keeps_one(tmp_path):
+def test_a_year_whose_every_shot_is_named_keeps_its_draft_without_replacements(tmp_path):
     """Two shots of one year, both named by both orders: neither is the year's only shot on
     its own, but taking both silences the year."""
     kept = polish_years(
@@ -84,7 +85,7 @@ def test_a_year_whose_every_shot_is_named_keeps_one(tmp_path):
         },
     )
 
-    assert [a for a in kept if a in {"a2", "a3"}] and len(kept) == 3
+    assert kept == ["a1", "a2", "a3", "a4"]
 
 
 def test_a_seat_takes_the_favourite_of_the_moment_it_picked(tmp_path):
@@ -149,7 +150,7 @@ def test_a_removal_whose_story_has_nothing_left_is_refilled_from_the_films_other
     assert [(slot["rule"], slot["outcome"]) for slot in record["slots"]] == [("vote-bad", "seated")]
 
 
-def test_a_removal_with_nothing_left_to_refill_it_says_so(tmp_path):
+def test_a_proposed_replacement_with_nothing_left_keeps_the_draft_and_says_so(tmp_path):
     from tests.editorial_thin_fixtures import JUNK, START, Film, polish
 
     film = Film()
@@ -159,10 +160,32 @@ def test_a_removal_with_nothing_left_to_refill_it_says_so(tmp_path):
 
     _judge, record, cut, newcomers = polish(tmp_path, film)
 
-    assert [row["asset_id"] for row in cut] == ["d1"] and not newcomers
+    assert cut == film.draft and not newcomers
+    assert record["retained_without_replacement"] == ["d2"]
     assert [(slot["rule"], slot["outcome"]) for slot in record["slots"]] == [
         ("vote-bad", "none available")
     ]
+
+
+def test_a_replacement_is_checked_without_the_shot_it_would_replace(tmp_path):
+    from datetime import timedelta
+
+    import numpy as np
+
+    from tests.editorial_thin_fixtures import JUNK, START, Film, polish
+
+    film = Film()
+    film.tiers["S001"] = "maybe"
+    film.draft.append(film.shot("d1", "S001", START, "people at a table"))
+    film.draft.append(film.shot("d2", "S001", START + timedelta(days=1), JUNK))
+    film.shot("new", "S001", START + timedelta(days=1, minutes=1), "people in the garden")
+    prints = {"d1": np.array([1.0, 0.0]), "d2": np.array([0.0, 1.0]), "new": np.array([0.0, 1.0])}
+
+    _judge, record, cut, newcomers = polish(tmp_path, film, room=0, scene_print=prints.get)
+
+    assert newcomers == ["new"]
+    assert [row["asset_id"] for row in cut] == ["d1", "new"]
+    assert record["removed_by_the_vote"] == ["d2"]
 
 
 def test_a_removals_refill_the_gates_refuse_is_chosen_again_from_the_same_page(tmp_path):

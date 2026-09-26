@@ -173,7 +173,8 @@ def test_a_film_that_promises_every_partition_a_voice_keeps_it_through_the_polis
     voiced_by_the_draft = {week_of(asset) for asset in audit["verdicts"]} - {None}
     assert voiced_by_the_draft <= {week_of(c["asset_id"]) for c in plan["carriers"]}
     assert any("of week-" in verdict["held_by"] for verdict in audit["verdicts"].values())
-    assert any(c.get("review_stage") == "thin-polish" for c in plan["cut_carriers"])
+    assert audit["retained_without_replacement"]
+    assert not any(c.get("review_stage") == "thin-polish" for c in plan["cut_carriers"])
 
 
 class NamesOneClip(PolishJudge):
