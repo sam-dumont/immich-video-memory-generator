@@ -1,8 +1,10 @@
 """Late clip evidence changes how the retained photograph plays."""
 
 from dataclasses import replace
+from functools import partial
 
 from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
+from immich_memories.analysis.editorial_speech import resolve_speech_cuts
 from immich_memories.analysis.editorial_structure_contract import StructurePlannerPorts
 from immich_memories.analysis.editorial_structure_planner import plan_structure
 from tests.conftest import make_asset
@@ -16,7 +18,7 @@ def test_fresh_live_frame_quality_changes_playback_but_keeps_the_photo(tmp_path)
         asset.is_favorite = True
         asset.live_photo_video_id = "clip-" + asset.id
         companions[asset.live_photo_video_id] = make_asset(
-            asset.live_photo_video_id, duration=3.0, file_created_at=asset.file_created_at
+            asset.live_photo_video_id, duration=3.003, file_created_at=asset.file_created_at
         )
     captured = replace(
         captured,
@@ -24,10 +26,16 @@ def test_fresh_live_frame_quality_changes_playback_but_keeps_the_photo(tmp_path)
         motion_residuals={a: {"residual": 9.0} for a in captured.assets},
     )
     ports = StructurePlannerPorts(
-        judge=NoModelJudge(), rules=RuleStructureReader(captured), thumbnail_hash=lambda _: None
+        judge=NoModelJudge(),
+        rules=RuleStructureReader(captured),
+        thumbnail_hash=lambda _: None,
+        # WHY: the speech detector is external; keep production's interval binding so
+        # the NAS draft has exact endpoints before new frame evidence changes playback.
+        resolve_speech=partial(resolve_speech_cuts, regions_for=lambda _: [(2.8, 3.003)], buffer=0),
     )
     baseline = plan_structure(captured, ports)
     assert any(c["kind"] == "live-motion" for c in baseline.plan["carriers"])
+    assert all("end_time" in c for c in baseline.plan["carriers"])
 
     # WHY: frame classification is the external boundary; the real planner must
     # apply its late result to carriers already chosen by the NAS draft.

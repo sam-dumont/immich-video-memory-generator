@@ -645,13 +645,16 @@ def _story_selection(
     looks_alike=None,
 ):
     if ports.draft is not None:
+        carriers = deepcopy(ports.draft.carriers)
+        # Refinement edits a finished cut. Its measured intervals belong to the old
+        # playback decisions; finishing binds fresh intervals after those decisions.
+        for carrier in carriers:
+            for field in ("start_time", "end_time", "render_frame_seconds"):
+                carrier.pop(field, None)
         return replace(
             deepcopy(ports.draft.selection),
-            lines=material.story_lines,
-            carriers=[
-                material.builder.refresh_clip_facts(carrier)
-                for carrier in deepcopy(ports.draft.carriers)
-            ],
+            lines=source.annotations,
+            carriers=[material.builder.refresh_clip_facts(carrier) for carrier in carriers],
         )
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
