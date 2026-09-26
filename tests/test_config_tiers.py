@@ -56,12 +56,13 @@ def test_a_saved_reader_cannot_enable_an_llm_on_a_tier_without_one(tier, reader)
     assert config.editorial.resolve_reader(config.llm.model) == "rules"
 
 
-def test_a_model_on_the_nas_tier_is_named_as_unused(caplog: pytest.LogCaptureFixture) -> None:
+def test_a_model_on_nas_explains_that_text_features_remain_available(caplog) -> None:
     with caplog.at_level(logging.WARNING):
         config = Config(llm=GEMMA)
 
     assert config.editorial.reader == "rules"
-    assert "tier: full" in caplog.text
+    assert "titles and music mood" in caplog.text
+    assert "selection stays on nas" in caplog.text
 
 
 def test_saving_keeps_what_the_tier_decided_out_of_the_file(tmp_path) -> None:

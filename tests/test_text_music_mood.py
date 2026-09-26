@@ -14,13 +14,13 @@ from immich_memories.config_models_llm import LLMConfig
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tier", ["nas", "gpu"])
-async def test_music_uses_the_local_mood_on_tiers_without_an_llm(tmp_path, tier):
+async def test_music_uses_the_local_mood_without_a_configured_llm(tmp_path, tier):
     from immich_memories.audio.text_mood import mood_for_cut
 
-    config = Config(tier=tier, llm={"base_url": "http://reader.test", "model": "saved-reader"})
+    config = Config(tier=tier)
     config.cache.directory = str(tmp_path / "cache")
     (tmp_path / "plan.private.json").write_text(json.dumps({"story": {"thesis": "A fair"}}))
-    # WHY: the HTTP boundary must stay unused even when an old endpoint remains configured.
+    # WHY: without a configured model, the HTTP boundary must stay unused.
     with patch("httpx.AsyncClient.post", side_effect=AssertionError("Unexpected LLM call")) as post:
         choice = await mood_for_cut(config, tmp_path, (), fallback_mood="playful")
 
@@ -29,11 +29,12 @@ async def test_music_uses_the_local_mood_on_tiers_without_an_llm(tmp_path, tier)
 
 
 @pytest.mark.asyncio
-async def test_cut_text_answers_once_and_is_reused_without_images(tmp_path):
+@pytest.mark.parametrize("tier", ["nas", "gpu", "full"])
+async def test_cut_text_answers_once_and_is_reused_without_images(tmp_path, tier):
     from immich_memories.audio.text_mood import mood_for_cut
 
     config = Config(
-        tier="full",
+        tier=tier,
         llm={"base_url": "http://localhost:11434", "model": "text-reader", "provider": "ollama"},
     )
     config.cache.directory = str(tmp_path / "cache")

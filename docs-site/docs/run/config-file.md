@@ -17,8 +17,10 @@ Docker you can skip the file entirely and use [environment variables](./environm
 ## Compute tier
 
 Set `tier: nas` for inexpensive CPU heads and detectors, `tier: gpu` to add captions and Laya,
-or `tier: full` to add a prose LLM. NAS is the default. GPU and NAS never call the prose LLM,
-even if its endpoint remains in the file; titles and music use their local fallbacks.
+or `tier: full` to add model refinement. NAS is the default. NAS and GPU use rules for
+selection. A configured LLM can still write titles and choose music mood from text on either
+tier; those features need no local GPU and send no pictures. Without a model they use local
+fallbacks. Configuring a text model does not enable LLM image captioning.
 Full requires a model and an explicit endpoint or hosted provider. See the
 [tier reference](../reference/config-reference.md#tier) for the effective settings.
 

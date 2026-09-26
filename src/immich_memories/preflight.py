@@ -359,9 +359,9 @@ def check_llm(config: Config) -> CheckResult:
         reader = config.editorial.resolve_reader(config.llm.model)
     except ValueError as exc:
         return CheckResult(name="LLM", status=CheckStatus.ERROR, message=str(exc))
-    if reader == "rules":
+    if reader == "rules" and not config.llm.model.strip():
         return CheckResult(
-            name="LLM", status=CheckStatus.SKIPPED, message="Rules reader does not use an LLM"
+            name="LLM", status=CheckStatus.SKIPPED, message="No LLM configured for text features"
         )
     # A named provider is its adapter plus a URL, and the check has to reach
     # the endpoint the run will: `zai` and `openai` both resolve to one of the

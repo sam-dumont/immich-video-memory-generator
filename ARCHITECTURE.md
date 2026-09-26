@@ -148,6 +148,8 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   (`editorial_preparation_detectors.py`).
 - **Tiers**: `tier` selects `nas` (CPU heads and detectors), `gpu` (adds captions and Laya),
   or `full` (adds an explicitly configured prose LLM). NAS and GPU always use the rules reader.
+  Text-only titles and music mood may use a configured LLM on every tier; they neither enable
+  model selection nor image captioning. LLM preflight checks those configured text services too.
   Advanced preparation can be reduced to `no_captions` (heads and detectors) or `metadata_only`
   (nothing looks at pixels, so every shot is held to the family). Sharing never asks the prose
   LLM (`config_tiers.py`, `config_models_editorial*.py`, `editorial_shareability_tiers.py`).
