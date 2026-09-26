@@ -15,9 +15,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from immich_memories.analysis.editorial_preparation_detectors import MARQO_ONNX_SHA256
-from immich_memories.config_models_editorial import LAYA_AUDIENCE_URL
 from immich_memories.config_models_editorial_preparation import MARQO_ONNX_URL
 from immich_memories.config_models_triage import DINOV2_SMALL_ONNX_URL
+from immich_memories.laya_checkpoints import LAYA_MLX_URL, LAYA_ONNX_URL
 from immich_memories.triage.encoder import DINOV2_SMALL_ONNX_SHA256
 
 # The largest pinned artifact is the 88 MB encoder; the cap only exists so a
@@ -40,12 +40,16 @@ ENCODER = PinnedModel(
     "the pinned DINOv2 ONNX export", DINOV2_SMALL_ONNX_URL, DINOV2_SMALL_ONNX_SHA256
 )
 MARQO_ONNX = PinnedModel("the pinned Marqo ONNX export", MARQO_ONNX_URL, MARQO_ONNX_SHA256)
-# The optional audience pre-screen (`editorial.laya_audience`): a bf16 Laya checkpoint archive,
-# Apache-2.0, fetched only on `models fetch --laya`.
+# Two exports of the Apache-2.0 audience checkpoint, fetched by gpu/full or --laya.
 LAYA_AUDIENCE = PinnedModel(
     "the pinned Laya audience checkpoint",
-    LAYA_AUDIENCE_URL,
+    LAYA_MLX_URL,
     "a79ad9fa3e4b5ae23e6b7ca9233f2bed50746a72baf0c3803dbecd68a6625dc4",
+)
+LAYA_AUDIENCE_ONNX = PinnedModel(
+    "the pinned Laya audience ONNX checkpoint",
+    LAYA_ONNX_URL,
+    "90420ef38a5af3184bfbf9c3d5cdd030f1acac91d6dd911942d11b36e6c07c1a",
 )
 LAYA_MAX_BYTES = 1024 * 1024 * 1024
 

@@ -8,9 +8,11 @@ from pathlib import Path
 import click
 
 from immich_memories.analysis.editorial_preparation_detectors import DETECTOR_SNAPSHOTS
+from immich_memories.laya_checkpoints import LAYA_ONNX_NAME
 from immich_memories.pinned_models import (
     ENCODER,
     LAYA_AUDIENCE,
+    LAYA_AUDIENCE_ONNX,
     LAYA_MAX_BYTES,
     MARQO_ONNX,
     fetch_pinned_model,
@@ -49,11 +51,20 @@ def register_models_commands(cli_group: click.Group) -> None:
             force=force,
         )
         if laya or config.editorial.laya_audience:
+            pin = (
+                LAYA_AUDIENCE_ONNX
+                if LAYA_ONNX_NAME
+                in (
+                    config.editorial.laya_checkpoint_url.rsplit("/", 1)[-1],
+                    config.editorial.laya_checkpoint_path.name,
+                )
+                else LAYA_AUDIENCE
+            )
             _fetch_pinned(
                 label="laya audience",
                 url=config.editorial.laya_checkpoint_url,
                 destination=config.editorial.laya_checkpoint_path,
-                sha256=LAYA_AUDIENCE.sha256,
+                sha256=pin.sha256,
                 force=force,
                 max_bytes=LAYA_MAX_BYTES,
             )

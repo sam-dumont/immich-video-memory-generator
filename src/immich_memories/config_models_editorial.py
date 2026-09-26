@@ -11,15 +11,13 @@ from pydantic import BaseModel, Field, field_validator
 from immich_memories.analysis.editorial_description_contract import DESCRIPTION_MODEL
 from immich_memories.config_models import expand_env_vars
 from immich_memories.config_models_editorial_preparation import EditorialPreparationConfig
+from immich_memories.laya_checkpoints import (
+    default_laya_path,
+    default_laya_threshold,
+    default_laya_url,
+)
 
 logger = logging.getLogger(__name__)
-
-# The one place the Laya checkpoint's host is named; `models fetch --laya` verifies the digest
-# pinned in pinned_models.py whatever this points at.
-LAYA_AUDIENCE_URL = (
-    "https://github.com/sam-dumont/immich-video-memory-generator/"
-    "releases/download/models-v2/laya-audience-a79ad9fa.tar"
-)
 
 # Heads that once shipped and no longer do. A config file that still names one is a
 # config written before the head was retired, not a broken config: the name is dropped
@@ -144,26 +142,26 @@ class EditorialConfig(BaseModel):
         default=False,
         description=(
             "Answer the audience check's activity question with the local Laya model from the "
-            "compact caption (Apple silicon; `pip install laya-mlx`, then `models fetch --laya`). "
+            "compact caption (MLX on Apple silicon, ONNX elsewhere; `models fetch --laya`). "
             "Detector and rule holds still apply and are never lifted; without it the heads and "
             "rules decide. The question never goes to an LLM"
         ),
     )
     laya_checkpoint: str = Field(
-        default="~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar",
+        default_factory=default_laya_path,
         description="A Laya checkpoint archive, unpacked beside it on first use, or an extracted checkpoint directory",
     )
     laya_checkpoint_url: str = Field(
-        default=LAYA_AUDIENCE_URL,
+        default_factory=default_laya_url,
         description="Where `models fetch --laya` downloads the pinned Laya checkpoint from",
     )
     laya_audience_threshold: float = Field(
-        default=0.186,
+        default_factory=default_laya_threshold,
         ge=0,
         le=1,
         description=(
-            "Laya's hold probability at or above which a carrier is held. 0.186 keeps every hold "
-            "of the public calibration split"
+            "Laya's hold probability at or above which a carrier is held. The calibrated "
+            "platform default is 0.186 for Apple MLX and 0.185 for ONNX"
         ),
     )
 

@@ -497,6 +497,7 @@ editorial:
   strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
   laya_audience: false           # Laya answers the audience activity question; `tier` sets it
+  # Apple silicon defaults below; elsewhere the ONNX archive and threshold 0.185 are used.
   laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
   laya_checkpoint_url: "https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v2/laya-audience-a79ad9fa.tar"
   laya_audience_threshold: 0.186 # Laya's hold probability at or above which a carrier is held

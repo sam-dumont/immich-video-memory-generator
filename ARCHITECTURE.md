@@ -149,6 +149,8 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   Advanced preparation can be reduced to `no_captions` (heads and detectors) or `metadata_only`
   (nothing looks at pixels, so every shot is held to the family). Sharing never asks the prose
   LLM (`config_tiers.py`, `config_models_editorial*.py`, `editorial_shareability_tiers.py`).
+  `laya_checkpoints.py` selects platform-matched archive, path and threshold defaults;
+  `pinned_models.py` owns the SHA-256 pins used by `models fetch`.
 - **Reach**: the pictures a film can actually select (for a person film, the ones that person is
   in), plus their Live Photo siblings and capture runs. Only those get prepared; the rest of the
   window is read as Immich metadata (`editorial_film_reach.py`).

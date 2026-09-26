@@ -214,7 +214,9 @@ def _fetch_models(monkeypatch, tmp_path, editorial, *flags):
 def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path):
     from immich_memories.pinned_models import LAYA_AUDIENCE, LAYA_MAX_BYTES
 
-    editorial = EditorialConfig(laya_checkpoint=str(tmp_path / "laya.tar"))
+    editorial = EditorialConfig(
+        laya_checkpoint=str(tmp_path / "laya.tar"), laya_checkpoint_url=LAYA_AUDIENCE.url
+    )
     fetched = _fetch_models(monkeypatch, tmp_path, editorial, "--laya")
 
     laya = next(call for call in fetched if call["sha256"] == LAYA_AUDIENCE.sha256)
@@ -225,8 +227,14 @@ def test_models_fetch_laya_downloads_the_pinned_checkpoint(monkeypatch, tmp_path
 def test_models_fetch_on_a_tier_with_laya_fetches_it_unasked(monkeypatch, tmp_path):
     from immich_memories.pinned_models import LAYA_AUDIENCE
 
-    on = EditorialConfig(laya_audience=True, laya_checkpoint=str(tmp_path / "laya.tar"))
-    off = EditorialConfig(laya_checkpoint=str(tmp_path / "laya.tar"))
+    on = EditorialConfig(
+        laya_audience=True,
+        laya_checkpoint=str(tmp_path / "laya.tar"),
+        laya_checkpoint_url=LAYA_AUDIENCE.url,
+    )
+    off = EditorialConfig(
+        laya_checkpoint=str(tmp_path / "laya.tar"), laya_checkpoint_url=LAYA_AUDIENCE.url
+    )
 
     assert any(
         c["sha256"] == LAYA_AUDIENCE.sha256 for c in _fetch_models(monkeypatch, tmp_path, on)
