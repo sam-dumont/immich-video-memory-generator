@@ -86,8 +86,9 @@ The draft tries to reach its length before it gives up the seconds:
 
 - **Depth.** When a story has slots left after every pass, it spends them inside the moments it
   already shows (`editorial_story_depth.py`): first moments no pick took, alternating between
-  capture groups, then up to 3 frames of each chosen moment, furthest in time from the frames
-  already in. Every one must stand and must not look like its neighbours. A film of one repeated
+  capture groups, then up to 3 frames of each chosen moment. Eligible favourites come first;
+  equally preferred frames spread furthest in time from those already in. Every one must stand
+  and must not look like its neighbours. A film of one repeated
   scene stays short.
 - **Readmission.** A frame refused for looking like another, or for crowding its place, comes back
   when nothing else can fill the slot. A favourite refused for crowding its place comes back sooner:

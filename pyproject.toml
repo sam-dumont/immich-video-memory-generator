@@ -100,6 +100,7 @@ demucs = [
 # #806).
 editorial = [
     "onnxruntime>=1.28",
+    "tokenizers>=0.22",
     "huggingface-hub>=1.29",
     "kaldi-native-fbank>=1.20",
 ]
@@ -114,6 +115,7 @@ editorial = [
 editorial-cuda = [
     # 1.27+ requires CUDA 13; the supported image uses CUDA 12 / cuDNN 9.
     "onnxruntime-gpu>=1.26,<1.27; sys_platform == 'linux'",
+    "tokenizers>=0.22",
     "huggingface-hub>=1.29",
     "kaldi-native-fbank>=1.20",
 ]
@@ -134,6 +136,7 @@ all-mac = [
     "immich-memories[editorial]",
 ]
 dev = [
+    "tokenizers>=0.22",  # Real portable Laya tokenizer in the lightweight unit suite.
     "pytest>=9.0.3",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",

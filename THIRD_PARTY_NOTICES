@@ -320,7 +320,7 @@ of public domain, BSD and GPL parts. Nothing here changes the project's MIT
 licence for its own code, but a downstream that vendors the environment
 should know.
 
-139 packages, computed from uv.lock: everything reachable from
+140 packages, computed from uv.lock: everything reachable from
 immich-memories through the runtime extras (never the dev tools). Regenerate
 with `make notices`; `make notices-check` fails when this list is stale.
 
@@ -811,6 +811,10 @@ sympy 1.14.0
 tinycss2 1.5.1
   License: BSD
   URL: https://www.courtbouillon.org/tinycss2
+
+tokenizers 0.23.2
+  License: Apache-2.0
+  URL: https://github.com/huggingface/tokenizers
 
 torch 2.14.0
   License: Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT
