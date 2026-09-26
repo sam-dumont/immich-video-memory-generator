@@ -1,15 +1,16 @@
 """The three product tiers: CPU classifiers, light GPU models, and an added prose LLM.
 
 `tier:` is the one choice a user makes. It sets three advanced knobs, and a knob the user
-states in the file can reduce preparation. Only ``full`` may enable an LLM:
+states in the file can reduce preparation. Only ``full`` uses an LLM for selection:
 
 * ``nas``: inexpensive CPU heads and detectors, rules, no captions, no Laya.
 * ``gpu``: every light model. The caption server, the heads and detectors, and Laya for the
-  sharing question. Still the rules reader and zero LLM calls.
+  sharing question. Selection still uses the rules reader.
 * ``full``: the ``gpu`` tier plus an LLM for prose and polish. It refuses to load without the
   LLM's ``base_url`` and ``model``.
 
-The sharing question never goes to an LLM on any tier.
+Configured text features (titles and music mood) work on every tier. The sharing question
+never goes to an LLM on any tier.
 """
 
 from __future__ import annotations
@@ -60,8 +61,8 @@ def apply_tier(config: Config) -> dict[str, Any]:
         _require_llm_endpoint(config)
     elif config.llm.model.strip():
         logger.warning(
-            "llm.model is set but the tier is %s, so the editor calls no LLM. "
-            "Set `tier: full` to use it.",
+            "The configured LLM can supply titles and music mood; selection stays on %s. "
+            "Model refinement requires GPU capability and the full tier's caption and Laya services.",
             config.tier,
         )
     applied = {}

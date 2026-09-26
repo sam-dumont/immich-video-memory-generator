@@ -74,6 +74,26 @@ def test_no_llm_title_pins_the_template() -> None:
     assert called == []
 
 
+def test_requesting_a_title_without_a_model_explains_the_template_fallback(caplog) -> None:
+    called = []
+    title, subtitle, source = resolve_cli_title(
+        enabled=True,
+        title_override=None,
+        subtitle_override="Summer",
+        clips=[make_clip("clip-1")],
+        config=Config(tier="nas"),
+        memory_type="multi_person",
+        date_range=_RANGE,
+        person_names=[],
+        # WHY: fail visibly if a missing model still reaches the external LLM boundary.
+        ask=lambda **kwargs: called.append(kwargs),
+    )
+
+    assert (title, subtitle, source) == (None, "Summer", None)
+    assert called == []
+    assert "--llm-title needs a configured LLM; using the template title" in caplog.text
+
+
 def test_a_trip_still_waits_to_be_asked() -> None:
     """Trips keep the prompt they have; this PR does not change what names them."""
     called = []
@@ -316,22 +336,28 @@ def test_the_flag_carries_the_clip_descriptions_into_the_ask() -> None:
     assert seen["duration_days"] == 13
 
 
-def test_a_tier_without_an_llm_never_asks_for_a_title() -> None:
-    """gpu and nas call no LLM, even with a model left in the file and the flag on."""
+def test_nas_selection_can_use_a_configured_llm_for_its_title() -> None:
+    """A CPU selection does not prevent an explicitly requested text-only title."""
     asked = []
+
+    # WHY: title generation crosses the external LLM boundary.
+    def ask(**kwargs):
+        asked.append(kwargs)
+        return SimpleNamespace(title="A Fortnight Together", subtitle="2025")
+
     title, _subtitle, _source = resolve_cli_title(
         enabled=True,
         title_override=None,
         clips=[make_clip("clip-1")],
-        config=Config(tier="gpu", llm={"base_url": "http://llm.test/v1", "model": "m"}),
+        config=Config(tier="nas", llm={"base_url": "http://llm.test/v1", "model": "m"}),
         memory_type="multi_person",
         date_range=_RANGE,
         person_names=["Ada Example"],
-        ask=lambda **kwargs: asked.append(kwargs),
+        ask=ask,
     )
 
-    assert title is None
-    assert asked == []
+    assert title == "A Fortnight Together"
+    assert len(asked) == 1
 
 
 def test_a_missing_reader_leaves_the_template_alone() -> None:

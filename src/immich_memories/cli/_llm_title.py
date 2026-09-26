@@ -56,7 +56,7 @@ def _asks_the_model(*, enabled: bool | None, memory_type: str | None, configured
         return False
     if not configured:
         if enabled:
-            logger.warning("--llm-title needs `tier: full` and an LLM; using the template title")
+            logger.warning("--llm-title needs a configured LLM; using the template title")
         return False
     if enabled:
         return True
@@ -95,8 +95,7 @@ def resolve_cli_title(
     if not _asks_the_model(
         enabled=enabled,
         memory_type=memory_type,
-        # Only the full tier talks to an LLM; a model left in the file on gpu or nas is unused.
-        configured=bool(llm_config.model) and config.tier == "full",
+        configured=bool(llm_config.model),
     ):
         return None, subtitle_override, None
 

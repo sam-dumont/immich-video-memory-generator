@@ -237,21 +237,26 @@ class TestGenerateTitleAfterPipeline:
         assert state.title_suggestion_title is not None
 
     @pytest.mark.asyncio
-    async def test_skips_llm_on_a_tier_without_one_even_with_a_model_in_the_file(self):
+    @pytest.mark.parametrize("tier", ["nas", "gpu"])
+    async def test_configured_llm_can_title_a_cut_on_any_selection_tier(self, tier):
+        from immich_memories.titles.llm_titles import TitleSuggestion
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
         state.date_ranges = [_make_date_range()]
-        state.config = _make_config(llm_model="omlx", tier="gpu")
+        state.config = _make_config(llm_model="omlx", tier=tier)
 
+        # WHY: the external title service answers without loading a model in the test.
         with patch(
             "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
             new_callable=AsyncMock,
+            return_value=TitleSuggestion(title="A Fortnight Together", subtitle="July"),
         ) as mock_llm:
             await generate_title_after_pipeline(state)
 
-        mock_llm.assert_not_called()
-        assert state.title_suggestion_title is not None
+        mock_llm.assert_awaited_once()
+        assert state.title_suggestion_title == "A Fortnight Together"
+        assert state.title_suggestion_subtitle == "July"
 
     @pytest.mark.asyncio
     async def test_skips_when_no_date_range(self):

@@ -25,6 +25,11 @@ of your camera roll:
 All of this works on a plain NAS. Titles come from templates, the special-day catalogue and your album names; a
 reader only rewrites people and occasion titles (see [When a model names the film](#when-a-model-names-the-film)).
 
+A configured LLM can write titles and choose music mood from the cut's text on every selection
+tier, including NAS. These requests send no pictures and need no local GPU. If the model is
+missing or fails, the template title and local music mood still work. Adding a text model does
+not opt you into using it to caption pictures.
+
 `title_screens.enabled: false` turns every card off. The other keys are in the
 [config reference](../reference/config-reference.md#title-screens).
 

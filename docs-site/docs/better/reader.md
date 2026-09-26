@@ -109,9 +109,10 @@ immich-memories preflight
 ```
 
 The `LLM` row checks that the endpoint answers for your model (Ollama's tag list, a minimal chat
-call on an OpenAI-compatible host, the model list or a one-token ask on an Anthropic one). On the
-rules reader it reads `SKIPPED`. A blank `llm.model` means rules (`advanced.editorial.reader: auto`,
-the default); `reader: model` with a blank model stops with
+call on an OpenAI-compatible host, the model list or a one-token ask on an Anthropic one). It
+checks a configured LLM on NAS and GPU too, because titles and music mood can use it even when
+selection uses rules. With no model configured it reads `SKIPPED`. A model reader with a blank
+model stops with
 `editorial runtime needs a nonblank LLM model`.
 
 A reader that fails mid-film does not fail the film. The period account is asked twice; after the

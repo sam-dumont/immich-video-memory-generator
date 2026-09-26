@@ -43,9 +43,10 @@ tier: nas                          # nas | gpu | full
 `editorial.laya_audience`. Explicit preparation choices can reduce the work; `nas` and `gpu`
 always use the rules reader, even if an old file says `auto` or `model`. Save preserves your
 choices and omits unchanged tier defaults. `full` refuses to start without an LLM endpoint: a `base_url` you
-stated (or a hosted `provider` such as `anthropic`) and a `model`. Only `full` asks an LLM for
-anything, including titles and music mood: on `nas` and `gpu` a model left in the file is unused and the title
-comes from the template. Music uses the local fallback mood. A light model that is missing (no Laya checkpoint, say) is skipped with a
+stated (or a hosted `provider` such as `anthropic`) and a `model`. Only `full` uses an LLM for
+selection refinement. Titles and music mood can use a configured LLM on any tier, including
+NAS, with text-only requests. Without a model they use their local fallbacks. Configuring that
+LLM does not enable image captioning. A light model that is missing (no Laya checkpoint, say) is skipped with a
 one-line notice, and the heads and rules decide alone.
 
 Env: `IMMICH_MEMORIES_TIER=gpu`. `uv run python scripts/tier_settings.py` prints what each tier runs

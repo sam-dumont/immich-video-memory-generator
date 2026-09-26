@@ -342,8 +342,9 @@ class Config(BaseSettings):
 
     tier: ProductTier = Field(
         default="nas",
-        description="nas = inexpensive CPU classifiers; gpu = captions, heads and Laya, no LLM; "
-        "full = gpu plus an LLM for prose, and it needs advanced.llm.base_url and model",
+        description="nas = inexpensive CPU classifiers; gpu = captions, heads and Laya; "
+        "full = gpu plus LLM selection refinement, requiring advanced.llm.base_url and model. "
+        "Configured text features such as titles and music mood work on every tier",
     )
 
     server: ServerConfig = Field(default_factory=ServerConfig)
