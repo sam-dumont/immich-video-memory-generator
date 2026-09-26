@@ -11,8 +11,8 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 Reader: newcomer. Every page and button, in the order you meet them.
 
 `/` is one page with three states: the **brief**, the **cut** in progress, and the **storyboard**
-the cut produced. It is `immich-memories generate` with buttons: one memory type, its parameters,
-one duration, one button. The sidebar holds **Memory**, **Suggestions**, **Runs**, **Media pool**
+the cut produced. The GUI and CLI use the same editor. Both can make a film; the GUI also gives you
+a visual workspace to review and refine the cut. The sidebar holds **Memory**, **Suggestions**, **Runs**, **Media pool**
 and **Settings**. Options and Export open from the cut itself.
 
 Screenshots on this page come from a hermetic run over the CC0 fixture library
@@ -169,15 +169,25 @@ the Editing row at once (*Waiting for the reader at omlx.local:9999: connection 
 
 ## The storyboard, then the story
 
-<ThemedScreenshot name="memory-story" alt="The storyboard: the thesis, then one shot per picture in capture order with its day, story and running timecode" />
+<ThemedScreenshot name="memory-story" alt="The cut contact sheet, with an uncropped picture and its recorded reason in the inspector" />
 
-The **Storyboard** is the cut in the order the video plays it: a one-paragraph **thesis** on top,
-then one row per picture with its timecode, capture day, seconds on screen, story and the editor's
-one-line reason. Read the day labels down the list: six pictures under one story across three days
-is a grouping that went loose, and this is where you see it. Each shot has the pool's **Never use**
-and, where a hold applies, **Clear hold**.
+The **Storyboard** is a contact sheet in playback order. Each uncropped thumbnail shows its
+number, timecode, capture day, screen time and story. **Show** filters it to videos, stills or your
+exclusions. Open a picture to read **Why this picture** beside a larger preview.
 
-<ThemedScreenshot name="pictures-storyboard-never-use" alt="A storyboard shot after Never use, with Undo" />
+When the saved cut records them, the inspector also shows the **Model suggestion**, the rule that
+kept the picture, and a **Recorded alternative** with its actual outcome. A refused replacement
+stays labelled as refused. Cuts without those records show only the evidence they have.
+
+Untick **Include in export** to leave a picture out of this export; tick it again to restore it.
+The contact sheet keeps the saved cut's order and timecodes. **Cut again** creates a new plan from
+your selection. **Find alternatives in the pool** opens the existing pool, where you can tick a
+different picture and cut again. **Trim the video clips** opens the excerpt editor.
+
+**Picture decisions** opens the existing **Never use**, **Clear hold** and **Undo** controls.
+These decisions apply across runs; an export exclusion only changes the current session.
+
+<ThemedScreenshot name="pictures-storyboard-never-use" alt="Picture decisions opened from the inspector, with Never use saved and Undo available" />
 
 <ThemedScreenshot name="memory-story-ranked" alt="The story tab: stories in weight order, each with its pictures and their reasons" />
 

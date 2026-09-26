@@ -648,7 +648,7 @@ src/immich_memories/
 │       ├── memory_duration.py      # The duration line: the type's answer or an override
 │       ├── memory_run.py           # The cut that outlives its page: install check, arm, poll, cancel, recover;
 │       │                           # a refused or failed cut lands in AppState.cut_failure, the brief's red card
-│       ├── memory_storyboard.py    # The storyboard tab: the cut in the order it plays
+│       ├── memory_storyboard.py    # Svelte contact-sheet binding: session selection + existing hold/trim controls
 │       ├── picture_decisions.py    # Clear hold / Never use / Undo under a pool picture or a storyboard shot
 │       ├── cut_progress_view.py    # A cut in progress: its pictures, the bar, the stage lines
 │       ├── memory_story.py         # The story view: thesis, stories, carriers with reasons
@@ -937,3 +937,10 @@ version and capabilities first); deployment files are `services/render-worker/co
 The web sidebar links Memory, Suggestions, Runs, Media pool and Settings.
 `ui/pages/suggestions.py` uses `AutoRunner`; `ui/pages/runs.py` reads `RunDatabase`
 and the shared run index/storyboard. Neither page owns a separate job store.
+
+The storyboard embeds `frontend/src/CutReview.svelte` as a custom element in the existing
+NiceGUI session. `make frontend-check` checks and bundles it into `ui/static/review`, shipped
+inside the Python package. The browser owns focus and filtering; Python validates asset IDs
+and applies export exclusions to the existing selection. `operations/cut_review.py` reads saved
+model objections, protection rules and replacement outcomes without running inference. Media
+still uses the authenticated thumbnail route, and hold decisions use the shared owner store.

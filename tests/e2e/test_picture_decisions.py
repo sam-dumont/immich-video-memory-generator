@@ -81,11 +81,14 @@ def test_never_use_from_the_storyboard_and_clear_a_hold_from_the_pool(
         shots = page.locator(".storyboard-shot")
         expect(shots).to_have_count(len(CARRIERS), timeout=120_000)
 
-        shots.first.get_by_role("button", name="Never use").click()
-        expect(shots.first.get_by_text("You'll never use this picture.")).to_be_visible()
-        expect(shots.first.get_by_role("button", name="Undo")).to_be_visible()
+        page.get_by_role("button", name="Picture decisions", exact=True).click()
+        decisions = page.get_by_role("dialog")
+        decisions.get_by_role("button", name="Never use").click()
+        expect(decisions.get_by_text("You'll never use this picture.")).to_be_visible()
+        expect(decisions.get_by_role("button", name="Undo")).to_be_visible()
         assert owner_decisions.decisions(store, [shot]) == {shot: owner_decisions.NEVER_USE}
-        _frame(shots.first, "1324-storyboard-never-use")
+        _frame(decisions, "1324-storyboard-never-use")
+        decisions.get_by_role("button", name="Close", exact=True).click()
 
         page.get_by_role("button", name="Review the pool", exact=True).click()
         card = page.locator(".q-card").filter(has_text=left_out.filename[:17]).first

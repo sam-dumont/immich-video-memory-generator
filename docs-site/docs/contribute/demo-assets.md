@@ -63,6 +63,10 @@ shows against the real pages.
 
 Keep the UI workflow together: brief, cut, storyboard, pool correction, export, generation,
 finished file. Runs and Suggestions follow, then the CLI goes straight into the rendered film.
+The storyboard scene shows the contact sheet and picture inspector. Its selected picture and
+reason come from the same fixture as the browser tests; it must not invent model proposals that
+the fixture did not record. Rebuild the frontend with `make frontend-check` before capturing UI
+screenshots, then rebuild the Remotion demo and hero after changing the review layout.
 The demo shows the product working: an error card, even a helpful one, reads as the product
 failing, so refusals live in the install docs, not in a scene.
 

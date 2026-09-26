@@ -114,7 +114,9 @@ def _render_actions(
         )
 
 
-def _render_views(view: StoryView, board: Storyboard | None, warning: str | None) -> None:
+def _render_views(
+    view: StoryView, board: Storyboard | None, warning: str | None, attempt_dir: Path | None
+) -> None:
     """The storyboard first, since that is the video; the weighed story one tab away."""
     if board is None:
         render_story(view, warning=warning)
@@ -127,9 +129,15 @@ def _render_views(view: StoryView, board: Storyboard | None, warning: str | None
         storyboard_tab = ui.tab("Storyboard", icon="view_timeline", label=tr("Storyboard"))
         story_tab = ui.tab("Story", icon="auto_stories", label=tr("Story"))
     # No slide between the two readings of one cut: a screenshot mid-animation shows both.
-    with ui.tab_panels(tabs, value=storyboard_tab, animated=False).classes("w-full"):
+    with ui.tab_panels(tabs, value=storyboard_tab, animated=False).classes("w-full cut-views"):
         with ui.tab_panel(storyboard_tab):
-            render_storyboard(board, note=view.preparation, warning=warning, show_thesis=False)
+            render_storyboard(
+                board,
+                note=view.preparation,
+                warning=warning,
+                show_thesis=False,
+                attempt_dir=attempt_dir,
+            )
         with ui.tab_panel(story_tab):
             render_story(view, warning=warning, show_thesis=False)
 
@@ -144,7 +152,9 @@ def _render_cut_result(state: AppState, result: dict) -> None:
         board = (
             read_storyboard(state.editorial_attempt_dir) if state.editorial_attempt_dir else None
         )
-        _render_views(view, board, editorial_duration_warning(realization))
+        _render_views(
+            view, board, editorial_duration_warning(realization), state.editorial_attempt_dir
+        )
     _render_actions(state)
 
 
@@ -167,7 +177,7 @@ def _render_recovered(state: AppState, record: Mapping[str, Any]) -> None:
     view = read_story_view(attempt_dir)
     if view is not None:
         warning = editorial_duration_warning(record.get("duration_realization"))
-        _render_views(view, read_storyboard(attempt_dir), warning)
+        _render_views(view, read_storyboard(attempt_dir), warning, attempt_dir)
     im_info_card(
         tr("This cut finished while the page was away. Re-load its media to export it."),
         variant="info",

@@ -22,7 +22,7 @@ It reads a period of your library, picks the pictures and videos that tell it, k
 
 **Works on a plain NAS. A GPU or a model makes it better.** The base install is one container next to Immich, cutting from dates, places, favourites, the people Immich recognised and a few small classifiers on the CPU, and that already gives you a film worth sharing. A GPU makes it faster, and a reader model polishes the cut: [what each one adds](https://sam-dumont.github.io/immich-video-memory-generator/docs/better/overview).
 
-You see the storyboard before anything renders. Untick what you disagree with and cut again; `immich-memories runs why <asset-id>` says which rule kept a picture or left it out. [How it chooses](https://sam-dumont.github.io/immich-video-memory-generator/docs/how-it-chooses/overview) writes every rule down.
+The CLI and web UI run the same editor. Automate with the CLI, or make and refine a cut in the browser. The storyboard is a contact sheet: open a picture to read why it stayed, inspect recorded model suggestions, exclude it from export, or find alternatives in the pool. `immich-memories runs why <asset-id>` reads the same saved evidence. [How it chooses](https://sam-dumont.github.io/immich-video-memory-generator/docs/how-it-chooses/overview) writes every rule down.
 
 ## Run it
 
