@@ -73,6 +73,13 @@ class RuleEpisodeReader:
         episodes = []
         for projection in projections:
             group = projection.group
+            if any(asset not in lines for asset in group.candidate_ids):
+                episodes.append(
+                    EpisodeEditorialEvidence(
+                        projection, None, None, False, "complete annotation evidence unavailable"
+                    )
+                )
+                continue
             identity = EpisodeReadingIdentity.from_annotations(
                 group_id=group.group_id,
                 producer_key=self.producer.key(),

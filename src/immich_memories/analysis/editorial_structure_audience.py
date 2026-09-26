@@ -15,6 +15,7 @@ from typing import Any
 
 from immich_memories.analysis import editorial_shareability as _share
 from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
+from immich_memories.analysis.editorial_clip_frames import unusable_video
 from immich_memories.analysis.editorial_exposure_chains import ChainHold
 from immich_memories.locked_file import file_lock
 from immich_memories.security import write_secret_file
@@ -206,7 +207,9 @@ class AudienceGate:
         strict_sharing: bool = True,
         activity_reader: Callable[[Mapping[str, tuple[Sequence[str], bool]]], dict[str, str]]
         | None = None,
+        prepare_candidates: Callable[[Sequence[Mapping[str, Any]]], None] | None = None,
     ) -> None:
+        self._prepare_candidates = prepare_candidates
         self._judge = judge
         self._activity_reader = activity_reader
         self.audience = audience
@@ -215,8 +218,8 @@ class AudienceGate:
         self._annotations = annotations
         self._flag_rows = flag_rows
         self._lines = lines
-        self._chains = chains or {}
-        self._companion_heads = companion_heads or {}
+        self._chains = chains if chains is not None else {}
+        self._companion_heads = companion_heads if companion_heads is not None else {}
         self._bank_path = bank_path
         self._library = library
         self.bank: dict[str, dict[str, Any]] = {}
@@ -262,14 +265,10 @@ class AudienceGate:
     def verdict_of(self, u) -> str:
         observed_reason, evidence = self._evidence(u)
         if observed_reason:
-            self.verdicts[u["asset_id"]] = {
-                "verdict": "do_not_show",
-                "finding": observed_reason,
-                "source": CARRIER_RULE_SOURCE,
-                "evidence_key": "",
-            }
-            self.keep_hold(u["asset_id"], self.verdicts[u["asset_id"]])
-            return "do_not_show"
+            return self._refuse(u["asset_id"], observed_reason, persist=True)
+        if unusable_video(u, self._lines.get(u["asset_id"], "")):
+            # A fresh quality check is eligibility for this cut, never a permanent privacy hold.
+            return self._refuse(u["asset_id"], "clip subject often missing", persist=False)
         owned = _share.owner_verdict(u, self._flag_rows)
         if owned is not None:
             # The owner looked at this picture and cleared it for a level. Nothing is asked and
@@ -361,9 +360,26 @@ class AudienceGate:
             for asset_id in members
         ]
 
+    def _refuse(self, asset_id, reason, *, persist):
+        self.verdicts[asset_id] = {
+            "verdict": "do_not_show",
+            "finding": reason,
+            "source": CARRIER_RULE_SOURCE,
+            "evidence_key": "",
+        }
+        if persist:
+            self.keep_hold(asset_id, self.verdicts[asset_id])
+        return "do_not_show"
+
+    def prepare(self, units: Sequence[Mapping[str, Any]]) -> None:
+        """Acquire a bounded candidate page before any reader judges its fresh facts."""
+        if self._prepare_candidates is not None:
+            self._prepare_candidates(units)
+
     def _evidence(self, u) -> tuple[str | None, dict[str, Any]]:
         """The carrier rule's refusal if one applies, and the evidence the audience question is
         asked on."""
+        self.prepare([u])
         asset_id = u["asset_id"]
         observed_reason = excluded_carrier_sources({asset_id: self._lines.get(asset_id, "")}).get(
             asset_id

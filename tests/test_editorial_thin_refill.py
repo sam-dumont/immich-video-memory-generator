@@ -18,6 +18,53 @@ def shot(asset, story, *, day="01", seconds=4.0, moment=None, kind="still"):
     }
 
 
+def test_the_picker_reads_fresh_captions_only_for_its_bounded_candidate_page():
+    from immich_memories.analysis.editorial_story_standing import StandingGate
+    from immich_memories.analysis.editorial_thin_gates import ThinGates
+    from immich_memories.analysis.editorial_thin_refill import PAGE_ROWS, ThinRefill, ThinSlot
+    from tests.test_editorial_thin_polish_end_to_end import Audience, PolishJudge
+
+    rows = [shot(f"candidate-{n:02}", "S1", day=f"{n + 1:02}") for n in range(24)]
+    lines = {row["asset_id"]: "metadata only" for row in rows}
+    inspected = set()
+
+    # WHY: caption acquisition and the prose service are external; page selection,
+    # standing, duplicate checks and candidate admission use their real implementations.
+    def inspect(page):
+        for row in page:
+            inspected.add(row["asset_id"])
+            lines[row["asset_id"]] = "fresh caption of a family moment"
+
+    class Reader(PolishJudge):
+        def ask(self, stage, prompt, *args, **kwargs):
+            assert "metadata only" not in prompt
+            assert "fresh caption" in prompt
+            return super().ask(stage, prompt, *args, **kwargs)
+
+    standing = StandingGate(
+        lambda _asset: 2,
+        line_of=lines.get,
+        life=lambda _asset: True,
+        unit_by_asset={row["asset_id"]: ("family", row) for row in rows},
+        pictures_of={"S1": len(rows)},
+    )
+    refill = ThinRefill(
+        judge=Reader(),
+        gates=ThinGates(standing, Audience(), lambda _asset: None, prepare_candidates=inspect),
+        contract="A family film",
+        line_of=lines.get,
+        record=lambda *_: None,
+        tier_of={"S1": "maybe"},
+        title_of={"S1": "A day together"},
+        content_cap=60,
+    )
+
+    result, _ = refill.fill([], [ThinSlot("T1", "S1", "gate-refused", tuple(rows))])
+
+    assert len(result) == 1
+    assert inspected == {row["asset_id"] for row in rows[:PAGE_ROWS]}
+
+
 def story(key, assets, *, tier="maybe", day="2024-02-01"):
     return ThinStory(
         key=key,

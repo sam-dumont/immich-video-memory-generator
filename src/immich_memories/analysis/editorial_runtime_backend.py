@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from immich_memories.analysis.editorial_case import Case
 from immich_memories.analysis.editorial_demanded_previews import DemandedPreviewReader
+from immich_memories.analysis.editorial_film_preparation import CandidateEvidence
 from immich_memories.analysis.editorial_motion_facts import production_motion_resolver
 from immich_memories.analysis.editorial_orchestration import TextEditorialWorkprint
 from immich_memories.analysis.editorial_people import EditorialPeople
@@ -45,6 +46,7 @@ from immich_memories.analysis.episode_demand import DemandEpisodeReadings
 from immich_memories.analysis.selection_trace import Trace
 from immich_memories.analysis.thumbnail_prefetch import cached_preview_bytes
 from immich_memories.api.models import Asset, VideoClipInfo
+from immich_memories.config_tiers import nas_draft_config
 from immich_memories.security import write_secret_file
 from immich_memories.store.library_catalogue import LibraryAccount
 from immich_memories.store.library_overviews import library_period_account
@@ -72,7 +74,12 @@ class ProductionPostCardBackend:
         fetch_preview: Callable[[str], bytes | None] | None = None,
         attached_sources: Callable[[], Sequence[Asset | VideoClipInfo]] | None = None,
         episode_demand: DemandEpisodeReadings | None = None,
+        prepare_refinement: Callable[
+            [StructurePlanningInput, Sequence[Mapping[str, Any]]], StructurePlanningInput
+        ]
+        | None = None,
     ) -> None:
+        self._prepare_refinement = prepare_refinement
         self._episode_demand = episode_demand
         self._fetch_preview = fetch_preview
         self._attached_sources = attached_sources
@@ -118,11 +125,20 @@ class ProductionPostCardBackend:
         self.last_companion_assets = dict(source.companion_assets)
         resources = ExitStack()
         try:
-            effects = (
-                self._ports.structure_ports_factory(source)
-                if self._ports.structure_ports_factory
-                else self._production_effects(source, resources=resources)
+            initial = (
+                replace(
+                    source,
+                    config=nas_draft_config(source.config),
+                    artifact_dir=source.artifact_dir / "nas-draft",
+                )
+                if self._prepare_refinement is not None
+                else source
             )
+            effects = self._effects(initial, resources)
+            if self._prepare_refinement is not None:
+                effects = replace(
+                    effects, refine=lambda captured, draft: self._refine(captured, draft, resources)
+                )
             result = self._ports.structure_planner(source, effects)
         finally:
             try:
@@ -134,6 +150,24 @@ class ProductionPostCardBackend:
             result.plan.setdefault("lineage", {})["reader"] = "rules-v1"
             result.plan["semantic_reuse"] = "none; rules are recomputed from captured facts"
         return self._adopt(result, source.artifact_dir, allowed_ids)
+
+    def _effects(self, source, resources):
+        return (
+            self._ports.structure_ports_factory(source)
+            if self._ports.structure_ports_factory
+            else self._production_effects(source, resources=resources)
+        )
+
+    def _refine(self, source, draft, resources):
+        assert self._prepare_refinement is not None
+        evidence = CandidateEvidence(source, self._prepare_refinement)
+        evidence.ensure(draft.carriers)
+        effects = replace(
+            self._effects(evidence.source, resources),
+            draft=draft,
+            prepare_candidates=evidence.ensure,
+        )
+        return evidence.source, effects
 
     def _structure_source(
         self, workprint: TextEditorialWorkprint | StructurePlanningInput
@@ -199,7 +233,8 @@ class ProductionPostCardBackend:
     def _production_effects(
         self, source: StructurePlanningInput, *, resources: ExitStack
     ) -> StructurePlannerPorts:
-        rules = self._config.editorial.resolve_reader(self._config.llm.model) == "rules"
+        config = source.config
+        rules = config.editorial.resolve_reader(config.llm.model) == "rules"
         demanded_previews = (
             DemandedPreviewReader(
                 self._thumbnail_cache, self._fetch_preview, allowed_ids=_moment_members(source)
@@ -217,11 +252,16 @@ class ProductionPostCardBackend:
         scene_prints = CachedScenePrints(
             source.bank_dir.parent / "scene-prints.sqlite",
             read_preview,
-            open_encoder=pinned_encoder(
-                self._config.triage.encoder_path, self._config.triage.provider
-            ),
+            open_encoder=pinned_encoder(config.triage.encoder_path, config.triage.provider),
         )
         resources.callback(scene_prints.close)
+
+        def thumbnail_metrics():
+            metrics = thumbnail_hasher.metrics()
+            if demanded_previews is not None:
+                metrics["preview_acquisition"] = demanded_previews.metrics()
+            return metrics
+
         if rules:
             from immich_memories.analysis.editorial_laya_reader import laya_reader_for
             from immich_memories.analysis.editorial_rule_reader import (
@@ -232,12 +272,12 @@ class ProductionPostCardBackend:
             return StructurePlannerPorts(
                 judge=NoModelJudge(),
                 # Laya reads the captions, so only a tier that writes them can use it.
-                laya=laya_reader_for(self._config.editorial)
-                if self._config.editorial.preparation.demands_captions
+                laya=laya_reader_for(config.editorial)
+                if config.editorial.preparation.demands_captions
                 else None,
                 thumbnail_hash=thumbnail_hasher,
                 scene_print=scene_prints,
-                thumbnail_metrics=thumbnail_hasher.metrics,
+                thumbnail_metrics=thumbnail_metrics,
                 rules=RuleStructureReader(source),
                 resolve_speech=production_speech_resolver(source, resources=resources),
                 resolve_motion=production_motion_resolver(source),
@@ -247,19 +287,10 @@ class ProductionPostCardBackend:
         # and the heads; nothing below sends a picture to it.
         story_motion = production_story_motion(source, cache_path=self._store_path)
         return StructurePlannerPorts(
-            judge=StructureTextJudge(
-                self._config, source.artifact_dir, cache_path=self._store_path
-            ),
+            judge=StructureTextJudge(config, source.artifact_dir, cache_path=self._store_path),
             thumbnail_hash=thumbnail_hasher,
             scene_print=scene_prints,
-            thumbnail_metrics=(
-                lambda: (
-                    thumbnail_hasher.metrics()
-                    | {"preview_acquisition": demanded_previews.metrics()}
-                )
-            )
-            if demanded_previews is not None
-            else thumbnail_hasher.metrics,
+            thumbnail_metrics=thumbnail_metrics,
             resolve_motion=production_motion_resolver(source),
             resolve_speech=production_speech_resolver(source, resources=resources),
             observe_story_motion=story_motion.observe,
@@ -282,11 +313,11 @@ class ProductionPostCardBackend:
         if config.editorial.resolve_reader(config.llm.model) == "rules":
             return {}
         if not period:
-            logger.info(
-                "The model plans this film whole: its %d windows have no single account to polish over",
-                len(source.case.ranges),
-            )
-            return {}
+            first = min(window.start for window in source.case.ranges)
+            last = max(window.end for window in source.case.ranges)
+            # This names the account only. Acquisition and demanded episodes still keep
+            # the exact windows and their gaps; it must never become a fetch interval.
+            period = f"{first:%Y-%m-%d}..{last:%Y-%m-%d}"
         from immich_memories.analysis.editorial_laya_reader import laya_reader_for
         from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
 

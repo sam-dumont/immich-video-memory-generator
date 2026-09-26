@@ -14,6 +14,7 @@ from immich_memories.analysis.editorial_album_index import (
     record_album_index,
 )
 from immich_memories.analysis.editorial_evidence_provenance import AttemptEvidenceProvenance
+from immich_memories.analysis.editorial_film_preparation import FilmPreparation
 from immich_memories.analysis.editorial_film_reach import film_reach
 from immich_memories.analysis.editorial_motion_outcomes import MotionOutcomeReplay
 from immich_memories.analysis.editorial_orchestration import TextEditorialPlanner
@@ -42,7 +43,6 @@ from immich_memories.analysis.editorial_text_gateway import (
     SyncTextPromptRequester,
     semantic_text_model_identity,
 )
-from immich_memories.analysis.editorial_thin_layer import catalogued_period
 from immich_memories.analysis.episode_demand import demand_reader_factory
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
@@ -569,11 +569,18 @@ def build_editorial_planner(
         rule_episode_reader,
         text_episode_reader,
         mode=reader_mode,
-        on_demand=config.editorial.thin_model_layer
-        and bool(catalogued_period(context.date_ranges)),
+        on_demand=True,
         lean=lambda prepared: text_episode_reader(prepared, lean=True),
     )
 
+    evidence = EvidencePreparation(
+        readings=readings,
+        client=client,
+        thumbnail_cache=thumbnail_cache,
+        ports=runtime_ports,
+        artifact_dir=lambda: backend._context.artifact_dir,
+    )
+    refinement = FilmPreparation(evidence) if config.editorial.preparation.demands_models else None
     backend = ProductionPostCardBackend(
         config=config,
         context=context,
@@ -584,6 +591,7 @@ def build_editorial_planner(
         fetch_preview=lambda asset_id: runtime_ports.fetch_preview(client, asset_id),
         attached_sources=lambda: source_snapshot or (),
         episode_demand=demand,
+        prepare_refinement=refinement.refine if refinement else None,
     )
 
     def attempt_directory() -> Path:
@@ -613,13 +621,7 @@ def build_editorial_planner(
         person_expression=context.person_expression,
     )
 
-    runtime._prepare_annotations = EvidencePreparation(
-        readings=readings,
-        client=client,
-        thumbnail_cache=thumbnail_cache,
-        ports=runtime_ports,
-        artifact_dir=lambda: backend._context.artifact_dir,
-    )
+    runtime._prepare_annotations = refinement or evidence
     return runtime
 
 

@@ -69,6 +69,7 @@ class ThinGates:
     # A frame's scene print: a newcomer that repeats a scene the cut holds is refused, as the
     # final duplicate review would take it out later with nothing in its place.
     scene_print: ScenePrint | None = None
+    prepare_candidates: Callable[[Sequence[Mapping[str, Any]]], None] | None = None
 
     def admit(
         self,

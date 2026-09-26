@@ -10,8 +10,9 @@ Reader: power user.
 The NAS makes the film without one. A reader is a text model that writes the prose (what happened
 in each episode, an account of the period, the film's title, the music's mood) and then polishes the
 rules draft: it names the shots that add nothing, and a better shot from the same story takes the
-seat. It never plans a one-window film from scratch, and it never sees a picture: a model looks at
-each picture once, at ingest, and the reader works from the text ingest banked. What exactly it
+seat. It starts from the NAS draft and never sees a picture. The captioner reads selected shots
+and replacement candidates; existing captions are reused. The reader can read a selected shot's
+whole episode for context, without asking the captioner to fill every neighbour first. What exactly it
 changes, with diagrams: [What a model adds](../how-it-chooses/what-a-model-adds.md).
 
 ## What you need

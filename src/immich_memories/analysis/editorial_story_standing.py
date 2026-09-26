@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from immich_memories.analysis.editorial_clip_frames import subject_often_missing
+from immich_memories.analysis.editorial_clip_frames import unusable_video
 from immich_memories.analysis.editorial_story_pick_contract import carries_motion
 
 WEIGHED_STORY_WEIGHTS = ("dominant", "major", "minor")
@@ -59,6 +59,12 @@ class StandingGate:
         moving = carries_motion(self._unit_by_asset[asset][1])
         return 0 if self._ordered_only(asset, weight, story_key) and not moving else 1
 
+    def refresh(self, assets: Sequence[str]) -> None:
+        """Discard provisional scores after captions or sampled frames change the evidence."""
+        for asset in assets:
+            self.scores.pop(asset, None)
+        self.ensure(assets)
+
     def thin(self, story_key: str) -> bool:
         """A story of one or two pictures has no context for a weak picture to serve."""
         return self._pictures_of.get(story_key, 0) <= 2
@@ -74,10 +80,7 @@ class StandingGate:
         # Only a real video is refused on its frames, and never a favourite: a favourite
         # showing a wall means something happened there. A Live Photo is its still; its clip's
         # reading decides only whether it plays. The fact stays on the line for the reader.
-        unit = self._unit_by_asset[asset][1]
-        if unit.get("favourite") or unit.get("kind") != "video":
-            return False
-        return subject_often_missing(self._line_of(asset))
+        return unusable_video(self._unit_by_asset[asset][1], self._line_of(asset))
 
     def _context_allowed(self, asset: str, weight: str, story_key: str) -> bool:
         starred = bool(self._unit_by_asset[asset][1].get("favourite"))

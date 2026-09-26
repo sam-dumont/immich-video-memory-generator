@@ -55,6 +55,14 @@ def subject_often_missing(line: str) -> bool:
     return _ON_THE_LINE in line
 
 
+def unusable_video(unit: Mapping, line: str) -> bool:
+    """A non-favourite video must show its subject across the sampled frames.
+
+    A Live Photo keeps its still; this refusal applies only to a standalone video.
+    """
+    return unit.get("kind") == "video" and not unit.get("favourite") and subject_often_missing(line)
+
+
 def load_clip_frames(store_path: Path | str | None, clip_ids: Iterable[str]) -> dict[str, str]:
     """The banked `clip_frames` label of each of these clips; a clip never read is absent."""
     ids = sorted(set(clip_ids))

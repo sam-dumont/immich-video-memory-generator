@@ -6,12 +6,17 @@ title: Add captions
 
 Reader: power user.
 
-The NAS tier, `no_captions`, runs without them. Captions put one sentence under every picture,
-written once by a 500M vision model and banked:
+The NAS tier, `no_captions`, runs without them. GPU and full start with the NAS selection,
+then caption those shots with a 500M vision model. A replacement candidate gets its caption
+before it is judged. Each caption is banked and reused by later films:
 
 ```json
 {"description": "A stack of wrapped gifts on a wooden table.", "setting": "insufficient evidence"}
 ```
+
+Making a film does not require captioning the whole library. Use `prepare` when you want
+captions ahead of time for other features. Live Photo companion checks and video frame sampling
+also wait until a shot is selected or considered as a replacement.
 
 What that buys:
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash
 from immich_memories.analysis.editorial_preparation import PreparationResult
 from immich_memories.analysis.editorial_runtime import (
     EditorialRunContext,
@@ -20,6 +21,7 @@ from immich_memories.config_loader import Config
 from tests.editorial_story_fixtures import ControlledStoryJudge
 from tests.no_pictures import refuse_pictures
 from tests.test_editorial_duration_planner_integration import semantic_plan
+from tests.test_editorial_rule_reader import _distinct_preview
 from tests.test_editorial_runtime import _create_annotation_store, _window
 from tests.test_editorial_source_route import photo
 
@@ -37,6 +39,11 @@ def setup_runtime(
     sources = [
         photo(f"p-{n:02}", at=window.start + timedelta(hours=9, minutes=n * 10)) for n in range(22)
     ]
+    for source in sources:
+        source.is_favorite = True
+    # The NAS draft needs distinct depicted moments; missing hashes used to let the
+    # scripted model invent distinctions between identical fixture descriptions.
+    hashes = {source.id: compute_thumbnail_hash(_distinct_preview(source.id)) for source in sources}
     store = tmp_path / "annotations.sqlite"
     _create_annotation_store(
         store,
@@ -51,8 +58,7 @@ def setup_runtime(
             "enabled": True,
             "annotation_database": str(store),
             "description_model": "student-v1",
-            # This file tests the whole-film model planner; the one-window polish route
-            # reads on demand and has its own tests (test_editorial_thin_account_fallback).
+            # Disabling polish must not switch back to reading the whole source pool.
             "thin_model_layer": False,
         },
         analysis={"min_source_short_side": 0},
@@ -91,7 +97,7 @@ def setup_runtime(
         captures.append(source)
         return StructurePlannerPorts(
             judge=ControlledStoryJudge(judgments, require_hits=warm[0]),
-            thumbnail_hash=lambda _: None,
+            thumbnail_hash=hashes.get,
         )
 
     def build():
@@ -163,7 +169,7 @@ def test_full_runtime_story_first_and_exact_warm_without_legacy_calls(
     assert replay.editorial_selections == cold.editorial_selections
     assert replay.clip_segments == cold.clip_segments
     assert not any(image_calls)
-    assert len(calls["episode"]) == 1
+    assert not calls["episode"]
     assert not calls["period"]
     assert all(source.allow_live_motion for source in captures)
 

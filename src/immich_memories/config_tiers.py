@@ -36,6 +36,17 @@ TIERS: dict[str, dict[tuple[tuple[str, ...], str], Any]] = {
 }
 
 
+def nas_draft_config(config: Config) -> Config:
+    """Keep the film's policies while limiting its first pass to the NAS producers."""
+    draft = config.model_copy(deep=True)
+    draft.tier = "nas"
+    draft.editorial.reader = "rules"
+    draft.editorial.laya_audience = False
+    if draft.editorial.preparation.demands_captions:
+        draft.editorial.preparation.tier = "no_captions"
+    return draft
+
+
 def _section(config: Config, path: tuple[str, ...]) -> Any:
     section: Any = config
     for name in path:

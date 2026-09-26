@@ -216,7 +216,7 @@ def test_production_episode_recording_follows_each_active_attempt_even_on_failur
         30,
         tmp_path / "artifacts",
     )
-    # The whole-film planner's up-front episode stage; the polish route reads on demand.
+    # The deferred reader must bind its recorder to the active attempt.
     config = Config(
         tier="full",
         llm={"model": "test-model", "base_url": "http://llm.test/v1"},
@@ -237,7 +237,8 @@ def test_production_episode_recording_follows_each_active_attempt_even_on_failur
         return "exact invalid episode reply"
 
     def plan_source(*args, **kwargs):
-        reader = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+        demand = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+        reader = demand._reader(demand._on_demand)
         assert reader._requester("exact episode question") == "exact invalid episode reply"
         raise RuntimeError("episode parser refused")
 
@@ -268,7 +269,7 @@ def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch
         30,
         tmp_path / "artifacts",
     )
-    # The whole-film planner's up-front episode stage; the polish route reads on demand.
+    # Demanding an episode keeps the same transport transcript contract.
     config = Config(
         tier="full",
         llm={"model": "test-model", "base_url": "http://llm.test/v1"},
@@ -287,7 +288,8 @@ def test_the_episode_stage_keeps_its_own_prompt_transcript(tmp_path, monkeypatch
         return "exact invalid episode reply"
 
     monkeypatch.setattr(gateway, "query_llm", query)
-    reader = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+    demand = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+    reader = demand._reader(demand._on_demand)
     try:
         assert reader._requester("Read these episodes.") == "exact invalid episode reply"
     finally:

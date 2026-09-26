@@ -442,6 +442,8 @@ class ThinRefill:
     def _choose(self, slot: ThinSlot, page: Sequence[Mapping[str, Any]]):
         if not page:
             return None
+        if self.gates.prepare_candidates is not None:
+            self.gates.prepare_candidates(page)
         by_asset = {unit["asset_id"]: unit for unit in page}
         choices = [
             DepictedChoice(

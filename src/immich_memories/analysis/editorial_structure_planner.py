@@ -9,7 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
 from operator import itemgetter
@@ -37,7 +38,7 @@ from immich_memories.analysis.editorial_rule_banked_facts import (
     open_banked_facts,
 )
 from immich_memories.analysis.editorial_rule_quality import rule_representative_rank
-from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+from immich_memories.analysis.editorial_rule_reader import NoModelJudge, RuleStructureReader
 from immich_memories.analysis.editorial_shareability import SHAREABLE
 from immich_memories.analysis.editorial_shareability_tiers import audience_check_for
 from immich_memories.analysis.editorial_story_candidates import story_candidates
@@ -56,6 +57,7 @@ from immich_memories.analysis.editorial_structure_budget import (
     NOMINAL_STILL_SECONDS,
 )
 from immich_memories.analysis.editorial_structure_contract import (
+    RulesDraft,
     StructurePlannerPorts,
     StructurePlanningInput,
     StructurePlanningResult,
@@ -97,6 +99,7 @@ from immich_memories.analysis.editorial_unvouched_filler import (
     owner_vouches_for,
 )
 from immich_memories.analysis.subject_framing import framing_visibility
+from immich_memories.config_tiers import nas_draft_config
 from immich_memories.processing.editorial_timing import bind_editorial_timeline
 from immich_memories.security import write_secret_file
 
@@ -242,6 +245,36 @@ def plan_structure(
     source: StructurePlanningInput, ports: StructurePlannerPorts
 ) -> StructurePlanningResult:
     """Run the shared editorial algorithm on an already captured production wall."""
+    if ports.refine is not None:
+        nas = replace(
+            source,
+            config=nas_draft_config(source.config),
+            artifact_dir=source.artifact_dir / "nas-draft",
+        )
+        rules = replace(
+            ports,
+            judge=NoModelJudge(),
+            rules=RuleStructureReader(nas),
+            thin=None,
+            laya=None,
+            observe_story_motion=None,
+            story_motion_metrics=None,
+            refine=None,
+            prepare_candidates=None,
+            draft=None,
+        )
+        drafted = _plan_structure(nas, rules)
+        drafted.write(nas.artifact_dir)
+        assert drafted.draft is not None
+        if not drafted.draft.carriers or drafted.plan.get("status") == "planning_incomplete":
+            return drafted
+        source, ports = ports.refine(source, drafted.draft)
+    return _plan_structure(source, ports)
+
+
+def _plan_structure(
+    source: StructurePlanningInput, ports: StructurePlannerPorts
+) -> StructurePlanningResult:
     source.bank_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
     source.artifact_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
     audit_dir = source.artifact_dir / "derived-decisions"
@@ -307,7 +340,16 @@ def plan_structure(
         prior_assets=prior_assets,
         prior_plan_ref=source.prior_plan_ref,
     )
-    return build_result(source, ports, facts, outcome)
+    return replace(
+        build_result(source, ports, facts, outcome),
+        draft=RulesDraft(
+            outcome.selection,
+            outcome.carriers,
+            outcome.cut_carriers,
+            outcome.tier,
+            outcome.worth_reason,
+        ),
+    )
 
 
 def _timing_binding(source: StructurePlanningInput, run: PlanRun) -> dict:
@@ -347,6 +389,8 @@ def _select(
         )
 
     audience_tier = source.config.editorial.preparation.tier
+    chains = chain_holds_for(source.assets, source.audience_annotations, source.companion_detectors)
+
     gate = AudienceGate(
         ports.judge,
         audience=source.audience,
@@ -363,12 +407,13 @@ def _select(
             strict_sharing=source.config.editorial.strict_sharing and source.audience == SHAREABLE,
             local_reader=ports.laya is not None,
         ),
-        chains=chain_holds_for(
-            source.assets, source.audience_annotations, source.companion_detectors
-        ),
+        chains=chains,
         companion_heads=source.companion_detectors,
         strict_sharing=source.config.editorial.strict_sharing,
         activity_reader=ports.laya.activity_answers if ports.laya else None,
+        prepare_candidates=partial(_refresh_candidates, source, ports, material, chains)
+        if ports.prepare_candidates
+        else None,
     )
     tier, worth_reason, marker = _worthiness_gate(
         source,
@@ -403,6 +448,8 @@ def _select(
         looks_alike=hash_pair_relation(ports.thumbnail_hash),
     )
     run.carriers = list(selection.carriers)
+    if ports.draft is not None:
+        run.cut_carriers.extend(deepcopy(ports.draft.removed))
     if ports.thin is not None:
         run.carriers = polish_the_draft(
             source,
@@ -442,7 +489,8 @@ def _select(
     # The film is settled here, so its ends are known. The shave that follows takes the half
     # second back when the target leaves no room for it. An opening and a closing frame are
     # read rather than glanced at whoever cut them, so this is not the no-model reader's.
-    hold_the_ends(run.carriers)
+    if ports.draft is None:
+        hold_the_ends(run.carriers)
     chapters = _chapters_of(selection, run.carriers, wall.anchor_label)
     beats = [row["beat"] for row in chapters]
     _story_worthiness(selection, wall, tier, worth_reason)
@@ -517,10 +565,28 @@ def _select(
     )
 
 
+def _refresh_candidates(source, ports, material, chains, carriers):
+    if not ports.prepare_candidates(carriers):
+        return
+    # Gates and prose readers share the refreshed facts, but these derived views
+    # must follow them before any candidate is judged.
+    chains.update(
+        chain_holds_for(source.assets, source.audience_annotations, source.companion_detectors)
+    )
+    for carrier in carriers:
+        carrier.update(material.builder.refresh_clip_facts(carrier))
+        asset_id = carrier["asset_id"]
+        material.story_lines[asset_id] = material.text.description(
+            carrier
+        ) or source.annotations.get(asset_id, "")
+
+
 def _worthiness_gate(
     source, ports, wall: Wall, material: Material, *, admission, admission_key, record
 ):
     """Keep scoped admission; ordinary story importance comes from the story reading."""
+    if ports.draft is not None:
+        return ports.draft.tiers.copy(), ports.draft.reasons.copy(), ""
     if ports.rules is not None:
         tiers, reasons = ports.rules.worthiness(wall, _near_home_test(source, wall))
         record("memory-worthy-gate", {"version": "rules-v1", "tiers": tiers, "reasons": reasons})
@@ -578,6 +644,18 @@ def _story_selection(
     banked: BankedAnswers,
     looks_alike=None,
 ):
+    if ports.draft is not None:
+        carriers = deepcopy(ports.draft.carriers)
+        # Refinement edits a finished cut. Its measured intervals belong to the old
+        # playback decisions; finishing binds fresh intervals after those decisions.
+        for carrier in carriers:
+            for field in ("start_time", "end_time", "render_frame_seconds"):
+                carrier.pop(field, None)
+        return replace(
+            deepcopy(ports.draft.selection),
+            lines=source.annotations,
+            carriers=[material.builder.refresh_clip_facts(carrier) for carrier in carriers],
+        )
     unit_of = {u["asset_id"]: u for units in material.units.values() for u in units}
     durations = [u["seconds"] for units in pool.units.values() for u in units if u["seconds"] > 0]
     seconds_per_slot = sum(durations) / len(durations) if durations else SECONDS_PER_SLOT

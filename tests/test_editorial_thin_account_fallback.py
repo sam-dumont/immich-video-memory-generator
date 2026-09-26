@@ -179,6 +179,24 @@ def test_the_no_model_reader_leaves_the_period_uncatalogued(tmp_path):
     assert library_period_account(bank, "2020-05") == ""
 
 
+def test_separate_date_windows_keep_the_same_on_demand_refinement_route(tmp_path):
+    bank = tmp_path / "annotations.sqlite"
+    captured = whole_month(source(tmp_path, seconds=60, pictures=3), bank)
+    later = DateRange(
+        datetime(2021, 5, 1, tzinfo=UTC).date(), datetime(2021, 5, 2, tzinfo=UTC).date()
+    )
+    captured = replace(captured, case=replace(captured.case, ranges=(MAY, later)))
+    model_reader(captured.config)
+    demand = BankedDemand(bank, IDENTITY)
+
+    polish = backend_for(captured, Reader(), demand)._thin_polish(captured)
+
+    assert demand.asked == []
+    account, _ = polish["thin"].read_period({"S1": tuple(captured.assets)})
+    assert account
+    assert demand.asked == [tuple(captured.assets)]
+
+
 def test_an_account_over_more_of_the_period_replaces_a_cut_s_partial_one(tmp_path):
     """`prepare --overviews` reads everything later; the fuller account is what a film reads."""
     from immich_memories.store.library_catalogue import CatalogueStore, LibraryAccount
