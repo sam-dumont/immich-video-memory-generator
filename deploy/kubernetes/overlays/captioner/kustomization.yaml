@@ -6,11 +6,10 @@
 #
 #   editorial:
 #     preparation:
-#       tier: full
 #       caption_base_url: http://captioner:8092/v1
 #
-# The base app pins no_captions in its environment. Set its
-# IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER to full as well; env overrides YAML.
+# The base app uses automatic product tiers. GPU inference capability selects
+# GPU; adding a configured LLM selects Full. Preparation follows the same tier.
 #
 # Deliberately not `resources: [../../base]`, for the reason the inference
 # overlay gives: the base refuses to build without a hand-made secret, and this

@@ -1,7 +1,7 @@
 """Real-Immich gate: `generate --no-render` picks a cut from the fixture month on the rules tier.
 
-No language model, no picture models: the reader is `rules` and preparation is
-`metadata_only` (seed.py writes that config), so this runs on a plain runner.
+The NAS tier uses rules and inexpensive CPU picture models. The gate fetches
+the pinned artifacts before selection; no caption or prose model is used.
 """
 
 from __future__ import annotations

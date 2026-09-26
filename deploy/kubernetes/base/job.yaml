@@ -114,8 +114,8 @@ spec:
           env:
             - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
               value: /app/output
-            - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
-              value: no_captions
+            - name: IMMICH_MEMORIES_TIER
+              value: auto
             - name: IMMICH_MEMORIES_TRIAGE__ENCODER
               value: /models/triage/dinov2-small.onnx
             - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
@@ -264,8 +264,8 @@ spec:
               env:
                 - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
                   value: /app/output
-                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
-                  value: no_captions
+                - name: IMMICH_MEMORIES_TIER
+                  value: auto
                 - name: IMMICH_MEMORIES_TRIAGE__ENCODER
                   value: /models/triage/dinov2-small.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX
@@ -411,8 +411,8 @@ spec:
               env:
                 - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
                   value: /app/output
-                - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER
-                  value: no_captions
+                - name: IMMICH_MEMORIES_TIER
+                  value: auto
                 - name: IMMICH_MEMORIES_TRIAGE__ENCODER
                   value: /models/triage/dinov2-small.onnx
                 - name: IMMICH_MEMORIES_EDITORIAL__PREPARATION__MARQO_ONNX

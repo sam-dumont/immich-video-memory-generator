@@ -138,8 +138,9 @@ def test_the_runtime_reads_lines_about_the_people_the_memory_is_about(tmp_path: 
 
     config = Config(
         cache={"directory": str(tmp_path / "cache")},
-        editorial={"reader": "rules", "preparation": {"tier": "metadata_only"}},
     )
+    # Isolate the metadata reading path from the model acquisition component.
+    config.editorial.preparation.tier = "metadata_only"
     store_path = config.editorial.resolve_annotation_database(config.cache.cache_path)
     planner = build_editorial_planner(
         client=object(),

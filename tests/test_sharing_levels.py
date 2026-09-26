@@ -248,7 +248,7 @@ def test_the_gpu_tier_holds_the_bath_with_laya_and_asks_no_llm(tmp_path):
     gpu = replace(
         source(tmp_path, seconds=12, pictures=2, private_opening=True),
         audience="family",
-        config=Config(editorial={"reader": "rules", "preparation": {"tier": "full"}}),
+        config=Config(tier="gpu"),
     )
     laya = caption_laya()
     judge = NoModelJudge()
@@ -292,9 +292,10 @@ def test_a_shareable_film_is_refused_before_the_cut_only_where_no_detector_ran()
     from immich_memories.analysis.editorial_shareability_tiers import sharing_refusal
 
     def refusal(tier, level):
-        return sharing_refusal(
-            Config(defaults={"sharing": level}, editorial={"preparation": {"tier": tier}})
-        )
+        config = Config(defaults={"sharing": level})
+        # An internal reduced-evidence fixture, not a second user-configurable tier.
+        config.editorial.preparation.tier = tier
+        return sharing_refusal(config)
 
     assert refusal("no_captions", "shareable") is None
     assert refusal("full", "shareable") is None

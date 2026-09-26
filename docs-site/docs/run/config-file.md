@@ -16,13 +16,14 @@ Docker you can skip the file entirely and use [environment variables](./environm
 
 ## Compute tier
 
-Set `tier: nas` for inexpensive CPU heads and detectors, `tier: gpu` to add captions and Laya,
-or `tier: full` to add model refinement. NAS is the default. NAS and GPU use rules for
-selection. A configured LLM can still write titles and choose music mood from text on either
-tier; those features need no local GPU and send no pictures. Without a model they use local
-fallbacks. Configuring a text model does not enable LLM image captioning.
-Full requires a model and an explicit endpoint or hosted provider. See the
-[tier reference](../reference/config-reference.md#tier) for the effective settings.
+Leave `tier` unset, or use `tier: auto`. With no supported GPU inference runtime or service,
+selection uses NAS: inexpensive CPU heads and detectors. GPU capability adds captions and
+Laya; a configured LLM alongside it selects Full. Preparation follows that same tier.
+
+An LLM without GPU capability still works for titles and music mood; selection stays on NAS
+and explains what is missing. A video encoder alone does not count as GPU inference. Explicit
+`nas`, `gpu` and `full` values remain available for controlled comparisons. See the
+[tier reference](../reference/config-reference.md#tier) for the requirements.
 
 ## Quick start config
 
@@ -72,8 +73,9 @@ Everyday sections sit at the top level: `immich`, `defaults`, `output`, `audio`,
 go under `advanced:`: `analysis`, `speech`, `hardware`, `llm`, `musicgen`, `ace_step`, `server`, `auth`, `automation`,
 `notifications`, `triage`, `editorial`, `inference`. The app writes them that way. On read both
 placements work and merge key by key at every depth, and the top-level value wins a tie, so a
-hand-written `editorial: {preparation: {tier: no_captions}}` changes the tier and keeps the rest of
-the app-written block.
+hand-written `editorial: {preparation: {caption_concurrency: 4}}` changes concurrency and keeps
+the rest of the app-written block. Preparation's former tier override no longer takes precedence
+over the product tier.
 
 Unknown keys inside a section are ignored. The keys of the retired per-clip scorer
 (`content_analysis`, `audio_content`, `transcription`, `description_llm`,

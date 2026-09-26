@@ -1,7 +1,7 @@
 """The three product tiers: CPU classifiers, light GPU models, and an added prose LLM.
 
-`tier:` is the one choice a user makes. It sets three advanced knobs, and a knob the user
-states in the file can reduce preparation. Only ``full`` uses an LLM for selection:
+`tier: auto` resolves inference capability and the configured LLM, then sets one contract
+for preparation and selection. Only ``full`` uses an LLM for selection:
 
 * ``nas``: inexpensive CPU heads and detectors, rules, no captions, no Laya.
 * ``gpu``: every light model. The caption server, the heads and detectors, and Laya for the
@@ -18,12 +18,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
+from immich_memories.config_compute import inference_acceleration
+
 if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
 
 ProductTier = Literal["nas", "gpu", "full"]
+TierSetting = Literal["auto", ProductTier]
 
 # (section path, field) -> value, per tier. The section path is walked from the Config.
 _READER = ("editorial",), "reader"
@@ -56,7 +59,15 @@ def _section(config: Config, path: tuple[str, ...]) -> Any:
 
 
 def apply_tier(config: Config) -> dict[str, Any]:
-    """Set the tier defaults and its reader boundary; return the values it supplied."""
+    """Resolve one product tier and apply its preparation and reader contract."""
+    applied = {}
+    if config.tier == "auto":
+        accelerated, reason = inference_acceleration(config.inference)
+        config.tier = "nas"
+        if accelerated:
+            config.tier = "full" if _llm_configured(config) else "gpu"
+        applied["tier"] = config.tier
+        logger.info("Automatic selection tier: %s. %s", config.tier, reason)
     if config.tier == "full":
         _require_llm_endpoint(config)
     elif config.llm.model.strip():
@@ -65,12 +76,15 @@ def apply_tier(config: Config) -> dict[str, Any]:
             "Model refinement requires GPU capability and the full tier's caption and Laya services.",
             config.tier,
         )
-    applied = {}
     for (path, field), value in TIERS[config.tier].items():
         section = _section(config, path)
-        requires_rules = (path, field) == _READER and config.tier != "full"
-        if field in section.model_fields_set and not requires_rules:
-            continue
+        if field in section.model_fields_set and getattr(section, field) != value:
+            logger.warning(
+                "Ignoring %s: selection tier %s requires %s",
+                ".".join((*path, field)),
+                config.tier,
+                value,
+            )
         setattr(section, field, value)
         applied[".".join((*path, field))] = value
     return applied
@@ -80,13 +94,17 @@ def apply_tier(config: Config) -> dict[str, Any]:
 _HOSTED_PROVIDERS = frozenset({"openai", "anthropic", "zai"})
 
 
-def _require_llm_endpoint(config: Config) -> None:
+def _llm_configured(config: Config) -> bool:
     llm = config.llm
     stated = llm.model_fields_set
     endpoint = ("base_url" in stated and llm.base_url.strip()) or (
         "provider" in stated and llm.provider in _HOSTED_PROVIDERS
     )
-    if not endpoint or not llm.model.strip():
+    return bool(endpoint and llm.model.strip())
+
+
+def _require_llm_endpoint(config: Config) -> None:
+    if not _llm_configured(config):
         raise ValueError(
             "tier: full needs an LLM: set advanced.llm.base_url and advanced.llm.model "
             "to the server that answers it, or choose tier: gpu for every light model "
@@ -95,11 +113,11 @@ def _require_llm_endpoint(config: Config) -> None:
 
 
 def forget_applied(data: dict[str, Any], applied: dict[str, Any]) -> None:
-    """Omit unchanged tier defaults, preserving choices edited since the config was loaded."""
+    """Persist the chosen product tier without a second set of preparation switches."""
     for key, value in applied.items():
         *path, field = key.split(".")
         section = data
         for name in path:
             section = section.get(name, {})
-        if section.get(field) == value:
+        if key != "tier" or section.get(field) == value:
             section.pop(field, None)

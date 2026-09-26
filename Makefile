@@ -316,6 +316,7 @@ test-immich-gate:  ## Real Immich in Docker + CC0 fixture library + gate tests (
 	uv run python -m tests.integration.immich_gate.seed \
 		--url http://127.0.0.1:$(IMMICH_GATE_PORT) \
 		--media $(IMMICH_GATE_DIR)/media --home $(IMMICH_GATE_HOME) \
+	&& uv run env HOME=$(IMMICH_GATE_HOME) immich-memories models fetch \
 	&& REQUIRE_IMMICH=1 IMMICH_GATE_VERSION=$(IMMICH_GATE_VERSION) uv run env HOME=$(IMMICH_GATE_HOME) \
 		pytest tests/integration/immich_gate/ -v -m integration --tb=short -p no:cacheprovider \
 		--junitxml=tests/immich-gate-$(IMMICH_GATE_VERSION)-junit.xml \

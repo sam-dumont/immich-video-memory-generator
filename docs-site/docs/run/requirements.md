@@ -7,7 +7,8 @@ title: Requirements and tiers
 Reader: newcomer and power user.
 
 The default install is one container on the box that already runs Immich. It works on a plain
-NAS and makes the whole film there; a GPU or a model makes it better, and both are optional.
+NAS and makes the whole film there. That is a good default. GPU models and an LLM can add
+some refinement; compare the result and decide whether it is worth the extra work.
 
 ## Hardware
 
@@ -43,38 +44,39 @@ Kubernetes cluster. Timings per host are on [Measured](../better/measured.md).
 | Setup | What you run | What it adds |
 |---|---|---|
 | **A plain NAS** (the default) | This container and one `models fetch` | The film: the rules editor, eight context heads and two detectors on every picture the film can reach, the family-viewing gate, titles, maps, music |
-| **+ a GPU box** (optional) | The [inference service](../better/inference.md) or the [render worker](../better/gpu-render.md) on an NVIDIA box | The same facts, faster, or the encode off the NAS. Nothing already banked is read again |
-| **+ a model** (optional) | A model with a 32k context; it reads text only, so it needs no vision. Gemma 4 E4B by default, 6.7 GB at its peak, on a 16 GB Mac; or a hosted API key | A reader that writes the prose (what happened, the title) and polishes the draft the rules editor makes, free-text subjects, and captions if you also raise the tier. [What a model adds](../better/overview.md) |
+| **+ GPU inference** (optional) | The [inference service](../better/inference.md) reporting CUDA, or a local CUDA/MLX runtime; the caption service and Laya must also be ready | The GPU tier adds captions and Laya for selected shots and replacement candidates. Existing captions stay banked |
+| **+ an LLM** (optional) | A text model with a 32k context, such as local Gemma 4 E4B | Titles and other text features on every tier. With GPU inference too, Full adds prose and refinement of the NAS draft. [What a model adds](../better/overview.md) |
 
-With a model, the rules editor still makes the draft. The model reads it and says which shots add
-nothing, so the NAS setup is the same editor minus that last pass.
+On Full, the rules editor still makes the draft. A preference vote keeps the original shot until
+a replacement passes the checks. Sharing decisions stay with rules, classifiers and Laya.
+
+A [render worker](../better/gpu-render.md) moves the encode to another machine. It does not change
+the selection tier: a GPU that can encode video is not proof of inference capability.
 
 ## The preparation tier
 
-`advanced.editorial.preparation.tier` decides which producers run on each picture before the edit.
+Preparation and selection use the same product tier. Leave `tier` unset or use `tier: auto`.
 
 | Tier | What runs | What the family-viewing gate can do |
 |---|---|---|
-| `metadata_only` | Previews and pixel measurements. Nothing to download | Nothing looked at the pictures, so nothing is cleared: every picture stays family-only, and a shareable film is refused |
-| **`no_captions`** (the NAS tier) | The above, plus the DINOv2 encoder with its eight heads and the two detectors. Needs `models fetch` | Refuses what `full` refuses. In a shareable film, clears a picture every detector read as clean; the eight findings a sentence names are out of its reach |
-| `full` | All of the above, plus one caption per picture from a 500M vision model | Everything: a household moment goes to just-us films, a record out of every film. Needs a [caption server](../better/captions.md) |
+| **`nas`** | Immich metadata, pixels, the DINOv2 encoder with eight heads and two detectors. Needs `models fetch` | Rules and classifiers check the pictures without a caption or prose LLM |
+| `gpu` | NAS plus captions and Laya for selected shots and candidates. Needs a [caption server](../better/captions.md) and Laya | Laya may add holds; it cannot lift detector or rule holds |
+| `full` | GPU plus the configured prose LLM | The same sharing checks as GPU; the prose LLM never decides sharing |
 
-A cut prepares only what it can reach: the pictures the film can select, their Live Photo clips
-and the bursts around them, not the whole date window. `immich-memories prepare` reads a whole
-scope ahead of time, if you want the first cut to be quick.
+A cut acquires cheap facts for the pictures it can select and their capture context. Captions
+and Live Photo checks wait for selected shots and actual candidates. `immich-memories prepare`
+reads a whole scope ahead of time when explicitly requested.
 
 Everything is banked per picture and per producer, so changing the tier erases nothing, and a
-`no_captions` library can add captions later, a month at a time.
+NAS library can add captions later.
 
 ### Which tier you get
 
-The code default is `full`. A config that names no `llm.model` and no caption endpoint settles to
-`no_captions` on its own and logs it once, and the shipped `docker-compose.yml` pins `no_captions`
-anyway, so a first `up` needs no second service.
+Without a supported local GPU runtime or a healthy GPU inference service, automatic selection
+stays on NAS. GPU capability selects GPU; a configured LLM alongside it selects Full.
+An LLM alone still supplies titles and other text features, and the app explains the missing GPU
+capability. It does not start captioning through that LLM.
 
-The trap is the other way round: on an install that does not pin the tier, setting only
-`IMMICH_MEMORIES_LLM__MODEL` flips it back to `full`, which then wants a caption server. Pin
-`tier: no_captions` when you add a reader and don't want captions.
-
-`immich-memories preflight` follows the tier: `metadata_only` skips the model files, `no_captions`
-skips the caption server.
+`immich-memories preflight` checks the producers the resolved tier needs. Legacy preparation-tier
+overrides no longer choose a different set. Explicit product tiers remain available for controlled
+comparisons; they do not install missing models or start services.

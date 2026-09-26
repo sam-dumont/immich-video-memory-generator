@@ -127,10 +127,15 @@ def test_the_two_inference_overlays_name_the_same_release() -> None:
 
 
 def test_every_app_pod_starts_without_a_caption_service() -> None:
+    from immich_memories.config_loader import Config
+
     for name, pod in _pod_specs():
         for container in pod["containers"]:
             env = {row["name"]: row.get("value") for row in container.get("env", [])}
-            assert env["IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER"] == "no_captions", name
+            assert env["IMMICH_MEMORIES_TIER"] == "auto", name
+            assert not Config(
+                tier=env["IMMICH_MEMORIES_TIER"]
+            ).editorial.preparation.demands_captions
 
 
 def test_compose_profiles_have_distinct_host_ports_and_persistent_detector_storage() -> None:
@@ -151,7 +156,7 @@ def test_terraform_initializes_models_on_a_persistent_claim() -> None:
     assert "immich-memories models fetch" in main
     assert "kubernetes_persistent_volume_claim_v1.models.metadata[0].name" in main
     assert all(key in main for key in MODEL_PATH_ENV)
-    assert "IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER" in main
+    assert "IMMICH_MEMORIES_TIER" in main
 
 
 def test_only_the_kustomization_pin_names_a_concrete_version() -> None:

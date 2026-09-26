@@ -60,18 +60,11 @@ services:
       # "localhost" here means this container, so use a real hostname.
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-model-box:8000/v1"
       # IMMICH_MEMORIES_LLM__MODEL: "gemma-4-e4b-it-6bit"
-      # Which producers this box pays for: full | no_captions | metadata_only.
-      # Pinned here rather than left to the code default, which is full, so that
-      # a first `up` with only IMMICH_URL and IMMICH_API_KEY set finishes a cut
-      # with no second service. Given up against full: the caption per picture,
-      # so the audience gate refuses what full refuses but can never clear a
-      # unit, because eight findings are only named by a description. On a NAS
-      # the first pass is 3h41 for a 10,793-picture library against 4 days on
-      # full. Either tier wants `models fetch` run inside the container first;
-      # metadata_only fetches nothing and cannot export as sendable.
-      IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER: "no_captions"
+      # Auto: NAS without GPU inference, GPU with it, Full with GPU and an LLM.
+      # Preparation follows the same tier. Run `models fetch` before the first cut.
+      IMMICH_MEMORIES_TIER: "auto"
       IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR: "/home/immich/.immich-memories/models/huggingface"
-      # Raise the tier to "full" with this, once a caption server answers.
+      # GPU and Full need a caption server in addition to GPU inference capability.
       # The captioner profile below is one, and it is this compose network:
       # IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL: "http://immich-memories-captioner:8092/v1"
       # Against a CPU captioner, keep one picture at a time, the default. Measured
@@ -188,8 +181,8 @@ services:
         #         - gpu
 
   # ── Optional: the caption server ──────────────────────────────────────
-  # `tier: full` writes one 140-token description under every picture, once,
-  # and banks it. It needs an OpenAI-compatible endpoint that advertises
+  # GPU and Full caption selected shots and actual replacement candidates,
+  # then keep those captions banked. The OpenAI-compatible endpoint must advertise
   # `smolvlm2-500m-base-public` at /models. Nothing else in this file provides
   # one, so here it is: llama.cpp serving the pinned SmolVLM2-500M GGUF under
   # that alias. Recipes for Apple Silicon and Kubernetes, and the whole

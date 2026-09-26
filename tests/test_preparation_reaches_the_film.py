@@ -66,9 +66,10 @@ def _film(tmp_path, library: _Library):
 
     config = Config(
         cache={"directory": str(tmp_path / "cache")},
-        editorial={"reader": "rules", "preparation": {"tier": "metadata_only"}},
         analysis={"min_source_short_side": 0},
     )
+    # This scope test exercises pixel acquisition without loading model weights.
+    config.editorial.preparation.tier = "metadata_only"
     planner = build_editorial_planner(
         client=object(),
         config=config,

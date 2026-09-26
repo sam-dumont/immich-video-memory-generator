@@ -67,12 +67,10 @@ def test_rules_finish_product_selection_without_constructing_inference(tmp_path,
         asset.is_favorite = True
     config = Config(
         cache={"directory": str(tmp_path / "cache")},
-        editorial={
-            "reader": "rules",
-            "preparation": {"tier": "metadata_only"},
-        },
         analysis={"min_source_short_side": 0},
     )
+    # Rules-only component coverage keeps model acquisition outside this fixture.
+    config.editorial.preparation.tier = "metadata_only"
 
     def forbidden(*args, **kwargs):
         pytest.fail("rules reader constructed an inference transport")
@@ -272,9 +270,9 @@ def test_a_rules_film_may_play_a_live_photo_and_can_measure_one(tmp_path):
         asset.is_favorite = True
     config = Config(
         cache={"directory": str(tmp_path / "cache")},
-        editorial={"reader": "rules", "preparation": {"tier": "metadata_only"}},
         analysis={"min_source_short_side": 0},
     )
+    config.editorial.preparation.tier = "metadata_only"
     seen = []
 
     def planner_seeing(source, ports):

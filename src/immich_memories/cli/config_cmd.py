@@ -84,8 +84,9 @@ def register_config_commands(main: click.Group) -> None:
             editorial = cfg.editorial
             table.add_row(
                 "Tier",
-                f"{cfg.tier} (reader {editorial.reader}, preparation "
-                f"{editorial.preparation.tier}, Laya {'on' if editorial.laya_audience else 'off'})",
+                f"{cfg.tier} (reader {editorial.reader}, captions "
+                f"{'on' if editorial.preparation.demands_captions else 'off'}, "
+                f"Laya {'on' if editorial.laya_audience else 'off'})",
             )
 
             console.print(table)

@@ -412,7 +412,7 @@
         "name": "register_config_commands",
         "complexity": 42,
         "line_start": 41,
-        "line_end": 230,
+        "line_end": 231,
         "line_complexities": [
           {
             "line": 58,
@@ -451,39 +451,35 @@
             "complexity": 0
           },
           {
-            "line": 94,
-            "complexity": 2
-          },
-          {
             "line": 95,
-            "complexity": 0
+            "complexity": 2
           },
           {
             "line": 96,
-            "complexity": 2
+            "complexity": 0
           },
           {
             "line": 97,
+            "complexity": 2
+          },
+          {
+            "line": 98,
             "complexity": 0
           },
           {
-            "line": 99,
+            "line": 100,
             "complexity": 3
           },
           {
-            "line": 102,
+            "line": 103,
             "complexity": 1
           },
           {
-            "line": 107,
+            "line": 108,
             "complexity": 0
           },
           {
-            "line": 111,
-            "complexity": 0
-          },
-          {
-            "line": 113,
+            "line": 112,
             "complexity": 0
           },
           {
@@ -491,76 +487,76 @@
             "complexity": 0
           },
           {
-            "line": 120,
+            "line": 115,
+            "complexity": 0
+          },
+          {
+            "line": 121,
             "complexity": 3
           },
           {
-            "line": 124,
+            "line": 125,
             "complexity": 0
           },
           {
-            "line": 129,
+            "line": 130,
             "complexity": 0
           },
           {
-            "line": 131,
+            "line": 132,
             "complexity": 1
           },
           {
-            "line": 138,
+            "line": 139,
             "complexity": 0
           },
           {
-            "line": 140,
+            "line": 141,
             "complexity": 3
           },
           {
-            "line": 146,
+            "line": 147,
             "complexity": 0
           },
           {
-            "line": 151,
+            "line": 152,
             "complexity": 0
           },
           {
-            "line": 154,
+            "line": 155,
             "complexity": 3
           },
           {
-            "line": 175,
+            "line": 176,
             "complexity": 0
           },
           {
-            "line": 180,
+            "line": 181,
             "complexity": 0
           },
           {
-            "line": 183,
+            "line": 184,
             "complexity": 0
           },
           {
-            "line": 187,
+            "line": 188,
             "complexity": 2
           },
           {
-            "line": 190,
+            "line": 191,
             "complexity": 0
-          },
-          {
-            "line": 197,
-            "complexity": 2
           },
           {
             "line": 198,
+            "complexity": 2
+          },
+          {
+            "line": 199,
             "complexity": 0
           },
           {
-            "line": 203,
+            "line": 204,
             "complexity": 3
-          },
-          {
-            "line": 211,
-            "complexity": 0
           },
           {
             "line": 212,
@@ -575,7 +571,7 @@
             "complexity": 0
           },
           {
-            "line": 216,
+            "line": 215,
             "complexity": 0
           },
           {
@@ -583,19 +579,23 @@
             "complexity": 0
           },
           {
-            "line": 219,
-            "complexity": 2
+            "line": 218,
+            "complexity": 0
           },
           {
             "line": 220,
+            "complexity": 2
+          },
+          {
+            "line": 221,
             "complexity": 3
           },
           {
-            "line": 224,
+            "line": 225,
             "complexity": 1
           },
           {
-            "line": 226,
+            "line": 227,
             "complexity": 1
           }
         ]

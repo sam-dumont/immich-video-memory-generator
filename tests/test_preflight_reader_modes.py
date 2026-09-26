@@ -21,6 +21,8 @@ def test_metadata_rules_preflight_without_a_model_never_contacts_endpoints(monke
     config = Config(
         editorial={"reader": reader, "preparation": {"tier": "metadata_only"}},
     )
+    # The component accepts reduced evidence internally; normal config cannot select it.
+    config.editorial.preparation.tier = "metadata_only"
     checks = (check_llm, check_encoder, check_detector_export, check_caption_endpoint)
     assert [check(config).status for check in checks] == [CheckStatus.SKIPPED] * 4
 

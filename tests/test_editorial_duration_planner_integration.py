@@ -118,9 +118,7 @@ def source(tmp_path, *, seconds, pictures=50, private_opening=False):
     return StructurePlanningInput(
         case=case,
         intent=build_editorial_intent(case.product, case.ranges, brief=case.brief),
-        # The model editor's fixture states the caption-fed tier: a blank install now
-        # settles at no_captions, where the gate has no description to read.
-        config=Config(editorial={"preparation": {"tier": "full"}}),
+        config=Config(tier="gpu"),
         wall_bytes=wall.text.encode(),
         moment_asset_ids={wall.aliases[0]: group.candidate_ids},
         assets={c.asset_id: c.source for c in candidates},
