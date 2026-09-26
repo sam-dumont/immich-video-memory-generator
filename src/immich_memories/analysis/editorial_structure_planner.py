@@ -356,7 +356,7 @@ def _select(
         bank_path=audit_dir / "shareability.private.json",
         library=AudienceBank(
             source.bank_dir.parent / AUDIENCE_BANK_NAME,
-            answerer=f"{audience_tier}|" + ("laya" if ports.laya else "rules"),
+            answerer=f"{audience_tier}|" + (ports.laya.cache_identity if ports.laya else "rules"),
         ),
         check_audience=audience_check_for(
             audience_tier,

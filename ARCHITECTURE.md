@@ -405,8 +405,9 @@ src/immich_memories/
 │   │                               # seat takes its freed seconds, and refill pages lead with the lacking kind;
 │   │                               # a vote-named shot's refill comes from another moment
 │   ├── editorial_laya_onnx.py      # Portable Laya tokenizer and batched ONNX scorer (CUDA or CPU).
-│   ├── editorial_laya_reader.py    # Laya answers the audience check's activity question from the compact
-│   │                               # caption (gpu/full tiers, editorial.laya_audience); the sharing
+│   ├── editorial_laya_reader.py    # Laya answers the activity question from compact captions;
+│   │                               # cached answers include checkpoint contents, runtime and threshold.
+│   │                               # Enabled for gpu/full tiers by editorial.laya_audience; the sharing
 │   │                               # question never goes to an LLM: what Laya leaves, heads + rules decide
 │   ├── library_catalogue.py    # The account of a month/year (or a multi-year window: one per year
 │   │                           # plus one over them), written over banked episode readings

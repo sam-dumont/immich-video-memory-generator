@@ -85,7 +85,7 @@ def caption_laya() -> LayaReader:
     """A Laya reader for these fixtures: holds any caption naming a bath, reads everything else
     as ordinary. `reader.scorer` exposes the stub, so a test can count what Laya was asked."""
     scorer = _CaptionScorer()
-    reader = LayaReader(scorer, threshold=0.186)
+    reader = LayaReader(scorer, threshold=0.186, checkpoint_id="test-checkpoint")
     reader.scorer = scorer
     return reader
 
