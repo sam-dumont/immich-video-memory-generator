@@ -48,7 +48,7 @@ flowchart TD
   acc -- "unread twice" --> ship["the draft ships as the no-model film<br/>_unpolished, a warning, ran: false"]
   acc --> gates["every shot faces the gates<br/>ThinGates.admit: standing, audience,<br/>5-minute spacing, cached-hash look-alike"]
   gates --> vote["which shots add nothing?<br/>vote_thesis_fit: blocks of 12, reject-only"]
-  vote --> cls["classify_fit<br/>named in both orders: leaves<br/>in one: offered a swap"]
+  vote --> cls["classify_fit<br/>named in either order: offered a replacement<br/>original stays until it passes"]
   cls --> seats["seats N, R, T, D<br/>plan_slots, ThinRefill.fill"]
   seats --> revote["each newcomer re-voted in its block<br/>ThinPolish._checked"]
   revote --> short{"short by S seconds?"}
@@ -60,8 +60,9 @@ flowchart TD
 **The vote.** The model gets the draft as text, in blocks of at most 12 shots, under the period's
 account and whose film it is. It answers one question, reject-only: which of these shots add
 nothing? Each block is asked in source order, and in a second, hashed order only when the first named
-a shot it may move. A shot both orders name leaves. A shot one order names is offered a swap from its
-own story and keeps its place until one passes.
+a shot it may move. A shot named in either order is offered a replacement and keeps its place
+until one passes every check. If the bounded candidate search finds nothing suitable, the
+original stays. Sharing and unusable-picture checks can still remove a shot outright.
 
 **What the vote can't touch.** A favourite, a picture an episode reading recorded as worth a place of
 its own, the only shot of a close family member, and a story's only shot that isn't a portrait
@@ -72,9 +73,10 @@ not asked. Only a
 gate removes them. Your ticks are added back after the polish either way.
 
 **Seats.** A refusal is a seat, not a hole. N seats take only the room the draft left unused, at
-the 3.5 s minimum hold. R and T seats take the seconds the removed shot held, so every removal is
-refilled even when the draft already filled the film; the length is the one the render timing gives
-the draft, not a rough reserve. When nothing is left to refill a removal, the record says so.
+the 3.5 s minimum hold. R seats swap within the original shot's time; T seats can use the seconds
+a gate-refused shot freed. Both work even when the draft already filled the film. If no replacement
+passes, an R or D seat keeps the original. A T seat stays empty because its original failed a
+gate. The record names the failed attempt and any original retained without a replacement.
 
 | Seat | What it is for |
 |---|---|
@@ -94,7 +96,7 @@ from 12 rows at most; the facts then say whether the pick stands, and a failed p
 try, as does an R or T pick a gate refuses. A replacement for a shot the vote named comes from
 another moment: the vote judged the moment, and a frame taken seconds apart adds nothing either. A
 newcomer that repeats a scene the cut already holds (the same scene prints the final duplicate review
-reads) is refused on the spot, so the review doesn't take it out later with nothing in its place. `thin-polish.private.json` records the shot-kind mix of
+reads) is refused on the spot; the outgoing shot is excluded from this comparison. `thin-polish.private.json` records the shot-kind mix of
 the draft and of the polished cut. Every newcomer is voted
 on again inside the block it joined, and one the vote refuses brings back the shot it replaced; an
 R or T seat whose newcomer the vote refuses picks once more.

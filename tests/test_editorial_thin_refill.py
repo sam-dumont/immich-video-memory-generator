@@ -100,7 +100,7 @@ def test_a_shot_both_orders_named_is_replaced_from_its_own_story_only():
         catalogue=catalogue([story("S1", ["a1", "spare"]), story("S2", ["a2"])]),
         verdicts={"a1": verdict("bad", 2), "a2": verdict("kept")},
         refused=[],
-        candidates_of={"S1": [shot("spare", "S1")]}.get,
+        candidates_of={"S1": [shot("spare", "S1")], "S2": []}.get,
         seen={"a1", "a2"},
         content_cap=60.0,
     )
