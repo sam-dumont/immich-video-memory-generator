@@ -788,6 +788,7 @@ src/immich_memories/
 ├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload call
 ├── generate_timeline.py        # Final-duration validation + content budget guards
 ├── pinned_models.py            # One digest-pinned artifact table: `models fetch` and the inference service both read it
+├── model_bundle.py             # Bake all CUDA small-model weights into an immutable image directory
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization, secret files, credential fingerprints

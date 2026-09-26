@@ -53,6 +53,21 @@ LAYA_AUDIENCE_ONNX = PinnedModel(
 )
 LAYA_MAX_BYTES = 1024 * 1024 * 1024
 
+_CAPTION_BASE = (
+    "https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF/resolve/"
+    "ccd7aae53bcb1997355c2f094959e72b3642ce17/"
+)
+CAPTION_MODEL = PinnedModel(
+    "SmolVLM2-500M caption model (Q8)",
+    _CAPTION_BASE + "SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+    "6f67b8036b2469fcd71728702720c6b51aebd759b78137a8120733b4d66438bc",
+)
+CAPTION_PROJECTOR = PinnedModel(
+    "SmolVLM2-500M image projector (Q8)",
+    _CAPTION_BASE + "mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+    "921dc7e259f308e5b027111fa185efcbf33db13f6e35749ddf7f5cdb60ef520b",
+)
+
 
 def fetch_pinned_model(
     *,

@@ -2,8 +2,7 @@
 
 Both variants come out of one Dockerfile, and the traps they have to avoid are
 build-time ones a unit test is the only cheap guard against: a CUDA wheel in the
-cpu image, overlapping CPU/GPU runtime packages, and a fatbin without cubins for
-the cards people actually own.
+cpu image, overlapping CPU/GPU runtime packages, and a writable cache mount hiding the bundled model weights.
 """
 
 from __future__ import annotations
@@ -21,11 +20,6 @@ HWACCEL = REPO_ROOT / "docker" / "hwaccel.inference.yml"
 COMPOSE = REPO_ROOT / "docker-compose.yml"
 SERVICE = "immich-memories-inference"
 PORT = "8092"
-
-# Every architecture the -cuda image must carry compiled kernels for, and why
-# it is on the list: 61 GTX 10-series and the P40s bought for cheap VRAM, 75
-# T4/T1000/RTX 20, 86 RTX 30, 89 RTX 40/L4, 120 RTX 50.
-REAL_ARCHITECTURES = ("61", "75", "86", "89", "120")
 
 
 def instructions(source: str) -> list[str]:
@@ -130,18 +124,17 @@ def test_the_cuda_variant_is_built_on_a_cuda_runtime_with_cudnn() -> None:
     assert "@sha256:" in base
 
 
-def test_every_cuda_architecture_people_own_is_compiled_not_jitted() -> None:
-    # A Turing card compiled 858 PTX modules on its first request against the
-    # stock llama.cpp image: 31.3 s once per container, with a cache that dies
-    # with it. A service that unloads on idle pays that on every reload.
-    architectures = next(
-        line for line in stage("builder-cuda") if "CMAKE_CUDA_ARCHITECTURES" in line
+def test_cuda_ships_a_pinned_caption_runtime_and_its_shared_libraries() -> None:
+    runtime = next(
+        line
+        for line in instructions(DOCKERFILE.read_text())
+        if line.startswith("ARG CAPTION_RUNTIME=")
     )
-
-    for architecture in REAL_ARCHITECTURES:
-        assert f"{architecture}-real" in architectures
-    # PTX for anything unlisted, so no card is excluded — it just pays one JIT.
-    assert "-virtual" in architectures
+    assert "server-cuda-b10920@sha256:" in runtime
+    cuda = " ".join(stage("prod-cuda"))
+    assert "COPY --from=caption-runtime /app /opt/llama" in cuda
+    assert "LD_LIBRARY_PATH=/opt/llama:/usr/local/cuda/lib64" in cuda
+    assert "libgomp1" in cuda
 
 
 def test_the_cuda_jit_cache_outlives_the_container_and_is_bounded() -> None:
@@ -181,9 +174,13 @@ def test_the_model_cache_is_a_volume_the_service_user_can_write() -> None:
 
     assert "IMMICH_MEMORIES_INFERENCE_CACHE_DIR=/cache" in prod
     assert "chown -R immich:immich /cache" in prod
-    # Everything fetched lands on the one volume, detector snapshots included,
-    # or a restart re-downloads them.
-    assert "IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface" in prod
+    # CPU downloads persist; CUDA's immutable weights survive an empty cache mount.
+    cpu = " ".join(stage("prod-cpu"))
+    cuda = " ".join(stage("prod-cuda"))
+    assert "IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/cache/huggingface" in cpu
+    assert "IMMICH_MEMORIES_INFERENCE_DETECTOR_CACHE_DIR=/opt/immich-models/huggingface" in cuda
+    assert "COPY --from=bundled-cuda-models /opt/immich-models /opt/immich-models" in cuda
+    assert "HF_HUB_OFFLINE=1" in cuda
     assert compose_service()["volumes"] == ["immich-memories-model-cache:/cache"]
 
 
