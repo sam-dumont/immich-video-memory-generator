@@ -28,6 +28,7 @@ from immich_memories.analysis.editorial_preparation_model_facts import (
     CLIP_COMPANION,
     acquire_clip_companions,
     acquire_model_facts,
+    deferred_exposure,
 )
 from immich_memories.analysis.editorial_preparation_motion import (
     MOTION_PRODUCER,
@@ -268,6 +269,27 @@ class _Acquisition:
 
     def transfers(self) -> dict[str, dict[str, int]]:
         return {stage: counts.copy() for stage, counts in self.transfer.items()}
+
+    def result(self, before, after, preview_missing, *, requested, caption_provenance):
+        produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
+        # A server-refused source is an exclusion, not a gap in each dependent producer.
+        after = _without(after, self.unservable)
+        if still_missing := [a for a in preview_missing if a not in self.unservable]:
+            after["preview"] = tuple(still_missing)
+        demanded = _demanded_producers(self.preparation_config)
+        return PreparationResult(
+            requested,
+            {key: value for key, value in after.items() if demanded(key)},
+            self.failures,
+            {key: value for key, value in produced.items() if demanded(key)},
+            self.preparation_config.tier,
+            self.seconds.copy(),
+            self.pictures.copy(),
+            self.service_seconds.copy(),
+            caption_provenance=caption_provenance,
+            unservable_sources=dict(sorted(self.unservable.items())),
+            transfer_by_stage=self.transfers(),
+        )
 
     @contextmanager
     def timed(self, stage: str, pictures: int) -> Iterator[None]:
@@ -529,8 +551,9 @@ def prepare_editorial_annotations(
     check_cancelled: Callable[[], None] | None = None,
     ports: PreparationPorts | None = None,
     read_playback: Callable[[str, int, int], tuple[bytes, int]] | None = None,
+    inspect_clips: bool = True,
 ) -> PreparationResult:
-    """Prepare the full source, never only the duration-limited selection demand.
+    """Prepare the supplied source scope, reusing facts under their exact producer identity.
 
     ``fetch_preview`` receives an asset ID and returns the Immich preview bytes.
     It is called once for an absent or corrupt preview. A caller may provide
@@ -539,10 +562,13 @@ def prepare_editorial_annotations(
     surface watching a long stage can show them; it is never told about one
     whose preview could not be read. ``read_playback`` answers a byte range of a video's
     playback rendition with its full size; without it no motion line is produced.
+    ``inspect_clips=False`` defers playback and video exposure until candidate inspection.
     """
     cache_path = Path(getattr(thumbnail_cache, "cache_dir", thumbnail_cache))
     store_path = Path(store_path)
     source = tuple({asset.id: asset for asset in assets}.values())
+    if not inspect_clips:
+        read_playback = None
     ids = tuple(asset.id for asset in source)
     stage = _Acquisition(
         providers=ports or PreparationPorts(),
@@ -569,7 +595,7 @@ def prepare_editorial_annotations(
     with closing(sqlite3.connect(private_database_path(store_path), timeout=60)) as connection:
 
         def outstanding() -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
-            return missing_facts(
+            missing, unavailable = missing_facts(
                 connection,
                 ids,
                 description_model=description_model,
@@ -577,6 +603,7 @@ def prepare_editorial_annotations(
                 pixel_producer_key=pixel_producer_key,
                 preview_for=stage.preview_for,
             )
+            return (missing if inspect_clips else deferred_exposure(missing, source)), unavailable
 
         initialize(connection)
         remember_assets(connection, source)
@@ -625,28 +652,14 @@ def prepare_editorial_annotations(
         stage.check()
         after, _unavailable = outstanding()
         motion.report(connection, after)
-        produced = {key: len(values) - len(after.get(key, ())) for key, values in before.items()}
-        # A source the server will not serve is not a gap any producer can close,
-        # so it leaves the run by name instead of being counted as one missing
-        # fact per dependent producer. Only the rest still block the cut.
-        after = _without(after, stage.unservable)
-        if still_missing := [a for a in preview_missing if a not in stage.unservable]:
-            after["preview"] = tuple(still_missing)
-        demanded = _demanded_producers(preparation_config)
-        return PreparationResult(
-            len(ids),
-            {key: value for key, value in after.items() if demanded(key)},
-            stage.failures,
-            {key: value for key, value in produced.items() if demanded(key)},
-            preparation_config.tier,
-            stage.seconds.copy(),
-            stage.pictures.copy(),
-            stage.service_seconds.copy(),
+        return stage.result(
+            before,
+            after,
+            preview_missing,
+            requested=len(ids),
             caption_provenance=origins_for(connection, ids, description_model)
             if preparation_config.demands_captions
             else {},
-            unservable_sources=dict(sorted(stage.unservable.items())),
-            transfer_by_stage=stage.transfers(),
         )
 
 

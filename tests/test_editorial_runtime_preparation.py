@@ -2,15 +2,14 @@
 
 import json
 import logging
+import sqlite3
 from dataclasses import replace
 from datetime import timedelta
 
 import pytest
 
-from immich_memories.analysis.editorial_description_contract import validate_envelope
 from immich_memories.analysis.editorial_planner import EditorialPlan
 from immich_memories.analysis.editorial_preparation import prepare_editorial_annotations
-from immich_memories.analysis.editorial_preparation_captions import _remember_caption
 from immich_memories.analysis.editorial_runtime import (
     EditorialRunContext,
     build_editorial_planner,
@@ -71,29 +70,19 @@ def build(tmp_path, *, providers, fetched, tier="full", sources=None, preview_po
     return planner, sources, acquisitions
 
 
-def test_cold_preparation_gates_before_reading_and_warm_reuses_every_producer(
-    tmp_path, monkeypatch
-):
+def test_cold_cheap_facts_gate_before_the_draft_and_warm_reuses_them(tmp_path, monkeypatch):
     produced, fetched = [], []
     providers = successful_ports(produced)
 
-    def captions(**kwargs):
-        produced.append(("captions", tuple(kwargs["asset_ids"])))
-        for asset_id in kwargs["asset_ids"]:
-            description = (
-                "A screenshot showing a dashboard."
-                if asset_id == "display"
-                else "People carry furniture together."
+    def heads(**kwargs):
+        providers.heads(**kwargs)
+        with sqlite3.connect(kwargs["store_path"]) as connection:
+            connection.execute(
+                "UPDATE head_facts SET label='yes' WHERE asset_id='display' AND head='screen'"
             )
-            _remember_caption(
-                kwargs["connection"],
-                asset_id,
-                validate_envelope({"description": description, "setting": "a room"}),
-            )
-        return {}
 
     planner, sources, acquired = build(
-        tmp_path, providers=replace(providers, captions=captions), fetched=fetched
+        tmp_path, providers=replace(providers, heads=heads), fetched=fetched
     )
     observed = []
 
@@ -104,16 +93,18 @@ def test_cold_preparation_gates_before_reading_and_warm_reuses_every_producer(
         assert tuple(row.clip.asset.id for row in candidates) == prepared.candidate_ids
         passes = [p for p in trace.editorial_passes if p.name == "source-eligibility"]
         assert len(passes) == 1
-        assert passes[0].rejected[0].reason == "screen-text"
+        assert passes[0].rejected[0].reason == "screen-head"
         return EditorialPlan()
 
     # The native editor has its own full cold/warm integration test. Here its
-    # input boundary proves that preparation and factual gating precede it.
+    # input boundary proves that cheap preparation and factual gating precede it.
+    # Caption-based exclusions belong to refinement, after the NAS draft exists.
     monkeypatch.setattr(planner._planner, "plan_prepared", editor)
     planner.plan_source(sources, trace=Trace())
     assert produced and fetched == [s.id for s in sources]
     gate = json.loads((planner.last_attempt_directory / "source-gate.private.json").read_text())
-    assert gate["excluded"] == {"display": "screen-text"}
+    assert gate["excluded"] == {"display": "screen-head"}
+    assert not any(producer == "captions" for producer, _ in produced)
     produced.clear()
     fetched.clear()
     planner.plan_source(sources, trace=Trace())

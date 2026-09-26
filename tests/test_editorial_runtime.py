@@ -12,13 +12,17 @@ from unittest.mock import patch
 import pytest
 
 from immich_memories.analysis.editorial_planner import EditorialPlan, EditorialSelection
+from immich_memories.analysis.editorial_rule_reader import NoModelJudge
 from immich_memories.analysis.editorial_runtime import (
     EditorialRunContext,
     build_editorial_planner,
     build_smart_pipeline,
 )
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
-from immich_memories.analysis.editorial_structure_contract import StructurePlanningResult
+from immich_memories.analysis.editorial_structure_contract import (
+    StructurePlannerPorts,
+    StructurePlanningResult,
+)
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -448,8 +452,7 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             "enabled": True,
             "annotation_database": str(store),
             "description_model": "student-v1",
-            # The whole-film model planner reads every episode up front; the polish route
-            # reads on demand and has its own tests (test_editorial_thin_account_fallback).
+            # A disabled polish still starts from the facts-only draft.
             "thin_model_layer": False,
         },
     )
@@ -557,7 +560,10 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
             episode_requester_factory=episode_requester,
             episode_store_factory=episode_store,
             structure_planner=structure_planner,
-            structure_ports_factory=lambda _source: object(),
+            structure_ports_factory=lambda _source: StructurePlannerPorts(
+                judge=NoModelJudge(),
+                thumbnail_hash=lambda _asset: None,
+            ),
         ),
     )
     assert planner is not None
@@ -592,8 +598,7 @@ def test_post_card_runtime_projects_selected_wall_rows_in_chronological_order(
         replace(captured[0], case=replace(captured[0].case, product="trip"))
     assert (context.artifact_dir / "plan.private.json").is_file()
     assert episode_stores[0].close_calls == 1
-    assert len(trace.requests) == 1
-    assert trace.requests[0].model.startswith("text-model@text-")
+    assert not trace.requests
 
 
 @pytest.mark.parametrize(

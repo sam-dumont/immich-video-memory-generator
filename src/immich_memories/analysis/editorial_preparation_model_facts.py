@@ -74,6 +74,24 @@ class ModelFactStage(Protocol):
 CLIP_COMPANION = "clip_companion"
 
 
+def deferred_exposure(
+    missing: Mapping[str, tuple[str, ...]], source: Sequence[Asset]
+) -> dict[str, tuple[str, ...]]:
+    """Defer video exposure entirely; a preview must not earn the sampled-frame version.
+
+    The selected-candidate pass will owe this producer's actual frame inspection. Other
+    cheap heads can still read a video's preview while the NAS draft is being built.
+    """
+    key = f"head:{MARQO_HEAD}@{DETECTOR_VERSIONS[MARQO_HEAD]}"
+    videos = {asset.id for asset in source if asset.is_video}
+    result = dict(missing)
+    if key in result:
+        result[key] = tuple(asset for asset in result[key] if asset not in videos)
+        if not result[key]:
+            del result[key]
+    return result
+
+
 def acquire_clip_companions(
     stage: ModelFactStage,
     connection: sqlite3.Connection,

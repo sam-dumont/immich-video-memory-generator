@@ -15,13 +15,17 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.analysis.editorial_rule_reader import NoModelJudge
 from immich_memories.analysis.editorial_runtime import (
     EditorialRunContext,
     build_editorial_planner,
 )
 from immich_memories.analysis.editorial_runtime_ports import EditorialRuntimePorts
 from immich_memories.analysis.editorial_source import fetch_full_window_source
-from immich_memories.analysis.editorial_structure_contract import StructurePlanningResult
+from immich_memories.analysis.editorial_structure_contract import (
+    StructurePlannerPorts,
+    StructurePlanningResult,
+)
 from immich_memories.analysis.selection_source import (
     EditorialDependencies,
     EditorialSelectionRequest,
@@ -221,7 +225,9 @@ def test_production_wall_receives_only_selected_event_even_if_port_returns_whole
             fetch_full_source=lambda _client, _scope: tuple(clips.values()),
             episode_requester_factory=lambda _config: lambda _prompt: json.dumps(episode),
             structure_planner=plan,
-            structure_ports_factory=lambda _source: object(),
+            structure_ports_factory=lambda _source: StructurePlannerPorts(
+                judge=NoModelJudge(), thumbnail_hash=lambda _asset: None
+            ),
         ),
     )
     result = planner.plan(

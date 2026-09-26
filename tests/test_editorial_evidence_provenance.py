@@ -135,7 +135,7 @@ def test_the_runtime_records_evidence_into_the_attempt_that_is_running(
         client=object(),
         thumbnail_cache=object(),
         context=context,
-        # The whole-film planner's up-front reader; the polish route reads on demand.
+        # Disabling polish still defers episode reads until they are demanded.
         config=Config(
             tier="full",
             llm={"model": "test-model", "base_url": "http://llm.test/v1"},
@@ -151,7 +151,8 @@ def test_the_runtime_records_evidence_into_the_attempt_that_is_running(
         return object()
 
     def plan_source(*_args, **_kwargs):
-        planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+        demand = planner._planner._episode_reader_factory(SimpleNamespace(candidates=()))
+        demand._reader(demand._on_demand)
         built["record_evidence"]((_episode("g1", {"a1": "a1 | a rendered line"}),))
         return SimpleNamespace(plan=EditorialPlan(), duration_realization=None)
 

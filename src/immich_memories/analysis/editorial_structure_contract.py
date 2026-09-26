@@ -24,6 +24,7 @@ from immich_memories.security import write_secret_file
 if TYPE_CHECKING:
     from immich_memories.analysis.editorial_laya_reader import LayaReader
     from immich_memories.analysis.editorial_rule_reader import RuleStructureReader
+    from immich_memories.analysis.editorial_story_planner import StorySelection
     from immich_memories.analysis.editorial_thin_layer import ThinPolish
 
 
@@ -197,6 +198,17 @@ class StructurePlanningInput:
 
 
 @dataclass(frozen=True)
+class RulesDraft:
+    """The completed NAS cut and its story, carried into refinement without reallocating."""
+
+    selection: StorySelection
+    carriers: list[dict[str, Any]]
+    removed: list[dict[str, Any]]
+    tiers: dict[str, int]
+    reasons: dict[str, str]
+
+
+@dataclass(frozen=True)
 class StructurePlannerPorts:
     judge: StructureJudge
     thumbnail_hash: Callable[[str], str | None]
@@ -221,6 +233,15 @@ class StructurePlannerPorts:
     # The local Laya model answering the audience check's activity question
     # (`editorial.laya_audience`); None leaves sharing to the heads and rules.
     laya: LayaReader | None = None
+    draft: RulesDraft | None = None
+    prepare_candidates: Callable[[Sequence[Mapping[str, Any]]], bool] | None = None
+    refine: (
+        Callable[
+            [StructurePlanningInput, RulesDraft],
+            tuple[StructurePlanningInput, StructurePlannerPorts],
+        ]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +250,7 @@ class StructurePlanningResult:
     contract: str
     selection_sheet: str
     summary: dict[str, Any]
+    draft: RulesDraft | None = None
 
     def write(self, output: Path) -> None:
         """Keep the same private artifacts for product runs and sealed evaluations."""

@@ -58,6 +58,11 @@ def polish_the_draft(
         unit_by_asset=unit_by_asset,
         pictures_of={s["key"]: s["seen"]["pictures"] for s in selection.story.stories},
     )
+
+    def prepare_candidates(rows):
+        gate.prepare(rows)
+        standing.refresh([row["asset_id"] for row in rows])
+
     try:
         catalogue = ports.thin.catalogue_of(selection.story, pool.moment_assets, drafted=carriers)
         unread = ""
@@ -80,6 +85,7 @@ def polish_the_draft(
             audience_name=source.audience,
             # Laya reads a draft's shots together; without it there is nothing to batch.
             audience_batch=16 if ports.laya else 0,
+            prepare_candidates=prepare_candidates,
         ),
         catalogue=catalogue,
         unread=unread,

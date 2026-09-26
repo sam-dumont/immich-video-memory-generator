@@ -328,6 +328,20 @@ class UnitBuilder:
                 units.append(unit)
         return [self._with_banked_speech(unit) for unit in units]
 
+    def refresh_clip_facts(self, carrier: dict) -> dict:
+        """Keep the selected photograph when newly inspected clip frames refuse playback."""
+        if (
+            not str(carrier.get("kind", "")).startswith("live")
+            or not (carrier.get("motion_candidate") or carrier["kind"] == "live-motion")
+            or not clips_miss_subject(self._clip_frames, carrier.get("video_ids", ()))
+        ):
+            return carrier
+        return carrier | {
+            "kind": "live-still",
+            "motion_candidate": False,
+            "seconds": self._still_hold(carrier["members"]),
+        }
+
     def measured_stitch(self, carrier: dict) -> dict:
         """A carrier the draft planned on an unmeasured stitch, bound to its measured one.
 
@@ -338,6 +352,7 @@ class UnitBuilder:
         is never stitched: the kept picture plays its own clip when that moves, and is its
         photograph otherwise.
         """
+        carrier = self.refresh_clip_facts(carrier)
         rendering = self._renderings.get(carrier["asset_id"])
         if (
             self._measure is None

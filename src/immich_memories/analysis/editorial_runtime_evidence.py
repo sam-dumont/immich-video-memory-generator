@@ -106,6 +106,8 @@ class EvidencePreparation:
     thumbnail_cache: ThumbnailCache
     ports: EditorialRuntimePorts
     artifact_dir: Callable[[], Path]
+    report_name: str = "preparation"
+    inspect_clips: bool = True
 
     def __call__(
         self,
@@ -116,9 +118,13 @@ class EvidencePreparation:
         result = self._produce(prepared, on_stage, reach)
         _log_preparation(result)
         write_secret_file(
-            self.artifact_dir() / "preparation.private.json",
+            self.artifact_dir() / f"{self.report_name}.private.json",
             json.dumps(
-                asdict(result) | {"seconds_per_picture": result.stage_rates()},
+                asdict(result)
+                | {
+                    "seconds_per_picture": result.stage_rates(),
+                    "requested_asset_ids": sorted(reach),
+                },
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -142,7 +148,7 @@ class EvidencePreparation:
                 self.readings.store_path,
                 detail="; ".join(filter(None, (missing, *result.producer_failures))),
             )
-        readable = tuple(a for a in prepared.candidate_ids if a not in unservable)
+        readable = tuple(a for a in prepared.candidate_ids if a in reach and a not in unservable)
         if not readable:
             return unservable
         return unservable | self._screen_documents(prepared, readable)
@@ -181,6 +187,7 @@ class EvidencePreparation:
             read_playback=partial(self.ports.fetch_playback_range, self.client),
             progress=progress,
             on_asset=live.note_asset,
+            inspect_clips=self.inspect_clips,
         )
 
     def _screen_documents(self, prepared: Any, readable: tuple[str, ...]) -> dict[str, Any]:
@@ -198,7 +205,7 @@ class EvidencePreparation:
             )
         exclusions: dict[str, Any] = screen_document_rejections(batch)
         write_secret_file(
-            self.artifact_dir() / "source-gate.private.json",
+            self.artifact_dir() / Path(self.report_name).parent / "source-gate.private.json",
             json.dumps(
                 {"version": SCREEN_DOCUMENT_GATE_VERSION, "excluded": exclusions},
                 ensure_ascii=False,
