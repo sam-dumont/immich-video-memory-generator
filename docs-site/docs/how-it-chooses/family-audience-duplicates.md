@@ -158,6 +158,10 @@ turn it on with `advanced.editorial.laya_audience` after `pip install laya-mlx` 
 `immich-memories models fetch --laya`. It runs on the rules route too, without a polish step.
 Detector and owner holds still apply.
 
+Cached Laya answers belong to the checkpoint's file contents, runtime and threshold. Changing
+any of those makes the next cut read the captions again. Existing detector, owner and private
+activity holds still apply; a new checkpoint cannot silently clear a previous hold.
+
 **`advanced.editorial.strict_sharing`** (on by default) applies to shareable films: any shot a head
 or an exposure flag marked stays at `family_only` even when the caption suggests `share`. On a NAS it is
 also what allows the clean-evidence `share` above. Just-us and family films don't read it.
