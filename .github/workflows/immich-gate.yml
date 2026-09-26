@@ -86,7 +86,13 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - name: Install FFmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-      - run: make dev-test
+      - run: make dev-test-integration
+
+      - name: Cache NAS model artifacts
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .immich-gate/models
+          key: immich-gate-nas-models-${{ hashFiles('src/immich_memories/pinned_models.py', 'src/immich_memories/analysis/editorial_preparation_detectors.py') }}
 
       - name: Cache gate media
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

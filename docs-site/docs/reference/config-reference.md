@@ -27,29 +27,36 @@ values fail validation at startup.
 
 ## Tier
 
-The one choice that decides which models run. Top level, like `preset`.
+One resolved tier controls both preparation and selection. Leave it automatic for normal use.
 
 ```yaml
-tier: nas                          # nas | gpu | full
+tier: auto                         # auto | nas | gpu | full
 ```
 
 | `tier` | Models | Reader | Needs |
 | --- | --- | --- | --- |
-| `nas` (default) | inexpensive CPU heads and detectors, no captions | rules | `models fetch` |
+| `nas` | inexpensive CPU heads and detectors, no captions | rules | `models fetch` |
 | `gpu` | every light model: captions, heads, detectors, Laya | rules | a caption server, `models fetch` |
 | `full` | everything in `gpu` | an LLM polishes the rules draft and writes the prose | `advanced.llm.base_url` and `advanced.llm.model` |
 
-`tier` sets three advanced keys: `editorial.reader`, `editorial.preparation.tier` and
-`editorial.laya_audience`. Explicit preparation choices can reduce the work; `nas` and `gpu`
-always use the rules reader, even if an old file says `auto` or `model`. Save preserves your
-choices and omits unchanged tier defaults. `full` refuses to start without an LLM endpoint: a `base_url` you
-stated (or a hosted `provider` such as `anthropic`) and a `model`. Only `full` uses an LLM for
-selection refinement. Titles and music mood can use a configured LLM on any tier, including
-NAS, with text-only requests. Without a model they use their local fallbacks. Configuring that
-LLM does not enable image captioning. A light model that is missing (no Laya checkpoint, say) is skipped with a
-one-line notice, and the heads and rules decide alone.
+`auto` is the default. A healthy inference service reporting CUDA, or a local CUDA or MLX/Metal
+runtime, selects `gpu`. A configured LLM alongside that capability selects `full`. Without GPU
+inference capability, selection stays on `nas` and reports what is missing. A renderer's GPU
+does not establish inference capability. The runtime check loads no model weights and sends no
+pictures; preflight and acquisition still check the actual producers.
 
-Env: `IMMICH_MEMORIES_TIER=gpu`. `uv run python scripts/tier_settings.py` prints what each tier runs
+`editorial.reader`, `editorial.preparation.tier` and `editorial.laya_audience` are derived from
+the product tier. Conflicting legacy settings are ignored with a notice. Save omits these
+derived settings and keeps automatic resolution automatic when the file moves to another host.
+An explicit `nas`, `gpu` or `full` pins a tier for a controlled comparison; it does not install or
+start its services. `full` requires a stated LLM endpoint or hosted provider and a model.
+
+Configured LLM titles and music mood work on every tier. NAS and GPU still select with rules,
+and sharing never asks the prose LLM. Captions use their own configured service; a text LLM is
+not an automatic caption fallback. A missing Laya checkpoint or runtime is reported and uses
+the conservative rules fallback; that is a degraded run, not a verified GPU/full comparison.
+
+Env: `IMMICH_MEMORIES_TIER=auto`. `uv run python scripts/tier_settings.py` prints what each tier runs
 with, as the product resolves it.
 
 ## Preset
@@ -493,11 +500,11 @@ triage hook: they load, they validate, they do nothing.
 
 ```yaml
 editorial:
-  reader: auto                  # auto | model | rules; `tier` sets it unless you do
+  reader: rules                 # derived from the product tier; not an independent choice
   thin_model_layer: true         # the model polishes a rules draft; false makes it plan the film
   strict_sharing: true           # anything a head or exposure flag marked stays out of shared films
   annotation_database: ""        # defaults to annotations.sqlite inside the configured cache directory
-  laya_audience: false           # Laya answers the audience activity question; `tier` sets it
+  laya_audience: false           # derived: off for NAS, on for GPU and Full
   # Apple silicon defaults below; elsewhere the ONNX archive and threshold 0.185 are used.
   laya_checkpoint: "~/.immich-memories/models/laya/laya-audience-a79ad9fa.tar"
   laya_checkpoint_url: "https://github.com/sam-dumont/immich-video-memory-generator/releases/download/models-v2/laya-audience-a79ad9fa.tar"
@@ -516,7 +523,7 @@ editorial:
     uncovered_person: public-v1
     venue: oi-v3
   preparation:
-    tier: full                   # full | no_captions | metadata_only; the top-level `tier` sets it
+    tier: no_captions            # internal producer mode, derived from the product tier
     caption_base_url: http://localhost:8092/v1
     caption_artifact_id: ""   # optional artifact/revision label; existing captions stay banked
     caption_api_key: ""          # bearer token for a caption server that requires one
@@ -564,9 +571,8 @@ strict band, baked into its coefficients because the bundle schema holds no thre
 it answered `yes` on 37 of 3,564 photographs and every one of them was a screen. Each of the three
 only adds to a rule another producer already answered, and none of them can clear anything.
 
-The top-level [`tier`](#tier) sets `reader`: `rules` on `nas` and `gpu`, `model` on `full`. On `full`,
-`reader: auto` uses the configured model and `reader: rules` skips model editing even when a model is
-configured. Rules cover the ten standard memory products, including albums and recurring dates,
+The top-level [`tier`](#tier) sets `reader`: `rules` on `nas` and `gpu`, `model` on `full`.
+Rules cover the ten standard memory products, including albums and recurring dates,
 from dates, places, favourites, people metadata and whatever preparation facts exist. They reuse
 the normal allocation, spacing, audience and timing checks, omit a thesis, keep unsampled Live
 Photos as stills, and write no semantic model banks. Saved plans identify the producer as
@@ -603,26 +609,16 @@ without a Laya answer stays held to the family. Sharing never calls an LLM, incl
 checks and missing-answer fallbacks. The former `thin_batched_audience` option is removed.
 See [Add a reader](../better/reader.md#the-laya-audience-pre-screen).
 
-Preparation is a separate choice: `rules` plus `no_captions` keeps the image classifiers, `rules`
-plus `metadata_only` produces only previews and pixel measurements. For a no-inference comparison,
-use `metadata_only` with a fresh annotation database; changing the tier does not erase model facts
-already stored.
-
 ### Preparation tiers
 
-`preparation.tier` names which producers a deployment asks for. It is a named choice, never a
-fallback: a producer the tier demands and cannot reach still stops the run.
+Preparation follows the product tier. NAS acquires cheap picture facts; GPU and Full add
+captions and Laya. Internally, older audit rows call those producer modes `no_captions` and
+`full`. They are not a second config choice. `metadata_only` is no longer a selectable product
+configuration.
 
-| `tier` | What runs | First pass over about ten thousand pictures on a Celeron J4125 NAS |
-| --- | --- | --- |
-| `full` | pixels, encoder + eight heads, both detectors, captions | 4 days |
-| `no_captions` | pixels, encoder + eight heads, both detectors | about 4 h |
-| `metadata_only` | pixels and Immich metadata; no ONNX, no captions | minutes |
-
-`no_captions` is the tier for a low-power NAS. The captioner costs 25 times the rest of the
-pipeline put together, and dropping it keeps every producer the audience gate reads
-(`nsfw_marqo`, `children`, `exposure`, `doc_docling`), so the gate is unchanged.
-Reasons under each picture become facts rather than sentences.
+A film starts with the NAS draft, then captions and checks only selected shots and actual
+replacement candidates. `prepare` remains the explicit job for a larger scope. Changing tier
+does not erase banked captions or other producer facts.
 
 The `swim` head is retired, and a configuration that still names it loses the name with one
 log line. Measured against a typed picture reader over 3,564 photographs it answered `yes`

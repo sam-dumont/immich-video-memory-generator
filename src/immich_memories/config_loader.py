@@ -48,7 +48,7 @@ from immich_memories.config_models_server import WILDCARD_HOST, ServerConfig
 from immich_memories.config_models_soundtrack import ACEStepConfig, AudioConfig, MusicGenConfig
 from immich_memories.config_models_triage import TriageConfig
 from immich_memories.config_presets import PresetName, apply_preset
-from immich_memories.config_tiers import ProductTier, apply_tier, forget_applied
+from immich_memories.config_tiers import TierSetting, apply_tier, forget_applied
 from immich_memories.logging_config import install_secret_redaction
 from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import (
@@ -340,11 +340,11 @@ class Config(BaseSettings):
         "explicit values win",
     )
 
-    tier: ProductTier = Field(
-        default="nas",
-        description="nas = inexpensive CPU classifiers; gpu = captions, heads and Laya; "
-        "full = gpu plus LLM selection refinement, requiring advanced.llm.base_url and model. "
-        "Configured text features such as titles and music mood work on every tier",
+    tier: TierSetting = Field(
+        default="auto",
+        description="auto resolves NAS, GPU or Full from inference capability and the configured LLM; "
+        "preparation follows the same tier. Explicit tiers pin comparisons. "
+        "Configured titles and music mood work on every tier",
     )
 
     server: ServerConfig = Field(default_factory=ServerConfig)

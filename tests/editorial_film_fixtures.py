@@ -212,9 +212,8 @@ def film_source(
         seconds,
         "Show the period through its days.",
     )
-    # These fixtures are the model editor's, so they state the caption-fed tier: a blank
-    # install now settles at no_captions, where the gate has no description to read.
-    config = Config(editorial={"preparation": {"tier": "full"}})
+    # These fixtures supply model judgments through ports and need the caption-fed GPU tier.
+    config = Config(tier="gpu")
     if home_base:
         config = config.model_copy(
             update={"trips": TripsConfig(homebase_latitude=HOME[0], homebase_longitude=HOME[1])}

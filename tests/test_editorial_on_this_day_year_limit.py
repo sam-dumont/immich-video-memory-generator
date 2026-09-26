@@ -109,9 +109,7 @@ def make_source(tmp_path, *, years=(2030, 2031, 2032), product="on_this_day"):
     return StructurePlanningInput(
         case=case,
         intent=build_editorial_intent(product, case.ranges, brief=case.brief),
-        # The model editor's fixture states the caption-fed tier: a blank install now
-        # settles at no_captions, where the gate has no description to read.
-        config=Config(editorial={"preparation": {"tier": "full"}}),
+        config=Config(tier="gpu"),
         wall_bytes=wall.text.encode(),
         moment_asset_ids={
             alias: group.candidate_ids for alias, group in zip(wall.aliases, groups, strict=True)

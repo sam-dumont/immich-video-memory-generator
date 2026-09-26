@@ -30,6 +30,7 @@ _TEST_ENV_KEYS = {
     # fetched it read real scene prints of synthetic previews, and a suite green in CI failed
     # there. No test reads a model it did not put in place itself.
     "IMMICH_MEMORIES_TRIAGE__ENCODER": "models/triage/dinov2-small.onnx",
+    "IMMICH_MEMORIES_EDITORIAL__LAYA_CHECKPOINT": "models/laya/checkpoint",
 }
 _ORIGINAL_TEST_ENV: dict[str, str | None] = {}
 
@@ -113,6 +114,15 @@ def pytest_unconfigure(config: pytest.Config) -> None:
         raise RuntimeError(f"Refusing to remove unvalidated pytest root: {test_root}")
 
     shutil.rmtree(test_root)
+
+
+@pytest.fixture(autouse=True)
+def isolated_inference_compute(monkeypatch) -> None:
+    # WHY: optional runtimes on the developer's host must not make unit fixtures demand services.
+    monkeypatch.setattr(
+        "immich_memories.config_compute.local_inference_acceleration",
+        lambda: (False, "No GPU runtime in this unit-test fixture"),
+    )
 
 
 @pytest.fixture(autouse=True)

@@ -146,12 +146,13 @@ the code named beside it; if the two disagree, the code wins and this entry is s
   (`triage/bundled_heads/public-8heads-v4.npz`, `editorial_preparation_heads.py`). Beside them sit
   two detectors, `nsfw_marqo` (exposure) and `doc_docling` (documents)
   (`editorial_preparation_detectors.py`).
-- **Tiers**: `tier` selects `nas` (CPU heads and detectors), `gpu` (adds captions and Laya),
+- **Tiers**: `tier: auto` resolves `nas` (CPU heads and detectors), `gpu` (adds captions and Laya),
   or `full` (adds an explicitly configured prose LLM). NAS and GPU always use the rules reader.
   Text-only titles and music mood may use a configured LLM on every tier; they neither enable
   model selection nor image captioning. LLM preflight checks those configured text services too.
-  Advanced preparation can be reduced to `no_captions` (heads and detectors) or `metadata_only`
-  (nothing looks at pixels, so every shot is held to the family). Sharing never asks the prose
+  Preparation follows that same product tier; legacy overrides no longer win. `config_compute.py`
+  checks inference-service health and local CUDA/MLX capability without loading weights.
+  Explicit tiers remain available for comparisons. Sharing never asks the prose
   LLM (`config_tiers.py`, `config_models_editorial*.py`, `editorial_shareability_tiers.py`).
   `laya_checkpoints.py` selects platform-matched archive, path and threshold defaults;
   `pinned_models.py` owns the SHA-256 pins used by `models fetch`.
@@ -774,7 +775,8 @@ src/immich_memories/
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
 ├── config_presets.py           # Named presets (`preset: fast`) that fill several knobs at once
-├── config_tiers.py             # The product tier (nas/gpu/full): reader, preparation tier, Laya
+├── config_tiers.py             # One resolved product tier: reader, preparation producers, Laya
+├── config_compute.py           # Inference capability discovery, separate from video encoding
 ├── config_models.py            # Resources a run uses: Immich server, cache, hardware (+ expand_env_vars)
 ├── config_models_analysis.py   # Source admission and the expected seconds per clip
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
@@ -899,9 +901,11 @@ Both flat and nested YAML formats are accepted.
 
 These YAML tiers are not the product `tier` (`config_tiers.py`): `nas` (inexpensive CPU classifiers), `gpu`
 (every light model, no LLM) or `full` (plus an LLM, whose endpoint it requires). The product
-tier sets defaults for `editorial.reader`, `editorial.preparation.tier` and `editorial.laya_audience`.
-Explicit preparation choices win, but NAS and GPU always force the rules reader. `save_yaml`
-omits unchanged tier defaults and preserves choices edited after loading.
+tier owns `editorial.reader`, `editorial.preparation.tier` and `editorial.laya_audience`.
+`auto` resolves from inference capability and the configured LLM; conflicting legacy preparation
+settings are ignored with a notice. `save_yaml` omits derived settings and does not turn an
+automatic config into a machine-specific pin. Internal metadata-only component fixtures remain
+available without exposing a fourth product tier. The real-Immich gate uses NAS with pinned CPU models.
 
 The tiers are a YAML layout, not a code layout. The section models are grouped by
 domain across the `config_models*.py` modules (resources, analysis, render,

@@ -54,23 +54,21 @@ def test_a_cut_without_the_models_names_the_fetch_command_before_touching_immich
     client.assert_not_called()
 
 
-def _metadata_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A config whose tier needs no model files, so only the output directory is in question."""
+def _without_model_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Check output setup even when a fresh NAS install still needs its model files."""
     # The suite routes the output directory through the environment, which
     # outranks the file; this test's directory has to win.
     monkeypatch.setenv("IMMICH_MEMORIES_OUTPUT__DIRECTORY", str(tmp_path / "output"))
-    return _config_file(
-        tmp_path,
-        advanced={"editorial": {"preparation": {"tier": "metadata_only"}}},
-    )
+    return _config_file(tmp_path)
 
 
 def test_a_missing_output_directory_is_created_before_the_run_starts(tmp_path, monkeypatch) -> None:
-    result, client = _generate(_metadata_only(tmp_path, monkeypatch))
+    result, client = _generate(_without_model_files(tmp_path, monkeypatch))
 
     assert (tmp_path / "output").is_dir()
     assert "not writable" not in result.output
-    client.assert_called_once()
+    assert "models fetch" in result.output
+    client.assert_not_called()
 
 
 @pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="root writes anywhere")
@@ -80,7 +78,7 @@ def test_an_unwritable_output_directory_stops_the_run_before_touching_immich(
     output = tmp_path / "output"
     output.mkdir(mode=0o555)
     try:
-        result, client = _generate(_metadata_only(tmp_path, monkeypatch))
+        result, client = _generate(_without_model_files(tmp_path, monkeypatch))
     finally:
         output.chmod(0o755)
 

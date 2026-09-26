@@ -38,12 +38,12 @@ def test_the_flat_key_still_wins_where_both_state_it(tmp_path):
         _write(
             tmp_path,
             {
-                "editorial": {"preparation": {"tier": "metadata_only"}},
-                "advanced": {"editorial": {"preparation": {"tier": "full"}}},
+                "editorial": {"preparation": {"batch_size": 16}},
+                "advanced": {"editorial": {"preparation": {"batch_size": 32}}},
             },
         )
     )
-    assert config.editorial.preparation.tier == "metadata_only"
+    assert config.editorial.preparation.batch_size == 16
 
 
 def test_a_blank_install_prepares_at_the_documented_nas_tier(tmp_path):
@@ -54,7 +54,5 @@ def test_a_blank_install_prepares_at_the_documented_nas_tier(tmp_path):
 
 
 def test_a_stated_tier_is_never_redirected(tmp_path):
-    config = Config.from_yaml(
-        _write(tmp_path, {"advanced": {"editorial": {"preparation": {"tier": "full"}}}})
-    )
+    config = Config.from_yaml(_write(tmp_path, {"tier": "gpu"}))
     assert config.editorial.preparation.tier == "full"

@@ -42,10 +42,26 @@ def test_the_full_tier_refuses_to_load_without_an_llm_endpoint(llm: dict) -> Non
         Config(tier="full", llm=llm)
 
 
-def test_an_explicit_advanced_knob_wins_over_the_tier() -> None:
-    config = Config(tier="gpu", editorial={"laya_audience": False})
+@pytest.mark.parametrize(
+    "tier,expected",
+    [
+        ("nas", ("rules", "no_captions", False)),
+        ("gpu", ("rules", "full", True)),
+        ("full", ("model", "full", True)),
+    ],
+)
+def test_the_product_tier_controls_preparation_even_with_stale_advanced_settings(tier, expected):
+    config = Config(
+        tier=tier,
+        llm=GEMMA,
+        editorial={
+            "reader": "rules",
+            "preparation": {"tier": "metadata_only"},
+            "laya_audience": False,
+        },
+    )
 
-    assert _knobs(config) == ("rules", "full", False)
+    assert _knobs(config) == expected
 
 
 @pytest.mark.parametrize("tier", ["nas", "gpu"])
@@ -79,7 +95,7 @@ def test_saving_keeps_what_the_tier_decided_out_of_the_file(tmp_path) -> None:
     assert _knobs(Config.from_yaml(path)) == ("rules", "no_captions", False)
 
 
-def test_saving_preserves_a_preparation_choice_changed_after_loading(tmp_path):
+def test_saving_cannot_create_a_second_preparation_choice(tmp_path):
     config = Config(tier="gpu")
     config.editorial.preparation.tier = "metadata_only"
     config.editorial.laya_audience = False
@@ -88,8 +104,11 @@ def test_saving_preserves_a_preparation_choice_changed_after_loading(tmp_path):
     config.save_yaml(path)
 
     reloaded = Config.from_yaml(path)
-    assert reloaded.editorial.preparation.tier == "metadata_only"
-    assert reloaded.editorial.laya_audience is False
+    assert reloaded.editorial.preparation.tier == "full"
+    assert reloaded.editorial.laya_audience is True
+    saved = yaml.safe_load(path.read_text())["advanced"]["editorial"]
+    assert "tier" not in saved["preparation"]
+    assert "laya_audience" not in saved
 
 
 def test_the_tier_is_a_top_level_key_in_the_file(tmp_path) -> None:
@@ -143,4 +162,4 @@ def test_config_show_names_the_tier_and_what_it_set(tmp_path) -> None:
         result = CliRunner().invoke(main, ["config", "--show"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    assert "gpu (reader rules, preparation full, Laya on)" in result.output
+    assert "gpu (reader rules, captions on, Laya on)" in result.output

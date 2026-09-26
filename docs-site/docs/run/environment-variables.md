@@ -64,7 +64,7 @@ whether the shipped compose file already passes it.
 
 | Variable | Config key | Default | Tier | Compose | What it does |
 |---|---|---|---|---|---|
-| `IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER` | `editorial.preparation.tier` | `full`, settles to `no_captions` with no model and no caption endpoint | advanced | `no_captions` | Which producers run per picture: [Requirements and tiers](./requirements.md#the-preparation-tier) |
+| `IMMICH_MEMORIES_TIER` | `tier` | `auto` | 1 | `auto` | Resolves NAS, GPU or Full from inference capability and the configured LLM; preparation follows it |
 | `IMMICH_MEMORIES_EDITORIAL__PREPARATION__DETECTOR_CACHE_DIR` | `editorial.preparation.detector_cache_dir` | the Hugging Face cache | advanced | the config volume | Where the document classifier lives. Keep it on a volume |
 | `IMMICH_MEMORIES_EDITORIAL__PREPARATION__CAPTION_BASE_URL` | `editorial.preparation.caption_base_url` | `http://localhost:8092/v1` | advanced | commented | The caption server, for `tier: full` |
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | `output.directory` | `~/Videos/Memories`; `/app/output` in the image | 1 | set by the image | Where films land. In a container, set this, not `output.directory` |
@@ -186,6 +186,7 @@ config file.
 
 ## Compute tier
 
-`IMMICH_MEMORIES_TIER=nas|gpu|full` selects the same tier as `tier:` in the config file.
-The default is `nas`, which runs inexpensive CPU classifiers without a prose LLM.
+`IMMICH_MEMORIES_TIER=auto|nas|gpu|full` selects the same tier as `tier:` in the config file.
+The default is `auto`: no GPU inference capability means NAS; GPU capability means GPU;
+GPU capability plus a configured LLM means Full. An LLM alone remains available for text features.
 See the [tier reference](../reference/config-reference.md#tier).

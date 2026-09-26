@@ -199,11 +199,13 @@ class Seeder:
 def write_config(home: Path, url: str, api_key: str) -> Path:
     """The config the gate tests and `generate` read: rules tier, nothing but this Immich."""
     state = home / "state"
+    models = home.parent / "models"
     config_path = home / ".immich-memories" / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     (state / "cache").mkdir(parents=True, exist_ok=True)
     (state / "output").mkdir(parents=True, exist_ok=True)
     config = {
+        "tier": "nas",
         "immich": {"url": url, "api_key": api_key, "api_version": "auto"},
         "output": {
             "directory": str(state / "output"),
@@ -221,7 +223,13 @@ def write_config(home: Path, url: str, api_key: str) -> Path:
             "hardware": {"enabled": False, "backend": "none", "gpu_decode": False},
             "musicgen": {"enabled": False},
             "ace_step": {"enabled": False},
-            "editorial": {"reader": "rules", "preparation": {"tier": "metadata_only"}},
+            "triage": {"encoder": str(models / "dinov2-small.onnx")},
+            "editorial": {
+                "preparation": {
+                    "marqo_onnx": str(models / "nsfw-marqo-384.onnx"),
+                    "detector_cache_dir": str(models / "huggingface"),
+                }
+            },
         },
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))

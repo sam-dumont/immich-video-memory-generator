@@ -392,18 +392,16 @@ def test_quickstart_compose_publishes_the_ui_on_loopback_only() -> None:
     assert published == ["127.0.0.1:8080:8080"], published
 
 
-def test_quickstart_compose_pins_a_tier_that_needs_no_second_service() -> None:
-    """The shipped file must name the tier, not inherit the code default.
+def test_quickstart_compose_resolves_to_nas_without_a_second_service() -> None:
+    from immich_memories.config_loader import Config
 
-    `EditorialPreparationConfig.tier` defaults to `full`, which demands a caption
-    server at `caption_base_url`. Left unpinned, a first `up` with only IMMICH_URL
-    and IMMICH_API_KEY stops its first cut asking for a service nothing in this
-    file starts. `no_captions` is the richest tier the app serves on its own.
-    """
     compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
     environment = compose["services"]["immich-memories"]["environment"]
 
-    assert environment["IMMICH_MEMORIES_EDITORIAL__PREPARATION__TIER"] == "no_captions"
+    assert environment["IMMICH_MEMORIES_TIER"] == "auto"
+    config = Config(tier=environment["IMMICH_MEMORIES_TIER"])
+    assert config.tier == "nas"
+    assert not config.editorial.preparation.demands_captions
 
 
 def test_image_runs_as_uid_1000() -> None:
