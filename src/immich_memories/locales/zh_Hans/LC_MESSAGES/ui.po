@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Immich Memories UI VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"POT-Creation-Date: 2026-09-26 13:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: pages/memory.py:162
+#: pages/memory.py:172
 msgid " Cut again runs it once more."
 msgstr " “重新剪辑”会再次运行剪辑。"
 
@@ -154,6 +154,14 @@ msgstr "所有年份"
 msgid "All people"
 msgstr "所有人物"
 
+#: pages/memory_storyboard.py:134
+msgid "All pictures"
+msgstr "所有图片"
+
+#: pages/memory_storyboard.py:146
+msgid "Alternatives considered"
+msgstr "已考虑的备选项"
+
 #: pages/step1_cache.py:124
 msgid "Analysis cache"
 msgstr "分析缓存"
@@ -196,7 +204,7 @@ msgstr "自动（与片段一致）"
 msgid "Auto duration"
 msgstr "自动时长"
 
-#: i18n.py:101
+#: i18n.py:102
 msgid "Automatic (browser)"
 msgstr "自动（浏览器）"
 
@@ -215,6 +223,10 @@ msgstr "自动使用往年今天的日期"
 #: pages/step4_export.py:236
 msgid "Back to Generation Options"
 msgstr "返回生成选项"
+
+#: pages/memory_storyboard.py:153
+msgid "Back to pictures"
+msgstr "返回图片"
 
 #: pages/runs.py:21
 msgid "Back to runs"
@@ -359,6 +371,10 @@ msgstr "片段"
 msgid "Clips Planned"
 msgstr "计划片段"
 
+#: pages/memory_storyboard.py:123
+msgid "Close"
+msgstr "关闭"
+
 #: pages/step2_review.py:229
 msgid "Compact grid view"
 msgstr "紧凑网格视图"
@@ -463,6 +479,10 @@ msgstr "剪辑"
 msgid "Cut again"
 msgstr "重新剪辑"
 
+#: pages/memory_storyboard.py:138
+msgid "Cut contact sheet"
+msgstr "剪辑缩略图总览"
+
 #: pages/memory_run.py:399
 msgid "Cutting the memory..."
 msgstr "正在剪辑回忆..."
@@ -535,9 +555,17 @@ msgstr "错误：{value}"
 msgid "Errors ({error_count})"
 msgstr "错误（{error_count}）"
 
+#: pages/memory_storyboard.py:137
+msgid "Excluded"
+msgstr "已排除"
+
 #: pages/memory.py:96
 msgid "Export"
 msgstr "导出"
+
+#: pages/memory_storyboard.py:149
+msgid "Export uses your selection. Cut again replans it."
+msgstr "导出使用当前选择。“重新剪辑”会创建新的剪辑方案。"
 
 #: pages/step2_loading.py:336
 #, python-brace-format
@@ -587,6 +615,10 @@ msgstr "最终时长：{value}"
 #: pages/settings_people.py:263
 msgid "Find a name"
 msgstr "搜索姓名"
+
+#: pages/memory_storyboard.py:152
+msgid "Find alternatives in the pool"
+msgstr "在媒体库中查找备选项"
 
 #: pages/memory_run.py:62
 msgid "Finding media"
@@ -716,7 +748,11 @@ msgstr "包含照片"
 msgid "Include in compilation"
 msgstr "加入合辑"
 
-#: i18n.py:109
+#: pages/memory_storyboard.py:148
+msgid "Include in export"
+msgstr "包含在导出中"
+
+#: i18n.py:110
 msgid "Interface language"
 msgstr "界面语言"
 
@@ -748,6 +784,10 @@ msgstr "为本次回忆保留 WhatsApp 和其他收到的媒体"
 #: pages/step3_options.py:336
 msgid "Keep intermediate files"
 msgstr "保留中间文件"
+
+#: pages/memory_storyboard.py:144
+msgid "Kept because"
+msgstr "保留原因"
 
 #: pages/step3_options.py:273
 msgid "Landscape (16:9)"
@@ -826,6 +866,10 @@ msgstr "回忆类型"
 #: pages/clip_review.py:192
 msgid "Middle 5s"
 msgstr "中间 5 秒"
+
+#: pages/memory_storyboard.py:143
+msgid "Model suggestion"
+msgstr "模型建议"
 
 #: pages/step1_presets.py:214
 msgid "Month"
@@ -913,11 +957,23 @@ msgstr "未选择片段。请返回选择。"
 msgid "No eligible suggestions right now."
 msgstr "暂无符合条件的建议。"
 
+#: pages/memory_storyboard.py:147
+msgid "No outcome recorded."
+msgstr "未记录结果。"
+
 #: pages/settings_people.py:251
 msgid ""
 "No people file yet. Rescan the library to build one — it reads every named person's count and"
 " month curve, and looks at no pixels."
 msgstr "尚无人物文件。请重新扫描媒体库：读取每位已命名人物的数量和月度曲线，不分析图片像素。"
+
+#: pages/memory_storyboard.py:140
+msgid "No pictures match this filter."
+msgstr "没有符合此筛选条件的图片。"
+
+#: pages/memory_storyboard.py:142
+msgid "No reason recorded for this picture."
+msgstr "未记录选择此图片的原因。"
 
 #: pages/runs.py:105
 msgid "No runs match this view. Make a memory from Memory or Suggestions."
@@ -1001,6 +1057,10 @@ msgstr "打开媒体库"
 #, python-brace-format
 msgid "Open {name} in Immich"
 msgstr "在 Immich 中打开 {name}"
+
+#: pages/memory_storyboard.py:132
+msgid "Order and timecodes from the saved cut."
+msgstr "已保存剪辑的顺序和时间码。"
 
 #: pages/step3_options.py:278
 msgid "Orientation"
@@ -1093,6 +1153,14 @@ msgstr "请先选择相册"
 msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
 msgstr "选择每段视频展示的秒数并预览。静态照片无需裁剪。"
 
+#: pages/memory_storyboard.py:118 pages/memory_storyboard.py:151
+msgid "Picture decisions"
+msgstr "此图片的处理决定"
+
+#: pages/memory_storyboard.py:139
+msgid "Picture review"
+msgstr "图片审阅"
+
 #: pages/film_length.py:71
 msgid "Pictures & video"
 msgstr "照片与视频"
@@ -1157,6 +1225,10 @@ msgstr "正在读取媒体库…"
 #: pages/memory_run.py:64
 msgid "Reading the pictures"
 msgstr "正在读取图片"
+
+#: pages/memory_storyboard.py:145
+msgid "Recorded alternative"
+msgstr "已记录的备选项"
 
 #: pages/runs.py:132
 msgid "Refresh runs"
@@ -1318,6 +1390,10 @@ msgstr "可分享"
 msgid "Sharing"
 msgstr "分享范围"
 
+#: pages/memory_storyboard.py:133
+msgid "Show"
+msgstr "显示"
+
 #: pages/login.py:80
 msgid "Sign in"
 msgstr "登录"
@@ -1358,7 +1434,15 @@ msgstr "正在启动..."
 msgid "Status"
 msgstr "状态"
 
-#: pages/memory.py:128
+#: pages/memory_storyboard.py:64
+msgid "Still"
+msgstr "静态图片"
+
+#: pages/memory_storyboard.py:136
+msgid "Stills"
+msgstr "静态图片"
+
+#: pages/memory.py:130
 msgid "Story"
 msgstr "故事"
 
@@ -1366,7 +1450,7 @@ msgstr "故事"
 msgid "Story weight"
 msgstr "故事权重"
 
-#: pages/memory.py:127
+#: pages/memory.py:129
 msgid "Storyboard"
 msgstr "分镜"
 
@@ -1414,7 +1498,7 @@ msgstr "保存失败。请重试，或在命令行使用 `pictures`。"
 msgid "That file is not an MP3, M4A or WAV"
 msgstr "此文件不是 MP3、M4A 或 WAV"
 
-#: pages/memory.py:123 pages/memory_story.py:96
+#: pages/memory.py:125 pages/memory_story.py:96 pages/memory_storyboard.py:47
 msgid "The editor left no thesis for this cut."
 msgstr "此剪辑没有留下主题说明。"
 
@@ -1430,7 +1514,7 @@ msgstr "生成的视频将上传到你的 Immich 实例，并加入指定相册�
 msgid "The household. Private moments a caption names, like a bath, play too."
 msgstr "家庭内部。也包含描述中提到的私密时刻，例如洗澡。"
 
-#: pages/memory.py:160
+#: pages/memory.py:170
 #, python-brace-format
 msgid "The last cut ended as {status}."
 msgstr "上次剪辑以 {status} 状态结束。"
@@ -1475,15 +1559,11 @@ msgstr "扫描未能完成：{exc}"
 msgid "The story"
 msgstr "故事"
 
-#: pages/memory_storyboard.py:100
-msgid "The storyboard"
-msgstr "分镜"
-
 #: pages/memory_duration.py:69
 msgid "The type decides the length; turn off to set an exact target"
 msgstr "类型决定时长；关闭后可设置精确目标"
 
-#: pages/memory.py:172
+#: pages/memory.py:182
 msgid "This cut finished while the page was away. Re-load its media to export it."
 msgstr "此剪辑在你离开期间完成。重新加载媒体后即可导出。"
 
@@ -1504,7 +1584,7 @@ msgstr "已用时间"
 msgid "Title"
 msgstr "标题"
 
-#: pages/memory_storyboard.py:110
+#: pages/memory_storyboard.py:53
 msgid "Titles and transitions make up the rest of the film."
 msgstr "标题和转场构成影片的其余部分。"
 
@@ -1530,7 +1610,7 @@ msgstr "总时长"
 msgid "Transition Style"
 msgstr "转场样式"
 
-#: pages/clip_review.py:445 pages/step2_review.py:147
+#: pages/clip_review.py:445 pages/memory_storyboard.py:150 pages/step2_review.py:147
 msgid "Trim the video clips"
 msgstr "裁剪视频片段"
 
@@ -1604,6 +1684,10 @@ msgstr "用户名"
 msgid "Using {name}'s birthday: {value}"
 msgstr "使用 {name} 的生日：{value}"
 
+#: pages/memory_storyboard.py:64
+msgid "Video"
+msgstr "视频"
+
 #: pages/step1_cache.py:144
 msgid "Video cache"
 msgstr "视频缓存"
@@ -1611,6 +1695,10 @@ msgstr "视频缓存"
 #: pages/_step4_generate.py:631
 msgid "Video generated successfully!"
 msgstr "视频生成成功！"
+
+#: pages/memory_storyboard.py:135
+msgid "Videos"
+msgstr "视频"
 
 #: pages/memory_brief.py:204
 msgid "What is it about"
@@ -1630,6 +1718,10 @@ msgstr "谁会观看"
 #: pages/suggestions.py:209
 msgid "Why other suggestions were skipped"
 msgstr "其他建议为何被跳过"
+
+#: pages/memory_storyboard.py:141
+msgid "Why this picture"
+msgstr "为什么选择此图片"
 
 #: pages/step4_export.py:197
 #, python-brace-format
@@ -1783,7 +1875,7 @@ msgstr "{name} 与 {target_name}：{value}"
 msgid "{photos_count} Photos Available (auto-selected at generation)"
 msgstr "{photos_count} 张可用照片（生成时自动选择）"
 
-#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#: pages/memory_story.py:37
 #, python-brace-format
 msgid "{seconds:g} s"
 msgstr "{seconds:g} 秒"
@@ -1797,4 +1889,7 @@ msgstr "{title}（{n_keys} 个配置项）"
 #, python-brace-format
 msgid "{value}: {duration_seconds:.1f}s"
 msgstr "{value}：{duration_seconds:.1f} 秒"
+
+#~ msgid "The storyboard"
+#~ msgstr "分镜"
 

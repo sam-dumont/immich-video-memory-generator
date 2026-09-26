@@ -722,7 +722,7 @@ launch-check-ci: ensure-dev e2e
 	@echo "Hermetic launch check passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev research-data-check lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check test
+ci: ensure-dev research-data-check lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check docs-config-check docs-voice notices-check compose-check frontend-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -958,7 +958,17 @@ notices-check:  ## Fail when THIRD_PARTY_NOTICES is stale against uv.lock
 docs-install:
 	cd docs-site && npm ci
 
-.PHONY: ui-catalogues
+.PHONY: frontend-install frontend-build frontend-check ui-catalogues
+frontend-install:  ## Install the cut review frontend's pinned dependencies
+	cd frontend && npm ci
+
+frontend-build:  ## Bundle the Svelte contact sheet into the Python package
+	cd frontend && npm run build
+
+frontend-check: frontend-install  ## Type-check and build the embedded review workspace
+	cd frontend && npm run check
+	$(MAKE) frontend-build
+
 ui-catalogues:  ## Extract UI labels and update the per-language PO files
 	uv run python scripts/update-ui-catalogues.py
 
@@ -1008,6 +1018,15 @@ demo-output-trip:  ## Cut the trip film + its map fly-over on the hermetic CLI (
 demo-ui-install:  ## Install Remotion demo dependencies
 	cd docs-site/remotion && npm ci
 
+.PHONY: demo-ui-check demo-ui-still
+demo-ui-check:  ## Check the Remotion scene types and code
+	cd docs-site/remotion && npm run lint
+
+DEMO_FRAME ?= 500
+DEMO_STILL ?= /tmp/immich-memories-demo.png
+demo-ui-still:  ## Render one demo frame for visual review
+	cd docs-site/remotion && npx remotion still src/index.ts DemoVideo $(DEMO_STILL) --frame=$(DEMO_FRAME)
+
 demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 	cd docs-site/remotion && npm run dev
 
@@ -1021,9 +1040,10 @@ demo-soundtrack:  ## Rebuild the demo's music from a bundled MIT-licensed acoust
 	  -filter_complex "[0:a]asplit[a][b];[a][b]acrossfade=d=3:c1=tri:c2=tri,loudnorm=I=-18:TP=-2:LRA=9[music]" \
 	  -map "[music]" -t 60 -ar 48000 -ac 2 -c:a pcm_s16le docs-site/remotion/public/demo-music.wav
 
+DEMO_RENDER_ARGS ?=
 demo-ui: demo-ui-install demo-fixture demo-soundtrack  ## Render Remotion demo → docs-site/static/demo/demo.mp4
 	@mkdir -p docs-site/static/demo
-	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18
+	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../static/demo/demo.mp4 --codec h264 --crf 18 $(DEMO_RENDER_ARGS)
 
 # The homepage and README hero is the brief → cut → storyboard stretch of the Remotion demo
 # (seconds 3.4 to 15.6) and then the last 3 s, the film it made: 720 px, 10 fps,

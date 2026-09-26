@@ -87,7 +87,7 @@ Some pictures are held by the family-viewing gate: a nudity detector flagged the
 clip, or an earlier cut read a private moment in its caption. Detectors miss both ways, and a swim
 in a lake looks a lot like what they're trained to catch. Holds only ever lean cautious, so a held
 picture you know is fine is yours to clear. And some pictures you just never want in a film. Both
-are one click on the picture, in the media pool or on the storyboard.
+are on each pool picture, or under **Picture decisions** in the storyboard's inspector.
 
 A held picture says why, in plain words, with **Clear hold** under it:
 
@@ -104,11 +104,12 @@ Once cleared, the card says so, and **Undo** is there if you change your mind:
 <ThemedScreenshot name="pictures-pool-cleared" alt="The same card after clearing for anyone: 'You cleared its hold for anyone (a nudity detector flagged it).', Never use and Undo" />
 
 **Never use** keeps a picture out of every film from the next cut on. In the pool it also unticks
-it; on the storyboard the shot says so until you cut again.
+it; in the storyboard it also excludes the picture from the current export. **Undo** forgets the
+persistent decision. Tick **Include in export** again if you want it back in this cut.
 
 <ThemedScreenshot name="pictures-pool-never-use" alt="A pool card after Never use: 'You'll never use this picture.', Undo, and Include unticked" />
 
-<ThemedScreenshot name="pictures-storyboard-never-use" alt="A storyboard shot after Never use: 'You'll never use this picture.' and Undo" />
+<ThemedScreenshot name="pictures-storyboard-never-use" alt="The inspector's Picture decisions dialog after Never use, with Undo" />
 
 What each answer does, film by film:
 

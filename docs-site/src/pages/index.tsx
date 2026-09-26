@@ -161,10 +161,10 @@ const showcaseItems: ShowcaseItem[] = [
     alt: 'The brief: memory type, its parameters and the duration line',
   },
   {
-    title: 'An editor, not a filter',
-    description: 'It groups the period into moments and stories, gives a trip or a birthday more room than an ordinary Tuesday, keeps your favourites, lets a video carry its moment, and plays everything in the order it happened. On the NAS, from your library alone. The rules are all written down.',
+    title: 'See the cut. Refine it.',
+    description: 'Make the same film from the CLI or the browser. The web storyboard puts the whole cut in a contact sheet: open a picture to read its reason and recorded model suggestions, leave it out of export, trim the videos, or choose alternatives from the pool. The stories still play in the order they happened.',
     image: '/img/screenshots/memory-story.png',
-    alt: 'The story the cut produced, with a reason for every picture',
+    alt: 'The cut contact sheet and picture inspector',
   },
   {
     title: 'Cinematic title screens',

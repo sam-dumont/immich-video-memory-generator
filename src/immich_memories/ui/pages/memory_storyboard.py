@@ -1,15 +1,15 @@
-"""The storyboard tab: the cut in the order it plays, rendered from the shared reader.
-
-The data model and the reader live in `operations.storyboard`, because the
-terminal prints the same record (`runs story`). This module only draws it.
-"""
+"""The shared saved cut, presented as an interactive contact sheet."""
 
 from __future__ import annotations
 
-import base64
+import json
+from dataclasses import asdict
+from hashlib import sha256
+from pathlib import Path
 
 from nicegui import ui
 
+from immich_memories.operations.cut_review import read_cut_decisions
 from immich_memories.operations.storyboard import (
     PROJECTION_FILE,
     Shot,
@@ -17,13 +17,8 @@ from immich_memories.operations.storyboard import (
     read_storyboard,
     storyboard_from_plan,
 )
-from immich_memories.ui.components import im_badge, im_card, im_section_header
 from immich_memories.ui.i18n import tr
-from immich_memories.ui.pages.picture_decisions import (
-    PictureHold,
-    read_holds,
-    render_picture_decision,
-)
+from immich_memories.ui.pages.picture_decisions import read_holds, render_picture_decision
 from immich_memories.ui.state import get_app_state
 
 __all__ = [
@@ -35,85 +30,125 @@ __all__ = [
     "storyboard_from_plan",
 ]
 
-# The grid thumbnail first: a storyboard of forty shots must not cost forty previews. The
-# session cache only holds what the pool loader fetched, which today is the preview, so
-# that is the fallback until the media route (S3) serves sizes on demand.
-_THUMBNAIL_SIZES = ("thumbnail", "preview")
-
-
-def _thumbnail(asset_id: str) -> None:
-    state = get_app_state()
-    thumb = None
-    if state.thumbnail_cache is not None:
-        for size in _THUMBNAIL_SIZES:
-            try:
-                thumb = state.thumbnail_cache.get(asset_id, size)
-            except Exception:  # WHY: a missing thumbnail must not take the storyboard down
-                thumb = None
-            if thumb:
-                break
-    if thumb:
-        ui.image(f"data:image/jpeg;base64,{base64.b64encode(thumb).decode()}").classes(
-            "rounded"
-        ).style("width: 96px; aspect-ratio: 16/9; object-fit: cover")
-    else:
-        ui.element("div").classes("rounded").style(
-            "width: 96px; aspect-ratio: 16/9; background: var(--im-bg-surface)"
-        )
-
-
-def _render_shot(shot: Shot, hold: PictureHold | None) -> None:
-    with im_card() as card:
-        card.classes("p-2 storyboard-shot")
-        with ui.row().classes("w-full items-center gap-3 no-wrap"):
-            ui.label(shot.timecode).classes("text-xs font-mono w-10").style(
-                "color: var(--im-text-secondary)"
-            )
-            _thumbnail(shot.asset_id)
-            with ui.column().classes("gap-0 flex-1 min-w-0"):
-                with ui.row().classes("items-center gap-2 flex-wrap"):
-                    ui.label(shot.day).classes(
-                        "text-sm font-semibold storyboard-day" if shot.new_day else "text-sm"
-                    ).style("color: var(--im-text)")
-                    im_badge(shot.kind_label, variant="analysis" if shot.motion else "info")
-                    ui.label(tr("{seconds:g} s", seconds=shot.seconds)).classes("text-xs").style(
-                        "color: var(--im-text-secondary)"
-                    )
-                with ui.row().classes("items-center gap-2 flex-wrap"):
-                    ui.label(shot.story_title).classes("text-xs storyboard-story").style(
-                        "color: var(--im-primary)"
-                    )
-                    if shot.moment:
-                        ui.label(shot.moment).classes("text-xs").style(
-                            "color: var(--im-text-secondary)"
-                        )
-                if shot.reason:
-                    ui.label(shot.reason).classes("text-xs").style("color: var(--im-text)")
-                render_picture_decision(shot.asset_id, hold)
+_BUNDLE = Path(__file__).parents[1] / "static/review/review.js"
+_BUNDLE_VERSION = sha256(_BUNDLE.read_bytes()).hexdigest()[:12]
 
 
 def render_storyboard(
-    board: Storyboard, note: str = "", warning: str | None = None, *, show_thesis: bool = True
+    board: Storyboard,
+    note: str = "",
+    warning: str | None = None,
+    *,
+    show_thesis: bool = True,
+    attempt_dir: Path | None = None,
 ) -> None:
-    """The cut as it will play: chapters, days and pictures in order, each with the owner's
-    clear-hold and never-use buttons."""
-    im_section_header(tr("The storyboard"), icon="view_timeline")
+    """Inspect the saved cut and refine the session's export selection independently."""
     if show_thesis:
-        ui.label(board.thesis or "The editor left no thesis for this cut.").classes(
-            "text-lg"
-        ).style("color: var(--im-text)")
+        ui.label(board.thesis or tr("The editor left no thesis for this cut.")).classes("text-lg")
     if note:
-        ui.label(note).classes("text-sm mt-1").style("color: var(--im-text-secondary)")
+        ui.label(note).classes("text-sm")
     if warning:
         ui.label(warning).classes("text-sm").style("color: var(--im-warning)")
-    im_section_header(board.summary_label, icon="movie")
-    ui.label(tr("Titles and transitions make up the rest of the film.")).classes(
-        "text-xs mb-2"
-    ).style("color: var(--im-text-secondary)")
-    holds = read_holds(shot.asset_id for shot in board.shots)
-    for shot in board.shots:
-        if shot.chapter:
-            ui.label(shot.chapter).classes("text-sm font-semibold mt-2 storyboard-chapter").style(
-                "color: var(--im-text-secondary)"
-            )
-        _render_shot(shot, holds.get(shot.asset_id))
+    ui.label(board.summary_label).classes("text-sm font-semibold")
+    ui.label(tr("Titles and transitions make up the rest of the film.")).classes("text-xs").style(
+        "color: var(--im-text-secondary)"
+    )
+    _CutReview(board, attempt_dir)
+
+
+class _CutReview:
+    def __init__(self, board: Storyboard, attempt_dir: Path | None) -> None:
+        self._state = get_app_state()
+        self._editable = bool(self._state.pipeline_selected_clips)
+        decisions = read_cut_decisions(attempt_dir) if attempt_dir else {}
+        kinds = {"Video": tr("Video"), "Still": tr("Still")}
+        self._shots = {
+            shot.asset_id: asdict(shot)
+            | {
+                "timecode": shot.timecode,
+                "kind_label": kinds[shot.kind_label],
+                "included": not self._editable or shot.asset_id in self._state.selected_clip_ids,
+                "decision": decisions.get(shot.asset_id),
+            }
+            for shot in board.shots
+        }
+        ui.add_head_html(
+            f'<script type="module" src="/static/review/review.js?v={_BUNDLE_VERSION}"></script>'
+        )
+        self._element = ui.element("im-cut-review").classes("w-full")
+        self._element.on("review-action", self._act, args=["detail"])
+        self._update()
+
+    def _update(self) -> None:
+        self._element.props["payload"] = json.dumps(
+            {
+                "editable": self._editable,
+                "shots": list(self._shots.values()),
+                "labels": _labels(),
+            }
+        )
+        self._element.update()
+
+    def _include(self, asset_id: str, value: bool) -> None:
+        if not self._editable:
+            return
+        state = self._state
+        if value:
+            state.selected_clip_ids.add(asset_id)
+        else:
+            state.selected_clip_ids.discard(asset_id)
+        if any(photo.id == asset_id for photo in state.photo_assets):
+            if value:
+                state.selected_photo_ids.add(asset_id)
+            else:
+                state.selected_photo_ids.discard(asset_id)
+        self._shots[asset_id]["included"] = value
+        self._update()
+
+    def _act(self, event) -> None:
+        detail = event.args.get("detail", {})
+        asset_id = detail.get("asset_id")
+        if asset_id not in self._shots:
+            return
+        action = detail.get("action")
+        if action == "include" and isinstance(detail.get("included"), bool):
+            self._include(asset_id, detail["included"])
+        elif action == "decisions":
+            with ui.dialog() as dialog, ui.card().classes("w-96 max-w-full"):
+                ui.label(tr("Picture decisions")).classes("text-lg font-semibold")
+                holds = read_holds([asset_id])
+                render_picture_decision(
+                    asset_id, holds.get(asset_id), on_never=lambda: self._include(asset_id, False)
+                )
+                ui.button(tr("Close"), on_click=dialog.close).props("flat no-caps")
+            dialog.open()
+        elif action in {"trim", "pool"}:
+            self._state.review_selected_mode = action == "trim"
+            ui.navigate.to("/step2")
+
+
+def _labels() -> dict[str, str]:
+    return {
+        "savedTiming": tr("Order and timecodes from the saved cut."),
+        "show": tr("Show"),
+        "all": tr("All pictures"),
+        "videos": tr("Videos"),
+        "stills": tr("Stills"),
+        "excluded": tr("Excluded"),
+        "contactSheet": tr("Cut contact sheet"),
+        "pictureReview": tr("Picture review"),
+        "noPictures": tr("No pictures match this filter."),
+        "why": tr("Why this picture"),
+        "noReason": tr("No reason recorded for this picture."),
+        "modelSuggestion": tr("Model suggestion"),
+        "keptBecause": tr("Kept because"),
+        "alternative": tr("Recorded alternative"),
+        "alternativeCount": tr("Alternatives considered"),
+        "noOutcome": tr("No outcome recorded."),
+        "include": tr("Include in export"),
+        "selectionNote": tr("Export uses your selection. Cut again replans it."),
+        "trim": tr("Trim the video clips"),
+        "decisions": tr("Picture decisions"),
+        "alternatives": tr("Find alternatives in the pool"),
+        "backToPictures": tr("Back to pictures"),
+    }

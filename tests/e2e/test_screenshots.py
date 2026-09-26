@@ -247,10 +247,14 @@ def test_capture_picture_decisions(
         page.get_by_role("button", name="Cut", exact=True).click()
         shots = page.locator(".storyboard-shot")
         expect(shots.nth(1)).to_be_visible(timeout=120_000)
-        shots.nth(1).get_by_role("button", name="Never use").click()
-        expect(shots.nth(1).get_by_text("You'll never use this picture.")).to_be_visible()
+        shots.nth(1).click()
+        page.get_by_role("button", name="Picture decisions", exact=True).click()
+        decisions = page.get_by_role("dialog")
+        decisions.get_by_role("button", name="Never use").click()
+        expect(decisions.get_by_text("You'll never use this picture.")).to_be_visible()
         page.wait_for_timeout(3500)  # the toast fades
-        _save_part(page, shots.nth(1), d, _name("pictures-storyboard-never-use", theme))
+        _save_part(page, decisions, d, _name("pictures-storyboard-never-use", theme))
+        decisions.get_by_role("button", name="Close", exact=True).click()
 
         page.get_by_role("button", name="Review the pool", exact=True).click()
         card = _pool_card(page, _HELD)

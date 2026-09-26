@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Immich Memories UI VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"POT-Creation-Date: 2026-09-26 13:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: nl\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: pages/memory.py:162
+#: pages/memory.py:172
 msgid " Cut again runs it once more."
 msgstr " Opnieuw monteren voert de montage nogmaals uit."
 
@@ -158,6 +158,14 @@ msgstr "Alle jaren"
 msgid "All people"
 msgstr "Alle personen"
 
+#: pages/memory_storyboard.py:134
+msgid "All pictures"
+msgstr "Alle beelden"
+
+#: pages/memory_storyboard.py:146
+msgid "Alternatives considered"
+msgstr "Overwogen alternatieven"
+
 #: pages/step1_cache.py:124
 msgid "Analysis cache"
 msgstr "Analysecache"
@@ -202,7 +210,7 @@ msgstr "Automatisch (zoals de clips)"
 msgid "Auto duration"
 msgstr "Automatische duur"
 
-#: i18n.py:101
+#: i18n.py:102
 msgid "Automatic (browser)"
 msgstr "Automatisch (browser)"
 
@@ -221,6 +229,10 @@ msgstr "Gebruikt automatisch de datum van vandaag in eerdere jaren"
 #: pages/step4_export.py:236
 msgid "Back to Generation Options"
 msgstr "Terug naar generatieopties"
+
+#: pages/memory_storyboard.py:153
+msgid "Back to pictures"
+msgstr "Terug naar beelden"
 
 #: pages/runs.py:21
 msgid "Back to runs"
@@ -365,6 +377,10 @@ msgstr "Clips"
 msgid "Clips Planned"
 msgstr "Geplande clips"
 
+#: pages/memory_storyboard.py:123
+msgid "Close"
+msgstr "Sluiten"
+
 #: pages/step2_review.py:229
 msgid "Compact grid view"
 msgstr "Compact raster"
@@ -471,6 +487,10 @@ msgstr "Monteren"
 msgid "Cut again"
 msgstr "Opnieuw monteren"
 
+#: pages/memory_storyboard.py:138
+msgid "Cut contact sheet"
+msgstr "Contactblad van de montage"
+
 #: pages/memory_run.py:399
 msgid "Cutting the memory..."
 msgstr "Herinnering monteren..."
@@ -543,9 +563,17 @@ msgstr "Fout: {value}"
 msgid "Errors ({error_count})"
 msgstr "Fouten ({error_count})"
 
+#: pages/memory_storyboard.py:137
+msgid "Excluded"
+msgstr "Uitgesloten"
+
 #: pages/memory.py:96
 msgid "Export"
 msgstr "Exporteren"
+
+#: pages/memory_storyboard.py:149
+msgid "Export uses your selection. Cut again replans it."
+msgstr "De export gebruikt je selectie. Opnieuw monteren maakt een nieuw montageplan."
 
 #: pages/step2_loading.py:336
 #, python-brace-format
@@ -597,6 +625,10 @@ msgstr "Uiteindelijke duur: {value}"
 #: pages/settings_people.py:263
 msgid "Find a name"
 msgstr "Een naam zoeken"
+
+#: pages/memory_storyboard.py:152
+msgid "Find alternatives in the pool"
+msgstr "Alternatieven zoeken in de media"
 
 #: pages/memory_run.py:62
 msgid "Finding media"
@@ -726,7 +758,11 @@ msgstr "Foto's opnemen"
 msgid "Include in compilation"
 msgstr "In compilatie opnemen"
 
-#: i18n.py:109
+#: pages/memory_storyboard.py:148
+msgid "Include in export"
+msgstr "Opnemen in export"
+
+#: i18n.py:110
 msgid "Interface language"
 msgstr "Interfacetaal"
 
@@ -758,6 +794,10 @@ msgstr "WhatsApp en andere ontvangen media voor deze herinnering behouden"
 #: pages/step3_options.py:336
 msgid "Keep intermediate files"
 msgstr "Tussenbestanden bewaren"
+
+#: pages/memory_storyboard.py:144
+msgid "Kept because"
+msgstr "Behouden omdat"
 
 #: pages/step3_options.py:273
 msgid "Landscape (16:9)"
@@ -840,6 +880,10 @@ msgstr "Type herinnering"
 #: pages/clip_review.py:192
 msgid "Middle 5s"
 msgstr "Middelste 5 s"
+
+#: pages/memory_storyboard.py:143
+msgid "Model suggestion"
+msgstr "Suggestie van het model"
 
 #: pages/step1_presets.py:214
 msgid "Month"
@@ -927,6 +971,10 @@ msgstr "Geen clips geselecteerd. Ga terug om clips te kiezen."
 msgid "No eligible suggestions right now."
 msgstr "Momenteel geen geschikte suggesties."
 
+#: pages/memory_storyboard.py:147
+msgid "No outcome recorded."
+msgstr "Geen resultaat vastgelegd."
+
 #: pages/settings_people.py:251
 msgid ""
 "No people file yet. Rescan the library to build one — it reads every named person's count and"
@@ -934,6 +982,14 @@ msgid ""
 msgstr ""
 "Nog geen personenbestand. Scan de bibliotheek opnieuw: dit leest aantallen en maandcurves van"
 " elke benoemde persoon, zonder beeldanalyse."
+
+#: pages/memory_storyboard.py:140
+msgid "No pictures match this filter."
+msgstr "Geen beelden komen overeen met dit filter."
+
+#: pages/memory_storyboard.py:142
+msgid "No reason recorded for this picture."
+msgstr "Geen reden vastgelegd voor dit beeld."
 
 #: pages/runs.py:105
 msgid "No runs match this view. Make a memory from Memory or Suggestions."
@@ -1019,6 +1075,10 @@ msgstr "Media openen"
 #, python-brace-format
 msgid "Open {name} in Immich"
 msgstr "{name} openen in Immich"
+
+#: pages/memory_storyboard.py:132
+msgid "Order and timecodes from the saved cut."
+msgstr "Volgorde en tijdcodes van de opgeslagen montage."
 
 #: pages/step3_options.py:278
 msgid "Orientation"
@@ -1111,6 +1171,14 @@ msgstr "Kies eerst een album"
 msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
 msgstr "Kies en bekijk de seconden die elke video toont. Foto's hoeven niet bijgeknipt te worden."
 
+#: pages/memory_storyboard.py:118 pages/memory_storyboard.py:151
+msgid "Picture decisions"
+msgstr "Beslissingen over dit beeld"
+
+#: pages/memory_storyboard.py:139
+msgid "Picture review"
+msgstr "Beeld beoordelen"
+
 #: pages/film_length.py:71
 msgid "Pictures & video"
 msgstr "Foto's en video's"
@@ -1175,6 +1243,10 @@ msgstr "Bibliotheek lezen…"
 #: pages/memory_run.py:64
 msgid "Reading the pictures"
 msgstr "Beelden lezen"
+
+#: pages/memory_storyboard.py:145
+msgid "Recorded alternative"
+msgstr "Vastgelegd alternatief"
 
 #: pages/runs.py:132
 msgid "Refresh runs"
@@ -1338,6 +1410,10 @@ msgstr "Deelbaar"
 msgid "Sharing"
 msgstr "Delen"
 
+#: pages/memory_storyboard.py:133
+msgid "Show"
+msgstr "Tonen"
+
 #: pages/login.py:80
 msgid "Sign in"
 msgstr "Aanmelden"
@@ -1378,7 +1454,15 @@ msgstr "Starten..."
 msgid "Status"
 msgstr "Status"
 
-#: pages/memory.py:128
+#: pages/memory_storyboard.py:64
+msgid "Still"
+msgstr "Stilstaand beeld"
+
+#: pages/memory_storyboard.py:136
+msgid "Stills"
+msgstr "Stilstaande beelden"
+
+#: pages/memory.py:130
 msgid "Story"
 msgstr "Verhaal"
 
@@ -1386,7 +1470,7 @@ msgstr "Verhaal"
 msgid "Story weight"
 msgstr "Gewicht van het verhaal"
 
-#: pages/memory.py:127
+#: pages/memory.py:129
 msgid "Storyboard"
 msgstr "Storyboard"
 
@@ -1434,7 +1518,7 @@ msgstr "Opslaan mislukt. Probeer opnieuw of gebruik `pictures` op de opdrachtreg
 msgid "That file is not an MP3, M4A or WAV"
 msgstr "Dat bestand is geen MP3, M4A of WAV"
 
-#: pages/memory.py:123 pages/memory_story.py:96
+#: pages/memory.py:125 pages/memory_story.py:96 pages/memory_storyboard.py:47
 msgid "The editor left no thesis for this cut."
 msgstr "De montage heeft geen hoofdgedachte achtergelaten."
 
@@ -1452,7 +1536,7 @@ msgstr ""
 msgid "The household. Private moments a caption names, like a bath, play too."
 msgstr "Het huishouden. Privémomenten die een bijschrift benoemt, zoals een bad, komen ook in beeld."
 
-#: pages/memory.py:160
+#: pages/memory.py:170
 #, python-brace-format
 msgid "The last cut ended as {status}."
 msgstr "De laatste montage eindigde met status {status}."
@@ -1499,15 +1583,11 @@ msgstr "De scan kon niet worden afgerond: {exc}"
 msgid "The story"
 msgstr "Het verhaal"
 
-#: pages/memory_storyboard.py:100
-msgid "The storyboard"
-msgstr "Het storyboard"
-
 #: pages/memory_duration.py:69
 msgid "The type decides the length; turn off to set an exact target"
 msgstr "Het type bepaalt de lengte; zet uit om een exacte duur te kiezen"
 
-#: pages/memory.py:172
+#: pages/memory.py:182
 msgid "This cut finished while the page was away. Re-load its media to export it."
 msgstr ""
 "Deze montage is voltooid terwijl de pagina gesloten was. Laad de media opnieuw om te "
@@ -1530,7 +1610,7 @@ msgstr "Verstreken tijd"
 msgid "Title"
 msgstr "Titel"
 
-#: pages/memory_storyboard.py:110
+#: pages/memory_storyboard.py:53
 msgid "Titles and transitions make up the rest of the film."
 msgstr "Titels en overgangen vullen de rest van de film."
 
@@ -1558,7 +1638,7 @@ msgstr "Totale duur"
 msgid "Transition Style"
 msgstr "Overgangsstijl"
 
-#: pages/clip_review.py:445 pages/step2_review.py:147
+#: pages/clip_review.py:445 pages/memory_storyboard.py:150 pages/step2_review.py:147
 msgid "Trim the video clips"
 msgstr "Videoclips bijsnijden"
 
@@ -1637,6 +1717,10 @@ msgstr "Gebruikersnaam"
 msgid "Using {name}'s birthday: {value}"
 msgstr "Verjaardag van {name} gebruiken: {value}"
 
+#: pages/memory_storyboard.py:64
+msgid "Video"
+msgstr "Video"
+
 #: pages/step1_cache.py:144
 msgid "Video cache"
 msgstr "Videocache"
@@ -1644,6 +1728,10 @@ msgstr "Videocache"
 #: pages/_step4_generate.py:631
 msgid "Video generated successfully!"
 msgstr "Video succesvol gegenereerd!"
+
+#: pages/memory_storyboard.py:135
+msgid "Videos"
+msgstr "Video’s"
 
 #: pages/memory_brief.py:204
 msgid "What is it about"
@@ -1665,6 +1753,10 @@ msgstr "Wie gaat kijken"
 #: pages/suggestions.py:209
 msgid "Why other suggestions were skipped"
 msgstr "Waarom andere suggesties zijn overgeslagen"
+
+#: pages/memory_storyboard.py:141
+msgid "Why this picture"
+msgstr "Waarom dit beeld"
 
 #: pages/step4_export.py:197
 #, python-brace-format
@@ -1818,7 +1910,7 @@ msgstr "{name} en {target_name}: {value}"
 msgid "{photos_count} Photos Available (auto-selected at generation)"
 msgstr "{photos_count} foto's beschikbaar (automatisch gekozen bij generatie)"
 
-#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#: pages/memory_story.py:37
 #, python-brace-format
 msgid "{seconds:g} s"
 msgstr "{seconds:g} s"
@@ -1832,4 +1924,7 @@ msgstr "{title} ({n_keys} sleutels)"
 #, python-brace-format
 msgid "{value}: {duration_seconds:.1f}s"
 msgstr "{value}: {duration_seconds:.1f}s"
+
+#~ msgid "The storyboard"
+#~ msgstr "Het storyboard"
 

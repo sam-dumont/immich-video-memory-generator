@@ -306,6 +306,68 @@ def test_the_storyboard_is_the_default_view_and_plays_in_capture_order(
     expect(shots).to_have_count(len(CARRIERS))
 
 
+def test_contact_sheet_exclusions_survive_a_reload_and_can_be_undone(
+    page: Page, launch_app_url: str
+) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.locator(".storyboard-shot")).to_have_count(len(CARRIERS), timeout=120_000)
+
+    include = page.get_by_role("checkbox", name="Include in export", exact=True)
+    include.uncheck()
+    expect(page.locator(".storyboard-shot").first.get_by_text("Excluded")).to_be_visible()
+
+    page.reload(wait_until="domcontentloaded")
+    expect(include).not_to_be_checked()
+    include.check()
+    expect(page.locator(".storyboard-shot").first.get_by_text("Excluded")).to_have_count(0)
+
+
+def test_the_inspector_keeps_a_refused_model_alternative_distinct_from_the_cut(
+    page: Page, launch_app_url: str, launch_workspace
+) -> None:
+    _brief_for_june(page, launch_app_url)
+    page.get_by_role("button", name="Cut", exact=True).click()
+    expect(page.locator(".storyboard-shot")).to_have_count(len(CARRIERS), timeout=120_000)
+    original = next(picture for picture in CARRIERS if picture.is_favorite)
+    alternative = next(picture for picture in LIBRARY if picture not in CARRIERS)
+    folder = _newest_attempt(launch_workspace) / "derived-decisions"
+    folder.mkdir(exist_ok=True)
+    # WHY: the fixture replaces inference; the browser still reads the saved production format.
+    (folder / "thin-polish.private.json").write_text(
+        json.dumps(
+            {
+                "ran": True,
+                "verdicts": {
+                    original.asset_id: {
+                        "why": "Repeated viewpoint",
+                        "protected": True,
+                        "rule": "The owner starred this picture",
+                    }
+                },
+                "slots": [
+                    {
+                        "replacing": original.asset_id,
+                        "chosen": alternative.asset_id,
+                        "offered": "2",
+                        "outcome": "refused by look-alike",
+                    }
+                ],
+            }
+        )
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.locator(".storyboard-shot").nth(CARRIERS.index(original)).click()
+    inspector = page.get_by_role("complementary", name="Picture review")
+    expect(inspector.get_by_text("Repeated viewpoint", exact=True)).to_be_visible()
+    expect(inspector.get_by_text("The owner starred this picture", exact=True)).to_be_visible()
+    expect(inspector.get_by_text("refused by look-alike", exact=True)).to_be_visible()
+    expect(inspector.get_by_role("img", name="Recorded alternative")).to_have_attribute(
+        "src", f"/media/thumb/{alternative.asset_id}"
+    )
+    expect(inspector.get_by_role("checkbox", name="Include in export")).to_be_checked()
+
+
 def test_a_reload_mid_cut_joins_the_running_cut_instead_of_starting_another(
     page: Page, launch_app_url: str, launch_workspace
 ) -> None:

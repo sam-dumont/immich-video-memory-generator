@@ -1,275 +1,94 @@
 import React from "react";
-import {
-  AbsoluteFill,
-  Easing,
-  Img,
-  interpolate,
-  spring,
-  staticFile,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
+import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from "remotion";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
 import { PageHeader, CONTENT_X, CONTENT_Y } from "../components/PageHeader";
-import { ImCard } from "../components/ImCard";
-import { ImBadge } from "../components/ImBadge";
 import { ImButton } from "../components/ImButton";
-import { ImSectionHeader } from "../components/ImSectionHeader";
-import { ImSeparator } from "../components/ImSeparator";
-import { MaterialIcon } from "../components/MaterialIcon";
 import { AnimatedCursor } from "../components/AnimatedCursor";
-
-/**
- * The result page as the app draws it since the storyboard landed: the thesis
- * once, two tabs (Storyboard, Story), and the cut in the order it plays, one
- * card per picture with its timecode, day, kind, story and the reader's reason.
- * The pictures, the thesis and the cut come from the hermetic fixture
- * (`../fixture`, generated from tests/e2e/fake_library.py by `make demo-fixture`).
- */
-
 import { SHOTS, RECUT_SHOTS, CUT_FILM_SECONDS, RECUT_FILM_SECONDS, THESIS, type Shot } from "../fixture";
 
+// The same public library and saved cuts as the browser tests. No model proposals
+// are invented for the demo: this fixture records the final choice and its reason.
 export { SHOTS, THESIS };
 export type { Shot };
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const meta: React.CSSProperties = { display: "flex", justifyContent: "space-between", fontSize: 11, color: COLORS.textSecondary, fontVariantNumeric: "tabular-nums" };
 
-const timecode = (seconds: number) =>
-  `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
-
-const contentLabel = (shots: Shot[], film: number) => {
-  const total = shots.reduce((sum, s) => sum + s.seconds, 0);
-  return `${shots.length} pictures, ${timecode(total)} of pictures and video, about ${timecode(film)} of film`;
-};
-
-const Tabs: React.FC = () => (
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "center",
-      gap: 24,
-      marginTop: 14,
-      marginBottom: 18,
-      borderBottom: `1px solid ${COLORS.border}`,
-    }}
-  >
-    {[
-      { icon: "view_timeline", label: "STORYBOARD", active: true },
-      { icon: "auto_stories", label: "STORY", active: false },
-    ].map((tab) => (
-      <div
-        key={tab.label}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 4,
-          padding: "6px 14px 8px",
-          borderBottom: tab.active
-            ? `2px solid ${COLORS.primary}`
-            : "2px solid transparent",
-          color: tab.active ? COLORS.text : COLORS.textSecondary,
-          fontSize: 13,
-          fontWeight: 600,
-          letterSpacing: 0.4,
-        }}
-      >
-        <MaterialIcon
-          name={tab.icon}
-          size={20}
-          color={tab.active ? COLORS.text : COLORS.textSecondary}
-        />
-        {tab.label}
-      </div>
-    ))}
+const ShotTile: React.FC<{ shot: Shot; index: number; active: boolean }> = ({ shot, index, active }) => (
+  <div style={{ padding: 7, border: `2px solid ${active ? COLORS.primary : "transparent"}`, borderRadius: 8 }}>
+    <div style={meta}><span>{String(index + 1).padStart(2, "0")}</span><span>{clock(shot.start)}</span></div>
+    <Img src={staticFile(shot.picture)} style={{ display: "block", width: "100%", height: 150, objectFit: "contain", background: COLORS.surface, borderRadius: 4, margin: "6px 0" }} />
+    <div style={meta}><span>{shot.day}</span><span>{shot.seconds.toFixed(1)} s</span></div>
+    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{shot.story}</div>
+    <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 6 }}>{shot.motion ? "Video" : "Still"}</div>
   </div>
 );
 
-const ShotRow: React.FC<{
-  shot: Shot;
-  at: number;
-  reveal: number;
-  drift: number;
-}> = ({ shot, at, reveal, drift }) => (
-  <ImCard
-    style={{
-      padding: "8px 10px",
-      marginBottom: 8,
-      opacity: reveal,
-      transform: `translateY(${(1 - reveal) * 12}px)`,
-    }}
-  >
-    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-      <span
-        style={{
-          fontSize: 12,
-          fontFamily: "ui-monospace, Menlo, monospace",
-          color: COLORS.textSecondary,
-          width: 40,
-        }}
-      >
-        {timecode(at)}
-      </span>
-      <div
-        style={{
-          width: 96,
-          height: 54,
-          borderRadius: 6,
-          overflow: "hidden",
-          flexShrink: 0,
-        }}
-      >
-        <Img
-          src={staticFile(shot.picture)}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            transform: `scale(${1.06 + drift * 0.06})`,
-          }}
-        />
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>
-            {shot.day}
-          </span>
-          <ImBadge
-            text={shot.motion ? "Video" : "Still"}
-            variant={shot.motion ? "analysis" : "info"}
-          />
-          <span style={{ fontSize: 12, color: COLORS.textSecondary }}>
-            {shot.seconds} s
-          </span>
+const Inspector: React.FC<{ shot: Shot }> = ({ shot }) => (
+  <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, background: COLORS.surface, overflow: "hidden" }}>
+    <Img src={staticFile(shot.picture)} style={{ width: "100%", height: 220, objectFit: "contain", background: COLORS.bg }} />
+    <div style={{ padding: 18 }}>
+      <div style={meta}><span>{shot.day}</span><span>{clock(shot.start)} / {shot.seconds.toFixed(1)} s</span></div>
+      <div style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.4, margin: "10px 0 20px" }}>{shot.story}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Why this picture</div>
+      <div style={{ fontSize: 13, lineHeight: 1.6 }}>{shot.reason}</div>
+      <div style={{ borderTop: `1px solid ${COLORS.border}`, marginTop: 20, paddingTop: 18, fontSize: 13 }}>
+        <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ background: COLORS.primary, color: COLORS.bg, width: 17, height: 17, borderRadius: 2, textAlign: "center" }}>✓</span>Include in export
         </div>
-        <span style={{ fontSize: 12, color: COLORS.primary }}>{shot.story}</span>
-        <span style={{ fontSize: 12, color: COLORS.text }}>{shot.reason}</span>
+        <div style={{ fontSize: 11, color: COLORS.textSecondary, lineHeight: 1.6, margin: "10px 0" }}>Export uses your selection. Cut again replans it.</div>
+        {[...(shot.motion ? ["Trim the video clips"] : []), "Picture decisions", "Find alternatives in the pool"].map(label => (
+          <div key={label} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 12, marginTop: 10, background: COLORS.elevated }}>{label}</div>
+        ))}
       </div>
     </div>
-  </ImCard>
+  </div>
 );
 
-type Props = {
-  bassIntensity?: number;
-  /** Pictures to leave out, by index, for the second cut after a tick was removed. */
-  without?: number[];
-  /** Total scene length in frames, for the scroll and the drift. */
-  frames: number;
-  /** Where the cursor ends up: the pool button on the first visit, Export on the last. */
-  clickTarget: "pool" | "export";
-  /** Frame of the click. */
-  clickAt: number;
-  /** How far the page scrolls before the click. */
-  scrollPx: number;
-};
+type Props = { bassIntensity?: number; without?: number[]; frames: number; clickTarget: "pool" | "export"; clickAt: number };
 
-// Measured against a 1920x1080 still render with the page scrolled to its end.
-const EXPORT_XY = { x: CONTENT_X + 60, y: CONTENT_Y + 546 };
-const POOL_XY = { x: CONTENT_X + 235, y: CONTENT_Y + 598 };
-
-export const StoryboardScene: React.FC<Props> = ({
-  bassIntensity,
-  without = [],
-  frames,
-  clickTarget,
-  clickAt,
-  scrollPx,
-}) => {
+export const StoryboardScene: React.FC<Props> = ({ bassIntensity, without = [], frames, clickTarget, clickAt }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const shots = without.length ? RECUT_SHOTS : SHOTS;
-
-  const reveal = (delay: number) =>
-    spring({ frame, fps, config: { damping: 20, stiffness: 130 }, delay });
-
-  const scrollY = interpolate(
-    frame,
-    [Math.round(frames * 0.25), Math.round(frames * 0.7)],
-    [0, scrollPx],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.inOut(Easing.cubic),
-    },
-  );
-  const drift = interpolate(frame, [0, frames], [0, 1], { extrapolateRight: "clamp" });
-
-  const target = clickTarget === "pool" ? POOL_XY : EXPORT_XY;
-  const cursorSteps = [
-    { frame: clickAt - 28, ...target },
-    { frame: clickAt, ...target, click: true },
-  ];
-
-  let previousChapter: string | undefined;
+  const film = without.length ? RECUT_FILM_SECONDS : CUT_FILM_SECONDS;
+  const selected = frame < 48 || without.length ? 0 : 3;
+  const scroll = clickTarget === "export" ? interpolate(frame, [12, frames - 20], [0, 1080], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
+  const target = clickTarget === "pool" ? { x: CONTENT_X + 1155, y: CONTENT_Y + 801 } : { x: CONTENT_X + 50, y: CONTENT_Y + 685 };
+  const cursorSteps = clickTarget === "pool" ? [
+    { frame: 30, x: CONTENT_X + 835, y: CONTENT_Y + 369 },
+    { frame: 48, x: CONTENT_X + 835, y: CONTENT_Y + 369, click: true },
+    { frame: clickAt - 24, ...target }, { frame: clickAt, ...target, click: true },
+  ] : [{ frame: clickAt - 24, ...target }, { frame: clickAt, ...target, click: true }];
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
         <Sidebar active="Memory" />
-        <div
-          style={{
-            flex: 1,
-            padding: "20px 32px",
-            overflow: "hidden",
-            fontFamily,
-            position: "relative",
-          }}
-        >
-          <div style={{ transform: `translateY(${-scrollY}px)` }}>
+        <div style={{ flex: 1, padding: "20px 32px", overflow: "hidden", fontFamily, color: COLORS.text }}>
+          <div style={{ transform: `translateY(${-scroll}px)` }}>
             <PageHeader title="Memory" />
-
-            <div
-              style={{
-                fontSize: 19,
-                lineHeight: 1.5,
-                color: COLORS.text,
-                maxWidth: 1240,
-                opacity: reveal(4),
-              }}
-            >
-              {THESIS}
+            <div style={{ fontSize: 19, lineHeight: 1.5, maxWidth: 1240 }}>{THESIS}</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 28, borderBottom: `1px solid ${COLORS.border}`, margin: "14px 0 24px", fontSize: 13, fontWeight: 600 }}>
+              <div style={{ padding: "12px 14px", borderBottom: `2px solid ${COLORS.primary}` }}>Storyboard</div>
+              <div style={{ padding: "12px 14px", color: COLORS.textSecondary }}>Story</div>
             </div>
-
-            <Tabs />
-
-            <div style={{ opacity: reveal(12) }}>
-              <ImSectionHeader icon="view_timeline" title="The storyboard" />
-              <ImSectionHeader icon="movie" title={contentLabel(shots, without.length ? RECUT_FILM_SECONDS : CUT_FILM_SECONDS)} />
-              <div
-                style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: -6, marginBottom: 10 }}
-              >
-                Titles and transitions make up the rest of the film.
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{shots.length} pictures, {clock(shots.reduce((sum, s) => sum + s.seconds, 0))} of pictures and video, about {clock(film)} of film</div>
+            <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 10 }}>Titles and transitions make up the rest of the film.</div>
+            <div style={{ ...meta, margin: "18px 0 16px", alignItems: "center" }}>
+              <span>Order and timecodes from the saved cut.</span><span>Show <span style={{ border: `1px solid ${COLORS.border}`, padding: "8px 10px", borderRadius: 6, marginLeft: 8 }}>All pictures ⌄</span></span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 24, alignItems: "start" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, margin: "0 0 18px" }}>June 2024</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "18px 16px" }}>
+                  {shots.map((shot, index) => <ShotTile key={shot.picture} shot={shot} index={index} active={index === selected} />)}
+                </div>
               </div>
+              <div style={{ transform: `translateY(${Math.max(0, scroll - 240)}px)` }}><Inspector shot={shots[selected]} /></div>
             </div>
-
-            {shots.map((shot, i) => {
-              const chapter =
-                shot.chapter && shot.chapter !== previousChapter ? shot.chapter : undefined;
-              if (shot.chapter) previousChapter = shot.chapter;
-              return (
-                <React.Fragment key={shot.picture}>
-                  {chapter && (
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: COLORS.textSecondary,
-                        margin: "10px 0 8px",
-                        opacity: reveal(16 + i * 5),
-                      }}
-                    >
-                      {chapter}
-                    </div>
-                  )}
-                  <ShotRow shot={shot} at={shot.start} reveal={reveal(18 + i * 5)} drift={drift} />
-                </React.Fragment>
-              );
-            })}
-
-            <ImSeparator />
-
-            <div style={{ display: "flex", gap: 16 }}>
+            <div style={{ display: "flex", gap: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16, marginTop: 24 }}>
               <ImButton text="Export" variant="primary" icon="movie" />
               <ImButton text="Review the pool" variant="secondary" icon="video_library" />
               <ImButton text="Cut again" variant="secondary" icon="refresh" />

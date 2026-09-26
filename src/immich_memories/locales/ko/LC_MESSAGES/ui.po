@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Immich Memories UI VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"POT-Creation-Date: 2026-09-26 13:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ko\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: pages/memory.py:162
+#: pages/memory.py:172
 msgid " Cut again runs it once more."
 msgstr " 다시 편집을 누르면 편집을 한 번 더 실행합니다."
 
@@ -154,6 +154,14 @@ msgstr "모든 연도"
 msgid "All people"
 msgstr "모든 인물"
 
+#: pages/memory_storyboard.py:134
+msgid "All pictures"
+msgstr "모든 이미지"
+
+#: pages/memory_storyboard.py:146
+msgid "Alternatives considered"
+msgstr "검토한 대안"
+
 #: pages/step1_cache.py:124
 msgid "Analysis cache"
 msgstr "분석 캐시"
@@ -196,7 +204,7 @@ msgstr "자동(클립과 동일)"
 msgid "Auto duration"
 msgstr "자동 길이"
 
-#: i18n.py:101
+#: i18n.py:102
 msgid "Automatic (browser)"
 msgstr "자동(브라우저)"
 
@@ -215,6 +223,10 @@ msgstr "지난 여러 해의 오늘 날짜를 자동으로 사용합니다"
 #: pages/step4_export.py:236
 msgid "Back to Generation Options"
 msgstr "생성 옵션으로 돌아가기"
+
+#: pages/memory_storyboard.py:153
+msgid "Back to pictures"
+msgstr "이미지로 돌아가기"
 
 #: pages/runs.py:21
 msgid "Back to runs"
@@ -359,6 +371,10 @@ msgstr "클립"
 msgid "Clips Planned"
 msgstr "계획된 클립"
 
+#: pages/memory_storyboard.py:123
+msgid "Close"
+msgstr "닫기"
+
 #: pages/step2_review.py:229
 msgid "Compact grid view"
 msgstr "작은 격자 보기"
@@ -463,6 +479,10 @@ msgstr "편집하기"
 msgid "Cut again"
 msgstr "다시 편집"
 
+#: pages/memory_storyboard.py:138
+msgid "Cut contact sheet"
+msgstr "편집본 이미지 모음"
+
 #: pages/memory_run.py:399
 msgid "Cutting the memory..."
 msgstr "추억을 편집하는 중..."
@@ -535,9 +555,17 @@ msgstr "오류: {value}"
 msgid "Errors ({error_count})"
 msgstr "오류({error_count}개)"
 
+#: pages/memory_storyboard.py:137
+msgid "Excluded"
+msgstr "제외됨"
+
 #: pages/memory.py:96
 msgid "Export"
 msgstr "내보내기"
+
+#: pages/memory_storyboard.py:149
+msgid "Export uses your selection. Cut again replans it."
+msgstr "내보내기는 현재 선택을 사용합니다. 다시 편집하면 새 편집 계획을 만듭니다."
 
 #: pages/step2_loading.py:336
 #, python-brace-format
@@ -587,6 +615,10 @@ msgstr "최종 길이: {value}"
 #: pages/settings_people.py:263
 msgid "Find a name"
 msgstr "이름 검색"
+
+#: pages/memory_storyboard.py:152
+msgid "Find alternatives in the pool"
+msgstr "미디어 목록에서 대안 찾기"
 
 #: pages/memory_run.py:62
 msgid "Finding media"
@@ -716,7 +748,11 @@ msgstr "사진 포함"
 msgid "Include in compilation"
 msgstr "모음 영상에 포함"
 
-#: i18n.py:109
+#: pages/memory_storyboard.py:148
+msgid "Include in export"
+msgstr "내보내기에 포함"
+
+#: i18n.py:110
 msgid "Interface language"
 msgstr "화면 언어"
 
@@ -748,6 +784,10 @@ msgstr "이 추억에는 WhatsApp 등으로 받은 미디어도 유지"
 #: pages/step3_options.py:336
 msgid "Keep intermediate files"
 msgstr "중간 파일 유지"
+
+#: pages/memory_storyboard.py:144
+msgid "Kept because"
+msgstr "유지한 이유"
 
 #: pages/step3_options.py:273
 msgid "Landscape (16:9)"
@@ -826,6 +866,10 @@ msgstr "추억 유형"
 #: pages/clip_review.py:192
 msgid "Middle 5s"
 msgstr "가운데 5초"
+
+#: pages/memory_storyboard.py:143
+msgid "Model suggestion"
+msgstr "모델의 제안"
 
 #: pages/step1_presets.py:214
 msgid "Month"
@@ -913,11 +957,23 @@ msgstr "선택한 클립이 없습니다. 돌아가서 클립을 선택하세요
 msgid "No eligible suggestions right now."
 msgstr "현재 사용 가능한 제안이 없습니다."
 
+#: pages/memory_storyboard.py:147
+msgid "No outcome recorded."
+msgstr "기록된 결과가 없습니다."
+
 #: pages/settings_people.py:251
 msgid ""
 "No people file yet. Rescan the library to build one — it reads every named person's count and"
 " month curve, and looks at no pixels."
 msgstr "아직 인물 파일이 없습니다. 라이브러리를 다시 스캔하세요. 이름이 있는 각 인물의 수량과 월별 추이를 읽으며, 이미지 자체는 분석하지 않습니다."
+
+#: pages/memory_storyboard.py:140
+msgid "No pictures match this filter."
+msgstr "이 필터에 맞는 이미지가 없습니다."
+
+#: pages/memory_storyboard.py:142
+msgid "No reason recorded for this picture."
+msgstr "이 이미지를 선택한 이유가 기록되지 않았습니다."
 
 #: pages/runs.py:105
 msgid "No runs match this view. Make a memory from Memory or Suggestions."
@@ -1001,6 +1057,10 @@ msgstr "미디어 목록 열기"
 #, python-brace-format
 msgid "Open {name} in Immich"
 msgstr "Immich에서 {name} 열기"
+
+#: pages/memory_storyboard.py:132
+msgid "Order and timecodes from the saved cut."
+msgstr "저장된 편집본의 순서와 타임코드입니다."
 
 #: pages/step3_options.py:278
 msgid "Orientation"
@@ -1093,6 +1153,14 @@ msgstr "먼저 앨범을 선택하세요"
 msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
 msgstr "각 영상에서 보여줄 초를 선택하고 미리 보세요. 사진은 자를 필요가 없습니다."
 
+#: pages/memory_storyboard.py:118 pages/memory_storyboard.py:151
+msgid "Picture decisions"
+msgstr "이 이미지에 대한 결정"
+
+#: pages/memory_storyboard.py:139
+msgid "Picture review"
+msgstr "이미지 검토"
+
 #: pages/film_length.py:71
 msgid "Pictures & video"
 msgstr "사진 및 영상"
@@ -1157,6 +1225,10 @@ msgstr "라이브러리 읽는 중…"
 #: pages/memory_run.py:64
 msgid "Reading the pictures"
 msgstr "이미지 읽는 중"
+
+#: pages/memory_storyboard.py:145
+msgid "Recorded alternative"
+msgstr "기록된 대안"
 
 #: pages/runs.py:132
 msgid "Refresh runs"
@@ -1318,6 +1390,10 @@ msgstr "공유 가능"
 msgid "Sharing"
 msgstr "공유 범위"
 
+#: pages/memory_storyboard.py:133
+msgid "Show"
+msgstr "표시"
+
 #: pages/login.py:80
 msgid "Sign in"
 msgstr "로그인"
@@ -1358,7 +1434,15 @@ msgstr "시작 중..."
 msgid "Status"
 msgstr "상태"
 
-#: pages/memory.py:128
+#: pages/memory_storyboard.py:64
+msgid "Still"
+msgstr "정지 이미지"
+
+#: pages/memory_storyboard.py:136
+msgid "Stills"
+msgstr "정지 이미지"
+
+#: pages/memory.py:130
 msgid "Story"
 msgstr "이야기"
 
@@ -1366,7 +1450,7 @@ msgstr "이야기"
 msgid "Story weight"
 msgstr "이야기 비중"
 
-#: pages/memory.py:127
+#: pages/memory.py:129
 msgid "Storyboard"
 msgstr "스토리보드"
 
@@ -1414,7 +1498,7 @@ msgstr "저장하지 못했습니다. 다시 시도하거나 명령줄에서 `pi
 msgid "That file is not an MP3, M4A or WAV"
 msgstr "이 파일은 MP3, M4A 또는 WAV가 아닙니다"
 
-#: pages/memory.py:123 pages/memory_story.py:96
+#: pages/memory.py:125 pages/memory_story.py:96 pages/memory_storyboard.py:47
 msgid "The editor left no thesis for this cut."
 msgstr "이 편집 결과에는 주제 설명이 없습니다."
 
@@ -1430,7 +1514,7 @@ msgstr "생성한 영상을 Immich 인스턴스에 업로드하고 지정한 앨
 msgid "The household. Private moments a caption names, like a bath, play too."
 msgstr "집안 식구. 설명에 언급된 목욕 같은 사적인 순간도 포함합니다."
 
-#: pages/memory.py:160
+#: pages/memory.py:170
 #, python-brace-format
 msgid "The last cut ended as {status}."
 msgstr "마지막 편집은 {status} 상태로 끝났습니다."
@@ -1475,15 +1559,11 @@ msgstr "스캔을 완료하지 못했습니다: {exc}"
 msgid "The story"
 msgstr "이야기"
 
-#: pages/memory_storyboard.py:100
-msgid "The storyboard"
-msgstr "스토리보드"
-
 #: pages/memory_duration.py:69
 msgid "The type decides the length; turn off to set an exact target"
 msgstr "유형이 길이를 정합니다. 정확한 목표를 설정하려면 끄세요"
 
-#: pages/memory.py:172
+#: pages/memory.py:182
 msgid "This cut finished while the page was away. Re-load its media to export it."
 msgstr "페이지를 떠나 있는 동안 편집이 끝났습니다. 내보내려면 미디어를 다시 불러오세요."
 
@@ -1504,7 +1584,7 @@ msgstr "경과 시간"
 msgid "Title"
 msgstr "제목"
 
-#: pages/memory_storyboard.py:110
+#: pages/memory_storyboard.py:53
 msgid "Titles and transitions make up the rest of the film."
 msgstr "제목과 전환 효과가 영상의 나머지 길이를 채웁니다."
 
@@ -1530,7 +1610,7 @@ msgstr "전체 길이"
 msgid "Transition Style"
 msgstr "전환 스타일"
 
-#: pages/clip_review.py:445 pages/step2_review.py:147
+#: pages/clip_review.py:445 pages/memory_storyboard.py:150 pages/step2_review.py:147
 msgid "Trim the video clips"
 msgstr "영상 클립 자르기"
 
@@ -1606,6 +1686,10 @@ msgstr "사용자 이름"
 msgid "Using {name}'s birthday: {value}"
 msgstr "{name}의 생일 사용: {value}"
 
+#: pages/memory_storyboard.py:64
+msgid "Video"
+msgstr "동영상"
+
 #: pages/step1_cache.py:144
 msgid "Video cache"
 msgstr "영상 캐시"
@@ -1613,6 +1697,10 @@ msgstr "영상 캐시"
 #: pages/_step4_generate.py:631
 msgid "Video generated successfully!"
 msgstr "영상을 성공적으로 생성했습니다!"
+
+#: pages/memory_storyboard.py:135
+msgid "Videos"
+msgstr "동영상"
 
 #: pages/memory_brief.py:204
 msgid "What is it about"
@@ -1632,6 +1720,10 @@ msgstr "누가 보나요"
 #: pages/suggestions.py:209
 msgid "Why other suggestions were skipped"
 msgstr "다른 제안이 제외된 이유"
+
+#: pages/memory_storyboard.py:141
+msgid "Why this picture"
+msgstr "이 이미지를 선택한 이유"
 
 #: pages/step4_export.py:197
 #, python-brace-format
@@ -1785,7 +1877,7 @@ msgstr "{name}, {target_name}: {value}"
 msgid "{photos_count} Photos Available (auto-selected at generation)"
 msgstr "사진 {photos_count}장 사용 가능(생성 시 자동 선택)"
 
-#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#: pages/memory_story.py:37
 #, python-brace-format
 msgid "{seconds:g} s"
 msgstr "{seconds:g}초"
@@ -1799,4 +1891,7 @@ msgstr "{title} (설정 항목 {n_keys}개)"
 #, python-brace-format
 msgid "{value}: {duration_seconds:.1f}s"
 msgstr "{value}: {duration_seconds:.1f}초"
+
+#~ msgid "The storyboard"
+#~ msgstr "스토리보드"
 

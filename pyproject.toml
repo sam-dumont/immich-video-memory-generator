@@ -196,6 +196,11 @@ packages = ["src/immich_memories"]
 include = [
     "/src",
     "/tests",
+    "/frontend/src",
+    "/frontend/package.json",
+    "/frontend/package-lock.json",
+    "/frontend/tsconfig.json",
+    "/frontend/vite.config.ts",
 ]
 
 # Semantic Release Configuration

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Immich Memories UI VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-25 19:10+0200\n"
+"POT-Creation-Date: 2026-09-26 13:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pt_BR\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: pages/memory.py:162
+#: pages/memory.py:172
 msgid " Cut again runs it once more."
 msgstr " Montar novamente repete a montagem."
 
@@ -158,6 +158,14 @@ msgstr "Todos os anos"
 msgid "All people"
 msgstr "Todas as pessoas"
 
+#: pages/memory_storyboard.py:134
+msgid "All pictures"
+msgstr "Todas as imagens"
+
+#: pages/memory_storyboard.py:146
+msgid "Alternatives considered"
+msgstr "Alternativas consideradas"
+
 #: pages/step1_cache.py:124
 msgid "Analysis cache"
 msgstr "Cache de análises"
@@ -202,7 +210,7 @@ msgstr "Automático (igual aos clipes)"
 msgid "Auto duration"
 msgstr "Duração automática"
 
-#: i18n.py:101
+#: i18n.py:102
 msgid "Automatic (browser)"
 msgstr "Automático (navegador)"
 
@@ -221,6 +229,10 @@ msgstr "Usa automaticamente a data de hoje em anos anteriores"
 #: pages/step4_export.py:236
 msgid "Back to Generation Options"
 msgstr "Voltar às opções de geração"
+
+#: pages/memory_storyboard.py:153
+msgid "Back to pictures"
+msgstr "Voltar às imagens"
 
 #: pages/runs.py:21
 msgid "Back to runs"
@@ -365,6 +377,10 @@ msgstr "Clipees"
 msgid "Clips Planned"
 msgstr "Clipees previstos"
 
+#: pages/memory_storyboard.py:123
+msgid "Close"
+msgstr "Fechar"
+
 #: pages/step2_review.py:229
 msgid "Compact grid view"
 msgstr "Grade compacta"
@@ -473,6 +489,10 @@ msgstr "Montar"
 msgid "Cut again"
 msgstr "Montar novamente"
 
+#: pages/memory_storyboard.py:138
+msgid "Cut contact sheet"
+msgstr "Folha de contato da montagem"
+
 #: pages/memory_run.py:399
 msgid "Cutting the memory..."
 msgstr "Montando a memória..."
@@ -545,9 +565,17 @@ msgstr "Erro: {value}"
 msgid "Errors ({error_count})"
 msgstr "Erros ({error_count})"
 
+#: pages/memory_storyboard.py:137
+msgid "Excluded"
+msgstr "Excluída"
+
 #: pages/memory.py:96
 msgid "Export"
 msgstr "Exportar"
+
+#: pages/memory_storyboard.py:149
+msgid "Export uses your selection. Cut again replans it."
+msgstr "A exportação usa sua seleção. Montar novamente cria um novo plano."
 
 #: pages/step2_loading.py:336
 #, python-brace-format
@@ -599,6 +627,10 @@ msgstr "Duração final: {value}"
 #: pages/settings_people.py:263
 msgid "Find a name"
 msgstr "Procurar um nome"
+
+#: pages/memory_storyboard.py:152
+msgid "Find alternatives in the pool"
+msgstr "Buscar alternativas nos conteúdos"
 
 #: pages/memory_run.py:62
 msgid "Finding media"
@@ -728,7 +760,11 @@ msgstr "Incluir fotos"
 msgid "Include in compilation"
 msgstr "Incluir na compilação"
 
-#: i18n.py:109
+#: pages/memory_storyboard.py:148
+msgid "Include in export"
+msgstr "Incluir na exportação"
+
+#: i18n.py:110
 msgid "Interface language"
 msgstr "Idioma da interface"
 
@@ -760,6 +796,10 @@ msgstr "Manter WhatsApp e outros conteúdos recebidos nesta memória"
 #: pages/step3_options.py:336
 msgid "Keep intermediate files"
 msgstr "Manter arquivos intermediários"
+
+#: pages/memory_storyboard.py:144
+msgid "Kept because"
+msgstr "Mantida porque"
 
 #: pages/step3_options.py:273
 msgid "Landscape (16:9)"
@@ -840,6 +880,10 @@ msgstr "Tipo de memória"
 #: pages/clip_review.py:192
 msgid "Middle 5s"
 msgstr "Os 5 s centrais"
+
+#: pages/memory_storyboard.py:143
+msgid "Model suggestion"
+msgstr "Sugestão do modelo"
 
 #: pages/step1_presets.py:214
 msgid "Month"
@@ -927,6 +971,10 @@ msgstr "Nenhum clipe selecionado. Volte para escolher clipes."
 msgid "No eligible suggestions right now."
 msgstr "Sem sugestões elegíveis neste momento."
 
+#: pages/memory_storyboard.py:147
+msgid "No outcome recorded."
+msgstr "Nenhum resultado registrado."
+
 #: pages/settings_people.py:251
 msgid ""
 "No people file yet. Rescan the library to build one — it reads every named person's count and"
@@ -934,6 +982,14 @@ msgid ""
 msgstr ""
 "Ainda não existe arquivo de pessoas. Analise a biblioteca novamente: lê as contagens e curvas"
 " mensais de cada pessoa com nome, sem analisar imagens."
+
+#: pages/memory_storyboard.py:140
+msgid "No pictures match this filter."
+msgstr "Nenhuma imagem corresponde a este filtro."
+
+#: pages/memory_storyboard.py:142
+msgid "No reason recorded for this picture."
+msgstr "Nenhum motivo registrado para esta imagem."
 
 #: pages/runs.py:105
 msgid "No runs match this view. Make a memory from Memory or Suggestions."
@@ -1019,6 +1075,10 @@ msgstr "Abrir os conteúdos"
 #, python-brace-format
 msgid "Open {name} in Immich"
 msgstr "Abrir {name} no Immich"
+
+#: pages/memory_storyboard.py:132
+msgid "Order and timecodes from the saved cut."
+msgstr "Ordem e códigos de tempo da montagem salva."
 
 #: pages/step3_options.py:278
 msgid "Orientation"
@@ -1111,6 +1171,14 @@ msgstr "Escolha primeiro um álbum"
 msgid "Pick the seconds each video shows and preview it. Stills need no trimming."
 msgstr "Escolha os segundos de cada vídeo e veja a prévia. As fotos não precisam de cortes."
 
+#: pages/memory_storyboard.py:118 pages/memory_storyboard.py:151
+msgid "Picture decisions"
+msgstr "Decisões sobre esta imagem"
+
+#: pages/memory_storyboard.py:139
+msgid "Picture review"
+msgstr "Revisão da imagem"
+
 #: pages/film_length.py:71
 msgid "Pictures & video"
 msgstr "Fotos e vídeos"
@@ -1177,6 +1245,10 @@ msgstr "Lendo a biblioteca…"
 #: pages/memory_run.py:64
 msgid "Reading the pictures"
 msgstr "Lendo as imagens"
+
+#: pages/memory_storyboard.py:145
+msgid "Recorded alternative"
+msgstr "Alternativa registrada"
 
 #: pages/runs.py:132
 msgid "Refresh runs"
@@ -1338,6 +1410,10 @@ msgstr "Compartilhável"
 msgid "Sharing"
 msgstr "Compartilhamento"
 
+#: pages/memory_storyboard.py:133
+msgid "Show"
+msgstr "Mostrar"
+
 #: pages/login.py:80
 msgid "Sign in"
 msgstr "Entrar"
@@ -1378,7 +1454,15 @@ msgstr "Iniciando..."
 msgid "Status"
 msgstr "Estado"
 
-#: pages/memory.py:128
+#: pages/memory_storyboard.py:64
+msgid "Still"
+msgstr "Imagem estática"
+
+#: pages/memory_storyboard.py:136
+msgid "Stills"
+msgstr "Imagens estáticas"
+
+#: pages/memory.py:130
 msgid "Story"
 msgstr "História"
 
@@ -1386,7 +1470,7 @@ msgstr "História"
 msgid "Story weight"
 msgstr "Peso da história"
 
-#: pages/memory.py:127
+#: pages/memory.py:129
 msgid "Storyboard"
 msgstr "Storyboard"
 
@@ -1434,7 +1518,7 @@ msgstr "Não foi possível salvar. Tente novamente ou use `pictures` na linha de
 msgid "That file is not an MP3, M4A or WAV"
 msgstr "Esse arquivo não é MP3, M4A nem WAV"
 
-#: pages/memory.py:123 pages/memory_story.py:96
+#: pages/memory.py:125 pages/memory_story.py:96 pages/memory_storyboard.py:47
 msgid "The editor left no thesis for this cut."
 msgstr "A montagem não deixou uma ideia central."
 
@@ -1450,7 +1534,7 @@ msgstr "O vídeo gerado será enviado para sua instância do Immich e adicionado
 msgid "The household. Private moments a caption names, like a bath, play too."
 msgstr "A casa. Inclui também momentos privados citados por uma descrição, como um banho."
 
-#: pages/memory.py:160
+#: pages/memory.py:170
 #, python-brace-format
 msgid "The last cut ended as {status}."
 msgstr "A última montagem terminou com o estado {status}."
@@ -1497,15 +1581,11 @@ msgstr "A análise não conseguiu terminar: {exc}"
 msgid "The story"
 msgstr "A história"
 
-#: pages/memory_storyboard.py:100
-msgid "The storyboard"
-msgstr "O storyboard"
-
 #: pages/memory_duration.py:69
 msgid "The type decides the length; turn off to set an exact target"
 msgstr "O tipo decide a duração; desative para definir um objetivo exato"
 
-#: pages/memory.py:172
+#: pages/memory.py:182
 msgid "This cut finished while the page was away. Re-load its media to export it."
 msgstr "Esta montagem terminou enquanto você estava ausente. Recarregue os conteúdos para exportá-la."
 
@@ -1526,7 +1606,7 @@ msgstr "Tempo decorrido"
 msgid "Title"
 msgstr "Título"
 
-#: pages/memory_storyboard.py:110
+#: pages/memory_storyboard.py:53
 msgid "Titles and transitions make up the rest of the film."
 msgstr "Os títulos e as transições completam o resto do filme."
 
@@ -1554,7 +1634,7 @@ msgstr "Duração total"
 msgid "Transition Style"
 msgstr "Estilo de transição"
 
-#: pages/clip_review.py:445 pages/step2_review.py:147
+#: pages/clip_review.py:445 pages/memory_storyboard.py:150 pages/step2_review.py:147
 msgid "Trim the video clips"
 msgstr "Recortar os clipes de vídeo"
 
@@ -1632,6 +1712,10 @@ msgstr "Nome de usuário"
 msgid "Using {name}'s birthday: {value}"
 msgstr "Usando o aniversário de {name}: {value}"
 
+#: pages/memory_storyboard.py:64
+msgid "Video"
+msgstr "Vídeo"
+
 #: pages/step1_cache.py:144
 msgid "Video cache"
 msgstr "Cache de vídeos"
@@ -1639,6 +1723,10 @@ msgstr "Cache de vídeos"
 #: pages/_step4_generate.py:631
 msgid "Video generated successfully!"
 msgstr "Vídeo gerado com sucesso!"
+
+#: pages/memory_storyboard.py:135
+msgid "Videos"
+msgstr "Vídeos"
 
 #: pages/memory_brief.py:204
 msgid "What is it about"
@@ -1660,6 +1748,10 @@ msgstr "Quem vai ver"
 #: pages/suggestions.py:209
 msgid "Why other suggestions were skipped"
 msgstr "Por que outras sugestões foram ignoradas"
+
+#: pages/memory_storyboard.py:141
+msgid "Why this picture"
+msgstr "Por que esta imagem"
 
 #: pages/step4_export.py:197
 #, python-brace-format
@@ -1813,7 +1905,7 @@ msgstr "{name} e {target_name}: {value}"
 msgid "{photos_count} Photos Available (auto-selected at generation)"
 msgstr "{photos_count} fotos disponíveis (seleção automática na geração)"
 
-#: pages/memory_story.py:37 pages/memory_storyboard.py:79
+#: pages/memory_story.py:37
 #, python-brace-format
 msgid "{seconds:g} s"
 msgstr "{seconds:g} s"
@@ -1827,4 +1919,7 @@ msgstr "{title} ({n_keys} chaves)"
 #, python-brace-format
 msgid "{value}: {duration_seconds:.1f}s"
 msgstr "{value}: {duration_seconds:.1f}s"
+
+#~ msgid "The storyboard"
+#~ msgstr "O storyboard"
 
