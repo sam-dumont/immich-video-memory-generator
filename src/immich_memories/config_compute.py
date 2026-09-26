@@ -6,7 +6,6 @@ from contextlib import suppress
 from importlib import import_module
 
 import httpx
-import numpy as np
 
 from immich_memories.config_models_inference import InferenceConfig
 
@@ -37,6 +36,8 @@ def local_inference_acceleration() -> tuple[bool, str]:
     with suppress(ImportError, OSError, RuntimeError):
         ort = import_module("onnxruntime")
         if "CUDAExecutionProvider" in ort.get_available_providers():
+            import numpy as np
+
             # A CUDA wheel can be installed in a container with no exposed device.
             probe = ort.OrtValue.ortvalue_from_shape_and_type([1], np.float32, "cuda", 0)
             if probe.device_name().lower() == "cuda":

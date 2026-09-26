@@ -1,5 +1,6 @@
 """The configured inference capability chooses preparation and selection together."""
 
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -190,3 +191,18 @@ def test_a_cuda_wheel_without_a_usable_device_does_not_enable_gpu(monkeypatch, l
 
     assert config.tier == "nas"
     assert not config.editorial.preparation.demands_captions
+
+
+def test_explicit_nas_config_does_not_import_inference_runtimes():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from immich_memories import Config; Config(tier='nas'); "
+            "assert not {'numpy', 'onnxruntime', 'mlx.core'} & sys.modules.keys()",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
