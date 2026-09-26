@@ -102,12 +102,20 @@ def test_a_period_the_library_has_no_account_of_is_not_polished(tmp_path):
     assert judge.calls == []
 
 
-def test_only_the_shot_the_vote_named_leaves_the_cut(tmp_path):
+def test_a_shot_the_vote_named_stays_when_no_replacement_is_available(tmp_path):
     judge = FitJudge()
     polish = ThinPolish(bank_dir=tmp_path, read_period=period("the month a family moved"))
+    written: dict[str, dict] = {}
     cut = [carrier("a1", "S001"), carrier("a2", "S002"), carrier("a3", "S002")]
-    kept = run(polish, cut, judge, {"a1": "filler", "a2": "the afternoon", "a3": "the evening"})
-    assert [c["asset_id"] for c in kept] == ["a2", "a3"]
+    kept = run(
+        polish,
+        cut,
+        judge,
+        {"a1": "filler", "a2": "the afternoon", "a3": "the evening"},
+        record=lambda name, payload: written.__setitem__(name, dict(payload)),
+    )
+    assert kept == cut
+    assert written["thin-polish"]["removed_by_the_vote"] == []
 
 
 def test_a_starred_shot_the_vote_named_keeps_its_place(tmp_path):

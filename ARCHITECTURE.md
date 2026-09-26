@@ -192,8 +192,9 @@ the code named beside it; if the two disagree, the code wins and this entry is s
 - **Block vote**: the shape of every model yes/no. At most 12 rows, asked twice, in source order
   and in a hashed order; picked both times is firm, once is a maybe (`editorial_block_votes.py`).
 - **Thin layer / thin polish**: model mode's editing when `thin_model_layer` is on (the default).
-  Separate date windows also draft from rules and demand episode context afterwards. The model reads the finished rules draft once, names
-  the shots that add nothing, and the freed seats are refilled through the same gates. Budget: 4
+  Separate date windows also draft from rules and demand episode context afterwards. The model
+  reads the finished rules draft once and proposes replacements through the same gates. A vote-named
+  shot stays until a replacement passes its final fit check; gate-refused shots stay excluded. Budget: 4
   calls per 12 draft shots plus 4 per seat (`editorial_thin_layer.py`, `editorial_thin_*.py`).
 - **Thesis-fit vote**: the thin layer's one question, "which of these shots adds nothing to this
   film?", asked reject-only as a block vote under the period thesis. Named by both orders is bad,

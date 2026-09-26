@@ -1,7 +1,7 @@
 """The seats a polish may fill, and the transaction that fills one.
 
-A slot is a second the film is missing: a shot the gates refused, a shot the vote named, or a
-story of the scope the catalogue records something about that the cut never gave a voice to.
+A slot is a proposed replacement, a shot the gates refused, or a story the catalogue records
+something about that the cut never gave a voice to.
 Nothing else opens one. There is no depth pass, no release ladder and no cap that could hand a
 seat to a story the draft did not choose, and a swap only takes its shot out once a replacement
 has passed everything.
@@ -70,14 +70,19 @@ class ThinSlot:
         """Every row the seat may pick from, in order: its page, then its fallback."""
         return (*self.page, *self.fallback)
 
-    def row(self) -> dict[str, str]:
+    def row(self, *, revoked: bool = False) -> dict[str, str]:
+        """Report a tentative pick as rejected when its final fit check failed."""
         return {
             "slot": self.key,
             "story": self.story,
             "rule": self.kind,
             "replacing": self.replacing,
-            "chosen": self.filled_by,
-            "outcome": self.outcome or ("seated" if self.filled_by else ""),
+            "chosen": "" if revoked else self.filled_by,
+            "outcome": (
+                "refused by fit check"
+                if revoked
+                else self.outcome or ("seated" if self.filled_by else "")
+            ),
             "offered": str(len(self.offered)),
         }
 
@@ -151,8 +156,8 @@ def plan_slots(
     rows by asset): it takes the seconds that shot held, so it needs no room. Its page is its
     own story's, or when that story has nothing left, the pictures of the stories the film
     already holds, nearest in time first. A removal nothing is left for is still a seat, which
-    records that nothing was eligible. A shot only one
-    order doubted keeps its place under a swap, which needs no room at all either.
+    records that nothing was eligible. Whether one or both orders doubted a shot, it keeps its
+    place until a replacement passes. Gate-refused shots cannot be restored.
 
     Every refill's page leads with the kind of shot (`kind_of`: portrait or texture) its story
     holds fewer of in the cut, or the film does when the story holds none: the picker reads a
@@ -257,17 +262,19 @@ def newcomer_slots(
 
 def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
     moments_in_cut = {row.get("moment") for row in cut}
+    by_asset = {row["asset_id"]: row for row in cut}
     refused_moments: dict[str, list[str]] = {}
     for _asset, kind, story, moment in appends:
         if kind == GATE_REFUSED and moment:
             refused_moments.setdefault(story, []).append(moment)
     slots = []
     for number, (asset, kind, story, _moment) in enumerate(appends, 1):
+        original = removed.get(asset) or by_asset.get(asset)
         page = offers(story)
-        pool = _nearest_in_the_film(cut, offers, removed.get(asset), story)
+        pool = _nearest_in_the_film(cut, offers, original, story)
         if kind == VOTE_BAD:
-            page = _other_moments(page, removed.get(asset))
-            pool = _other_moments(pool, removed.get(asset))
+            page = _other_moments(page, original)
+            pool = _other_moments(pool, original)
         if story in refused_moments:
             page = gate_refill_page(page, refused_moments[story], moments_in_cut)
         else:
@@ -280,6 +287,7 @@ def _append_slots(cut, appends, offers, record_of, removed) -> list[ThinSlot]:
                 story=story,
                 kind=kind,
                 page=tuple(page),
+                replacing=asset if kind == VOTE_BAD and asset in by_asset else "",
                 frees=float(removed[asset]["seconds"]) if asset in removed else 0.0,
                 fallback=tuple(pool),
             )
@@ -348,9 +356,10 @@ class ThinRefill:
             if candidate is None:
                 outcomes.append(replace(slot, outcome=failed.get(index, "none available")))
                 continue
-            refusal = self.gates.admits(candidate, cut=current, tier_of=self.tier_of)
+            company = [row for row in current if row["asset_id"] != slot.replacing]
+            refusal = self.gates.admits(candidate, cut=company, tier_of=self.tier_of)
             if refusal is not None and slot.kind in REMOVALS:
-                candidate, refusal = self._chosen_again(slot, current, taken)
+                candidate, refusal = self._chosen_again(slot, company, taken)
             if candidate is None or refusal is not None:
                 outcomes.append(replace(slot, outcome=_why_empty(refusal)))
                 continue

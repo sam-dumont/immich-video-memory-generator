@@ -6,8 +6,8 @@ had is a reader looking at the finished cut and saying which of its shots add no
 layer asks exactly that, once, and changes only what the answer and the gates leave open.
 
 It is not a planner. There are no caps, no reserve, no depth, no re-allocation and no coverage
-floor here: the gated draft is the film, and the only picture that leaves is one the gates
-refused or the vote named.
+floor here: the gated draft is the film. A gate can refuse a picture; a vote can only replace
+one after its candidate passes every check.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ from immich_memories.analysis.editorial_thin_vote import (
 
 logger = logging.getLogger(__name__)
 
-THIN_VERSION = "thin-polish-v1"
+THIN_VERSION = "thin-polish-v2"
 
 
 class PeriodUnread(RuntimeError):
@@ -244,13 +244,11 @@ class ThinPolish:
                 "voted": len(verdicts),
                 "rounds": rounds,
                 "verdicts": verdicts,
-                "removed_by_the_vote": [
-                    asset for asset, verdict in verdicts.items() if verdict["state"] == "bad"
+                **_vote_outcomes(verdicts, final),
+                "slots": [
+                    slot.row(revoked=slot.filled_by in revoked)
+                    for slot in (*outcomes, *short_slots)
                 ],
-                "held_by_the_owner": [
-                    asset for asset, verdict in verdicts.items() if verdict["held_by"]
-                ],
-                "slots": [slot.row() for slot in (*outcomes, *short_slots)],
                 "short": short,
                 "revoked_by_the_fit_check": sorted(revoked),
                 "shots": len(final),
@@ -397,8 +395,8 @@ class ThinPolish:
         verdicts = keep_every_voice(
             carriers, classify_fit(carriers, votes, family, eras, textures), fit.era_of
         )
-        kept = [c for c in carriers if verdicts[c["asset_id"]]["state"] != "bad"]
-        return kept, verdicts, rounds
+        # A vote proposes a replacement; only a candidate that passes can take the seat.
+        return carriers, verdicts, rounds
 
     def _bank(self) -> dict:
         """Both votes read and write one file, so neither is paid for twice."""
@@ -459,6 +457,23 @@ class _FitQuestion:
             sole_era_shots(cut, self.era_of),
             sole_texture_shots(cut, self.kind_of),
         )
+
+
+def _vote_outcomes(verdicts, final) -> dict[str, list[str]]:
+    kept = {row["asset_id"] for row in final}
+    return {
+        "removed_by_the_vote": [
+            asset
+            for asset, verdict in verdicts.items()
+            if verdict["state"] == "bad" and asset not in kept
+        ],
+        "retained_without_replacement": [
+            asset
+            for asset, verdict in verdicts.items()
+            if verdict["state"] in {"bad", "weak"} and asset in kept
+        ],
+        "held_by_the_owner": [asset for asset, verdict in verdicts.items() if verdict["held_by"]],
+    }
 
 
 def _shot_kinds(draft, final, kind_of: KindOf | None) -> dict[str, dict[str, int]]:
