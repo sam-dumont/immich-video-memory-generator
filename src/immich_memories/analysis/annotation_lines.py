@@ -85,6 +85,7 @@ class AssetAnnotationLine:
     description: str | None = None
     heads: tuple[tuple[str, str], ...] = ()
     stitching_burst_id: str | None = None
+    head_confidences: tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.asset_id.strip() or not self.text.strip():
@@ -261,6 +262,7 @@ class StoredAnnotationLineReader:
                 description=facts[asset_id].description,
                 heads=facts[asset_id].heads,
                 stitching_burst_id=_stitching_burst_id(facts[asset_id]),
+                head_confidences=facts[asset_id].head_confidences,
             )
             for asset_id in ordered_ids
         )

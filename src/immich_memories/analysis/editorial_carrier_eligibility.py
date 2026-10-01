@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
+from typing import TYPE_CHECKING
 
 from immich_memories.analysis.annotation_line_fields import content_of
+
+if TYPE_CHECKING:
+    from immich_memories.analysis.annotation_lines import AssetAnnotationLine
 
 # The kinds of frame that carry nothing a film can show, against the ones that do. This is
 # the `frame_kind` head's label set, split the way the standing gate reads it.
@@ -146,13 +150,19 @@ def screenshot_by_resolution(line: str) -> bool:
     return (min(w, h), max(w, h)) in PHONE_SCREEN_SIZES
 
 
-def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
+def excluded_carrier_sources(
+    annotations: Mapping[str, str],
+    *,
+    evidence: Mapping[str, AssetAnnotationLine] | None = None,
+    protected: Collection[str] = (),
+) -> dict[str, str]:
     """Use grounded annotation fields, without reclassifying the event's importance.
 
     A map mentioned in a real scene is not the same as a geographical-map document
     label. No date, filename, person or sporting-event name is part of this rule.
     """
     excluded = {}
+    evidence = evidence or {}
     for asset_id, line in annotations.items():
         # The heads and the pixel size are our own fields and are read as such; the words a
         # rule looks for are read only where the picture's content is, so a burst that
@@ -173,4 +183,25 @@ def excluded_carrier_sources(annotations: Mapping[str, str]) -> dict[str, str]:
             excluded[asset_id] = "medical-care"
         elif identical_grid(content):
             excluded[asset_id] = "identical-grid"
+        elif asset_id not in protected and _corroborated_document(evidence.get(asset_id)):
+            excluded[asset_id] = "document-corroborated"
     return excluded
+
+
+def _corroborated_document(record: AssetAnnotationLine | None) -> bool:
+    if record is None:
+        return False
+    heads = dict(record.heads)
+    confidences = dict(record.head_confidences)
+    photograph_probability = confidences.get("doc_docling")
+    frame_probability = confidences.get("frame_kind")
+    # A printed portrait can win the photograph class while most probability remains on
+    # document classes. Require the separate frame head to agree before refusing it.
+    return (
+        heads.get("frame_kind") == "screen_or_document"
+        and heads.get("doc_docling") == "photograph"
+        and frame_probability is not None
+        and frame_probability > 0.5
+        and photograph_probability is not None
+        and 0 < photograph_probability < 0.5
+    )

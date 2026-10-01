@@ -83,6 +83,12 @@ The check covers every burst member and motion clip, before standing is scored. 
 from preparing a replacement runs through the same check; a refusal leaves its slot open for
 another eligible candidate. A refused companion does not mark its clean lead as permanently bad.
 
+Printed faces can fool a people detector. When the frame classifier gives a screen or document
+more than half its probability, and the document classifier's winning `photograph` label has less
+than half, the picture is refused as a document. Both confidences must be known; ties or weak evidence leave
+it eligible. A favourite or a picture you explicitly selected is exempt from this extra check.
+It uses existing CPU facts and applies to refills too, without asking for a caption.
+
 **Spaced.** Two shots of the same moment must be at least five minutes apart in capture time.
 
 **Standing.** Does it stand on its own? Objects and empty rooms out, people and animals in. No

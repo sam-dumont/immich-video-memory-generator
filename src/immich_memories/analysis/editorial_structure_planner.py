@@ -21,7 +21,6 @@ from immich_memories.analysis.editorial_block_votes import (
     judge_worthiness,
     worth_criterion_v44,
 )
-from immich_memories.analysis.editorial_carrier_eligibility import excluded_carrier_sources
 from immich_memories.analysis.editorial_cut_invariants import check_finished_cut
 from immich_memories.analysis.editorial_episode_documents import factual_moment_rows
 from immich_memories.analysis.editorial_exposure_chains import chain_holds_for
@@ -82,6 +81,7 @@ from immich_memories.analysis.editorial_structure_material import (
     build_material,
     hold_the_ends,
     read_wall,
+    source_exclusions,
 )
 from immich_memories.analysis.editorial_structure_record import (
     PlanFacts,
@@ -600,7 +600,9 @@ def _refresh_candidates(source, ports, material, chains, carriers):
     for member in members:
         material.document_sources.pop(member, None)
     material.document_sources.update(
-        excluded_carrier_sources({member: source.annotations.get(member, "") for member in members})
+        source_exclusions(
+            source, {member: source.annotations.get(member, "") for member in members}
+        )
     )
     for carrier in carriers:
         carrier.update(material.builder.refresh_clip_facts(carrier))

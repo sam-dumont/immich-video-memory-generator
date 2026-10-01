@@ -86,6 +86,7 @@ class StoredAssetAnnotationFacts:
     flags: tuple[StoredFlagFact, ...] = ()
     pixel: StoredPixelFacts | None = None
     motion: StoredMotionBurstFact | None = None
+    head_confidences: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass
@@ -99,6 +100,7 @@ class _MutableAssetFacts:
     flags: list[StoredFlagFact] = field(default_factory=list)
     pixel: StoredPixelFacts | None = None
     motion: StoredMotionBurstFact | None = None
+    head_confidences: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -308,14 +310,16 @@ class AssetAnnotationFactRepository:
         h = head_facts
         rows = _rows(
             connection,
-            sa.select(h.c.asset_id, h.c.head, h.c.version, h.c.label),
+            sa.select(h.c.asset_id, h.c.head, h.c.version, h.c.label, h.c.confidence),
             h.c.asset_id,
             asset_ids,
         )
-        for asset_id, head, version, label in rows:
+        for asset_id, head, version, label, confidence in rows:
             head_name = str(head)
             if self._head_versions.get(head_name) == str(version):
                 records[str(asset_id)].heads[head_name] = _clean(label)
+                if confidence is not None:
+                    records[str(asset_id)].head_confidences[head_name] = float(confidence)
 
     def _read_pixels(
         self,
@@ -414,6 +418,7 @@ def _freeze(asset_id: str, record: _MutableAssetFacts) -> StoredAssetAnnotationF
         flags=tuple(sorted(record.flags, key=lambda item: (item.flag, item.reason, item.source))),
         pixel=record.pixel,
         motion=record.motion,
+        head_confidences=tuple(sorted(record.head_confidences.items())),
     )
 
 

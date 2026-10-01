@@ -569,11 +569,24 @@ def _renderer(source: StructurePlanningInput, probe):
     return measure
 
 
+def source_exclusions(source: StructurePlanningInput, lines: Mapping[str, str]) -> dict[str, str]:
+    """The source refusals for these lines, with the banked head evidence the check corroborates.
+
+    Favourites and pictures the owner required are exempt from the corroborated-document check.
+    """
+    protected = set(source.owner_required_asset_ids) | {
+        asset_id for asset_id, asset in source.assets.items() if asset.is_favorite
+    }
+    return excluded_carrier_sources(
+        lines, evidence=source.audience_annotations, protected=protected
+    )
+
+
 def build_material(
     source: StructurePlanningInput, ports: StructurePlannerPorts, wall: Wall
 ) -> Material:
     lines = source.annotations
-    document_sources = excluded_carrier_sources(lines)
+    document_sources = source_exclusions(source, lines)
     builder = UnitBuilder(
         source,
         ports,

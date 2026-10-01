@@ -226,6 +226,10 @@ remains in the preparation report but does not block required-fact completeness.
 - **Carrier**: the picture admitted to carry one chosen moment of a funded story, if it is free,
   in context and spaced from the shots already committed (`editorial_story_carriers.py`,
   `editorial_carrier_eligibility.py`). A carrier is a shot before it is rendered.
+  Exact-version head confidence travels with structured annotation facts. Corroborated document
+  evidence joins the shared source exclusions before family seats or refills; favourites and
+  required pictures bypass this extra check. Rendered annotation text and its cache identity stay
+  unchanged.
 - **Picture admission**: `PictureAdmission` (`editorial_picture_admission.py`) owns the shared
   standing, audience, spacing and candidate repetition checks. Draft selection, thin swaps,
   audience replacements, duplicate refills and family seats use it. Later candidates acquire
